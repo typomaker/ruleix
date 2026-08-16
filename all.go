@@ -2,7 +2,15 @@ package ruleix
 
 import "github.com/RoaringBitmap/roaring/v2"
 
-// All requires every child rule to match.
+// All combines rules with logical AND: a stored constraint matches only when
+// every child rule matches. All may be nested.
+//
+// For example, to match both country and customer tier:
+//
+//	ruleix.All(
+//		ruleix.Include(func(c Constraint) *string { return c.Country }),
+//		ruleix.Include(func(c Constraint) *string { return c.Tier }),
+//	)
 func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} }
 
 type allRule[T any] struct{ children []Rule[T] }

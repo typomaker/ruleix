@@ -3,11 +3,14 @@ package ruleix
 
 import "github.com/RoaringBitmap/roaring/v2"
 
-// Compare returns a negative number when a < b, zero when a == b, and a
-// positive number when a > b.
+// Compare defines an ordering for values used by ordered filters. It returns a
+// negative number when a < b, zero when a == b, and a positive number when
+// a > b. The standard library's cmp.Compare is suitable for ordered types.
 type Compare[V any] func(a, b V) int
 
-// Rule is a type-safe index node accepting values of T.
+// Rule describes how constraints and query values of T are matched. Construct
+// rules with Include, Exclude, the ordered filters, Between, CompareBy, and All.
+// Its implementation is sealed so an index can rely on all rule invariants.
 type Rule[T any] interface {
 	rule()
 	validate(T) error

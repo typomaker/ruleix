@@ -1,12 +1,31 @@
 # ruleix
 
-`ruleix` is a strongly typed, in-memory rule index for Go. It indexes a set of
-constraints once and efficiently finds every rule that matches a concrete
+`ruleix` is a strongly typed, in-memory rule index for Go. Given a concrete
+value, it efficiently finds all stored rules whose constraints match that
 value.
 
 Use it when you have many rules with optional fields—for example pricing,
 feature flags, promotions, routing, or audience targeting—and need to evaluate
 the same schema repeatedly.
+
+## The problem
+
+Rule-based systems often need to answer the inverse of a typical lookup: given
+one concrete value, find all stored rules whose optional constraints match it.
+
+For example, given an order from a gold customer in Germany, you may need to
+find every promotion that applies to its country, customer tier, total, and
+sales channel. Some promotions constrain every field, while others apply to an
+entire country or globally.
+
+A straightforward implementation scans every rule for every request and checks
+each field individually. This is simple, but its cost grows with both the number
+of rules and the number of fields—especially when rules contain wildcards,
+ranges, exclusions, or nested properties.
+
+`ruleix` builds an immutable index from the rules once. Searches then combine
+precomputed candidate sets for each constraint instead of evaluating every rule
+from scratch.
 
 ## Features
 

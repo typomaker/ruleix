@@ -6,8 +6,13 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
-// Include indexes an optional comparable field. A nil stored value is a wildcard
-// and matches every concrete search value.
+// Include matches a query field when it equals the stored field. A nil stored
+// value is a wildcard and matches every concrete query value; a nil query value
+// matches only stored wildcards.
+//
+// For example, to match a rule's optional country:
+//
+//	ruleix.Include(func(c Constraint) *string { return c.Country })
 func Include[T any, V comparable](get func(T) *V) Rule[T] {
 	return &eqRule[T, V]{get: get, wildcard: roaring.New(), values: make(map[V]*equalitySet)}
 }

@@ -5,6 +5,11 @@ import "github.com/RoaringBitmap/roaring/v2"
 // Exclude indexes an optional forbidden value. Nil means no forbidden value. A
 // concrete match excludes the associated result ID even when another stored
 // constraint with that ID matches.
+//
+// For example, to reject rules whose forbidden channel equals the query
+// channel:
+//
+//	ruleix.Exclude(func(c Constraint) *string { return c.ExcludedChannel })
 func Exclude[T any, V comparable](get func(T) *V) Rule[T] {
 	return &notRule[T, V]{
 		get:         get,

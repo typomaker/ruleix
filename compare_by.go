@@ -4,7 +4,17 @@ import "github.com/RoaringBitmap/roaring/v2"
 
 // CompareBy evaluates the operator stored in each inserted rule against the
 // concrete value supplied to Search. Search-side operator text is ignored. A
-// nil stored value is a wildcard and its operator is not validated.
+// nil stored value is a wildcard and its operator is not validated. Build
+// returns an error when a non-wildcard rule contains an unsupported operator.
+//
+// For example, a stored pair {Operator: ">=", Orders: 5} matches a query with
+// Orders equal to 7:
+//
+//	ruleix.CompareBy(
+//		func(c Constraint) string { return c.Operator },
+//		func(c Constraint) *int { return c.Orders },
+//		cmp.Compare[int],
+//	)
 func CompareBy[T any, V any](
 	operator func(T) string,
 	value func(T) *V,

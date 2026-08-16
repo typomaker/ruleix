@@ -6,20 +6,24 @@ import (
 	"math"
 )
 
-// Builder constructs one immutable Index from a rule schema.
+// Builder constructs one immutable Index from a Rule schema. A Builder is
+// single-use: its Build method may be called only once, whether that call
+// succeeds or fails.
 type Builder[C any, ID comparable] struct {
 	root  Rule[C]
 	built bool
 }
 
-// Index maps matching constraints to result IDs. It is immutable after Build.
+// Index maps query values to the unique IDs of all matching stored constraints.
+// It is immutable after Build and safe for concurrent calls to Search and Visit.
 type Index[C any, ID comparable] struct {
 	root   Rule[C]
 	values []ID
 	pool   *bitmapPool
 }
 
-// New constructs a builder from a strongly typed schema.
+// New constructs a Builder from a strongly typed rule schema. New panics when
+// schema is nil.
 func New[C any, ID comparable](schema Rule[C]) *Builder[C, ID] {
 	if schema == nil {
 		panic("ruleix: nil schema")
@@ -28,7 +32,9 @@ func New[C any, ID comparable](schema Rule[C]) *Builder[C, ID] {
 }
 
 // Build consumes entries and returns an immutable, concurrently searchable
-// index. A Builder is single-use, including when validation fails.
+// Index. Constraints that share an external ID are combined under that ID,
+// which is returned at most once by a search. A Builder is single-use,
+// including when validation fails.
 func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) {
 	if b.built {
 		return nil, fmt.Errorf("ruleix: builder has already been used")
@@ -66,7 +72,9 @@ func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) 
 	return ix, nil
 }
 
-// Zip pairs equally sized constraint and ID slices into a Build sequence.
+// Zip pairs equally sized constraint and ID slices into a sequence accepted by
+// Builder.Build. It returns an error when the slice lengths differ. The slices
+// are read when the returned sequence is consumed, not when Zip is called.
 func Zip[C any, ID any](constraints []C, ids []ID) (iter.Seq2[C, ID], error) {
 	if len(constraints) != len(ids) {
 		return nil, fmt.Errorf("ruleix: cannot zip %d constraints with %d IDs", len(constraints), len(ids))
@@ -81,8 +89,9 @@ func Zip[C any, ID any](constraints []C, ids []ID) (iter.Seq2[C, ID], error) {
 }
 
 // Search writes the unique IDs of every stored rule matching value into dst.
-// It updates the slice through its pointer, including when append allocates a
-// larger backing array. Results preserve the first matching insertion order.
+// It resets the destination length while reusing its capacity and updates the
+// slice through its pointer if append allocates a larger backing array. Results
+// preserve first-insertion order. Search panics when dst is nil.
 func (ix *Index[C, ID]) Search(value C, dst *[]ID) {
 	if dst == nil {
 		panic("ruleix: nil search destination")
@@ -91,7 +100,8 @@ func (ix *Index[C, ID]) Search(value C, dst *[]ID) {
 }
 
 // Visit calls yield once for each unique matching ID in first-match order.
-// Iteration stops immediately when yield returns false.
+// Iteration stops immediately when yield returns false. A nil yield function is
+// a no-op.
 func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
 	if yield == nil {
 		return

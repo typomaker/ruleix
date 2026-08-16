@@ -4,7 +4,16 @@ import "github.com/RoaringBitmap/roaring/v2"
 
 // Between matches an interval fully covered by a stored interval:
 // stored.from <= query.from AND query.until <= stored.until. Either nil stored
-// bound is a wildcard for that side of the interval.
+// bound is a wildcard for that side of the interval; a nil query bound matches
+// only a stored wildcard on the same side.
+//
+// For example, to find stored validity windows that cover a query window:
+//
+//	ruleix.Between(
+//		func(c Constraint) *time.Time { return c.ValidFrom },
+//		func(c Constraint) *time.Time { return c.ValidUntil },
+//		time.Time.Compare,
+//	)
 func Between[T any, V any](from, until func(T) *V, compare Compare[V]) Rule[T] {
 	return &betweenRule[T, V]{
 		from:    newOrderedRule(from, compare, greaterThan, true),
@@ -145,7 +154,17 @@ func (r *betweenRule[T, V]) matchesUntil(id uint32, query *V) bool {
 	return state.wildcard || state.set && r.compare(*query, state.value) <= 0
 }
 
-// BetweenConstraint applies Between to a nested interval.
+// BetweenConstraint applies Between to two fields of an optional nested
+// interval. A nil interval is propagated to both bounds as a wildcard.
+//
+// For example:
+//
+//	ruleix.BetweenConstraint(
+//		func(c Constraint) *Window { return c.Validity },
+//		func(w Window) *time.Time { return w.From },
+//		func(w Window) *time.Time { return w.Until },
+//		time.Time.Compare,
+//	)
 func BetweenConstraint[T any, R any, V any](
 	get func(T) *R,
 	from, until func(R) *V,
