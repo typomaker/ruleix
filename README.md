@@ -205,21 +205,50 @@ index.Search(value, &matches)
 ```
 
 When adjacent searches repeat constraint values, `Local` can reuse intermediate
-results from `Include`, `Greater`, `GreaterOrEqual`, `Less`, `LessOrEqual`,
-`CompareBy`, `Between`, and `Exclude` filters:
+bitmap results from `Include`, `Greater`, `GreaterOrEqual`, `Less`, `LessOrEqual`,
+`CompareBy`, `Between`, and `Exclude` filters. For example, queries for the same
+store and different regions can reuse the store bitmap:
 
 ```go
 local := index.Local()
-for value := range values {
-	local.Search(value, &matches)
+
+queries := []Constraint{
+	{StoreUUID: pointer("store-10"), RegionID: pointer(20)},
+	{StoreUUID: pointer("store-10"), RegionID: pointer(30)},
+}
+for _, query := range queries {
+	local.Search(query, &matches)
+	fmt.Println(matches)
 }
 ```
 
-A local search context is not safe for concurrent use. Create one per goroutine.
-The index itself and its regular `Search` method remain safe for concurrent use.
+`Local` keeps up to two recent intermediate bitmaps per filter node. This makes
+memory use bounded while covering repeated and alternating values. The cached
+bitmaps remain allocated until the `Local` becomes unreachable.
+
+A local search context is not safe for concurrent use. Create one inside each
+goroutine while sharing the immutable index:
+
+```go
+for range workers {
+	go func() {
+		local := index.Local()
+		var matches []string
+		for query := range jobs {
+			local.Search(query, &matches)
+			handle(matches)
+		}
+	}()
+}
+```
+
+Use `index.Search` when searches do not have value locality or when maintaining
+a per-goroutine context is inconvenient. The index and its regular `Search`
+method remain safe for concurrent use.
 `Local.Visit` provides the same caching for streaming result iteration.
-Each caching filter retains up to two intermediate bitmaps until its `Local`
-becomes unreachable.
+
+A complete runnable example is available in
+[`examples/local_search`](examples/local_search).
 
 `Visit` avoids collecting results and supports early termination:
 
