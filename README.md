@@ -182,6 +182,18 @@ index, err := ruleix.New[Constraint, string](schema).Build(
 `Zip` is a convenience for parallel slices and returns an error when their
 lengths differ.
 
+For workloads that periodically rebuild the same schema, `NewRebuilder`
+returns a reusable builder. Every call creates independent mutable build state
+and returns a new immutable index; indexes returned earlier remain safe for
+concurrent searches. Calls to `Build` on one rebuilder are serialized, and a
+failed build does not prevent the next call:
+
+```go
+rebuilder := ruleix.NewRebuilder[Constraint, string](schema)
+first, err := rebuilder.Build(firstEntries)
+second, err := rebuilder.Build(secondEntries)
+```
+
 ## Searching
 
 `Search` reuses the capacity of a destination slice:

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"sync"
 )
 
 // Builder constructs one immutable Index from a Rule schema. A Builder is
@@ -12,6 +13,14 @@ import (
 type Builder[C any, ID comparable] struct {
 	schema Rule[C]
 	built  bool
+}
+
+// Rebuilder constructs a new immutable Index from the same Rule schema on
+// every call to Build. Build calls on one Rebuilder are serialized. Indexes
+// returned by earlier builds remain independent and safe for concurrent use.
+type Rebuilder[C any, ID comparable] struct {
+	schema Rule[C]
+	mu     sync.Mutex
 }
 
 // Index maps query values to the unique IDs of all matching stored constraints.
@@ -31,6 +40,15 @@ func New[C any, ID comparable](schema Rule[C]) *Builder[C, ID] {
 	return &Builder[C, ID]{schema: schema}
 }
 
+// NewRebuilder constructs a reusable builder from a strongly typed rule
+// schema. NewRebuilder panics when schema is nil.
+func NewRebuilder[C any, ID comparable](schema Rule[C]) *Rebuilder[C, ID] {
+	if schema == nil {
+		panic("ruleix: nil schema")
+	}
+	return &Rebuilder[C, ID]{schema: schema}
+}
+
 // Build consumes entries and returns an immutable, concurrently searchable
 // Index. Constraints that share an external ID are combined under that ID,
 // which is returned at most once by a search. A Builder is single-use,
@@ -40,13 +58,26 @@ func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) 
 		return nil, fmt.Errorf("ruleix: builder has already been used")
 	}
 	b.built = true
+	return buildIndex[C, ID](b.schema, entries)
+}
+
+// Build consumes entries and returns a new immutable, concurrently searchable
+// Index. Calls on the same Rebuilder are serialized, including iteration of
+// entries. A failed build does not prevent later calls.
+func (r *Rebuilder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return buildIndex[C, ID](r.schema, entries)
+}
+
+func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID]) (*Index[C, ID], error) {
 	if entries == nil {
 		return nil, fmt.Errorf("ruleix: nil entry sequence")
 	}
 	// A schema contains only immutable getters, comparators, and structure.
 	// Every build receives fresh mutable indexes, so even a future reusable
 	// schema cannot modify an Index returned by an earlier build.
-	state := b.schema.newState(&nodeIDAllocator{})
+	state := schema.newState(&nodeIDAllocator{})
 	ix := &Index[C, ID]{root: state, pool: newBitmapPool()}
 	internalIDs := make(map[ID]uint32)
 	var buildErr error
