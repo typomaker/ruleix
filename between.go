@@ -145,11 +145,11 @@ func (r *betweenRule[T, V]) matchesUntil(id uint32, query *V) bool {
 	return state.wildcard || state.set && r.compare(*query, state.value) <= 0
 }
 
-// BetweenConstraint applies Between to an optional nested interval.
+// BetweenConstraint applies Between to a nested interval.
 func BetweenConstraint[T any, R any, V any](
 	get func(T) *R,
 	from, until func(R) *V,
 	compare Compare[V],
 ) Rule[T] {
-	return Nested(get, Between(from, until, compare))
+	return Between(Path(get, from), Path(get, until), compare)
 }

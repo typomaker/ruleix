@@ -13,7 +13,7 @@ the same schema repeatedly.
 - Generic, strongly typed API with no reflection.
 - Equality, exclusion, ordered, interval, and dynamic comparison filters.
 - Wildcards: a `nil` field in a stored constraint matches every concrete value.
-- Multi-column rules composed with `All` and `Nested`.
+- Multi-column rules composed with `All` and nested getters built with `Path`.
 - Unique results in first-insertion order.
 - Immutable indexes safe for concurrent searches after `Build`.
 - Roaring bitmap-backed candidate sets with pooled search scratch space.
@@ -115,7 +115,7 @@ because the operator is part of each stored rule; for a fixed operator, use
 | `Less` | query value is less than the stored value |
 | `Between` | the query interval is fully covered by the stored interval |
 | `CompareBy` | the operator stored in the rule evaluates to true |
-| `Nested` / `Optional` | the nested child rule matches |
+| `Path` / `Path3`–`Path5` | compose getters to access a nested property |
 | `All` | every child rule matches |
 
 All value getters return pointers. In a stored constraint, `nil` is a wildcard.
@@ -131,6 +131,17 @@ stored.from <= query.from AND query.until <= stored.until
 `CompareBy` supports `=`, `<`, `<=`, `>`, and `>=`. The operator belongs to the
 stored rule; operator text in the search value is ignored. `Build` rejects an
 invalid operator without returning a partially built index.
+
+`Path` composes pointer getters and propagates `nil`, so the concrete filter
+keeps control of wildcard behavior. Calls can be nested to traverse any depth:
+
+```go
+ruleix.Include(ruleix.Path3(
+	func(c Constraint) *Platform { return c.Platform },
+	func(p Platform) *Version { return p.Version },
+	func(v Version) *int { return &v.Major },
+))
+```
 
 ## Building an index
 

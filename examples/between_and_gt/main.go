@@ -32,13 +32,18 @@ func main() {
 			func(r timeRange) *time.Time { return r.until },
 			time.Time.Compare,
 		),
-		ruleix.Nested(
-			func(c constraint) *orderCountRule { return c.orderCount },
-			ruleix.CompareBy(
-				func(r orderCountRule) string { return r.operator },
+		ruleix.CompareBy(
+			func(c constraint) string {
+				if c.orderCount == nil {
+					return ""
+				}
+				return c.orderCount.operator
+			},
+			ruleix.Path(
+				func(c constraint) *orderCountRule { return c.orderCount },
 				func(r orderCountRule) *int { return r.value },
-				cmp.Compare[int],
 			),
+			cmp.Compare[int],
 		),
 	)
 

@@ -30,6 +30,12 @@ type DBS bool
 type MarketType string
 type ABTest struct{ Label, Group string }
 
+type pathA struct{ B *pathB }
+type pathB struct{ C *pathC }
+type pathC struct{ D *pathD }
+type pathD struct{ E *pathE }
+type pathE struct{ Value *int }
+
 type Constraint struct {
 	Activity           *TimeRange
 	CustomerOrderCount *CustomerOrderCount
@@ -76,41 +82,51 @@ func schema() ruleix.Rule[Constraint] {
 			func(r TimeRange) *time.Time { return &r.Until },
 			compareTime,
 		),
-		ruleix.Nested(
-			func(c Constraint) *CustomerOrderCount { return c.CustomerOrderCount },
-			ruleix.CompareBy(
-				func(c CustomerOrderCount) string { return c.Operator },
+		ruleix.CompareBy(
+			func(c Constraint) string {
+				if c.CustomerOrderCount == nil {
+					return ""
+				}
+				return c.CustomerOrderCount.Operator
+			},
+			ruleix.Path(
+				func(c Constraint) *CustomerOrderCount { return c.CustomerOrderCount },
 				func(c CustomerOrderCount) *int { return &c.Total },
-				cmp.Compare[int],
 			),
+			cmp.Compare[int],
 		),
 		ruleix.Include(func(c Constraint) *CustomerUUID { return c.CustomerUUID }),
 		ruleix.Include(func(c Constraint) *StoreUUID { return c.StoreUUID }),
-		ruleix.Nested(
+		ruleix.Include(ruleix.Path(
 			func(c Constraint) *Platform { return c.Platform },
-			ruleix.All(
-				ruleix.Include(func(p Platform) *string { return &p.Name }),
-				ruleix.Optional(
-					func(p Platform) *Version { return p.Version },
-					ruleix.CompareBy(
-						func(v Version) string { return v.Operator },
-						func(v Version) *SemanticVersion {
-							return &SemanticVersion{v.Major, v.Minor, v.Patch}
-						},
-						compareVersion,
-					),
-				),
+			func(p Platform) *string { return &p.Name },
+		)),
+		ruleix.CompareBy(
+			func(c Constraint) string {
+				if c.Platform == nil || c.Platform.Version == nil {
+					return ""
+				}
+				return c.Platform.Version.Operator
+			},
+			ruleix.Path3(
+				func(c Constraint) *Platform { return c.Platform },
+				func(p Platform) *Version { return p.Version },
+				func(v Version) *SemanticVersion {
+					return &SemanticVersion{v.Major, v.Minor, v.Patch}
+				},
 			),
+			compareVersion,
 		),
 		ruleix.Include(func(c Constraint) *DBS { return c.DBS }),
 		ruleix.Include(func(c Constraint) *MarketType { return c.MarketType }),
-		ruleix.Nested(
+		ruleix.Include(ruleix.Path(
 			func(c Constraint) *ABTest { return c.ABTest },
-			ruleix.All(
-				ruleix.Include(func(a ABTest) *string { return &a.Label }),
-				ruleix.Include(func(a ABTest) *string { return &a.Group }),
-			),
-		),
+			func(a ABTest) *string { return &a.Label },
+		)),
+		ruleix.Include(ruleix.Path(
+			func(c Constraint) *ABTest { return c.ABTest },
+			func(a ABTest) *string { return &a.Group },
+		)),
 	)
 }
 
@@ -190,7 +206,7 @@ func TestCompareByRejectsInvalidOperatorAtomically(t *testing.T) {
 	require.EqualError(t, err, `ruleix: entry 0: ruleix: unsupported operator "!="`)
 }
 
-func TestBetweenAndNestedWildcard(t *testing.T) {
+func TestBetweenAndPathWildcard(t *testing.T) {
 	t0 := time.Unix(0, 0)
 	t1, t2, t3 := t0.Add(time.Hour), t0.Add(2*time.Hour), t0.Add(3*time.Hour)
 	intervalSchema := ruleix.BetweenConstraint(
@@ -203,6 +219,37 @@ func TestBetweenAndNestedWildcard(t *testing.T) {
 		[]Constraint{{Activity: &TimeRange{t0, t3}}, {}, {Activity: &TimeRange{t2, t3}}},
 		[]string{"covering", "wildcard", "late"})
 	require.Equal(t, []string{"covering", "wildcard"}, search(ix, Constraint{Activity: &TimeRange{t1, t2}}))
+}
+
+func TestPath3(t *testing.T) {
+	schema := ruleix.Include(ruleix.Path3(
+		func(c Constraint) *Platform { return c.Platform },
+		func(p Platform) *Version { return p.Version },
+		func(v Version) *int { return &v.Major },
+	))
+	ix := buildZip(t, schema,
+		[]Constraint{{}, {Platform: &Platform{}}, {Platform: &Platform{Version: &Version{Major: 2}}}},
+		[]string{"missing-platform", "missing-version", "version-2"})
+
+	require.Equal(t,
+		[]string{"missing-platform", "missing-version", "version-2"},
+		search(ix, Constraint{Platform: &Platform{Version: &Version{Major: 2}}}),
+	)
+}
+
+func TestPath4AndPath5(t *testing.T) {
+	ab := func(a pathA) *pathB { return a.B }
+	bc := func(b pathB) *pathC { return b.C }
+	cd := func(c pathC) *pathD { return c.D }
+	de := func(d pathD) *pathE { return d.E }
+	ef := func(e pathE) *int { return e.Value }
+	value := 42
+	complete := pathA{B: &pathB{C: &pathC{D: &pathD{E: &pathE{Value: &value}}}}}
+
+	require.Same(t, complete.B.C.D.E, ruleix.Path4(ab, bc, cd, de)(complete))
+	require.Equal(t, &value, ruleix.Path5(ab, bc, cd, de, ef)(complete))
+	require.Nil(t, ruleix.Path4(ab, bc, cd, de)(pathA{}))
+	require.Nil(t, ruleix.Path5(ab, bc, cd, de, ef)(pathA{}))
 }
 
 func TestConcurrentSearchAndBitmapReuse(t *testing.T) {
