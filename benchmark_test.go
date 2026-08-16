@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/albertsultanov/ruleix"
+	"github.com/typomaker/ruleix"
 )
 
 const (

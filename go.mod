@@ -1,4 +1,4 @@
-module github.com/albertsultanov/ruleix
+module github.com/typomaker/ruleix
 
 go 1.23
 

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/albertsultanov/ruleix"
+	"github.com/typomaker/ruleix"
 )
 
 type constraint struct {

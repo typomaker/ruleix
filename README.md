@@ -53,7 +53,7 @@ from scratch.
 ## Installation
 
 ```sh
-go get github.com/albertsultanov/ruleix
+go get github.com/typomaker/ruleix
 ```
 
 ## Quick start
@@ -68,7 +68,7 @@ import (
 	"cmp"
 	"fmt"
 
-	"github.com/albertsultanov/ruleix"
+	"github.com/typomaker/ruleix"
 )
 
 type Constraint struct {

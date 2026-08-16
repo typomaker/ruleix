@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/albertsultanov/ruleix"
+	"github.com/typomaker/ruleix"
 	"github.com/stretchr/testify/require"
 )
 
