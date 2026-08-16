@@ -24,21 +24,13 @@ WHERE (store_id = $1 OR store_id IS NULL)
 ```
 
 Here, `NULL` in a stored rule acts as a wildcard: the rule matches any concrete
-value for that field. Queries with several such `OR ... IS NULL` conditions can
-make efficient use of conventional database indexes difficult, particularly
-when the same set of rules is searched repeatedly. `ruleix` provides similar
-matching semantics using a prebuilt in-memory index, avoiding a full scan of
-all rules on every lookup.
+value for that field. Queries with several such conditions can make efficient
+use of conventional database indexes difficult.
 
-For example, given an order from a gold customer in Germany, you may need to
-find every promotion that applies to its country, customer tier, total, and
-sales channel. Some promotions constrain every field, while others apply to an
-entire country or globally.
-
-A straightforward implementation scans every rule for every request and checks
-each field individually. This is simple, but its cost grows with both the number
-of rules and the number of fields—especially when rules contain wildcards,
-ranges, exclusions, or nested properties.
+A straightforward in-memory implementation scans every rule for every request
+and checks each field individually. Its cost grows with both the number of rules
+and the number of fields, especially when rules contain wildcards, ranges,
+exclusions, or nested properties.
 
 `ruleix` builds an immutable index from the rules once. Searches then combine
 precomputed candidate sets for each constraint instead of evaluating every rule
