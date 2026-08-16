@@ -192,6 +192,41 @@ func BenchmarkOrdered(b *testing.B) {
 	}
 }
 
+func BenchmarkLocalOrderedReuse(b *testing.B) {
+	ix := benchmarkOrderedIndex(b, "GTE")
+	modes := []struct {
+		name  string
+		value func(int) int
+	}{
+		{"Repeat", func(int) int { return benchmarkEntries / 2 }},
+		{"Alternate", func(n int) int { return benchmarkEntries/2 + (n & 1) }},
+		{"Churn", func(n int) int { return n % benchmarkEntries }},
+	}
+	for _, mode := range modes {
+		for _, local := range []bool{false, true} {
+			name := mode.name + "/Index"
+			if local {
+				name = mode.name + "/Local"
+			}
+			b.Run(name, func(b *testing.B) {
+				searcher := ix.Local()
+				var dst []int
+				b.ReportAllocs()
+				b.ResetTimer()
+				for n := 0; n < b.N; n++ {
+					value := mode.value(n)
+					query := benchmarkRange{value: &value}
+					if local {
+						searcher.Search(query, &dst)
+					} else {
+						ix.Search(query, &dst)
+					}
+				}
+			})
+		}
+	}
+}
+
 func BenchmarkBetweenManyUniqueBounds(b *testing.B) {
 	ix := buildGenerated(b, ruleix.Between(
 		func(v benchmarkInterval) *int { return v.from },

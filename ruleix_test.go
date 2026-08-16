@@ -394,6 +394,28 @@ func TestLocalSearchPanicsWithNilDestination(t *testing.T) {
 	})
 }
 
+func TestLocalSearchCachesOrderedNodesWithoutChangingResults(t *testing.T) {
+	ix := buildZip(t, ruleix.GreaterOrEqual(
+		func(v benchmarkRange) *int { return v.value }, cmp.Compare[int],
+	), []benchmarkRange{
+		{},
+		{value: ptr(5)},
+		{value: ptr(10)},
+		{value: ptr(15)},
+	}, []string{"wildcard", "five", "ten", "fifteen"})
+	local := ix.Local()
+
+	var got []string
+	local.Search(benchmarkRange{value: ptr(10)}, &got)
+	require.Equal(t, []string{"wildcard", "five", "ten"}, got)
+	local.Search(benchmarkRange{value: ptr(15)}, &got)
+	require.Equal(t, []string{"wildcard", "five", "ten", "fifteen"}, got)
+	local.Search(benchmarkRange{}, &got)
+	require.Equal(t, []string{"wildcard"}, got)
+	local.Search(benchmarkRange{value: ptr(10)}, &got)
+	require.Equal(t, []string{"wildcard", "five", "ten"}, got)
+}
+
 func TestVisitDeduplicatesAndStopsEarly(t *testing.T) {
 	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }),
 		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}, {required: 1}},
