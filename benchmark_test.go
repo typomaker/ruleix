@@ -360,6 +360,47 @@ func BenchmarkLocalBetweenReuse(b *testing.B) {
 	}
 }
 
+func BenchmarkLocalExcludeReuse(b *testing.B) {
+	const entries = 32
+	ix := buildGenerated(b, ruleix.Exclude(
+		func(v benchmarkRange) *int { return v.value },
+	), entries, func(n int) (benchmarkRange, int) {
+		value := n & 1
+		return benchmarkRange{value: benchmarkPtr(value)}, n
+	})
+	modes := []struct {
+		name  string
+		value func(int) int
+	}{
+		{"Repeat", func(int) int { return 0 }},
+		{"Alternate", func(n int) int { return n & 1 }},
+		{"Churn", func(n int) int { return n }},
+	}
+	for _, mode := range modes {
+		for _, local := range []bool{false, true} {
+			name := mode.name + "/Index"
+			if local {
+				name = mode.name + "/Local"
+			}
+			b.Run(name, func(b *testing.B) {
+				searcher := ix.Local()
+				var dst []int
+				b.ReportAllocs()
+				b.ResetTimer()
+				for n := 0; n < b.N; n++ {
+					value := mode.value(n)
+					query := benchmarkRange{value: &value}
+					if local {
+						searcher.Search(query, &dst)
+					} else {
+						ix.Search(query, &dst)
+					}
+				}
+			})
+		}
+	}
+}
+
 func BenchmarkBetweenSelectiveSide(b *testing.B) {
 	from := func(v benchmarkInterval) *int { return v.from }
 	until := func(v benchmarkInterval) *int { return v.until }

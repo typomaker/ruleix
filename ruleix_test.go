@@ -464,6 +464,28 @@ func TestLocalSearchCachesBetweenNodesWithoutChangingResults(t *testing.T) {
 	require.Equal(t, []string{"wildcard", "wide", "middle", "late"}, got)
 }
 
+func TestLocalSearchCachesExclusionsWithoutChangingResults(t *testing.T) {
+	type platformConstraint struct{ platform *string }
+	ix := buildZip(t, ruleix.Exclude(func(v platformConstraint) *string { return v.platform }),
+		[]platformConstraint{
+			{},
+			{platform: ptr("android")},
+			{platform: ptr("ios")},
+			{platform: ptr("ios")},
+		}, []string{"wildcard", "both", "both", "ios-only"})
+	local := ix.Local()
+
+	var got []string
+	local.Search(platformConstraint{platform: ptr("android")}, &got)
+	require.Equal(t, []string{"wildcard", "ios-only"}, got)
+	local.Search(platformConstraint{platform: ptr("ios")}, &got)
+	require.Equal(t, []string{"wildcard"}, got)
+	local.Search(platformConstraint{}, &got)
+	require.Equal(t, []string{"wildcard", "both", "ios-only"}, got)
+	local.Search(platformConstraint{platform: ptr("android")}, &got)
+	require.Equal(t, []string{"wildcard", "ios-only"}, got)
+}
+
 func TestVisitDeduplicatesAndStopsEarly(t *testing.T) {
 	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }),
 		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}, {required: 1}},

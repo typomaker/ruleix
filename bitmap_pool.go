@@ -13,6 +13,7 @@ type bitmapPool struct {
 	ordered    []any
 	compareBy  []any
 	between    []any
+	exclusion  []any
 }
 
 // maxPooledBitmapBytes bounds the live Roaring container memory represented by
@@ -41,6 +42,7 @@ func newLocalBitmapPool(nodes int) *bitmapPool {
 	p.ordered = make([]any, nodes)
 	p.compareBy = make([]any, nodes)
 	p.between = make([]any, nodes)
+	p.exclusion = make([]any, nodes)
 	return p
 }
 func (p *bitmapPool) get() *roaring.Bitmap {

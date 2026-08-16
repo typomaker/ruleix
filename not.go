@@ -22,6 +22,18 @@ type notRule[T any, V comparable] struct {
 	values      map[V]*equalitySet
 }
 
+type exclusionCache[V comparable] struct {
+	entries [2]exclusionCacheEntry[V]
+	next    uint8
+}
+
+type exclusionCacheEntry[V comparable] struct {
+	initialized bool
+	hasValue    bool
+	value       V
+	bits        *roaring.Bitmap
+}
+
 func (*notRule[T, V]) rule() {}
 func (r *notRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
@@ -52,13 +64,48 @@ func (r *notRule[T, V]) search(_ T, dst *roaring.Bitmap, _ *bitmapPool) {
 	dst.Or(r.wildcard)
 	dst.Or(r.constrained)
 }
-func (r *notRule[T, V]) exclude(v T, dst *roaring.Bitmap, _ *bitmapPool) {
+func (r *notRule[T, V]) exclude(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := r.get(v)
-	if value == nil {
+	if pool.exclusion == nil {
+		r.addExclusions(value, dst)
 		return
 	}
-	if set := r.values[*value]; set != nil {
-		set.addTo(dst)
+
+	cache, _ := pool.exclusion[int(r.nodeID)].(*exclusionCache[V])
+	if cache == nil {
+		cache = &exclusionCache[V]{}
+		pool.exclusion[int(r.nodeID)] = cache
+	}
+	hasValue := value != nil
+	for i := range cache.entries {
+		cached := &cache.entries[i]
+		if cached.initialized && cached.hasValue == hasValue && (!hasValue || cached.value == *value) {
+			dst.Or(cached.bits)
+			return
+		}
+	}
+
+	cached := &cache.entries[cache.next]
+	cache.next = (cache.next + 1) % uint8(len(cache.entries))
+	if cached.bits == nil {
+		cached.bits = roaring.New()
+	} else {
+		cached.bits.Clear()
+	}
+	r.addExclusions(value, cached.bits)
+	cached.initialized = true
+	cached.hasValue = hasValue
+	if hasValue {
+		cached.value = *value
+	}
+	dst.Or(cached.bits)
+}
+
+func (r *notRule[T, V]) addExclusions(value *V, dst *roaring.Bitmap) {
+	if value != nil {
+		if set := r.values[*value]; set != nil {
+			set.addTo(dst)
+		}
 	}
 }
 func (r *notRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
