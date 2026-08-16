@@ -108,6 +108,18 @@ type eqRule[T any, V comparable] struct {
 	values   map[V]*equalitySet
 }
 
+type equalityCache[V comparable] struct {
+	entries [2]equalityCacheEntry[V]
+	next    uint8
+}
+
+type equalityCacheEntry[V comparable] struct {
+	initialized bool
+	hasValue    bool
+	value       V
+	bits        *roaring.Bitmap
+}
+
 func (*eqRule[T, V]) rule() {}
 func (r *eqRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
@@ -139,9 +151,46 @@ func (r *eqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	}
 	return n
 }
-func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool) {
+func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	value := r.get(v)
+	if pool.equality == nil {
+		r.addMatches(value, dst)
+		return
+	}
+
+	entry, _ := pool.equality[int(r.nodeID)].(*equalityCache[V])
+	if entry == nil {
+		entry = &equalityCache[V]{}
+		pool.equality[int(r.nodeID)] = entry
+	}
+	hasValue := value != nil
+	for i := range entry.entries {
+		cached := &entry.entries[i]
+		if cached.initialized && cached.hasValue == hasValue && (!hasValue || cached.value == *value) {
+			dst.Or(cached.bits)
+			return
+		}
+	}
+
+	cached := &entry.entries[entry.next]
+	entry.next = (entry.next + 1) % uint8(len(entry.entries))
+	if cached.bits == nil {
+		cached.bits = roaring.New()
+	} else {
+		cached.bits.Clear()
+	}
+	r.addMatches(value, cached.bits)
+	cached.initialized = true
+	cached.hasValue = hasValue
+	if hasValue {
+		cached.value = *value
+	}
+	dst.Or(cached.bits)
+}
+
+func (r *eqRule[T, V]) addMatches(value *V, dst *roaring.Bitmap) {
 	dst.Or(r.wildcard)
-	if value := r.get(v); value != nil {
+	if value != nil {
 		if set := r.values[*value]; set != nil {
 			set.addTo(dst)
 		}

@@ -101,6 +101,51 @@ func BenchmarkEq(b *testing.B) {
 	})
 }
 
+func BenchmarkLocalEqualityReuse(b *testing.B) {
+	type query struct{ store, region *int }
+	ix := buildGenerated(b, ruleix.All(
+		ruleix.Include(func(v query) *int { return v.store }),
+		ruleix.Include(func(v query) *int { return v.region }),
+	), benchmarkEntries, func(n int) (query, int) {
+		switch {
+		case n < 10:
+			return query{store: benchmarkPtr(10), region: benchmarkPtr(20)}, n
+		case n < 20:
+			return query{store: benchmarkPtr(10), region: benchmarkPtr(30)}, n
+		case n < 2_000:
+			return query{region: benchmarkPtr(99)}, n
+		case n < 4_000:
+			return query{store: benchmarkPtr(11)}, n
+		case n < 7_000:
+			return query{store: benchmarkPtr(10), region: benchmarkPtr(99)}, n
+		default:
+			return query{store: benchmarkPtr(11), region: benchmarkPtr(20 + 10*(n&1))}, n
+		}
+	})
+	store, regions := 10, [2]int{20, 30}
+
+	for _, local := range []bool{false, true} {
+		name := "Index"
+		if local {
+			name = "Local"
+		}
+		b.Run(name, func(b *testing.B) {
+			searcher := ix.Local()
+			var dst []int
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				q := query{store: &store, region: &regions[n&1]}
+				if local {
+					searcher.Search(q, &dst)
+				} else {
+					ix.Search(q, &dst)
+				}
+			}
+		})
+	}
+}
+
 func benchmarkOrderedIndex(b *testing.B, kind string) *ruleix.Index[benchmarkRange, int] {
 	b.Helper()
 	var schema ruleix.Rule[benchmarkRange]

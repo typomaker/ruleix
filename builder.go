@@ -21,6 +21,14 @@ type Index[C any, ID comparable] struct {
 	root   Rule[C]
 	values []ID
 	pool   *bitmapPool
+	nodes  int
+}
+
+// Local is a search context that keeps per-node cached results between calls.
+// It must not be used concurrently by multiple goroutines.
+type Local[C any, ID comparable] struct {
+	index *Index[C, ID]
+	pool  *bitmapPool
 }
 
 // New constructs a Builder from a strongly typed rule schema. New panics when
@@ -94,6 +102,7 @@ func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID], 
 		statistics.nodes = make([]nodeBuildStatistics, int(ids.next))
 		ix.root.collectBuildStatistics(statistics.nodes)
 	}
+	ix.nodes = int(ids.next)
 	return ix, statistics, nil
 }
 
@@ -121,7 +130,23 @@ func (ix *Index[C, ID]) Search(value C, dst *[]ID) {
 	if dst == nil {
 		panic("ruleix: nil search destination")
 	}
-	ix.searchLocked(value, dst)
+	ix.search(value, dst, ix.pool)
+}
+
+// Local returns a non-concurrent search context. It currently caches recent
+// results produced by each Include node, making it useful when adjacent searches
+// repeat some constraint values. Create a separate Local for each goroutine.
+func (ix *Index[C, ID]) Local() *Local[C, ID] {
+	return &Local[C, ID]{index: ix, pool: newLocalBitmapPool(ix.nodes)}
+}
+
+// Search writes matching IDs into dst while reusing this Local's cached state.
+// Search panics when dst is nil.
+func (local *Local[C, ID]) Search(value C, dst *[]ID) {
+	if dst == nil {
+		panic("ruleix: nil search destination")
+	}
+	local.index.search(value, dst, local.pool)
 }
 
 // Visit calls yield once for each unique matching ID in first-match order.
@@ -134,13 +159,13 @@ func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
 	visitMatches(ix.root, ix.values, ix.pool, value, yield)
 }
 
-func (ix *Index[C, ID]) searchLocked(value C, dst *[]ID) {
-	bits := ix.pool.get()
-	defer ix.pool.put(bits)
-	ix.root.search(value, bits, ix.pool)
-	excluded := ix.pool.get()
-	defer ix.pool.put(excluded)
-	ix.root.exclude(value, excluded, ix.pool)
+func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) {
+	bits := pool.get()
+	defer pool.put(bits)
+	ix.root.search(value, bits, pool)
+	excluded := pool.get()
+	defer pool.put(excluded)
+	ix.root.exclude(value, excluded, pool)
 	bits.AndNot(excluded)
 	result := (*dst)[:0]
 	it := bits.Iterator()

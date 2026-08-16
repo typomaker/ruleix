@@ -204,6 +204,19 @@ var matches []string
 index.Search(value, &matches)
 ```
 
+When adjacent searches repeat constraint values, `Local` can reuse intermediate
+results from `Include` filters:
+
+```go
+local := index.Local()
+for value := range values {
+	local.Search(value, &matches)
+}
+```
+
+A local search context is not safe for concurrent use. Create one per goroutine.
+The index itself and its regular `Search` method remain safe for concurrent use.
+
 `Visit` avoids collecting results and supports early termination:
 
 ```go

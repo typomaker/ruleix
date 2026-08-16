@@ -9,6 +9,7 @@ import (
 type bitmapPool struct {
 	pool       sync.Pool
 	rankedPool sync.Pool
+	equality   []any
 }
 
 // maxPooledBitmapBytes bounds the live Roaring container memory represented by
@@ -28,6 +29,12 @@ func newBitmapPool() *bitmapPool {
 	p := &bitmapPool{}
 	p.pool.New = func() interface{} { return roaring.New() }
 	p.rankedPool.New = func() interface{} { return make([]rankedBitmap, 0, 16) }
+	return p
+}
+
+func newLocalBitmapPool(nodes int) *bitmapPool {
+	p := newBitmapPool()
+	p.equality = make([]any, nodes)
 	return p
 }
 func (p *bitmapPool) get() *roaring.Bitmap {

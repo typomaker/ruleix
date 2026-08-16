@@ -361,6 +361,39 @@ func TestSearchUpdatesDestinationWhenItGrows(t *testing.T) {
 	require.Equal(t, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, dst)
 }
 
+func TestLocalSearchCachesEqualityNodesWithoutChangingResults(t *testing.T) {
+	type pair struct{ store, region *int }
+	ix := buildZip(t, ruleix.All(
+		ruleix.Include(func(v pair) *int { return v.store }),
+		ruleix.Include(func(v pair) *int { return v.region }),
+	), []pair{
+		{},
+		{store: ptr(10)},
+		{store: ptr(10), region: ptr(20)},
+		{store: ptr(10), region: ptr(30)},
+		{store: ptr(11), region: ptr(20)},
+	}, []string{"global", "store", "region-20", "region-30", "other-store"})
+	local := ix.Local()
+
+	var got []string
+	local.Search(pair{store: ptr(10), region: ptr(20)}, &got)
+	require.Equal(t, []string{"global", "store", "region-20"}, got)
+	local.Search(pair{store: ptr(10), region: ptr(30)}, &got)
+	require.Equal(t, []string{"global", "store", "region-30"}, got)
+	local.Search(pair{}, &got)
+	require.Equal(t, []string{"global"}, got)
+	local.Search(pair{store: ptr(10), region: ptr(20)}, &got)
+	require.Equal(t, []string{"global", "store", "region-20"}, got)
+}
+
+func TestLocalSearchPanicsWithNilDestination(t *testing.T) {
+	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return v.optional }),
+		[]benchmarkEquality{{optional: ptr(1)}}, []int{1})
+	require.PanicsWithValue(t, "ruleix: nil search destination", func() {
+		ix.Local().Search(benchmarkEquality{optional: ptr(1)}, nil)
+	})
+}
+
 func TestVisitDeduplicatesAndStopsEarly(t *testing.T) {
 	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }),
 		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}, {required: 1}},
