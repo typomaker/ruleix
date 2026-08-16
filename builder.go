@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"iter"
 	"math"
-	"sync"
 )
 
 // Builder constructs one immutable Index from a Rule schema. A Builder is
@@ -16,11 +15,11 @@ type Builder[C any, ID comparable] struct {
 }
 
 // Rebuilder constructs a new immutable Index from the same Rule schema on
-// every call to Build. Build calls on one Rebuilder are serialized. Indexes
-// returned by earlier builds remain independent and safe for concurrent use.
+// every call to Build. A Rebuilder is not safe for concurrent calls to Build;
+// callers that need them must provide their own synchronization. Indexes
+// returned by completed builds are independent and safe for concurrent use.
 type Rebuilder[C any, ID comparable] struct {
 	schema Rule[C]
-	mu     sync.Mutex
 }
 
 // Index maps query values to the unique IDs of all matching stored constraints.
@@ -62,11 +61,10 @@ func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) 
 }
 
 // Build consumes entries and returns a new immutable, concurrently searchable
-// Index. Calls on the same Rebuilder are serialized, including iteration of
-// entries. A failed build does not prevent later calls.
+// Index. Build must not be called concurrently on the same Rebuilder; the
+// library deliberately leaves synchronization of builds to the caller. A
+// failed build does not prevent later calls.
 func (r *Rebuilder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	return buildIndex[C, ID](r.schema, entries)
 }
 

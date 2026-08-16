@@ -185,8 +185,9 @@ lengths differ.
 For workloads that periodically rebuild the same schema, `NewRebuilder`
 returns a reusable builder. Every call creates independent mutable build state
 and returns a new immutable index; indexes returned earlier remain safe for
-concurrent searches. Calls to `Build` on one rebuilder are serialized, and a
-failed build does not prevent the next call:
+concurrent searches. `Build` itself is not safe for concurrent calls on the
+same rebuilder: callers must provide synchronization when they need parallel
+build coordination. A failed build does not prevent the next call:
 
 ```go
 rebuilder := ruleix.NewRebuilder[Constraint, string](schema)

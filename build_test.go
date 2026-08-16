@@ -1,11 +1,8 @@
 package ruleix_test
 
 import (
-	"iter"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/albertsultanov/ruleix"
 	"github.com/stretchr/testify/require"
@@ -108,55 +105,6 @@ func TestRebuilderCreatesIndependentIndexesAndRecoversAfterError(t *testing.T) {
 	require.Empty(t, got)
 	second.Search(buildConstraint{value: 20}, &got)
 	require.Equal(t, []string{"second"}, got)
-}
-
-func TestRebuilderSerializesConcurrentBuilds(t *testing.T) {
-	rebuilder := ruleix.NewRebuilder[buildConstraint, int](buildSchema())
-	firstStarted := make(chan struct{})
-	releaseFirst := make(chan struct{})
-	secondStarted := make(chan struct{})
-	secondInvoked := make(chan struct{})
-	var active atomic.Int32
-	var overlap atomic.Bool
-
-	sequence := func(started chan<- struct{}, release <-chan struct{}, value int) iter.Seq2[buildConstraint, int] {
-		return func(yield func(buildConstraint, int) bool) {
-			if active.Add(1) != 1 {
-				overlap.Store(true)
-			}
-			defer active.Add(-1)
-			close(started)
-			if release != nil {
-				<-release
-			}
-			yield(buildConstraint{value: value, operator: ">="}, value)
-		}
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		_, err := rebuilder.Build(sequence(firstStarted, releaseFirst, 1))
-		require.NoError(t, err)
-	}()
-	<-firstStarted
-	go func() {
-		defer wg.Done()
-		close(secondInvoked)
-		_, err := rebuilder.Build(sequence(secondStarted, nil, 2))
-		require.NoError(t, err)
-	}()
-	<-secondInvoked
-
-	select {
-	case <-secondStarted:
-		t.Fatal("second build started before the first build completed")
-	case <-time.After(50 * time.Millisecond):
-	}
-	close(releaseFirst)
-	wg.Wait()
-	require.False(t, overlap.Load())
 }
 
 func TestSchemaBuildsIndependentIndexes(t *testing.T) {
