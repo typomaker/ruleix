@@ -416,6 +416,30 @@ func TestLocalSearchCachesOrderedNodesWithoutChangingResults(t *testing.T) {
 	require.Equal(t, []string{"wildcard", "five", "ten"}, got)
 }
 
+func TestLocalSearchCachesCompareByNodesWithoutChangingResults(t *testing.T) {
+	ix := buildZip(t, ruleix.CompareBy(
+		func(v benchmarkRange) string { return v.operator },
+		func(v benchmarkRange) *int { return v.value },
+		cmp.Compare[int],
+	), []benchmarkRange{
+		{},
+		{operator: "=", value: ptr(10)},
+		{operator: ">=", value: ptr(5)},
+		{operator: "<", value: ptr(15)},
+	}, []string{"wildcard", "equal", "minimum", "upper"})
+	local := ix.Local()
+
+	var got []string
+	local.Search(benchmarkRange{value: ptr(10)}, &got)
+	require.Equal(t, []string{"wildcard", "equal", "minimum", "upper"}, got)
+	local.Search(benchmarkRange{value: ptr(15)}, &got)
+	require.Equal(t, []string{"wildcard", "minimum"}, got)
+	local.Search(benchmarkRange{}, &got)
+	require.Equal(t, []string{"wildcard"}, got)
+	local.Search(benchmarkRange{value: ptr(10)}, &got)
+	require.Equal(t, []string{"wildcard", "equal", "minimum", "upper"}, got)
+}
+
 func TestVisitDeduplicatesAndStopsEarly(t *testing.T) {
 	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }),
 		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}, {required: 1}},

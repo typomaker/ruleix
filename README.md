@@ -205,8 +205,8 @@ index.Search(value, &matches)
 ```
 
 When adjacent searches repeat constraint values, `Local` can reuse intermediate
-results from `Include`, `Greater`, `GreaterOrEqual`, `Less`, and `LessOrEqual`
-filters:
+results from `Include`, `Greater`, `GreaterOrEqual`, `Less`, `LessOrEqual`, and
+`CompareBy` filters:
 
 ```go
 local := index.Local()

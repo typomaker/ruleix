@@ -40,6 +40,18 @@ type compareByRule[T any, V any] struct {
 	gte      orderedIndex[V]
 }
 
+type compareByCache[V any] struct {
+	entries [2]compareByCacheEntry[V]
+	next    uint8
+}
+
+type compareByCacheEntry[V any] struct {
+	initialized bool
+	hasValue    bool
+	value       V
+	bits        *roaring.Bitmap
+}
+
 func (*compareByRule[T, V]) rule() {}
 func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
@@ -98,7 +110,44 @@ func (r *compareByRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	r.each(v, func(bits *roaring.Bitmap) { n += bits.GetCardinality() })
 	return n
 }
-func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool) {
+func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	value := r.value(v)
+	if pool.compareBy == nil {
+		r.addMatches(v, dst)
+		return
+	}
+
+	cache, _ := pool.compareBy[int(r.nodeID)].(*compareByCache[V])
+	if cache == nil {
+		cache = &compareByCache[V]{}
+		pool.compareBy[int(r.nodeID)] = cache
+	}
+	hasValue := value != nil
+	for i := range cache.entries {
+		cached := &cache.entries[i]
+		if cached.initialized && cached.hasValue == hasValue && (!hasValue || r.compare(cached.value, *value) == 0) {
+			dst.Or(cached.bits)
+			return
+		}
+	}
+
+	cached := &cache.entries[cache.next]
+	cache.next = (cache.next + 1) % uint8(len(cache.entries))
+	if cached.bits == nil {
+		cached.bits = roaring.New()
+	} else {
+		cached.bits.Clear()
+	}
+	r.addMatches(v, cached.bits)
+	cached.initialized = true
+	cached.hasValue = hasValue
+	if hasValue {
+		cached.value = *value
+	}
+	dst.Or(cached.bits)
+}
+
+func (r *compareByRule[T, V]) addMatches(v T, dst *roaring.Bitmap) {
 	r.each(v, dst.Or)
 }
 func (*compareByRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
