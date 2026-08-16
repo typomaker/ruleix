@@ -44,7 +44,7 @@ func BenchmarkBuildSizeEstimate(b *testing.B) {
 	for _, benchmark := range benchmarks {
 		b.Run(benchmark.name, func(b *testing.B) {
 			b.ReportAllocs()
-			for b.Loop() {
+			for range b.N {
 				if _, _, err := buildIndex[buildEstimateConstraint, int](schema, entries, false, benchmark.hints); err != nil {
 					b.Fatal(err)
 				}

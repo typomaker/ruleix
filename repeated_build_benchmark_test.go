@@ -127,7 +127,7 @@ func BenchmarkRepeatedBuild(b *testing.B) {
 			b.Run(workload.name+"/"+mode.name, func(b *testing.B) {
 				schema := repeatedBuildSchema()
 				b.ReportAllocs()
-				for b.Loop() {
+				for range b.N {
 					var history buildStatistics
 					var previous *Index[repeatedBuildConstraint, int]
 					for _, input := range data {
@@ -208,7 +208,7 @@ func BenchmarkRepeatedBuildAfterError(b *testing.B) {
 		}, cmp.Compare[int]),
 	)
 	b.ReportAllocs()
-	for b.Loop() {
+	for range b.N {
 		var history buildStatistics
 		if _, err := runRepeatedBuild(badSchema, valid, repeatedBuildPerNode, &history); err != nil {
 			b.Fatal(err)

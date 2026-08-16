@@ -3,10 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-The project does not have a tagged release yet, so the initial work is listed
-under `Unreleased`.
+This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-08-16
 
 ### Added
 
@@ -45,3 +46,6 @@ under `Unreleased`.
 - The redundant `EqValue` filter; `Include` is the single equality filter and
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
+
+[Unreleased]: https://github.com/albertsultanov/ruleix/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/albertsultanov/ruleix/releases/tag/v0.1.0
