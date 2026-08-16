@@ -19,6 +19,7 @@ type Rule[T any] interface {
 	cardinality(T, *bitmapPool) uint64
 	search(T, *roaring.Bitmap, *bitmapPool)
 	exclude(T, *roaring.Bitmap, *bitmapPool)
+	collectBuildStatistics([]nodeBuildStatistics)
 }
 
 type nodeID uint32
@@ -29,6 +30,25 @@ func (a *nodeIDAllocator) allocate() nodeID {
 	id := a.next
 	a.next++
 	return id
+}
+
+type orderedBuildStatistics struct {
+	uniqueValues int
+	blocks       int
+}
+
+type nodeBuildStatistics struct {
+	equalityValues int
+	ordered        orderedBuildStatistics
+	betweenIDs     int
+	between        [2]orderedBuildStatistics
+	compareBy      [5]orderedBuildStatistics
+}
+
+type buildStatistics struct {
+	entries   int
+	uniqueIDs int
+	nodes     []nodeBuildStatistics
 }
 
 func measuredCardinality[T any](r Rule[T], value T, pool *bitmapPool) uint64 {

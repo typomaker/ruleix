@@ -24,6 +24,13 @@ type orderedBlock[V any] struct {
 func newOrderedIndex[V any](compare Compare[V]) orderedIndex[V] {
 	return orderedIndex[V]{compare: compare}
 }
+func (i *orderedIndex[V]) buildStatistics() orderedBuildStatistics {
+	statistics := orderedBuildStatistics{blocks: len(i.blocks)}
+	for block := range i.blocks {
+		statistics.uniqueValues += len(i.blocks[block].items)
+	}
+	return statistics
+}
 func (i *orderedIndex[V]) insert(value V, id uint32) {
 	if len(i.blocks) != 0 {
 		blockIndex := i.blockFor(value)

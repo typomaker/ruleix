@@ -60,3 +60,6 @@ func (r *notRule[T, V]) exclude(v T, dst *roaring.Bitmap, _ *bitmapPool) {
 		set.addTo(dst)
 	}
 }
+func (r *notRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
+	stats[r.nodeID].equalityValues = len(r.values)
+}

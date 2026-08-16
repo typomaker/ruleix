@@ -113,3 +113,6 @@ func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool) {
 	}
 }
 func (*orderedRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
+func (r *orderedRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
+	stats[r.nodeID].ordered = r.index.buildStatistics()
+}

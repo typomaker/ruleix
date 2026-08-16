@@ -24,7 +24,8 @@ func (r *observedRule) search(_ int, dst *roaring.Bitmap, _ *bitmapPool) {
 	*r.order = append(*r.order, r.name)
 	dst.Add(0)
 }
-func (*observedRule) exclude(int, *roaring.Bitmap, *bitmapPool) {}
+func (*observedRule) exclude(int, *roaring.Bitmap, *bitmapPool)    {}
+func (*observedRule) collectBuildStatistics([]nodeBuildStatistics) {}
 
 func TestAllMaterializesFiltersInSchemaOrder(t *testing.T) {
 	var order []string

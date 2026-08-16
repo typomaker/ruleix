@@ -41,6 +41,11 @@ func (r *allRule[T]) exclude(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		child.exclude(v, dst, pool)
 	}
 }
+func (r *allRule[T]) collectBuildStatistics(stats []nodeBuildStatistics) {
+	for _, child := range r.children {
+		child.collectBuildStatistics(stats)
+	}
+}
 func (r *allRule[T]) cardinality(v T, pool *bitmapPool) uint64 {
 	return measuredCardinality[T](r, v, pool)
 }

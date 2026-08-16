@@ -100,3 +100,13 @@ func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool) {
 	r.each(v, dst.Or)
 }
 func (*compareByRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
+func (r *compareByRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
+	statistics := &stats[r.nodeID]
+	statistics.compareBy = [5]orderedBuildStatistics{
+		r.eq.buildStatistics(),
+		r.lt.buildStatistics(),
+		r.lte.buildStatistics(),
+		r.gt.buildStatistics(),
+		r.gte.buildStatistics(),
+	}
+}

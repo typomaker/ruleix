@@ -147,3 +147,6 @@ func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool) {
 	}
 }
 func (*eqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
+func (r *eqRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
+	stats[r.nodeID].equalityValues = len(r.values)
+}

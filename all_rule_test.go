@@ -25,7 +25,8 @@ func (r *countingRule) search(_ int, dst *roaring.Bitmap, _ *bitmapPool) {
 	r.searchCalls++
 	dst.AddMany(r.ids)
 }
-func (*countingRule) exclude(int, *roaring.Bitmap, *bitmapPool) {}
+func (*countingRule) exclude(int, *roaring.Bitmap, *bitmapPool)    {}
+func (*countingRule) collectBuildStatistics([]nodeBuildStatistics) {}
 
 func TestAllMaterializesEachChildOnce(t *testing.T) {
 	first := &countingRule{ids: []uint32{1, 2, 3}}

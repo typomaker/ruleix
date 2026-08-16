@@ -104,6 +104,12 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	}
 }
 func (*betweenRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
+func (r *betweenRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
+	statistics := &stats[r.nodeID]
+	statistics.betweenIDs = len(r.minimumFrom)
+	statistics.between[0] = r.from.index.buildStatistics()
+	statistics.between[1] = r.until.index.buildStatistics()
+}
 
 func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	left := pool.get()

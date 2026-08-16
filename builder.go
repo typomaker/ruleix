@@ -57,7 +57,8 @@ func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) 
 		return nil, fmt.Errorf("ruleix: builder has already been used")
 	}
 	b.built = true
-	return buildIndex[C, ID](b.schema, entries)
+	ix, _, err := buildIndex[C, ID](b.schema, entries, false)
+	return ix, err
 }
 
 // Build consumes entries and returns a new immutable, concurrently searchable
@@ -65,17 +66,19 @@ func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) 
 // library deliberately leaves synchronization of builds to the caller. A
 // failed build does not prevent later calls.
 func (r *Rebuilder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) {
-	return buildIndex[C, ID](r.schema, entries)
+	ix, _, err := buildIndex[C, ID](r.schema, entries, true)
+	return ix, err
 }
 
-func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID]) (*Index[C, ID], error) {
+func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID], collectStatistics bool) (*Index[C, ID], buildStatistics, error) {
 	if entries == nil {
-		return nil, fmt.Errorf("ruleix: nil entry sequence")
+		return nil, buildStatistics{}, fmt.Errorf("ruleix: nil entry sequence")
 	}
 	// A schema contains only immutable getters, comparators, and structure.
 	// Every build receives fresh mutable indexes, so even a future reusable
 	// schema cannot modify an Index returned by an earlier build.
-	state := schema.newState(&nodeIDAllocator{})
+	ids := &nodeIDAllocator{}
+	state := schema.newState(ids)
 	ix := &Index[C, ID]{root: state, pool: newBitmapPool()}
 	internalIDs := make(map[ID]uint32)
 	var buildErr error
@@ -100,9 +103,14 @@ func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID]) 
 		return true
 	})
 	if buildErr != nil {
-		return nil, buildErr
+		return nil, buildStatistics{}, buildErr
 	}
-	return ix, nil
+	statistics := buildStatistics{entries: entryIndex, uniqueIDs: len(ix.values)}
+	if collectStatistics {
+		statistics.nodes = make([]nodeBuildStatistics, int(ids.next))
+		ix.root.collectBuildStatistics(statistics.nodes)
+	}
+	return ix, statistics, nil
 }
 
 // Zip pairs equally sized constraint and ID slices into a sequence accepted by
