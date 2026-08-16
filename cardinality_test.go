@@ -49,8 +49,7 @@ func TestAllMaterializesFiltersInSchemaOrder(t *testing.T) {
 		},
 		order: &order,
 	}
-	entries, err := Zip([]int{0}, []string{"match"})
-	require.NoError(t, err)
+	entries := Zip([]int{0}, []string{"match"})
 	ix, err := New[int, string](All[int](left, right)).Build(entries)
 	require.NoError(t, err)
 

@@ -35,10 +35,7 @@ func main() {
 	}
 	ids := []string{"gold-de", "all-de", "global"}
 
-	entries, err := ruleix.Zip(constraints, ids)
-	if err != nil {
-		panic(err)
-	}
+	entries := ruleix.Zip(constraints, ids)
 	index, err := ruleix.New[constraint, string](schema).Build(entries)
 	if err != nil {
 		panic(err)

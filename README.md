@@ -100,10 +100,7 @@ func main() {
 	}
 	ids := []string{"gold-de", "all-de", "global"}
 
-	entries, err := ruleix.Zip(constraints, ids)
-	if err != nil {
-		panic(err)
-	}
+	entries := ruleix.Zip(constraints, ids)
 	index, err := ruleix.New[Constraint, string](schema).Build(entries)
 	if err != nil {
 		panic(err)
@@ -188,8 +185,7 @@ index, err := ruleix.New[Constraint, string](schema).Build(
 )
 ```
 
-`Zip` is a convenience for parallel slices and returns an error when their
-lengths differ.
+`Zip` is a convenience for parallel slices and panics when their lengths differ.
 
 For workloads that periodically rebuild the same schema, keep the builder and
 call `Build` again. Every call creates independent mutable build state

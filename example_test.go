@@ -38,10 +38,7 @@ func Example_multiColumnRules() {
 	}
 	ids := []string{"gold-de", "all-de", "global"}
 
-	entries, err := ruleix.Zip(constraints, ids)
-	if err != nil {
-		panic(err)
-	}
+	entries := ruleix.Zip(constraints, ids)
 	index, err := ruleix.New[targetingConstraint, string](schema).Build(entries)
 	if err != nil {
 		panic(err)
@@ -69,7 +66,7 @@ func ExampleIndex_Local() {
 	}
 	pointer := func(value int) *int { return &value }
 
-	entries, err := ruleix.Zip(
+	entries := ruleix.Zip(
 		[]constraint{
 			{},
 			{store: pointer(10)},
@@ -78,9 +75,6 @@ func ExampleIndex_Local() {
 		},
 		[]string{"global", "store", "region-20", "region-30"},
 	)
-	if err != nil {
-		panic(err)
-	}
 	index, err := ruleix.New[constraint, string](ruleix.All(
 		ruleix.Include(func(c constraint) *int { return c.store }),
 		ruleix.Include(func(c constraint) *int { return c.region }),

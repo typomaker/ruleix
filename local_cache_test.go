@@ -39,8 +39,7 @@ func TestBetweenCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 		cmp.Compare[int],
 	)
 	entries := []interval{{from: pointer(0), until: pointer(100)}}
-	sequence, err := Zip(entries, []int{1})
-	require.NoError(t, err)
+	sequence := Zip(entries, []int{1})
 	index, err := New[interval, int](schema).Build(sequence)
 	require.NoError(t, err)
 	local := index.Local()

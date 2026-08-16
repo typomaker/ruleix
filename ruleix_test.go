@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/typomaker/ruleix"
 	"github.com/stretchr/testify/require"
+	"github.com/typomaker/ruleix"
 )
 
 type TimeRange struct{ Since, Until time.Time }
@@ -57,8 +57,7 @@ func search[C any, ID comparable](ix *ruleix.Index[C, ID], value C) []ID {
 }
 func buildZip[C any, ID comparable](t testing.TB, schema ruleix.Rule[C], constraints []C, ids []ID) *ruleix.Index[C, ID] {
 	t.Helper()
-	entries, err := ruleix.Zip(constraints, ids)
-	require.NoError(t, err)
+	entries := ruleix.Zip(constraints, ids)
 	ix, err := ruleix.New[C, ID](schema).Build(entries)
 	require.NoError(t, err)
 	return ix
@@ -199,8 +198,7 @@ func TestCompareByRejectsInvalidOperatorAtomically(t *testing.T) {
 		func(c CustomerOrderCount) *int { return &c.Total },
 		cmp.Compare[int],
 	))
-	entries, err := ruleix.Zip([]CustomerOrderCount{{Operator: "!="}}, []string{"invalid"})
-	require.NoError(t, err)
+	entries := ruleix.Zip([]CustomerOrderCount{{Operator: "!="}}, []string{"invalid"})
 	ix, err := builder.Build(entries)
 	require.Nil(t, ix)
 	require.EqualError(t, err, `ruleix: entry 0: ruleix: unsupported operator "!="`)

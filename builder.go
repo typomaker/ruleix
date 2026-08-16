@@ -107,11 +107,11 @@ func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID], 
 }
 
 // Zip pairs equally sized constraint and ID slices into a sequence accepted by
-// Builder.Build. It returns an error when the slice lengths differ. The slices
-// are read when the returned sequence is consumed, not when Zip is called.
-func Zip[C any, ID any](constraints []C, ids []ID) (iter.Seq2[C, ID], error) {
+// Builder.Build. It panics when the slice lengths differ. The slices are read
+// when the returned sequence is consumed, not when Zip is called.
+func Zip[C any, ID any](constraints []C, ids []ID) iter.Seq2[C, ID] {
 	if len(constraints) != len(ids) {
-		return nil, fmt.Errorf("ruleix: cannot zip %d constraints with %d IDs", len(constraints), len(ids))
+		panic(fmt.Sprintf("ruleix: cannot zip %d constraints with %d IDs", len(constraints), len(ids)))
 	}
 	return func(yield func(C, ID) bool) {
 		for i := range constraints {
@@ -119,7 +119,7 @@ func Zip[C any, ID any](constraints []C, ids []ID) (iter.Seq2[C, ID], error) {
 				return
 			}
 		}
-	}, nil
+	}
 }
 
 // Search writes the unique IDs of every stored rule matching value into dst.
