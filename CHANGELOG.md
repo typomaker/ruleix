@@ -7,6 +7,27 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-17
+
+### Added
+
+- `Index.Local`, a per-goroutine search context that caches the two most recent
+  intermediate bitmap results for every filter node.
+- `Local.Search` and `Local.Visit` for repeated searches and streaming result
+  iteration with the same local cache.
+- Runnable and GoDoc examples showing how to share an immutable index while
+  creating an independent `Local` in each goroutine.
+- Benchmarks covering repeated values, alternating values, cache churn, and
+  local-context creation across all filter types.
+
+### Changed
+
+- `Include`, `Exclude`, ordered filters, `CompareBy`, and `Between` can now reuse
+  intermediate results through `Local`, reducing repeated bitmap construction
+  and allocation pressure for workloads with query-value locality.
+- Local cache storage is bounded to two bitmap results per filter node and is
+  retained only for the lifetime of its `Local` context.
+
 ## [0.1.0] - 2026-08-16
 
 ### Added
@@ -47,5 +68,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/albertsultanov/ruleix/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/albertsultanov/ruleix/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/albertsultanov/ruleix/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/albertsultanov/ruleix/releases/tag/v0.1.0
