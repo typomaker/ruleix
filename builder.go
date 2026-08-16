@@ -20,6 +20,7 @@ type Builder[C any, ID comparable] struct {
 // returned by completed builds are independent and safe for concurrent use.
 type Rebuilder[C any, ID comparable] struct {
 	schema Rule[C]
+	hints  buildStatistics
 }
 
 // Index maps query values to the unique IDs of all matching stored constraints.
@@ -66,8 +67,15 @@ func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) 
 // library deliberately leaves synchronization of builds to the caller. A
 // failed build does not prevent later calls.
 func (r *Rebuilder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) {
-	ix, _, err := buildIndex[C, ID](r.schema, entries, true)
-	return ix, err
+	ix, statistics, err := buildIndex[C, ID](r.schema, entries, true)
+	if err != nil {
+		return nil, err
+	}
+	// Publish statistics only after the input sequence has returned and the
+	// complete index has passed validation. Failed builds must leave the last
+	// successful hints intact for the next rebuild.
+	r.hints = statistics
+	return ix, nil
 }
 
 func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID], collectStatistics bool) (*Index[C, ID], buildStatistics, error) {

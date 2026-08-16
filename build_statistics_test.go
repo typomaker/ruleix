@@ -97,3 +97,51 @@ func TestFailedBuildDoesNotReturnPartialStatistics(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, buildStatistics{}, statistics)
 }
+
+func TestRebuilderPublishesStatisticsTransactionally(t *testing.T) {
+	schema := CompareBy(
+		func(value invalidStatisticsConstraint) string { return value.operator },
+		func(value invalidStatisticsConstraint) *int { return &value.value },
+		func(a, b int) int { return a - b },
+	)
+	rebuilder := NewRebuilder[invalidStatisticsConstraint, string](schema)
+
+	firstEntries := func(yield func(invalidStatisticsConstraint, string) bool) {
+		yield(invalidStatisticsConstraint{value: 1, operator: "="}, "repeated")
+		yield(invalidStatisticsConstraint{value: 2, operator: "="}, "repeated")
+		yield(invalidStatisticsConstraint{value: 3, operator: "<="}, "unique")
+	}
+	_, err := rebuilder.Build(firstEntries)
+	require.NoError(t, err)
+	require.Equal(t, buildStatistics{
+		entries:   3,
+		uniqueIDs: 2,
+		nodes: []nodeBuildStatistics{{compareBy: [5]orderedBuildStatistics{
+			{uniqueValues: 2, blocks: 1},
+			{},
+			{uniqueValues: 1, blocks: 1},
+		}}},
+	}, rebuilder.hints)
+
+	previous := rebuilder.hints
+	invalidEntries := func(yield func(invalidStatisticsConstraint, string) bool) {
+		yield(invalidStatisticsConstraint{value: 10, operator: "="}, "one")
+		yield(invalidStatisticsConstraint{value: 20, operator: "<"}, "two")
+		yield(invalidStatisticsConstraint{value: 30, operator: "invalid"}, "three")
+	}
+
+	_, err = rebuilder.Build(invalidEntries)
+	require.Error(t, err)
+	require.Equal(t, previous, rebuilder.hints)
+
+	finalEntries := func(yield func(invalidStatisticsConstraint, string) bool) {
+		yield(invalidStatisticsConstraint{value: 40, operator: ">="}, "final")
+	}
+	_, err = rebuilder.Build(finalEntries)
+	require.NoError(t, err)
+	require.Equal(t, 1, rebuilder.hints.entries)
+	require.Equal(t, 1, rebuilder.hints.uniqueIDs)
+	require.Equal(t, [5]orderedBuildStatistics{
+		{}, {}, {}, {}, {uniqueValues: 1, blocks: 1},
+	}, rebuilder.hints.nodes[0].compareBy)
+}
