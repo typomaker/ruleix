@@ -13,6 +13,23 @@ the same schema repeatedly.
 Rule-based systems often need to answer the inverse of a typical lookup: given
 one concrete value, find all stored rules whose optional constraints match it.
 
+In SQL terms, a lookup with optional geographic constraints might resemble:
+
+```sql
+SELECT *
+FROM rules
+WHERE (store_id = $1 OR store_id IS NULL)
+  AND (region_id = $2 OR region_id IS NULL)
+  AND (district_id = $3 OR district_id IS NULL);
+```
+
+Here, `NULL` in a stored rule acts as a wildcard: the rule matches any concrete
+value for that field. Queries with several such `OR ... IS NULL` conditions can
+make efficient use of conventional database indexes difficult, particularly
+when the same set of rules is searched repeatedly. `ruleix` provides similar
+matching semantics using a prebuilt in-memory index, avoiding a full scan of
+all rules on every lookup.
+
 For example, given an order from a gold customer in Germany, you may need to
 find every promotion that applies to its country, customer tier, total, and
 sales channel. Some promotions constrain every field, while others apply to an
