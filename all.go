@@ -16,6 +16,13 @@ func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} 
 type allRule[T any] struct{ children []Rule[T] }
 
 func (*allRule[T]) rule() {}
+func (r *allRule[T]) newState(ids *nodeIDAllocator) Rule[T] {
+	children := make([]Rule[T], len(r.children))
+	for i, child := range r.children {
+		children[i] = child.newState(ids)
+	}
+	return &allRule[T]{children: children}
+}
 func (r *allRule[T]) validate(v T) error {
 	for _, child := range r.children {
 		if err := child.validate(v); err != nil {

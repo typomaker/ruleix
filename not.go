@@ -11,22 +11,24 @@ import "github.com/RoaringBitmap/roaring/v2"
 //
 //	ruleix.Exclude(func(c Constraint) *string { return c.ExcludedChannel })
 func Exclude[T any, V comparable](get func(T) *V) Rule[T] {
-	return &notRule[T, V]{
-		get:         get,
-		wildcard:    roaring.New(),
-		constrained: roaring.New(),
-		values:      make(map[V]*equalitySet),
-	}
+	return &notRule[T, V]{get: get}
 }
 
 type notRule[T any, V comparable] struct {
+	nodeID      nodeID
 	get         func(T) *V
 	wildcard    *roaring.Bitmap
 	constrained *roaring.Bitmap
 	values      map[V]*equalitySet
 }
 
-func (*notRule[T, V]) rule()            {}
+func (*notRule[T, V]) rule() {}
+func (r *notRule[T, V]) newState(ids *nodeIDAllocator) Rule[T] {
+	return &notRule[T, V]{
+		nodeID: ids.allocate(), get: r.get,
+		wildcard: roaring.New(), constrained: roaring.New(), values: make(map[V]*equalitySet),
+	}
+}
 func (*notRule[T, V]) validate(T) error { return nil }
 func (r *notRule[T, V]) insert(v T, id uint32) {
 	value := r.get(v)

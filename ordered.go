@@ -55,8 +55,7 @@ func newOrderedRule[T any, V any](get func(T) *V, compare Compare[V], dir direct
 		get:       get,
 		dir:       dir,
 		inclusive: inclusive,
-		wildcard:  roaring.New(),
-		index:     newOrderedIndex(compare),
+		compare:   compare,
 	}
 }
 
@@ -68,14 +67,25 @@ const (
 )
 
 type orderedRule[T any, V any] struct {
+	nodeID    nodeID
 	get       func(T) *V
+	compare   Compare[V]
 	dir       direction
 	inclusive bool
 	wildcard  *roaring.Bitmap
 	index     orderedIndex[V]
 }
 
-func (*orderedRule[T, V]) rule()            {}
+func (*orderedRule[T, V]) rule() {}
+func (r *orderedRule[T, V]) newState(ids *nodeIDAllocator) Rule[T] {
+	return r.newStateWithID(ids.allocate())
+}
+func (r *orderedRule[T, V]) newStateWithID(id nodeID) *orderedRule[T, V] {
+	return &orderedRule[T, V]{
+		nodeID: id, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
+		wildcard: roaring.New(), index: newOrderedIndex(r.compare),
+	}
+}
 func (*orderedRule[T, V]) validate(T) error { return nil }
 func (r *orderedRule[T, V]) insert(v T, id uint32) {
 	value := r.get(v)

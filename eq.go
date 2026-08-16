@@ -14,7 +14,7 @@ import (
 //
 //	ruleix.Include(func(c Constraint) *string { return c.Country })
 func Include[T any, V comparable](get func(T) *V) Rule[T] {
-	return &eqRule[T, V]{get: get, wildcard: roaring.New(), values: make(map[V]*equalitySet)}
+	return &eqRule[T, V]{get: get}
 }
 
 // equalityArrayLimit is the largest equality posting list kept as a compact
@@ -102,12 +102,19 @@ func (s *equalitySet) addTo(dst *roaring.Bitmap) {
 }
 
 type eqRule[T any, V comparable] struct {
+	nodeID   nodeID
 	get      func(T) *V
 	wildcard *roaring.Bitmap
 	values   map[V]*equalitySet
 }
 
-func (*eqRule[T, V]) rule()            {}
+func (*eqRule[T, V]) rule() {}
+func (r *eqRule[T, V]) newState(ids *nodeIDAllocator) Rule[T] {
+	return &eqRule[T, V]{
+		nodeID: ids.allocate(), get: r.get,
+		wildcard: roaring.New(), values: make(map[V]*equalitySet),
+	}
+}
 func (*eqRule[T, V]) validate(T) error { return nil }
 func (r *eqRule[T, V]) insert(v T, id uint32) {
 	value := r.get(v)

@@ -24,16 +24,11 @@ func CompareBy[T any, V any](
 		operator: operator,
 		value:    value,
 		compare:  compare,
-		wildcard: roaring.New(),
-		eq:       newOrderedIndex(compare),
-		lt:       newOrderedIndex(compare),
-		lte:      newOrderedIndex(compare),
-		gt:       newOrderedIndex(compare),
-		gte:      newOrderedIndex(compare),
 	}
 }
 
 type compareByRule[T any, V any] struct {
+	nodeID   nodeID
 	operator func(T) string
 	value    func(T) *V
 	compare  Compare[V]
@@ -46,6 +41,13 @@ type compareByRule[T any, V any] struct {
 }
 
 func (*compareByRule[T, V]) rule() {}
+func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator) Rule[T] {
+	return &compareByRule[T, V]{
+		nodeID: ids.allocate(), operator: r.operator, value: r.value, compare: r.compare,
+		wildcard: roaring.New(), eq: newOrderedIndex(r.compare), lt: newOrderedIndex(r.compare),
+		lte: newOrderedIndex(r.compare), gt: newOrderedIndex(r.compare), gte: newOrderedIndex(r.compare),
+	}
+}
 func (r *compareByRule[T, V]) validate(v T) error {
 	if r.value(v) == nil {
 		return nil

@@ -59,6 +59,40 @@ func TestBuilderIsSingleUse(t *testing.T) {
 	require.EqualError(t, err, "ruleix: builder has already been used")
 }
 
+func TestSchemaBuildsIndependentIndexes(t *testing.T) {
+	schema := ruleix.All(
+		ruleix.Include(func(v buildConstraint) *int { return &v.value }),
+		buildSchema(),
+	)
+
+	firstEntries, err := ruleix.Zip(
+		[]buildConstraint{{value: 10, operator: ">="}},
+		[]string{"first"},
+	)
+	require.NoError(t, err)
+	first, err := ruleix.New[buildConstraint, string](schema).Build(firstEntries)
+	require.NoError(t, err)
+
+	secondEntries, err := ruleix.Zip(
+		[]buildConstraint{{value: 20, operator: ">="}},
+		[]string{"second"},
+	)
+	require.NoError(t, err)
+	second, err := ruleix.New[buildConstraint, string](schema).Build(secondEntries)
+	require.NoError(t, err)
+
+	var got []string
+	first.Search(buildConstraint{value: 10}, &got)
+	require.Equal(t, []string{"first"}, got)
+	first.Search(buildConstraint{value: 20}, &got)
+	require.Empty(t, got, "the later build must not mutate the first index")
+
+	second.Search(buildConstraint{value: 20}, &got)
+	require.Equal(t, []string{"second"}, got)
+	second.Search(buildConstraint{value: 10}, &got)
+	require.Empty(t, got, "indexes must not share mutable posting lists")
+}
+
 func TestBuiltIndexSupportsConcurrentSearch(t *testing.T) {
 	entries, err := ruleix.Zip([]buildConstraint{{value: 10, operator: ">="}}, []int{1})
 	require.NoError(t, err)

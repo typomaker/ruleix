@@ -13,11 +13,22 @@ type Compare[V any] func(a, b V) int
 // Its implementation is sealed so an index can rely on all rule invariants.
 type Rule[T any] interface {
 	rule()
+	newState(*nodeIDAllocator) Rule[T]
 	validate(T) error
 	insert(T, uint32)
 	cardinality(T, *bitmapPool) uint64
 	search(T, *roaring.Bitmap, *bitmapPool)
 	exclude(T, *roaring.Bitmap, *bitmapPool)
+}
+
+type nodeID uint32
+
+type nodeIDAllocator struct{ next nodeID }
+
+func (a *nodeIDAllocator) allocate() nodeID {
+	id := a.next
+	a.next++
+	return id
 }
 
 func measuredCardinality[T any](r Rule[T], value T, pool *bitmapPool) uint64 {

@@ -33,6 +33,7 @@ type boundState[V any] struct {
 }
 
 type betweenRule[T any, V any] struct {
+	nodeID       nodeID
 	from         *orderedRule[T, V]
 	until        *orderedRule[T, V]
 	compare      Compare[V]
@@ -44,7 +45,16 @@ type betweenRule[T any, V any] struct {
 // Roaring's container-wise bitmap intersection is faster than walking IDs.
 const betweenCandidateScanLimit = 256
 
-func (*betweenRule[T, V]) rule()            {}
+func (*betweenRule[T, V]) rule() {}
+func (r *betweenRule[T, V]) newState(ids *nodeIDAllocator) Rule[T] {
+	// Between owns one stateful node. Its two ordered indexes are internal
+	// components whose future statistics belong to this node.
+	id := ids.allocate()
+	return &betweenRule[T, V]{
+		nodeID: id,
+		from:   r.from.newStateWithID(id), until: r.until.newStateWithID(id), compare: r.compare,
+	}
+}
 func (*betweenRule[T, V]) validate(T) error { return nil }
 func (r *betweenRule[T, V]) insert(v T, id uint32) {
 	r.from.insert(v, id)

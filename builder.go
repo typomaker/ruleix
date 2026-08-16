@@ -10,8 +10,8 @@ import (
 // single-use: its Build method may be called only once, whether that call
 // succeeds or fails.
 type Builder[C any, ID comparable] struct {
-	root  Rule[C]
-	built bool
+	schema Rule[C]
+	built  bool
 }
 
 // Index maps query values to the unique IDs of all matching stored constraints.
@@ -28,7 +28,7 @@ func New[C any, ID comparable](schema Rule[C]) *Builder[C, ID] {
 	if schema == nil {
 		panic("ruleix: nil schema")
 	}
-	return &Builder[C, ID]{root: schema}
+	return &Builder[C, ID]{schema: schema}
 }
 
 // Build consumes entries and returns an immutable, concurrently searchable
@@ -43,7 +43,11 @@ func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) 
 	if entries == nil {
 		return nil, fmt.Errorf("ruleix: nil entry sequence")
 	}
-	ix := &Index[C, ID]{root: b.root, pool: newBitmapPool()}
+	// A schema contains only immutable getters, comparators, and structure.
+	// Every build receives fresh mutable indexes, so even a future reusable
+	// schema cannot modify an Index returned by an earlier build.
+	state := b.schema.newState(&nodeIDAllocator{})
+	ix := &Index[C, ID]{root: state, pool: newBitmapPool()}
 	internalIDs := make(map[ID]uint32)
 	var buildErr error
 	entryIndex := 0

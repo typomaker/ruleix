@@ -13,9 +13,10 @@ type observedRule struct {
 	order          *[]string
 }
 
-func (*observedRule) rule()              {}
-func (*observedRule) validate(int) error { return nil }
-func (*observedRule) insert(int, uint32) {}
+func (*observedRule) rule()                                 {}
+func (r *observedRule) newState(*nodeIDAllocator) Rule[int] { return r }
+func (*observedRule) validate(int) error                    { return nil }
+func (*observedRule) insert(int, uint32)                    {}
 func (r *observedRule) cardinality(value int, _ *bitmapPool) uint64 {
 	return r.cardinalityFor(value)
 }
