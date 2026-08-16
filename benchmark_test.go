@@ -312,6 +312,54 @@ func BenchmarkBetweenNarrowIntersection(b *testing.B) {
 	}
 }
 
+func BenchmarkLocalBetweenReuse(b *testing.B) {
+	ix := buildGenerated(b, ruleix.Between(
+		func(v benchmarkInterval) *int { return v.from },
+		func(v benchmarkInterval) *int { return v.until },
+		cmp.Compare[int],
+	), benchmarkEntries, func(n int) (benchmarkInterval, int) {
+		switch {
+		case n == 0:
+			return benchmarkInterval{from: benchmarkPtr(0), until: benchmarkPtr(10_000)}, n
+		case n < benchmarkEntries/2:
+			return benchmarkInterval{from: benchmarkPtr(0), until: benchmarkPtr(6_000)}, n
+		default:
+			return benchmarkInterval{from: benchmarkPtr(6_000), until: benchmarkPtr(10_000)}, n
+		}
+	})
+	modes := []struct {
+		name  string
+		value func(int) (int, int)
+	}{
+		{"Repeat", func(int) (int, int) { return 5_000, 7_000 }},
+		{"Alternate", func(n int) (int, int) { return 5_000, 7_000 + (n & 1) }},
+		{"Churn", func(n int) (int, int) { return n % 5_000, 7_000 }},
+	}
+	for _, mode := range modes {
+		for _, local := range []bool{false, true} {
+			name := mode.name + "/Index"
+			if local {
+				name = mode.name + "/Local"
+			}
+			b.Run(name, func(b *testing.B) {
+				searcher := ix.Local()
+				var dst []int
+				b.ReportAllocs()
+				b.ResetTimer()
+				for n := 0; n < b.N; n++ {
+					from, until := mode.value(n)
+					query := benchmarkInterval{from: &from, until: &until}
+					if local {
+						searcher.Search(query, &dst)
+					} else {
+						ix.Search(query, &dst)
+					}
+				}
+			})
+		}
+	}
+}
+
 func BenchmarkBetweenSelectiveSide(b *testing.B) {
 	from := func(v benchmarkInterval) *int { return v.from }
 	until := func(v benchmarkInterval) *int { return v.until }

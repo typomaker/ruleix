@@ -41,6 +41,20 @@ type betweenRule[T any, V any] struct {
 	maximumUntil []boundState[V]
 }
 
+type betweenCache[V any] struct {
+	entries [2]betweenCacheEntry[V]
+	next    uint8
+}
+
+type betweenCacheEntry[V any] struct {
+	initialized bool
+	hasFrom     bool
+	hasUntil    bool
+	from        V
+	until       V
+	bits        *roaring.Bitmap
+}
+
 // betweenCandidateScanLimit caps scalar bound checks. Above this point,
 // Roaring's container-wise bitmap intersection is faster than walking IDs.
 const betweenCandidateScanLimit = 256
@@ -70,6 +84,48 @@ func (r *betweenRule[T, V]) cardinality(v T, pool *bitmapPool) uint64 {
 	return measuredCardinality[T](r, v, pool)
 }
 func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	from, until := r.from.get(v), r.until.get(v)
+	if pool.between == nil {
+		r.searchUncached(v, dst, pool)
+		return
+	}
+
+	cache, _ := pool.between[int(r.nodeID)].(*betweenCache[V])
+	if cache == nil {
+		cache = &betweenCache[V]{}
+		pool.between[int(r.nodeID)] = cache
+	}
+	hasFrom, hasUntil := from != nil, until != nil
+	for i := range cache.entries {
+		cached := &cache.entries[i]
+		if cached.initialized && cached.hasFrom == hasFrom && cached.hasUntil == hasUntil &&
+			(!hasFrom || r.compare(cached.from, *from) == 0) &&
+			(!hasUntil || r.compare(cached.until, *until) == 0) {
+			dst.Or(cached.bits)
+			return
+		}
+	}
+
+	cached := &cache.entries[cache.next]
+	cache.next = (cache.next + 1) % uint8(len(cache.entries))
+	if cached.bits == nil {
+		cached.bits = roaring.New()
+	} else {
+		cached.bits.Clear()
+	}
+	r.searchUncached(v, cached.bits, pool)
+	cached.initialized = true
+	cached.hasFrom, cached.hasUntil = hasFrom, hasUntil
+	if hasFrom {
+		cached.from = *from
+	}
+	if hasUntil {
+		cached.until = *until
+	}
+	dst.Or(cached.bits)
+}
+
+func (r *betweenRule[T, V]) searchUncached(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	fromCardinality := r.from.cardinality(v, pool)
 	untilCardinality := r.until.cardinality(v, pool)
 	if fromCardinality == 0 || untilCardinality == 0 {
@@ -84,7 +140,7 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	defer pool.put(candidates)
 
 	if fromCardinality <= untilCardinality {
-		r.from.search(v, candidates, pool)
+		r.from.addMatches(r.from.get(v), candidates)
 		query := r.until.get(v)
 		it := candidates.Iterator()
 		for it.HasNext() {
@@ -96,7 +152,7 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		return
 	}
 
-	r.until.search(v, candidates, pool)
+	r.until.addMatches(r.until.get(v), candidates)
 	query := r.from.get(v)
 	it := candidates.Iterator()
 	for it.HasNext() {
@@ -117,8 +173,8 @@ func (r *betweenRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) 
 func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	left := pool.get()
 	right := pool.get()
-	r.from.search(v, left, pool)
-	r.until.search(v, right, pool)
+	r.from.addMatches(r.from.get(v), left)
+	r.until.addMatches(r.until.get(v), right)
 	left.And(right)
 	dst.Or(left)
 	pool.put(right)

@@ -134,9 +134,9 @@ func (ix *Index[C, ID]) Search(value C, dst *[]ID) {
 }
 
 // Local returns a non-concurrent search context. It currently caches recent
-// results produced by Include, ordered-filter, and CompareBy nodes, making it
-// useful when adjacent searches repeat some constraint values. Create a separate
-// Local for each goroutine.
+// results produced by Include, ordered-filter, CompareBy, and Between nodes,
+// making it useful when adjacent searches repeat some constraint values. Create
+// a separate Local for each goroutine.
 func (ix *Index[C, ID]) Local() *Local[C, ID] {
 	return &Local[C, ID]{index: ix, pool: newLocalBitmapPool(ix.nodes)}
 }
