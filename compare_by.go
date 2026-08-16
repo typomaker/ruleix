@@ -41,11 +41,13 @@ type compareByRule[T any, V any] struct {
 }
 
 func (*compareByRule[T, V]) rule() {}
-func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator) Rule[T] {
+func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
+	id := ids.allocate()
+	hint := hints.node(id).compareBy
 	return &compareByRule[T, V]{
-		nodeID: ids.allocate(), operator: r.operator, value: r.value, compare: r.compare,
-		wildcard: roaring.New(), eq: newOrderedIndex(r.compare), lt: newOrderedIndex(r.compare),
-		lte: newOrderedIndex(r.compare), gt: newOrderedIndex(r.compare), gte: newOrderedIndex(r.compare),
+		nodeID: id, operator: r.operator, value: r.value, compare: r.compare,
+		wildcard: roaring.New(), eq: newOrderedIndexWithHint(r.compare, hint[0]), lt: newOrderedIndexWithHint(r.compare, hint[1]),
+		lte: newOrderedIndexWithHint(r.compare, hint[2]), gt: newOrderedIndexWithHint(r.compare, hint[3]), gte: newOrderedIndexWithHint(r.compare, hint[4]),
 	}
 }
 func (r *compareByRule[T, V]) validate(v T) error {

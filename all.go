@@ -16,10 +16,10 @@ func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} 
 type allRule[T any] struct{ children []Rule[T] }
 
 func (*allRule[T]) rule() {}
-func (r *allRule[T]) newState(ids *nodeIDAllocator) Rule[T] {
+func (r *allRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	children := make([]Rule[T], len(r.children))
 	for i, child := range r.children {
-		children[i] = child.newState(ids)
+		children[i] = child.newState(ids, hints)
 	}
 	return &allRule[T]{children: children}
 }

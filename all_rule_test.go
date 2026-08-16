@@ -13,10 +13,10 @@ type countingRule struct {
 	cardinalityCalls int
 }
 
-func (*countingRule) rule()                                 {}
-func (r *countingRule) newState(*nodeIDAllocator) Rule[int] { return r }
-func (*countingRule) validate(int) error                    { return nil }
-func (*countingRule) insert(int, uint32)                    {}
+func (*countingRule) rule()                                                   {}
+func (r *countingRule) newState(*nodeIDAllocator, *buildStatistics) Rule[int] { return r }
+func (*countingRule) validate(int) error                                      { return nil }
+func (*countingRule) insert(int, uint32)                                      {}
 func (r *countingRule) cardinality(int, *bitmapPool) uint64 {
 	r.cardinalityCalls++
 	return uint64(len(r.ids))

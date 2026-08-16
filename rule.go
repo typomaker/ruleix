@@ -13,7 +13,7 @@ type Compare[V any] func(a, b V) int
 // Its implementation is sealed so an index can rely on all rule invariants.
 type Rule[T any] interface {
 	rule()
-	newState(*nodeIDAllocator) Rule[T]
+	newState(*nodeIDAllocator, *buildStatistics) Rule[T]
 	validate(T) error
 	insert(T, uint32)
 	cardinality(T, *bitmapPool) uint64
@@ -49,6 +49,31 @@ type buildStatistics struct {
 	entries   int
 	uniqueIDs int
 	nodes     []nodeBuildStatistics
+}
+
+// capacityHint adds five percent to the last observed size. It saturates at
+// the largest int so corrupt or unusually large statistics cannot overflow
+// an allocation size. Zero remains zero: there is no useful history yet.
+func capacityHint(previous int) int {
+	if previous <= 0 {
+		return 0
+	}
+	maxInt := int(^uint(0) >> 1)
+	growth := previous / 20
+	if growth < 1 {
+		growth = 1
+	}
+	if previous > maxInt-growth {
+		return maxInt
+	}
+	return previous + growth
+}
+
+func (s *buildStatistics) node(id nodeID) nodeBuildStatistics {
+	if s == nil || int(id) >= len(s.nodes) {
+		return nodeBuildStatistics{}
+	}
+	return s.nodes[id]
 }
 
 func measuredCardinality[T any](r Rule[T], value T, pool *bitmapPool) uint64 {

@@ -77,13 +77,14 @@ type orderedRule[T any, V any] struct {
 }
 
 func (*orderedRule[T, V]) rule() {}
-func (r *orderedRule[T, V]) newState(ids *nodeIDAllocator) Rule[T] {
-	return r.newStateWithID(ids.allocate())
+func (r *orderedRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
+	id := ids.allocate()
+	return r.newStateWithID(id, hints.node(id).ordered)
 }
-func (r *orderedRule[T, V]) newStateWithID(id nodeID) *orderedRule[T, V] {
+func (r *orderedRule[T, V]) newStateWithID(id nodeID, hint orderedBuildStatistics) *orderedRule[T, V] {
 	return &orderedRule[T, V]{
 		nodeID: id, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
-		wildcard: roaring.New(), index: newOrderedIndex(r.compare),
+		wildcard: roaring.New(), index: newOrderedIndexWithHint(r.compare, hint),
 	}
 }
 func (*orderedRule[T, V]) validate(T) error { return nil }

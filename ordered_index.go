@@ -8,8 +8,9 @@ type orderedItem[V any] struct {
 }
 
 type orderedIndex[V any] struct {
-	compare Compare[V]
-	blocks  []orderedBlock[V]
+	compare            Compare[V]
+	blocks             []orderedBlock[V]
+	firstBlockCapacity int
 }
 
 // orderedBlockSize is deliberately large enough to amortize wide scans while
@@ -23,6 +24,17 @@ type orderedBlock[V any] struct {
 
 func newOrderedIndex[V any](compare Compare[V]) orderedIndex[V] {
 	return orderedIndex[V]{compare: compare}
+}
+func newOrderedIndexWithHint[V any](compare Compare[V], hint orderedBuildStatistics) orderedIndex[V] {
+	itemCapacity := capacityHint(hint.uniqueValues)
+	if itemCapacity > orderedBlockSize*2 {
+		itemCapacity = orderedBlockSize * 2
+	}
+	return orderedIndex[V]{
+		compare:            compare,
+		blocks:             make([]orderedBlock[V], 0, capacityHint(hint.blocks)),
+		firstBlockCapacity: itemCapacity,
+	}
 }
 func (i *orderedIndex[V]) buildStatistics() orderedBuildStatistics {
 	statistics := orderedBuildStatistics{blocks: len(i.blocks)}
@@ -81,7 +93,9 @@ func (i *orderedIndex[V]) blockFor(value V) int {
 
 func (i *orderedIndex[V]) insertItem(item *orderedItem[V]) {
 	if len(i.blocks) == 0 {
-		i.blocks = append(i.blocks, orderedBlock[V]{items: []*orderedItem[V]{item}, bits: roaring.New()})
+		items := make([]*orderedItem[V], 1, max(1, i.firstBlockCapacity))
+		items[0] = item
+		i.blocks = append(i.blocks, orderedBlock[V]{items: items, bits: roaring.New()})
 		return
 	}
 	blockIndex := i.blockFor(item.value)

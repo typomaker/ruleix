@@ -23,10 +23,11 @@ type notRule[T any, V comparable] struct {
 }
 
 func (*notRule[T, V]) rule() {}
-func (r *notRule[T, V]) newState(ids *nodeIDAllocator) Rule[T] {
+func (r *notRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
+	id := ids.allocate()
 	return &notRule[T, V]{
-		nodeID: ids.allocate(), get: r.get,
-		wildcard: roaring.New(), constrained: roaring.New(), values: make(map[V]*equalitySet),
+		nodeID: id, get: r.get,
+		wildcard: roaring.New(), constrained: roaring.New(), values: make(map[V]*equalitySet, capacityHint(hints.node(id).equalityValues)),
 	}
 }
 func (*notRule[T, V]) validate(T) error { return nil }

@@ -58,7 +58,7 @@ func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) 
 		return nil, fmt.Errorf("ruleix: builder has already been used")
 	}
 	b.built = true
-	ix, _, err := buildIndex[C, ID](b.schema, entries, false)
+	ix, _, err := buildIndex[C, ID](b.schema, entries, false, nil)
 	return ix, err
 }
 
@@ -67,7 +67,7 @@ func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) 
 // library deliberately leaves synchronization of builds to the caller. A
 // failed build does not prevent later calls.
 func (r *Rebuilder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) {
-	ix, statistics, err := buildIndex[C, ID](r.schema, entries, true)
+	ix, statistics, err := buildIndex[C, ID](r.schema, entries, true, &r.hints)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func (r *Rebuilder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error
 	return ix, nil
 }
 
-func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID], collectStatistics bool) (*Index[C, ID], buildStatistics, error) {
+func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID], collectStatistics bool, hints *buildStatistics) (*Index[C, ID], buildStatistics, error) {
 	if entries == nil {
 		return nil, buildStatistics{}, fmt.Errorf("ruleix: nil entry sequence")
 	}
@@ -86,9 +86,13 @@ func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID], 
 	// Every build receives fresh mutable indexes, so even a future reusable
 	// schema cannot modify an Index returned by an earlier build.
 	ids := &nodeIDAllocator{}
-	state := schema.newState(ids)
-	ix := &Index[C, ID]{root: state, pool: newBitmapPool()}
-	internalIDs := make(map[ID]uint32)
+	state := schema.newState(ids, hints)
+	uniqueIDCapacity := 0
+	if hints != nil {
+		uniqueIDCapacity = capacityHint(hints.uniqueIDs)
+	}
+	ix := &Index[C, ID]{root: state, values: make([]ID, 0, uniqueIDCapacity), pool: newBitmapPool()}
+	internalIDs := make(map[ID]uint32, uniqueIDCapacity)
 	var buildErr error
 	entryIndex := 0
 	entries(func(constraint C, id ID) bool {

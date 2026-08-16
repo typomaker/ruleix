@@ -109,10 +109,11 @@ type eqRule[T any, V comparable] struct {
 }
 
 func (*eqRule[T, V]) rule() {}
-func (r *eqRule[T, V]) newState(ids *nodeIDAllocator) Rule[T] {
+func (r *eqRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
+	id := ids.allocate()
 	return &eqRule[T, V]{
-		nodeID: ids.allocate(), get: r.get,
-		wildcard: roaring.New(), values: make(map[V]*equalitySet),
+		nodeID: id, get: r.get,
+		wildcard: roaring.New(), values: make(map[V]*equalitySet, capacityHint(hints.node(id).equalityValues)),
 	}
 }
 func (*eqRule[T, V]) validate(T) error { return nil }

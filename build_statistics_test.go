@@ -1,10 +1,65 @@
 package ruleix
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestCapacityHint(t *testing.T) {
+	require.Equal(t, 0, capacityHint(0))
+	require.Equal(t, 2, capacityHint(1))
+	require.Equal(t, 105, capacityHint(100))
+	require.Equal(t, int(^uint(0)>>1), capacityHint(int(^uint(0)>>1)))
+}
+
+func TestRebuilderCapacitiesFollowLastSuccessfulBuild(t *testing.T) {
+	compare := func(a, b int) int { return a - b }
+	schema := All(
+		Include(func(v statisticsConstraint) *string { return v.name }),
+		GreaterOrEqual(func(v statisticsConstraint) *int { return v.minimum }, compare),
+		Between(
+			func(v statisticsConstraint) *int { return v.from },
+			func(v statisticsConstraint) *int { return v.until },
+			compare,
+		),
+	)
+	rebuilder := NewRebuilder[statisticsConstraint, string](schema)
+	build := func(size int) *Index[statisticsConstraint, string] {
+		t.Helper()
+		index, err := rebuilder.Build(func(yield func(statisticsConstraint, string) bool) {
+			for i := range size {
+				name := fmt.Sprintf("name-%d", i)
+				value := i
+				if !yield(statisticsConstraint{name: &name, minimum: &value, from: &value, until: &value}, name) {
+					return
+				}
+			}
+		})
+		require.NoError(t, err)
+		return index
+	}
+
+	build(300)
+	smallAfterLarge := build(1)
+	require.Equal(t, 315, cap(smallAfterLarge.values))
+	root := smallAfterLarge.root.(*allRule[statisticsConstraint])
+	ordered := root.children[1].(*orderedRule[statisticsConstraint, int])
+	require.Equal(t, orderedBlockSize*2, ordered.index.firstBlockCapacity)
+	between := root.children[2].(*betweenRule[statisticsConstraint, int])
+	require.Equal(t, 315, cap(between.minimumFrom))
+	require.Equal(t, 315, cap(between.maximumUntil))
+
+	smallAfterSmall := build(1)
+	require.Equal(t, 2, cap(smallAfterSmall.values))
+	root = smallAfterSmall.root.(*allRule[statisticsConstraint])
+	ordered = root.children[1].(*orderedRule[statisticsConstraint, int])
+	require.Equal(t, 2, ordered.index.firstBlockCapacity)
+	between = root.children[2].(*betweenRule[statisticsConstraint, int])
+	require.Equal(t, 2, cap(between.minimumFrom))
+	require.Equal(t, 2, cap(between.maximumUntil))
+}
 
 type statisticsConstraint struct {
 	name     *string
@@ -58,7 +113,7 @@ func TestBuildCollectsCompactPerNodeStatistics(t *testing.T) {
 		}
 	}
 
-	_, statistics, err := buildIndex[statisticsConstraint, string](schema, entries, true)
+	_, statistics, err := buildIndex[statisticsConstraint, string](schema, entries, true, nil)
 	require.NoError(t, err)
 	require.Equal(t, 5, statistics.entries)
 	require.Equal(t, 4, statistics.uniqueIDs)
@@ -92,7 +147,7 @@ func TestFailedBuildDoesNotReturnPartialStatistics(t *testing.T) {
 		yield(invalidStatisticsConstraint{value: 2, operator: "invalid"}, 2)
 	}
 
-	index, statistics, err := buildIndex[invalidStatisticsConstraint, int](schema, entries, true)
+	index, statistics, err := buildIndex[invalidStatisticsConstraint, int](schema, entries, true, nil)
 	require.Nil(t, index)
 	require.Error(t, err)
 	require.Equal(t, buildStatistics{}, statistics)
