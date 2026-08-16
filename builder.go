@@ -6,19 +6,11 @@ import (
 	"math"
 )
 
-// Builder constructs one immutable Index from a Rule schema. A Builder is
-// single-use: its Build method may be called only once, whether that call
-// succeeds or fails.
+// Builder constructs immutable indexes from the same Rule schema. A Builder is
+// not safe for concurrent calls to Build; callers that need them must provide
+// their own synchronization. Indexes returned by completed builds are
+// independent and safe for concurrent use.
 type Builder[C any, ID comparable] struct {
-	schema Rule[C]
-	built  bool
-}
-
-// Rebuilder constructs a new immutable Index from the same Rule schema on
-// every call to Build. A Rebuilder is not safe for concurrent calls to Build;
-// callers that need them must provide their own synchronization. Indexes
-// returned by completed builds are independent and safe for concurrent use.
-type Rebuilder[C any, ID comparable] struct {
 	schema Rule[C]
 	hints  buildStatistics
 }
@@ -40,41 +32,21 @@ func New[C any, ID comparable](schema Rule[C]) *Builder[C, ID] {
 	return &Builder[C, ID]{schema: schema}
 }
 
-// NewRebuilder constructs a reusable builder from a strongly typed rule
-// schema. NewRebuilder panics when schema is nil.
-func NewRebuilder[C any, ID comparable](schema Rule[C]) *Rebuilder[C, ID] {
-	if schema == nil {
-		panic("ruleix: nil schema")
-	}
-	return &Rebuilder[C, ID]{schema: schema}
-}
-
 // Build consumes entries and returns an immutable, concurrently searchable
 // Index. Constraints that share an external ID are combined under that ID,
-// which is returned at most once by a search. A Builder is single-use,
-// including when validation fails.
+// which is returned at most once by a search. Build must not be called
+// concurrently on the same Builder; the library deliberately leaves
+// synchronization of builds to the caller. A failed build does not prevent
+// later calls.
 func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) {
-	if b.built {
-		return nil, fmt.Errorf("ruleix: builder has already been used")
-	}
-	b.built = true
-	ix, _, err := buildIndex[C, ID](b.schema, entries, false, nil)
-	return ix, err
-}
-
-// Build consumes entries and returns a new immutable, concurrently searchable
-// Index. Build must not be called concurrently on the same Rebuilder; the
-// library deliberately leaves synchronization of builds to the caller. A
-// failed build does not prevent later calls.
-func (r *Rebuilder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) {
-	ix, statistics, err := buildIndex[C, ID](r.schema, entries, true, &r.hints)
+	ix, statistics, err := buildIndex[C, ID](b.schema, entries, true, &b.hints)
 	if err != nil {
 		return nil, err
 	}
 	// Publish statistics only after the input sequence has returned and the
 	// complete index has passed validation. Failed builds must leave the last
 	// successful hints intact for the next rebuild.
-	r.hints = statistics
+	b.hints = statistics
 	return ix, nil
 }
 

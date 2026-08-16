@@ -49,36 +49,15 @@ func TestBuildReportsEntryPositionWithDuplicateIDs(t *testing.T) {
 	require.EqualError(t, err, `ruleix: entry 2: ruleix: unsupported operator "invalid"`)
 }
 
-func TestBuilderIsSingleUse(t *testing.T) {
+func TestBuilderCreatesIndependentIndexesAndRecoversAfterError(t *testing.T) {
 	builder := ruleix.New[buildConstraint, string](buildSchema())
-	entries, err := ruleix.Zip([]buildConstraint{{value: 10, operator: ">="}}, []string{"first"})
-	require.NoError(t, err)
-	_, err = builder.Build(entries)
-	require.NoError(t, err)
-	_, err = builder.Build(entries)
-	require.EqualError(t, err, "ruleix: builder has already been used")
-}
-
-func TestBuilderIsSingleUseAfterFailedBuild(t *testing.T) {
-	builder := ruleix.New[buildConstraint, string](buildSchema())
-	_, err := builder.Build(nil)
-	require.EqualError(t, err, "ruleix: nil entry sequence")
-
-	entries, err := ruleix.Zip([]buildConstraint{{value: 10, operator: ">="}}, []string{"first"})
-	require.NoError(t, err)
-	_, err = builder.Build(entries)
-	require.EqualError(t, err, "ruleix: builder has already been used")
-}
-
-func TestRebuilderCreatesIndependentIndexesAndRecoversAfterError(t *testing.T) {
-	rebuilder := ruleix.NewRebuilder[buildConstraint, string](buildSchema())
 
 	firstEntries, err := ruleix.Zip(
 		[]buildConstraint{{value: 10, operator: ">="}},
 		[]string{"first"},
 	)
 	require.NoError(t, err)
-	first, err := rebuilder.Build(firstEntries)
+	first, err := builder.Build(firstEntries)
 	require.NoError(t, err)
 
 	invalidEntries, err := ruleix.Zip(
@@ -86,7 +65,7 @@ func TestRebuilderCreatesIndependentIndexesAndRecoversAfterError(t *testing.T) {
 		[]string{"invalid"},
 	)
 	require.NoError(t, err)
-	invalid, err := rebuilder.Build(invalidEntries)
+	invalid, err := builder.Build(invalidEntries)
 	require.Nil(t, invalid)
 	require.EqualError(t, err, `ruleix: entry 0: ruleix: unsupported operator "invalid"`)
 
@@ -95,7 +74,7 @@ func TestRebuilderCreatesIndependentIndexesAndRecoversAfterError(t *testing.T) {
 		[]string{"second"},
 	)
 	require.NoError(t, err)
-	second, err := rebuilder.Build(secondEntries)
+	second, err := builder.Build(secondEntries)
 	require.NoError(t, err)
 
 	var got []string

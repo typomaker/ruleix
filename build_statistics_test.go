@@ -14,7 +14,7 @@ func TestCapacityHint(t *testing.T) {
 	require.Equal(t, int(^uint(0)>>1), capacityHint(int(^uint(0)>>1)))
 }
 
-func TestRebuilderCapacitiesFollowLastSuccessfulBuild(t *testing.T) {
+func TestBuilderCapacitiesFollowLastSuccessfulBuild(t *testing.T) {
 	compare := func(a, b int) int { return a - b }
 	schema := All(
 		Include(func(v statisticsConstraint) *string { return v.name }),
@@ -25,10 +25,10 @@ func TestRebuilderCapacitiesFollowLastSuccessfulBuild(t *testing.T) {
 			compare,
 		),
 	)
-	rebuilder := NewRebuilder[statisticsConstraint, string](schema)
+	builder := New[statisticsConstraint, string](schema)
 	build := func(size int) *Index[statisticsConstraint, string] {
 		t.Helper()
-		index, err := rebuilder.Build(func(yield func(statisticsConstraint, string) bool) {
+		index, err := builder.Build(func(yield func(statisticsConstraint, string) bool) {
 			for i := range size {
 				name := fmt.Sprintf("name-%d", i)
 				value := i
@@ -153,20 +153,20 @@ func TestFailedBuildDoesNotReturnPartialStatistics(t *testing.T) {
 	require.Equal(t, buildStatistics{}, statistics)
 }
 
-func TestRebuilderPublishesStatisticsTransactionally(t *testing.T) {
+func TestBuilderPublishesStatisticsTransactionally(t *testing.T) {
 	schema := CompareBy(
 		func(value invalidStatisticsConstraint) string { return value.operator },
 		func(value invalidStatisticsConstraint) *int { return &value.value },
 		func(a, b int) int { return a - b },
 	)
-	rebuilder := NewRebuilder[invalidStatisticsConstraint, string](schema)
+	builder := New[invalidStatisticsConstraint, string](schema)
 
 	firstEntries := func(yield func(invalidStatisticsConstraint, string) bool) {
 		yield(invalidStatisticsConstraint{value: 1, operator: "="}, "repeated")
 		yield(invalidStatisticsConstraint{value: 2, operator: "="}, "repeated")
 		yield(invalidStatisticsConstraint{value: 3, operator: "<="}, "unique")
 	}
-	_, err := rebuilder.Build(firstEntries)
+	_, err := builder.Build(firstEntries)
 	require.NoError(t, err)
 	require.Equal(t, buildStatistics{
 		entries:   3,
@@ -176,27 +176,27 @@ func TestRebuilderPublishesStatisticsTransactionally(t *testing.T) {
 			{},
 			{uniqueValues: 1, blocks: 1},
 		}}},
-	}, rebuilder.hints)
+	}, builder.hints)
 
-	previous := rebuilder.hints
+	previous := builder.hints
 	invalidEntries := func(yield func(invalidStatisticsConstraint, string) bool) {
 		yield(invalidStatisticsConstraint{value: 10, operator: "="}, "one")
 		yield(invalidStatisticsConstraint{value: 20, operator: "<"}, "two")
 		yield(invalidStatisticsConstraint{value: 30, operator: "invalid"}, "three")
 	}
 
-	_, err = rebuilder.Build(invalidEntries)
+	_, err = builder.Build(invalidEntries)
 	require.Error(t, err)
-	require.Equal(t, previous, rebuilder.hints)
+	require.Equal(t, previous, builder.hints)
 
 	finalEntries := func(yield func(invalidStatisticsConstraint, string) bool) {
 		yield(invalidStatisticsConstraint{value: 40, operator: ">="}, "final")
 	}
-	_, err = rebuilder.Build(finalEntries)
+	_, err = builder.Build(finalEntries)
 	require.NoError(t, err)
-	require.Equal(t, 1, rebuilder.hints.entries)
-	require.Equal(t, 1, rebuilder.hints.uniqueIDs)
+	require.Equal(t, 1, builder.hints.entries)
+	require.Equal(t, 1, builder.hints.uniqueIDs)
 	require.Equal(t, [5]orderedBuildStatistics{
 		{}, {}, {}, {}, {uniqueValues: 1, blocks: 1},
-	}, rebuilder.hints.nodes[0].compareBy)
+	}, builder.hints.nodes[0].compareBy)
 }

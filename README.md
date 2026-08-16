@@ -164,7 +164,7 @@ ruleix.Include(ruleix.Path3(
 
 ## Building an index
 
-`New` returns a single-use builder. `Build` accepts an `iter.Seq2` of constraints
+`New` returns a reusable builder. `Build` accepts an `iter.Seq2` of constraints
 and result IDs:
 
 ```go
@@ -182,17 +182,17 @@ index, err := ruleix.New[Constraint, string](schema).Build(
 `Zip` is a convenience for parallel slices and returns an error when their
 lengths differ.
 
-For workloads that periodically rebuild the same schema, `NewRebuilder`
-returns a reusable builder. Every call creates independent mutable build state
+For workloads that periodically rebuild the same schema, keep the builder and
+call `Build` again. Every call creates independent mutable build state
 and returns a new immutable index; indexes returned earlier remain safe for
 concurrent searches. `Build` itself is not safe for concurrent calls on the
-same rebuilder: callers must provide synchronization when they need parallel
+same builder: callers must provide synchronization when they need parallel
 build coordination. A failed build does not prevent the next call:
 
 ```go
-rebuilder := ruleix.NewRebuilder[Constraint, string](schema)
-first, err := rebuilder.Build(firstEntries)
-second, err := rebuilder.Build(secondEntries)
+builder := ruleix.New[Constraint, string](schema)
+first, err := builder.Build(firstEntries)
+second, err := builder.Build(secondEntries)
 ```
 
 ## Searching
