@@ -102,6 +102,7 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		if cached.initialized && cached.hasFrom == hasFrom && cached.hasUntil == hasUntil &&
 			(!hasFrom || r.compare(cached.from, *from) == 0) &&
 			(!hasUntil || r.compare(cached.until, *until) == 0) {
+			cache.next = uint8(1 - i)
 			dst.Or(cached.bits)
 			return
 		}

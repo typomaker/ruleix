@@ -27,6 +27,7 @@ func (c *valueBitmapCache[V]) lookup(value *V, equal func(V, V) bool) (*roaring.
 	for i := range c.entries {
 		entry := &c.entries[i]
 		if entry.initialized && entry.hasValue == hasValue && (!hasValue || equal(entry.value, *value)) {
+			c.next = uint8(1 - i)
 			return entry.bits, true
 		}
 	}

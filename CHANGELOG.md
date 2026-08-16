@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- `Local` now evicts the least recently used of its two cached bitmap results
+  per filter node, preserving hot values when other query values interleave.
+
 ## [0.2.0] - 2026-08-17
 
 ### Added
