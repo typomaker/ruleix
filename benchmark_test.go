@@ -16,6 +16,7 @@ const (
 var (
 	benchmarkStringResult []string
 	benchmarkIntResult    []int
+	benchmarkLocalResult  *ruleix.Local[benchmarkEquality, int]
 )
 
 type benchmarkEquality struct {
@@ -97,6 +98,26 @@ func BenchmarkEq(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			ix.Search(query, &benchmarkIntResult)
+		}
+	})
+}
+
+func BenchmarkLocalCreation(b *testing.B) {
+	ix := benchmarkEqIndex(b, true)
+	b.Run("Cold", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			benchmarkLocalResult = ix.Local()
+		}
+	})
+	b.Run("Primed", func(b *testing.B) {
+		query := benchmarkEquality{optional: benchmarkPtr(42)}
+		var dst []int
+		b.ReportAllocs()
+		for range b.N {
+			local := ix.Local()
+			local.Search(query, &dst)
+			benchmarkLocalResult = local
 		}
 	})
 }

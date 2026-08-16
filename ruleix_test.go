@@ -486,6 +486,96 @@ func TestLocalSearchCachesExclusionsWithoutChangingResults(t *testing.T) {
 	require.Equal(t, []string{"wildcard", "ios-only"}, got)
 }
 
+func TestLocalVisitUsesCacheAndStopsEarly(t *testing.T) {
+	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }),
+		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}},
+		[]string{"first", "second", "third"})
+	local := ix.Local()
+
+	for range 2 {
+		var got []string
+		local.Visit(benchmarkEquality{required: 1}, func(id string) bool {
+			got = append(got, id)
+			return len(got) < 2
+		})
+		require.Equal(t, []string{"first", "second"}, got)
+	}
+	local.Visit(benchmarkEquality{required: 1}, nil)
+}
+
+func TestSeparateLocalsSupportConcurrentSearch(t *testing.T) {
+	ix := buildZip(t, ruleix.All(
+		ruleix.Include(func(v benchmarkAllValue) *int { return v.a }),
+		ruleix.GreaterOrEqual(func(v benchmarkAllValue) *int { return v.b }, cmp.Compare[int]),
+	), []benchmarkAllValue{
+		{a: ptr(1), b: ptr(1)},
+		{a: ptr(1), b: ptr(2)},
+		{a: ptr(2), b: ptr(1)},
+	}, []int{1, 2, 3})
+
+	var wg sync.WaitGroup
+	results := make(chan []int, 20*50)
+	for range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			local := ix.Local()
+			var got []int
+			for range 50 {
+				local.Search(benchmarkAllValue{a: ptr(1), b: ptr(2)}, &got)
+				results <- append([]int(nil), got...)
+			}
+		}()
+	}
+	wg.Wait()
+	close(results)
+	for got := range results {
+		require.Equal(t, []int{1, 2}, got)
+	}
+}
+
+func TestLocalNestedAllMatchesIndexSearch(t *testing.T) {
+	type mixed struct {
+		country   *string
+		minimum   *int
+		excluded  *string
+		operator  string
+		threshold *int
+	}
+	schema := ruleix.All(
+		ruleix.Include(func(v mixed) *string { return v.country }),
+		ruleix.All(
+			ruleix.GreaterOrEqual(func(v mixed) *int { return v.minimum }, cmp.Compare[int]),
+			ruleix.Exclude(func(v mixed) *string { return v.excluded }),
+		),
+		ruleix.CompareBy(
+			func(v mixed) string { return v.operator },
+			func(v mixed) *int { return v.threshold },
+			cmp.Compare[int],
+		),
+	)
+	ix := buildZip(t, schema, []mixed{
+		{},
+		{country: ptr("DE"), minimum: ptr(10), excluded: ptr("marketplace"), operator: ">=", threshold: ptr(5)},
+		{country: ptr("DE"), minimum: ptr(20), excluded: ptr("retail"), operator: "<", threshold: ptr(30)},
+		{country: ptr("FR"), minimum: ptr(10), operator: "=", threshold: ptr(15)},
+	}, []string{"global", "de-minimum", "de-upper", "fr-exact"})
+	queries := []mixed{
+		{country: ptr("DE"), minimum: ptr(15), excluded: ptr("web"), threshold: ptr(10)},
+		{country: ptr("DE"), minimum: ptr(25), excluded: ptr("retail"), threshold: ptr(20)},
+		{country: ptr("FR"), minimum: ptr(15), excluded: ptr("web"), threshold: ptr(15)},
+	}
+	local := ix.Local()
+	for range 3 {
+		for _, query := range queries {
+			var want, got []string
+			ix.Search(query, &want)
+			local.Search(query, &got)
+			require.Equal(t, want, got)
+		}
+	}
+}
+
 func TestVisitDeduplicatesAndStopsEarly(t *testing.T) {
 	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }),
 		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}, {required: 1}},

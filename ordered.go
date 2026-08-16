@@ -76,18 +76,6 @@ type orderedRule[T any, V any] struct {
 	index     orderedIndex[V]
 }
 
-type orderedCache[V any] struct {
-	entries [2]orderedCacheEntry[V]
-	next    uint8
-}
-
-type orderedCacheEntry[V any] struct {
-	initialized bool
-	hasValue    bool
-	value       V
-	bits        *roaring.Bitmap
-}
-
 func (*orderedRule[T, V]) rule() {}
 func (r *orderedRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
@@ -121,39 +109,25 @@ func (r *orderedRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 }
 func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := r.get(v)
-	if pool.ordered == nil {
+	if pool.local == nil {
 		r.addMatches(value, dst)
 		return
 	}
 
-	cache, _ := pool.ordered[int(r.nodeID)].(*orderedCache[V])
+	node := &pool.local[int(r.nodeID)]
+	cache, _ := node.ordered.(*valueBitmapCache[V])
 	if cache == nil {
-		cache = &orderedCache[V]{}
-		pool.ordered[int(r.nodeID)] = cache
+		cache = &valueBitmapCache[V]{}
+		node.ordered = cache
 	}
-	hasValue := value != nil
-	for i := range cache.entries {
-		cached := &cache.entries[i]
-		if cached.initialized && cached.hasValue == hasValue && (!hasValue || r.compare(cached.value, *value) == 0) {
-			dst.Or(cached.bits)
-			return
-		}
+	if bits, found := comparedValueCacheLookup(cache, value, r.compare); found {
+		dst.Or(bits)
+		return
 	}
 
-	cached := &cache.entries[cache.next]
-	cache.next = (cache.next + 1) % uint8(len(cache.entries))
-	if cached.bits == nil {
-		cached.bits = roaring.New()
-	} else {
-		cached.bits.Clear()
-	}
-	r.addMatches(value, cached.bits)
-	cached.initialized = true
-	cached.hasValue = hasValue
-	if hasValue {
-		cached.value = *value
-	}
-	dst.Or(cached.bits)
+	bits := cache.replace(value)
+	r.addMatches(value, bits)
+	dst.Or(bits)
 }
 
 func (r *orderedRule[T, V]) addMatches(value *V, dst *roaring.Bitmap) {

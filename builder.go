@@ -150,6 +150,15 @@ func (local *Local[C, ID]) Search(value C, dst *[]ID) {
 	local.index.search(value, dst, local.pool)
 }
 
+// Visit calls yield for matching IDs while reusing this Local's cached state.
+// A nil yield function is a no-op.
+func (local *Local[C, ID]) Visit(value C, yield func(ID) bool) {
+	if yield == nil {
+		return
+	}
+	visitMatches(local.index.root, local.index.values, local.pool, value, yield)
+}
+
 // Visit calls yield once for each unique matching ID in first-match order.
 // Iteration stops immediately when yield returns false. A nil yield function is
 // a no-op.

@@ -217,6 +217,9 @@ for value := range values {
 
 A local search context is not safe for concurrent use. Create one per goroutine.
 The index itself and its regular `Search` method remain safe for concurrent use.
+`Local.Visit` provides the same caching for streaming result iteration.
+Each caching filter retains up to two intermediate bitmaps until its `Local`
+becomes unreachable.
 
 `Visit` avoids collecting results and supports early termination:
 

@@ -85,15 +85,16 @@ func (r *betweenRule[T, V]) cardinality(v T, pool *bitmapPool) uint64 {
 }
 func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	from, until := r.from.get(v), r.until.get(v)
-	if pool.between == nil {
+	if pool.local == nil {
 		r.searchUncached(v, dst, pool)
 		return
 	}
 
-	cache, _ := pool.between[int(r.nodeID)].(*betweenCache[V])
+	node := &pool.local[int(r.nodeID)]
+	cache, _ := node.between.(*betweenCache[V])
 	if cache == nil {
 		cache = &betweenCache[V]{}
-		pool.between[int(r.nodeID)] = cache
+		node.between = cache
 	}
 	hasFrom, hasUntil := from != nil, until != nil
 	for i := range cache.entries {
