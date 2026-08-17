@@ -2,136 +2,101 @@ package ruleix
 
 import "github.com/RoaringBitmap/roaring/v2"
 
-// CompareBy evaluates the operator stored in each inserted rule against the
-// concrete value supplied to Search. Search-side operator text is ignored. A
-// nil stored value is a wildcard and its operator is not validated. Build
-// returns an error when a non-wildcard rule contains an unsupported operator.
+// CompareBy applies the operator supplied by a search value to all stored
+// values. The operator of an inserted constraint is ignored. A nil search
+// operator disables this filter, while a nil stored value is a wildcard.
+// When the search operator is non-nil, a nil search value matches only stored
+// wildcards.
 //
-// For example, a stored pair {Operator: ">=", Orders: 5} matches a query with
-// Orders equal to 7:
+// For example, a stored value of 5 matches a query with OperatorGTE and a
+// value of 7:
 //
 //	ruleix.CompareBy(
-//		func(c Constraint) string { return c.Operator },
 //		func(c Constraint) *int { return c.Orders },
+//		func(c Constraint) *ruleix.Operator { return c.Operator },
 //		cmp.Compare[int],
 //	)
 func CompareBy[T any, V any](
-	operator func(T) string,
 	value func(T) *V,
+	operator func(T) *Operator,
 	compare Compare[V],
 ) Rule[T] {
 	return &compareByRule[T, V]{
-		operator: operator,
 		value:    value,
+		operator: operator,
 		compare:  compare,
 	}
 }
 
 type compareByRule[T any, V any] struct {
 	nodeID   nodeID
-	operator func(T) string
 	value    func(T) *V
+	operator func(T) *Operator
 	compare  Compare[V]
+	all      *roaring.Bitmap
 	wildcard *roaring.Bitmap
-	eq       orderedIndex[V]
-	lt       orderedIndex[V]
-	lte      orderedIndex[V]
-	gt       orderedIndex[V]
-	gte      orderedIndex[V]
+	index    orderedIndex[V]
 }
 
 func (*compareByRule[T, V]) rule() {}
 func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
-	hint := hints.node(id).compareBy
 	return &compareByRule[T, V]{
-		nodeID: id, operator: r.operator, value: r.value, compare: r.compare,
-		wildcard: roaring.New(), eq: newOrderedIndexWithHint(r.compare, hint[0]), lt: newOrderedIndexWithHint(r.compare, hint[1]),
-		lte: newOrderedIndexWithHint(r.compare, hint[2]), gt: newOrderedIndexWithHint(r.compare, hint[3]), gte: newOrderedIndexWithHint(r.compare, hint[4]),
+		nodeID:   id,
+		value:    r.value,
+		operator: r.operator,
+		compare:  r.compare,
+		all:      roaring.New(),
+		wildcard: roaring.New(),
+		index:    newOrderedIndexWithHint(r.compare, hints.node(id).compareBy),
 	}
 }
-func (r *compareByRule[T, V]) validate(v T) error {
-	if r.value(v) == nil {
-		return nil
-	}
-	_, err := ParseOperator(r.operator(v))
-	return err
-}
+func (*compareByRule[T, V]) validate(T) error { return nil }
 func (r *compareByRule[T, V]) insert(v T, id uint32) {
+	r.all.Add(id)
 	value := r.value(v)
 	if value == nil {
 		r.wildcard.Add(id)
 		return
 	}
-	op, _ := ParseOperator(r.operator(v))
-	switch op {
-	case OperatorEQ:
-		r.eq.insert(*value, id)
-	case OperatorLT:
-		r.lt.insert(*value, id)
-	case OperatorLTE:
-		r.lte.insert(*value, id)
-	case OperatorGT:
-		r.gt.insert(*value, id)
-	case OperatorGTE:
-		r.gte.insert(*value, id)
-	}
+	r.index.insert(*value, id)
 }
-func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
+func (r *compareByRule[T, V]) cardinality(v T, pool *bitmapPool) uint64 {
+	return measuredCardinality[T](r, v, pool)
+}
+func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool) {
+	operator := r.operator(v)
+	if operator == nil {
+		dst.Or(r.all)
+		return
+	}
+
+	dst.Or(r.wildcard)
 	value := r.value(v)
-	visit(r.wildcard)
 	if value == nil {
 		return
 	}
-	if bits := r.eq.exact(*value); bits != nil {
-		visit(bits)
-	}
-	// query < stored / query <= stored
-	r.lt.walk(*value, true, false, visit)
-	r.lte.walk(*value, true, true, visit)
-	// query > stored / query >= stored
-	r.gt.walk(*value, false, false, visit)
-	r.gte.walk(*value, false, true, visit)
-}
-func (r *compareByRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
-	var n uint64
-	r.each(v, func(bits *roaring.Bitmap) { n += bits.GetCardinality() })
-	return n
-}
-func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	value := r.value(v)
-	if pool.local == nil {
-		r.addMatches(v, dst)
-		return
-	}
 
-	node := &pool.local[int(r.nodeID)]
-	cache, _ := node.compareBy.(*valueBitmapCache[V])
-	if cache == nil {
-		cache = &valueBitmapCache[V]{}
-		node.compareBy = cache
+	switch *operator {
+	case OperatorEQ:
+		if bits := r.index.exact(*value); bits != nil {
+			dst.Or(bits)
+		}
+	case OperatorLT:
+		// query < stored
+		r.index.walk(*value, true, false, dst.Or)
+	case OperatorLTE:
+		// query <= stored
+		r.index.walk(*value, true, true, dst.Or)
+	case OperatorGT:
+		// query > stored
+		r.index.walk(*value, false, false, dst.Or)
+	case OperatorGTE:
+		// query >= stored
+		r.index.walk(*value, false, true, dst.Or)
 	}
-	if bits, found := comparedValueCacheLookup(cache, value, r.compare); found {
-		dst.Or(bits)
-		return
-	}
-
-	bits := cache.replace(value)
-	r.addMatches(v, bits)
-	dst.Or(bits)
-}
-
-func (r *compareByRule[T, V]) addMatches(v T, dst *roaring.Bitmap) {
-	r.each(v, dst.Or)
 }
 func (*compareByRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
 func (r *compareByRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
-	statistics := &stats[r.nodeID]
-	statistics.compareBy = [5]orderedBuildStatistics{
-		r.eq.buildStatistics(),
-		r.lt.buildStatistics(),
-		r.lte.buildStatistics(),
-		r.gt.buildStatistics(),
-		r.gte.buildStatistics(),
-	}
+	stats[r.nodeID].compareBy = r.index.buildStatistics()
 }

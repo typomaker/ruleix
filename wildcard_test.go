@@ -4,12 +4,12 @@ import (
 	"cmp"
 	"testing"
 
-	"github.com/typomaker/ruleix"
 	"github.com/stretchr/testify/require"
+	"github.com/typomaker/ruleix"
 )
 
 type wildcardValue struct {
-	operator string
+	operator *ruleix.Operator
 	value    *int
 }
 
@@ -86,16 +86,18 @@ func TestOrderedRulesHonorStrictness(t *testing.T) {
 
 func TestCompareBySupportsWildcard(t *testing.T) {
 	schema := ruleix.CompareBy(
-		func(v wildcardValue) string { return v.operator },
 		func(v wildcardValue) *int { return v.value },
+		func(v wildcardValue) *ruleix.Operator { return v.operator },
 		cmp.Compare[int],
 	)
+	invalid := ruleix.Operator(255)
 	ix := buildZip(t, schema,
-		[]wildcardValue{{operator: "invalid"}, {operator: ">=", value: ptr(5)}, {operator: "<=", value: ptr(5)}},
+		[]wildcardValue{{operator: &invalid}, {value: ptr(5)}, {value: ptr(15)}},
 		[]string{"wildcard", "match", "different"})
 
-	require.Equal(t, []string{"wildcard", "match"}, search(ix, wildcardValue{value: ptr(10)}))
-	require.Equal(t, []string{"wildcard"}, search(ix, wildcardValue{}))
+	require.Equal(t, []string{"wildcard", "match"}, search(ix, wildcardValue{operator: ptr(ruleix.OperatorGTE), value: ptr(10)}))
+	require.Equal(t, []string{"wildcard"}, search(ix, wildcardValue{operator: ptr(ruleix.OperatorGTE)}))
+	require.Equal(t, []string{"wildcard", "match", "different"}, search(ix, wildcardValue{}))
 }
 
 type wildcardInterval struct {

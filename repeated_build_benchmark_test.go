@@ -2,7 +2,6 @@ package ruleix
 
 import (
 	"cmp"
-	"fmt"
 	"runtime"
 	"testing"
 )
@@ -185,43 +184,5 @@ func BenchmarkRepeatedBuildMemory(b *testing.B) {
 			b.ReportMetric(float64(peakTotal)/float64(b.N), "peak-live-bytes/op")
 			b.ReportMetric(float64(retainedTotal)/float64(b.N), "retained-bytes/op")
 		})
-	}
-}
-
-func BenchmarkRepeatedBuildAfterError(b *testing.B) {
-	valid := makeRepeatedBuildData(repeatedBuildEntries, 10, false, false)
-	invalid := makeRepeatedBuildData(repeatedBuildEntries/2, 10, false, false)
-	invalid.constraints[len(invalid.constraints)/2].ordered = nil
-	badSchema := All(
-		Include(func(value repeatedBuildConstraint) *int { return value.equality }),
-		CompareBy(func(value repeatedBuildConstraint) string {
-			if value.ordered == nil {
-				return "invalid"
-			}
-			return ">="
-		}, func(value repeatedBuildConstraint) *int {
-			if value.ordered == nil {
-				zero := 0
-				return &zero
-			}
-			return value.ordered
-		}, cmp.Compare[int]),
-	)
-	b.ReportAllocs()
-	for range b.N {
-		var history buildStatistics
-		if _, err := runRepeatedBuild(badSchema, valid, repeatedBuildPerNode, &history); err != nil {
-			b.Fatal(err)
-		}
-		before := history
-		if _, err := runRepeatedBuild(badSchema, invalid, repeatedBuildPerNode, &history); err == nil {
-			b.Fatal("invalid build succeeded")
-		}
-		if fmt.Sprint(history) != fmt.Sprint(before) {
-			b.Fatal("failed build changed hints")
-		}
-		if _, err := runRepeatedBuild(badSchema, valid, repeatedBuildPerNode, &history); err != nil {
-			b.Fatal(err)
-		}
 	}
 }

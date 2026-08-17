@@ -24,7 +24,7 @@ type benchmarkEquality struct {
 	required int
 }
 type benchmarkRange struct {
-	operator string
+	operator *ruleix.Operator
 	value    *int
 }
 type benchmarkInterval struct{ from, until *int }
@@ -177,19 +177,15 @@ func benchmarkOrderedIndex(b *testing.B, kind string) *ruleix.Index[benchmarkRan
 		schema = ruleix.LessOrEqual(func(v benchmarkRange) *int { return v.value }, cmp.Compare[int])
 	case "CompareBy":
 		schema = ruleix.CompareBy(
-			func(v benchmarkRange) string { return v.operator },
 			func(v benchmarkRange) *int { return v.value },
+			func(v benchmarkRange) *ruleix.Operator { return v.operator },
 			cmp.Compare[int],
 		)
 	default:
 		b.Fatalf("unknown ordered benchmark %q", kind)
 	}
 	return buildGenerated(b, schema, benchmarkEntries, func(n int) (benchmarkRange, int) {
-		operator := ">="
-		if n%2 == 1 {
-			operator = "<="
-		}
-		return benchmarkRange{operator: operator, value: benchmarkPtr(n)}, n
+		return benchmarkRange{value: benchmarkPtr(n)}, n
 	})
 }
 
@@ -202,7 +198,7 @@ func BenchmarkOrdered(b *testing.B) {
 		for _, position := range positions {
 			b.Run(kind+"/"+position.name, func(b *testing.B) {
 				ix := benchmarkOrderedIndex(b, kind)
-				query := benchmarkRange{value: benchmarkPtr(position.value)}
+				query := benchmarkRange{operator: ptr(ruleix.OperatorGTE), value: benchmarkPtr(position.value)}
 				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -461,8 +457,8 @@ func BenchmarkFilterWildcard(b *testing.B) {
 		{"GTE", ruleix.GreaterOrEqual(func(v benchmarkRange) *int { return v.value }, cmp.Compare[int])},
 		{"LTE", ruleix.LessOrEqual(func(v benchmarkRange) *int { return v.value }, cmp.Compare[int])},
 		{"CompareBy", ruleix.CompareBy(
-			func(v benchmarkRange) string { return v.operator },
 			func(v benchmarkRange) *int { return v.value },
+			func(v benchmarkRange) *ruleix.Operator { return v.operator },
 			cmp.Compare[int],
 		)},
 		{"Not", ruleix.Exclude(func(v benchmarkRange) *int { return v.value })},
@@ -471,7 +467,8 @@ func BenchmarkFilterWildcard(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			ix := buildGenerated(b, tt.schema, benchmarkEntries,
 				func(n int) (benchmarkRange, int) { return benchmarkRange{}, n })
-			query := benchmarkRange{value: benchmarkPtr(42)}
+			op := ruleix.OperatorGTE
+			query := benchmarkRange{operator: &op, value: benchmarkPtr(42)}
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {

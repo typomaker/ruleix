@@ -5,26 +5,26 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/typomaker/ruleix"
 	"github.com/stretchr/testify/require"
+	"github.com/typomaker/ruleix"
 )
 
 type differentialComparison struct {
-	operator string
+	operator *ruleix.Operator
 	value    int
 }
 
-func comparisonMatches(operator string, stored, query int) bool {
+func comparisonMatches(operator ruleix.Operator, stored, query int) bool {
 	switch operator {
-	case "=":
+	case ruleix.OperatorEQ:
 		return query == stored
-	case "<":
+	case ruleix.OperatorLT:
 		return query < stored
-	case "<=":
+	case ruleix.OperatorLTE:
 		return query <= stored
-	case ">":
+	case ruleix.OperatorGT:
 		return query > stored
-	case ">=":
+	case ruleix.OperatorGTE:
 		return query >= stored
 	default:
 		panic("invalid test operator")
@@ -32,33 +32,32 @@ func comparisonMatches(operator string, stored, query int) bool {
 }
 
 func TestCompareByMatchesScanningReferenceAcrossBlocks(t *testing.T) {
-	operators := []string{"=", "<", "<=", ">", ">="}
+	operators := []ruleix.Operator{ruleix.OperatorEQ, ruleix.OperatorLT, ruleix.OperatorLTE, ruleix.OperatorGT, ruleix.OperatorGTE}
 	rng := rand.New(rand.NewSource(1))
 	comparisonSchema := ruleix.CompareBy(
-		func(v differentialComparison) string { return v.operator },
 		func(v differentialComparison) *int { return &v.value },
+		func(v differentialComparison) *ruleix.Operator { return v.operator },
 		cmp.Compare[int],
 	)
 	stored := make([]differentialComparison, 2_000)
 	ids := make([]int, len(stored))
 	for id := range stored {
-		stored[id] = differentialComparison{
-			operator: operators[id%len(operators)],
-			value:    rng.Intn(800) - 400,
-		}
+		stored[id] = differentialComparison{value: rng.Intn(800) - 400}
 		ids[id] = id
 	}
 	ix := buildZip(t, comparisonSchema, stored, ids)
 
-	for query := -450; query <= 450; query += 7 {
-		var want []int
-		for id, rule := range stored {
-			if comparisonMatches(rule.operator, rule.value, query) {
-				want = append(want, id)
+	for _, operator := range operators {
+		for query := -450; query <= 450; query += 7 {
+			var want []int
+			for id, rule := range stored {
+				if comparisonMatches(operator, rule.value, query) {
+					want = append(want, id)
+				}
 			}
+			got := search(ix, differentialComparison{operator: &operator, value: query})
+			require.Equal(t, want, got, "operator %d query %d", operator, query)
 		}
-		got := search(ix, differentialComparison{value: query})
-		require.Equal(t, want, got, "query %d", query)
 	}
 }
 

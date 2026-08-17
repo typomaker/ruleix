@@ -20,7 +20,7 @@ type timeRange struct {
 }
 
 type orderCountRule struct {
-	operator string
+	operator *ruleix.Operator
 	value    *int
 }
 
@@ -33,15 +33,13 @@ func main() {
 			time.Time.Compare,
 		),
 		ruleix.CompareBy(
-			func(c constraint) string {
-				if c.orderCount == nil {
-					return ""
-				}
-				return c.orderCount.operator
-			},
 			ruleix.Path(
 				func(c constraint) *orderCountRule { return c.orderCount },
 				func(r orderCountRule) *int { return r.value },
+			),
+			ruleix.Path(
+				func(c constraint) *orderCountRule { return c.orderCount },
+				func(r orderCountRule) *ruleix.Operator { return r.operator },
 			),
 			cmp.Compare[int],
 		),
@@ -53,7 +51,7 @@ func main() {
 	constraints := []constraint{
 		{
 			active:     &timeRange{from: &start, until: &end},
-			orderCount: &orderCountRule{operator: ">", value: &ten},
+			orderCount: &orderCountRule{value: &ten},
 		},
 		{},
 	}
@@ -68,9 +66,10 @@ func main() {
 	queryFrom := start.Add(7 * 24 * time.Hour)
 	queryUntil := start.Add(14 * 24 * time.Hour)
 	eleven := 11
+	operator := ruleix.OperatorGT
 	query := constraint{
 		active:     &timeRange{from: &queryFrom, until: &queryUntil},
-		orderCount: &orderCountRule{value: &eleven},
+		orderCount: &orderCountRule{operator: &operator, value: &eleven},
 	}
 
 	var matches []string

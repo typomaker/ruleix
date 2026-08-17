@@ -42,7 +42,7 @@ type nodeBuildStatistics struct {
 	ordered        orderedBuildStatistics
 	betweenIDs     int
 	between        [2]orderedBuildStatistics
-	compareBy      [5]orderedBuildStatistics
+	compareBy      orderedBuildStatistics
 }
 
 type buildStatistics struct {

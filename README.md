@@ -125,8 +125,8 @@ A runnable version is available in
 
 There is also an example combining an interval with a strict `>` comparison in
 [`examples/between_and_gt`](examples/between_and_gt). It uses `CompareBy`
-because the operator is part of each stored rule; for a fixed operator, use
-`Greater` or `Less` directly.
+to choose the comparison operator from each search value; for a fixed operator,
+use `Greater` or `Less` directly.
 
 ## Filters
 
@@ -139,7 +139,7 @@ because the operator is part of each stored rule; for a fixed operator, use
 | `Greater` | query value is greater than the stored value |
 | `Less` | query value is less than the stored value |
 | `Between` | the query interval is fully covered by the stored interval |
-| `CompareBy` | the operator stored in the rule evaluates to true |
+| `CompareBy` | the operator selected by the query evaluates to true |
 | `Path` / `Path3`–`Path5` | compose getters to access a nested property |
 | `All` | every child rule matches |
 
@@ -153,9 +153,13 @@ In a search value, `nil` only matches stored wildcards. For `Exclude`, a stored
 stored.from <= query.from AND query.until <= stored.until
 ```
 
-`CompareBy` supports `=`, `<`, `<=`, `>`, and `>=`. The operator belongs to the
-stored rule; operator text in the search value is ignored. `Build` rejects an
-invalid operator without returning a partially built index.
+`CompareBy` supports the typed `OperatorEQ`, `OperatorLT`, `OperatorLTE`,
+`OperatorGT`, and `OperatorGTE` constants. Its value accessor is used for both
+stored constraints and queries, while its operator accessor is used only for
+queries. An operator present in a stored constraint is ignored. A nil query
+operator disables the filter and matches all stored constraints; with a
+non-nil operator, a nil query value matches only stored wildcards. Both
+accessors return pointers and can be composed with `Path`.
 
 `Path` composes pointer getters and propagates `nil`, so the concrete filter
 keeps control of wildcard behavior. Calls can be nested to traverse any depth:
