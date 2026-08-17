@@ -7,6 +7,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-17
+
 ### Fixed
 
 - `CompareBy` once again evaluates the operator stored in each indexed
@@ -106,7 +108,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/typomaker/ruleix/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/typomaker/ruleix/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/typomaker/ruleix/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/typomaker/ruleix/compare/v0.2.0...v0.2.1
