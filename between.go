@@ -230,22 +230,3 @@ func (r *betweenRule[T, V]) matchesUntil(id uint32, query *V) bool {
 	}
 	return state.wildcard || state.set && r.compare(*query, state.value) <= 0
 }
-
-// BetweenConstraint applies Between to two fields of an optional nested
-// interval. A nil interval is propagated to both bounds as a wildcard.
-//
-// For example:
-//
-//	ruleix.BetweenConstraint(
-//		func(c Constraint) *Window { return c.Validity },
-//		func(w Window) *time.Time { return w.From },
-//		func(w Window) *time.Time { return w.Until },
-//		time.Time.Compare,
-//	)
-func BetweenConstraint[T any, R any, V any](
-	get func(T) *R,
-	from, until func(R) *V,
-	compare Compare[V],
-) Rule[T] {
-	return Between(Path(get, from), Path(get, until), compare)
-}

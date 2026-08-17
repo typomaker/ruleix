@@ -75,10 +75,15 @@ func compareVersion(a, b SemanticVersion) int {
 
 func schema() ruleix.Rule[Constraint] {
 	return ruleix.All(
-		ruleix.BetweenConstraint(
-			func(c Constraint) *TimeRange { return c.Activity },
-			func(r TimeRange) *time.Time { return &r.Since },
-			func(r TimeRange) *time.Time { return &r.Until },
+		ruleix.Between(
+			ruleix.Path(
+				func(c Constraint) *TimeRange { return c.Activity },
+				func(r TimeRange) *time.Time { return &r.Since },
+			),
+			ruleix.Path(
+				func(c Constraint) *TimeRange { return c.Activity },
+				func(r TimeRange) *time.Time { return &r.Until },
+			),
 			compareTime,
 		),
 		ruleix.CompareBy(
@@ -199,10 +204,15 @@ func TestCompareByIgnoresInsertedOperator(t *testing.T) {
 func TestBetweenAndPathWildcard(t *testing.T) {
 	t0 := time.Unix(0, 0)
 	t1, t2, t3 := t0.Add(time.Hour), t0.Add(2*time.Hour), t0.Add(3*time.Hour)
-	intervalSchema := ruleix.BetweenConstraint(
-		func(c Constraint) *TimeRange { return c.Activity },
-		func(r TimeRange) *time.Time { return &r.Since },
-		func(r TimeRange) *time.Time { return &r.Until },
+	intervalSchema := ruleix.Between(
+		ruleix.Path(
+			func(c Constraint) *TimeRange { return c.Activity },
+			func(r TimeRange) *time.Time { return &r.Since },
+		),
+		ruleix.Path(
+			func(c Constraint) *TimeRange { return c.Activity },
+			func(r TimeRange) *time.Time { return &r.Until },
+		),
 		compareTime,
 	)
 	ix := buildZip(t, intervalSchema,

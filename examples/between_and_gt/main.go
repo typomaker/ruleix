@@ -26,10 +26,15 @@ type orderCountRule struct {
 
 func main() {
 	schema := ruleix.All(
-		ruleix.BetweenConstraint(
-			func(c constraint) *timeRange { return c.active },
-			func(r timeRange) *time.Time { return r.from },
-			func(r timeRange) *time.Time { return r.until },
+		ruleix.Between(
+			ruleix.Path(
+				func(c constraint) *timeRange { return c.active },
+				func(r timeRange) *time.Time { return r.from },
+			),
+			ruleix.Path(
+				func(c constraint) *timeRange { return c.active },
+				func(r timeRange) *time.Time { return r.until },
+			),
 			time.Time.Compare,
 		),
 		ruleix.CompareBy(
