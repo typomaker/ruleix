@@ -7,6 +7,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-17
+
+### Changed
+
+- `CompareBy` now selects a typed comparison operator from the search value
+  instead of parsing an operator stored in every indexed constraint.
+- `CompareBy` stores all concrete values in one ordered index. A nil query
+  operator disables the filter, while nil stored values remain wildcards.
+- `CompareBy` value and operator accessors now both return pointers and can be
+  composed with `Path`.
+
+### Removed
+
+- `ParseOperator` and string-based operators in favor of the `OperatorEQ`,
+  `OperatorLT`, `OperatorLTE`, `OperatorGT`, and `OperatorGTE` constants.
+- The redundant `BetweenConstraint` helper; nested intervals can be expressed
+  directly with `Between` and `Path`.
+- The obsolete benchmark baseline document.
+
 ## [0.3.0] - 2026-08-17
 
 ### Changed
@@ -82,7 +101,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/typomaker/ruleix/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/typomaker/ruleix/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/typomaker/ruleix/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/typomaker/ruleix/compare/v0.1.0...v0.2.0
