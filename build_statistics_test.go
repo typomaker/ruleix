@@ -67,6 +67,7 @@ type statisticsConstraint struct {
 	from     *int
 	until    *int
 	compared *int
+	operator *Operator
 }
 
 func statisticsPtr[T any](value T) *T { return &value }
@@ -84,7 +85,7 @@ func TestBuildCollectsCompactPerNodeStatistics(t *testing.T) {
 		),
 		CompareBy(
 			func(v statisticsConstraint) *int { return v.compared },
-			func(statisticsConstraint) *Operator { return nil },
+			func(v statisticsConstraint) *Operator { return v.operator },
 			compare,
 		),
 	)
@@ -94,11 +95,11 @@ func TestBuildCollectsCompactPerNodeStatistics(t *testing.T) {
 			constraint statisticsConstraint
 			id         string
 		}{
-			{statisticsConstraint{statisticsPtr("a"), statisticsPtr(1), statisticsPtr(10), statisticsPtr(20), statisticsPtr(100)}, "first"},
-			{statisticsConstraint{statisticsPtr("b"), statisticsPtr(2), statisticsPtr(11), statisticsPtr(21), statisticsPtr(101)}, "second"},
-			{statisticsConstraint{statisticsPtr("a"), statisticsPtr(2), statisticsPtr(10), statisticsPtr(22), statisticsPtr(102)}, "first"},
-			{statisticsConstraint{nil, nil, nil, statisticsPtr(22), statisticsPtr(103)}, "third"},
-			{statisticsConstraint{nil, statisticsPtr(3), statisticsPtr(12), nil, statisticsPtr(104)}, "fourth"},
+			{statisticsConstraint{statisticsPtr("a"), statisticsPtr(1), statisticsPtr(10), statisticsPtr(20), statisticsPtr(100), statisticsPtr(OperatorEQ)}, "first"},
+			{statisticsConstraint{statisticsPtr("b"), statisticsPtr(2), statisticsPtr(11), statisticsPtr(21), statisticsPtr(101), statisticsPtr(OperatorLT)}, "second"},
+			{statisticsConstraint{statisticsPtr("a"), statisticsPtr(2), statisticsPtr(10), statisticsPtr(22), statisticsPtr(102), statisticsPtr(OperatorLTE)}, "first"},
+			{statisticsConstraint{nil, nil, nil, statisticsPtr(22), statisticsPtr(103), statisticsPtr(OperatorGT)}, "third"},
+			{statisticsConstraint{nil, statisticsPtr(3), statisticsPtr(12), nil, statisticsPtr(104), statisticsPtr(OperatorGTE)}, "fourth"},
 		}
 		for _, entry := range values {
 			if !yield(entry.constraint, entry.id) {
@@ -121,5 +122,5 @@ func TestBuildCollectsCompactPerNodeStatistics(t *testing.T) {
 		{uniqueValues: 3, blocks: 1},
 		{uniqueValues: 3, blocks: 1},
 	}, statistics.nodes[3].between)
-	require.Equal(t, orderedBuildStatistics{uniqueValues: 5, blocks: 1}, statistics.nodes[4].compareBy)
+	require.Equal(t, [5]orderedBuildStatistics{{1, 1}, {1, 1}, {1, 1}, {1, 1}, {1, 1}}, statistics.nodes[4].compareBy)
 }

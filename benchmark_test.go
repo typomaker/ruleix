@@ -185,7 +185,7 @@ func benchmarkOrderedIndex(b *testing.B, kind string) *ruleix.Index[benchmarkRan
 		b.Fatalf("unknown ordered benchmark %q", kind)
 	}
 	return buildGenerated(b, schema, benchmarkEntries, func(n int) (benchmarkRange, int) {
-		return benchmarkRange{value: benchmarkPtr(n)}, n
+		return benchmarkRange{operator: ptr(ruleix.OperatorGTE), value: benchmarkPtr(n)}, n
 	})
 }
 

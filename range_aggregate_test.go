@@ -42,22 +42,20 @@ func TestCompareByMatchesScanningReferenceAcrossBlocks(t *testing.T) {
 	stored := make([]differentialComparison, 2_000)
 	ids := make([]int, len(stored))
 	for id := range stored {
-		stored[id] = differentialComparison{value: rng.Intn(800) - 400}
+		stored[id] = differentialComparison{operator: &operators[rng.Intn(len(operators))], value: rng.Intn(800) - 400}
 		ids[id] = id
 	}
 	ix := buildZip(t, comparisonSchema, stored, ids)
 
-	for _, operator := range operators {
-		for query := -450; query <= 450; query += 7 {
-			var want []int
-			for id, rule := range stored {
-				if comparisonMatches(operator, rule.value, query) {
-					want = append(want, id)
-				}
+	for query := -450; query <= 450; query += 7 {
+		var want []int
+		for id, rule := range stored {
+			if comparisonMatches(*rule.operator, rule.value, query) {
+				want = append(want, id)
 			}
-			got := search(ix, differentialComparison{operator: &operator, value: query})
-			require.Equal(t, want, got, "operator %d query %d", operator, query)
 		}
+		got := search(ix, differentialComparison{operator: ptr(ruleix.OperatorEQ), value: query})
+		require.Equal(t, want, got, "query %d", query)
 	}
 }
 

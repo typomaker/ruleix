@@ -1,8 +1,8 @@
 package ruleix
 
-// Operator identifies a comparison selected by a CompareBy search value. The
-// comparison is written from the query's perspective: OperatorGTE means
-// query >= stored.
+// Operator identifies a comparison stored in a CompareBy constraint. The
+// comparison is written from the query's perspective: OperatorGTE means query
+// >= stored.
 type Operator uint8
 
 const (

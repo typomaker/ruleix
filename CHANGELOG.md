@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- `CompareBy` once again evaluates the operator stored in each indexed
+  constraint. Query-side operators are ignored.
+
 ## [0.4.0] - 2026-08-17
 
 ### Changed

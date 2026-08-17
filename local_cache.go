@@ -5,6 +5,7 @@ import "github.com/RoaringBitmap/roaring/v2"
 type localNodeCache struct {
 	equality  any
 	ordered   any
+	compareBy any
 	between   any
 	exclusion any
 }

@@ -53,10 +53,11 @@ func main() {
 	start := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(30 * 24 * time.Hour)
 	ten := 10
+	greater := ruleix.OperatorGT
 	constraints := []constraint{
 		{
 			active:     &timeRange{from: &start, until: &end},
-			orderCount: &orderCountRule{value: &ten},
+			orderCount: &orderCountRule{operator: &greater, value: &ten},
 		},
 		{},
 	}
@@ -71,10 +72,9 @@ func main() {
 	queryFrom := start.Add(7 * 24 * time.Hour)
 	queryUntil := start.Add(14 * 24 * time.Hour)
 	eleven := 11
-	operator := ruleix.OperatorGT
 	query := constraint{
 		active:     &timeRange{from: &queryFrom, until: &queryUntil},
-		orderCount: &orderCountRule{operator: &operator, value: &eleven},
+		orderCount: &orderCountRule{value: &eleven},
 	}
 
 	var matches []string

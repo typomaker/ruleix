@@ -140,9 +140,9 @@ func TestCompleteConstraint(t *testing.T) {
 	}{
 		{Constraint{
 			Activity:           &TimeRange{t0, t3},
-			CustomerOrderCount: &CustomerOrderCount{Total: 10},
+			CustomerOrderCount: &CustomerOrderCount{Operator: ptr(ruleix.OperatorGTE), Total: 10},
 			StoreUUID:          ptr(StoreUUID("store-1")),
-			Platform:           &Platform{Name: "ios", Version: &Version{Major: 2}},
+			Platform:           &Platform{Name: "ios", Version: &Version{Operator: ptr(ruleix.OperatorGTE), Major: 2}},
 			ABTest:             &ABTest{Label: "checkout", Group: "b"},
 		}, "specific"},
 		{Constraint{}, "wildcard"},
@@ -172,33 +172,26 @@ func TestCompareByAllOperators(t *testing.T) {
 		func(c CustomerOrderCount) *ruleix.Operator { return c.Operator },
 		cmp.Compare[int],
 	)
-	ix := buildZip(t, comparisonSchema,
-		[]CustomerOrderCount{{Total: 9}, {Total: 10}, {Total: 11}},
-		[]string{"nine", "ten", "eleven"})
+	ix := buildZip(t, comparisonSchema, []CustomerOrderCount{
+		{Operator: ptr(ruleix.OperatorGTE), Total: 10},
+		{Operator: ptr(ruleix.OperatorLTE), Total: 20},
+		{Operator: ptr(ruleix.OperatorEQ), Total: 15},
+		{Operator: ptr(ruleix.OperatorLT), Total: 15},
+		{Operator: ptr(ruleix.OperatorGT), Total: 15},
+	}, []string{"gte", "lte", "eq", "lt", "gt"})
 
-	tests := []struct {
-		operator ruleix.Operator
-		want     []string
-	}{
-		{ruleix.OperatorEQ, []string{"ten"}},
-		{ruleix.OperatorLT, []string{"eleven"}},
-		{ruleix.OperatorLTE, []string{"ten", "eleven"}},
-		{ruleix.OperatorGT, []string{"nine"}},
-		{ruleix.OperatorGTE, []string{"nine", "ten"}},
-	}
-	for _, tt := range tests {
-		require.Equal(t, tt.want, search(ix, CustomerOrderCount{Operator: &tt.operator, Total: 10}))
-	}
+	require.Equal(t, []string{"gte", "lte", "eq"}, search(ix, CustomerOrderCount{Total: 15}))
+	require.Equal(t, []string{"gte", "lte", "eq"}, search(ix, CustomerOrderCount{Operator: ptr(ruleix.OperatorGT), Total: 15}), "query operator must be ignored")
 }
 
-func TestCompareByIgnoresInsertedOperator(t *testing.T) {
+func TestCompareByRejectsInvalidInsertedOperator(t *testing.T) {
 	invalid := ruleix.Operator(255)
-	ix := buildZip(t, ruleix.CompareBy(
+	_, err := ruleix.New[CustomerOrderCount, string](ruleix.CompareBy(
 		func(c CustomerOrderCount) *int { return &c.Total },
 		func(c CustomerOrderCount) *ruleix.Operator { return c.Operator },
 		cmp.Compare[int],
-	), []CustomerOrderCount{{Operator: &invalid, Total: 5}}, []string{"match"})
-	require.Equal(t, []string{"match"}, search(ix, CustomerOrderCount{Operator: ptr(ruleix.OperatorGTE), Total: 10}))
+	)).Build(ruleix.Zip([]CustomerOrderCount{{Operator: &invalid, Total: 5}}, []string{"invalid"}))
+	require.EqualError(t, err, "ruleix: entry 0: ruleix: unsupported operator 255")
 }
 
 func TestBetweenAndPathWildcard(t *testing.T) {
@@ -261,7 +254,7 @@ func TestConcurrentSearchAndBitmapReuse(t *testing.T) {
 	constraints := make([]CustomerOrderCount, 100)
 	ids := make([]int, 100)
 	for i := 0; i < 100; i++ {
-		constraints[i], ids[i] = CustomerOrderCount{Total: i}, i
+		constraints[i], ids[i] = CustomerOrderCount{Operator: ptr(ruleix.OperatorGTE), Total: i}, i
 	}
 	ix := buildZip(t, comparisonSchema, constraints, ids)
 	var wg sync.WaitGroup
@@ -312,7 +305,7 @@ func TestSearchDeduplicatesAcrossMatchingBranches(t *testing.T) {
 		cmp.Compare[int],
 	)
 	ix := buildZip(t, comparisonSchema,
-		[]CustomerOrderCount{{Total: 10}, {Total: 5}, {Total: 10}},
+		[]CustomerOrderCount{{Operator: ptr(ruleix.OperatorGTE), Total: 10}, {Operator: ptr(ruleix.OperatorGTE), Total: 5}, {Operator: ptr(ruleix.OperatorGTE), Total: 10}},
 		[]string{"duplicate", "duplicate", "last"})
 	require.Equal(t, []string{"duplicate", "last"}, search(ix, CustomerOrderCount{Operator: ptr(ruleix.OperatorGTE), Total: 10}))
 }
@@ -423,21 +416,21 @@ func TestLocalSearchCompareByMatchesIndexSearch(t *testing.T) {
 		cmp.Compare[int],
 	), []benchmarkRange{
 		{},
-		{value: ptr(10)},
-		{value: ptr(5)},
-		{value: ptr(15)},
+		{operator: ptr(ruleix.OperatorEQ), value: ptr(10)},
+		{operator: ptr(ruleix.OperatorGTE), value: ptr(5)},
+		{operator: ptr(ruleix.OperatorLTE), value: ptr(15)},
 	}, []string{"wildcard", "ten", "five", "fifteen"})
 	local := ix.Local()
 
 	var got []string
 	local.Search(benchmarkRange{operator: ptr(ruleix.OperatorGTE), value: ptr(10)}, &got)
-	require.Equal(t, []string{"wildcard", "ten", "five"}, got)
+	require.Equal(t, []string{"wildcard", "ten", "five", "fifteen"}, got)
 	local.Search(benchmarkRange{operator: ptr(ruleix.OperatorLTE), value: ptr(10)}, &got)
-	require.Equal(t, []string{"wildcard", "ten", "fifteen"}, got)
+	require.Equal(t, []string{"wildcard", "ten", "five", "fifteen"}, got)
 	local.Search(benchmarkRange{operator: ptr(ruleix.OperatorGTE)}, &got)
 	require.Equal(t, []string{"wildcard"}, got)
 	local.Search(benchmarkRange{}, &got)
-	require.Equal(t, []string{"wildcard", "ten", "five", "fifteen"}, got)
+	require.Equal(t, []string{"wildcard"}, got)
 }
 
 func TestLocalSearchCachesBetweenNodesWithoutChangingResults(t *testing.T) {
@@ -556,9 +549,9 @@ func TestLocalNestedAllMatchesIndexSearch(t *testing.T) {
 	)
 	ix := buildZip(t, schema, []mixed{
 		{},
-		{country: ptr("DE"), minimum: ptr(10), excluded: ptr("marketplace"), threshold: ptr(5)},
-		{country: ptr("DE"), minimum: ptr(20), excluded: ptr("retail"), threshold: ptr(30)},
-		{country: ptr("FR"), minimum: ptr(10), threshold: ptr(15)},
+		{country: ptr("DE"), minimum: ptr(10), excluded: ptr("marketplace"), operator: ptr(ruleix.OperatorGTE), threshold: ptr(5)},
+		{country: ptr("DE"), minimum: ptr(20), excluded: ptr("retail"), operator: ptr(ruleix.OperatorLTE), threshold: ptr(30)},
+		{country: ptr("FR"), minimum: ptr(10), operator: ptr(ruleix.OperatorEQ), threshold: ptr(15)},
 	}, []string{"global", "de-minimum", "de-upper", "fr-exact"})
 	queries := []mixed{
 		{country: ptr("DE"), minimum: ptr(15), excluded: ptr("web"), operator: ptr(ruleix.OperatorGTE), threshold: ptr(10)},

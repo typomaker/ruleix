@@ -92,12 +92,12 @@ func TestCompareBySupportsWildcard(t *testing.T) {
 	)
 	invalid := ruleix.Operator(255)
 	ix := buildZip(t, schema,
-		[]wildcardValue{{operator: &invalid}, {value: ptr(5)}, {value: ptr(15)}},
+		[]wildcardValue{{operator: &invalid}, {operator: ptr(ruleix.OperatorGTE), value: ptr(5)}, {operator: ptr(ruleix.OperatorGT), value: ptr(15)}},
 		[]string{"wildcard", "match", "different"})
 
 	require.Equal(t, []string{"wildcard", "match"}, search(ix, wildcardValue{operator: ptr(ruleix.OperatorGTE), value: ptr(10)}))
 	require.Equal(t, []string{"wildcard"}, search(ix, wildcardValue{operator: ptr(ruleix.OperatorGTE)}))
-	require.Equal(t, []string{"wildcard", "match", "different"}, search(ix, wildcardValue{}))
+	require.Equal(t, []string{"wildcard"}, search(ix, wildcardValue{}))
 }
 
 type wildcardInterval struct {

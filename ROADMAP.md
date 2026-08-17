@@ -11,7 +11,7 @@ cost, and expected usage are understood.
 
 Add `!=` support to `CompareBy` and consider a discoverable `NotEqual` filter.
 Although `Exclude` covers a single forbidden value, comparison-oriented schemas
-often expect the conventional set of query-side comparison operators to be
+often expect the conventional set of stored comparison operators to be
 complete.
 
 ### Set membership

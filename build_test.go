@@ -31,14 +31,14 @@ func TestBuilderCreatesIndependentIndexes(t *testing.T) {
 	builder := ruleix.New[buildConstraint, string](buildSchema())
 
 	firstEntries := ruleix.Zip(
-		[]buildConstraint{{value: 10}},
+		[]buildConstraint{{value: 10, operator: ptr(ruleix.OperatorGTE)}},
 		[]string{"first"},
 	)
 	first, err := builder.Build(firstEntries)
 	require.NoError(t, err)
 
 	secondEntries := ruleix.Zip(
-		[]buildConstraint{{value: 20}},
+		[]buildConstraint{{value: 20, operator: ptr(ruleix.OperatorGTE)}},
 		[]string{"second"},
 	)
 	second, err := builder.Build(secondEntries)
@@ -60,14 +60,14 @@ func TestSchemaBuildsIndependentIndexes(t *testing.T) {
 	)
 
 	firstEntries := ruleix.Zip(
-		[]buildConstraint{{value: 10}},
+		[]buildConstraint{{value: 10, operator: ptr(ruleix.OperatorEQ)}},
 		[]string{"first"},
 	)
 	first, err := ruleix.New[buildConstraint, string](schema).Build(firstEntries)
 	require.NoError(t, err)
 
 	secondEntries := ruleix.Zip(
-		[]buildConstraint{{value: 20}},
+		[]buildConstraint{{value: 20, operator: ptr(ruleix.OperatorEQ)}},
 		[]string{"second"},
 	)
 	second, err := ruleix.New[buildConstraint, string](schema).Build(secondEntries)
@@ -86,7 +86,7 @@ func TestSchemaBuildsIndependentIndexes(t *testing.T) {
 }
 
 func TestBuiltIndexSupportsConcurrentSearch(t *testing.T) {
-	entries := ruleix.Zip([]buildConstraint{{value: 10}}, []int{1})
+	entries := ruleix.Zip([]buildConstraint{{value: 10, operator: ptr(ruleix.OperatorGTE)}}, []int{1})
 	ix, err := ruleix.New[buildConstraint, int](buildSchema()).Build(entries)
 	require.NoError(t, err)
 
