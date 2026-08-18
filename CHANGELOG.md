@@ -7,6 +7,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-18
+
+### Added
+
+- CI linting with a pinned `golangci-lint` version and local `make` targets for
+  linting, testing, and combined checks.
+
+### Changed
+
+- Ranked scratch buffers now use pointer-backed pool entries, avoiding an
+  interface allocation when they are returned to `sync.Pool`.
+
+### Fixed
+
+- The bitmap pool test no longer assumes that `sync.Pool` must return the same
+  object, making race-detector runs stable across garbage collections and
+  scheduler migrations.
+
 ## [0.4.1] - 2026-08-17
 
 ### Fixed
@@ -108,7 +126,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/typomaker/ruleix/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/typomaker/ruleix/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/typomaker/ruleix/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/typomaker/ruleix/compare/v0.2.1...v0.3.0
