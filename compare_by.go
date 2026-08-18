@@ -45,9 +45,16 @@ func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatist
 	id := ids.allocate()
 	hint := hints.node(id).compareBy
 	return &compareByRule[T, V]{
-		nodeID: id, value: r.value, operator: r.operator, compare: r.compare,
-		wildcard: roaring.New(), eq: newOrderedIndexWithHint(r.compare, hint[0]), lt: newOrderedIndexWithHint(r.compare, hint[1]),
-		lte: newOrderedIndexWithHint(r.compare, hint[2]), gt: newOrderedIndexWithHint(r.compare, hint[3]), gte: newOrderedIndexWithHint(r.compare, hint[4]),
+		nodeID:   id,
+		value:    r.value,
+		operator: r.operator,
+		compare:  r.compare,
+		wildcard: roaring.New(),
+		eq:       newOrderedIndexWithHint(r.compare, hint[0]),
+		lt:       newOrderedIndexWithHint(r.compare, hint[1]),
+		lte:      newOrderedIndexWithHint(r.compare, hint[2]),
+		gt:       newOrderedIndexWithHint(r.compare, hint[3]),
+		gte:      newOrderedIndexWithHint(r.compare, hint[4]),
 	}
 }
 func (r *compareByRule[T, V]) validate(v T) error {

@@ -13,10 +13,12 @@ linters:
     - errorlint
     - govet
     - ineffassign
+    - lll
     - misspell
     - nilerr
     - noctx
     - revive
+    - rowserrcheck
     - staticcheck
     - unconvert
     - wastedassign

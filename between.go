@@ -67,8 +67,10 @@ func (r *betweenRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistic
 	hint := hints.node(id)
 	idCapacity := capacityHint(hint.betweenIDs)
 	return &betweenRule[T, V]{
-		nodeID: id,
-		from:   r.from.newStateWithID(id, hint.between[0]), until: r.until.newStateWithID(id, hint.between[1]), compare: r.compare,
+		nodeID:      id,
+		from:        r.from.newStateWithID(id, hint.between[0]),
+		until:       r.until.newStateWithID(id, hint.between[1]),
+		compare:     r.compare,
 		minimumFrom: make([]boundState[V], 0, idCapacity), maximumUntil: make([]boundState[V], 0, idCapacity),
 	}
 }

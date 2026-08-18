@@ -95,11 +95,40 @@ func TestBuildCollectsCompactPerNodeStatistics(t *testing.T) {
 			constraint statisticsConstraint
 			id         string
 		}{
-			{statisticsConstraint{statisticsPtr("a"), statisticsPtr(1), statisticsPtr(10), statisticsPtr(20), statisticsPtr(100), statisticsPtr(OperatorEQ)}, "first"},
-			{statisticsConstraint{statisticsPtr("b"), statisticsPtr(2), statisticsPtr(11), statisticsPtr(21), statisticsPtr(101), statisticsPtr(OperatorLT)}, "second"},
-			{statisticsConstraint{statisticsPtr("a"), statisticsPtr(2), statisticsPtr(10), statisticsPtr(22), statisticsPtr(102), statisticsPtr(OperatorLTE)}, "first"},
-			{statisticsConstraint{nil, nil, nil, statisticsPtr(22), statisticsPtr(103), statisticsPtr(OperatorGT)}, "third"},
-			{statisticsConstraint{nil, statisticsPtr(3), statisticsPtr(12), nil, statisticsPtr(104), statisticsPtr(OperatorGTE)}, "fourth"},
+			{
+				statisticsConstraint{
+					statisticsPtr("a"), statisticsPtr(1), statisticsPtr(10),
+					statisticsPtr(20), statisticsPtr(100), statisticsPtr(OperatorEQ),
+				},
+				"first",
+			},
+			{
+				statisticsConstraint{
+					statisticsPtr("b"), statisticsPtr(2), statisticsPtr(11),
+					statisticsPtr(21), statisticsPtr(101), statisticsPtr(OperatorLT),
+				},
+				"second",
+			},
+			{
+				statisticsConstraint{
+					statisticsPtr("a"), statisticsPtr(2), statisticsPtr(10),
+					statisticsPtr(22), statisticsPtr(102), statisticsPtr(OperatorLTE),
+				},
+				"first",
+			},
+			{
+				statisticsConstraint{
+					nil, nil, nil, statisticsPtr(22), statisticsPtr(103), statisticsPtr(OperatorGT),
+				},
+				"third",
+			},
+			{
+				statisticsConstraint{
+					nil, statisticsPtr(3), statisticsPtr(12),
+					nil, statisticsPtr(104), statisticsPtr(OperatorGTE),
+				},
+				"fourth",
+			},
 		}
 		for _, entry := range values {
 			if !yield(entry.constraint, entry.id) {

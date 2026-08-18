@@ -55,7 +55,12 @@ func search[C any, ID comparable](ix *ruleix.Index[C, ID], value C) []ID {
 	ix.Search(value, &dst)
 	return dst
 }
-func buildZip[C any, ID comparable](t testing.TB, schema ruleix.Rule[C], constraints []C, ids []ID) *ruleix.Index[C, ID] {
+func buildZip[C any, ID comparable](
+	t testing.TB,
+	schema ruleix.Rule[C],
+	constraints []C,
+	ids []ID,
+) *ruleix.Index[C, ID] {
 	t.Helper()
 	entries := ruleix.Zip(constraints, ids)
 	ix, err := ruleix.New[C, ID](schema).Build(entries)
@@ -181,7 +186,12 @@ func TestCompareByAllOperators(t *testing.T) {
 	}, []string{"gte", "lte", "eq", "lt", "gt"})
 
 	require.Equal(t, []string{"gte", "lte", "eq"}, search(ix, CustomerOrderCount{Total: 15}))
-	require.Equal(t, []string{"gte", "lte", "eq"}, search(ix, CustomerOrderCount{Operator: ptr(ruleix.OperatorGT), Total: 15}), "query operator must be ignored")
+	require.Equal(
+		t,
+		[]string{"gte", "lte", "eq"},
+		search(ix, CustomerOrderCount{Operator: ptr(ruleix.OperatorGT), Total: 15}),
+		"query operator must be ignored",
+	)
 }
 
 func TestCompareByRejectsInvalidInsertedOperator(t *testing.T) {
@@ -305,9 +315,17 @@ func TestSearchDeduplicatesAcrossMatchingBranches(t *testing.T) {
 		cmp.Compare[int],
 	)
 	ix := buildZip(t, comparisonSchema,
-		[]CustomerOrderCount{{Operator: ptr(ruleix.OperatorGTE), Total: 10}, {Operator: ptr(ruleix.OperatorGTE), Total: 5}, {Operator: ptr(ruleix.OperatorGTE), Total: 10}},
+		[]CustomerOrderCount{
+			{Operator: ptr(ruleix.OperatorGTE), Total: 10},
+			{Operator: ptr(ruleix.OperatorGTE), Total: 5},
+			{Operator: ptr(ruleix.OperatorGTE), Total: 10},
+		},
 		[]string{"duplicate", "duplicate", "last"})
-	require.Equal(t, []string{"duplicate", "last"}, search(ix, CustomerOrderCount{Operator: ptr(ruleix.OperatorGTE), Total: 10}))
+	require.Equal(
+		t,
+		[]string{"duplicate", "last"},
+		search(ix, CustomerOrderCount{Operator: ptr(ruleix.OperatorGTE), Total: 10}),
+	)
 }
 
 func TestSearchDeduplicatesNonConsecutiveIDsInPostingList(t *testing.T) {
@@ -549,14 +567,29 @@ func TestLocalNestedAllMatchesIndexSearch(t *testing.T) {
 	)
 	ix := buildZip(t, schema, []mixed{
 		{},
-		{country: ptr("DE"), minimum: ptr(10), excluded: ptr("marketplace"), operator: ptr(ruleix.OperatorGTE), threshold: ptr(5)},
-		{country: ptr("DE"), minimum: ptr(20), excluded: ptr("retail"), operator: ptr(ruleix.OperatorLTE), threshold: ptr(30)},
+		{
+			country: ptr("DE"), minimum: ptr(10), excluded: ptr("marketplace"),
+			operator: ptr(ruleix.OperatorGTE), threshold: ptr(5),
+		},
+		{
+			country: ptr("DE"), minimum: ptr(20), excluded: ptr("retail"),
+			operator: ptr(ruleix.OperatorLTE), threshold: ptr(30),
+		},
 		{country: ptr("FR"), minimum: ptr(10), operator: ptr(ruleix.OperatorEQ), threshold: ptr(15)},
 	}, []string{"global", "de-minimum", "de-upper", "fr-exact"})
 	queries := []mixed{
-		{country: ptr("DE"), minimum: ptr(15), excluded: ptr("web"), operator: ptr(ruleix.OperatorGTE), threshold: ptr(10)},
-		{country: ptr("DE"), minimum: ptr(25), excluded: ptr("retail"), operator: ptr(ruleix.OperatorLTE), threshold: ptr(20)},
-		{country: ptr("FR"), minimum: ptr(15), excluded: ptr("web"), operator: ptr(ruleix.OperatorEQ), threshold: ptr(15)},
+		{
+			country: ptr("DE"), minimum: ptr(15), excluded: ptr("web"),
+			operator: ptr(ruleix.OperatorGTE), threshold: ptr(10),
+		},
+		{
+			country: ptr("DE"), minimum: ptr(25), excluded: ptr("retail"),
+			operator: ptr(ruleix.OperatorLTE), threshold: ptr(20),
+		},
+		{
+			country: ptr("FR"), minimum: ptr(15), excluded: ptr("web"),
+			operator: ptr(ruleix.OperatorEQ), threshold: ptr(15),
+		},
 	}
 	local := ix.Local()
 	for range 3 {

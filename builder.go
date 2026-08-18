@@ -58,7 +58,12 @@ func (b *Builder[C, ID]) Build(entries iter.Seq2[C, ID]) (*Index[C, ID], error) 
 	return ix, nil
 }
 
-func buildIndex[C any, ID comparable](schema Rule[C], entries iter.Seq2[C, ID], collectStatistics bool, hints *buildStatistics) (*Index[C, ID], buildStatistics, error) {
+func buildIndex[C any, ID comparable](
+	schema Rule[C],
+	entries iter.Seq2[C, ID],
+	collectStatistics bool,
+	hints *buildStatistics,
+) (*Index[C, ID], buildStatistics, error) {
 	if entries == nil {
 		return nil, buildStatistics{}, fmt.Errorf("ruleix: nil entry sequence")
 	}

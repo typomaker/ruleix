@@ -32,7 +32,13 @@ func comparisonMatches(operator ruleix.Operator, stored, query int) bool {
 }
 
 func TestCompareByMatchesScanningReferenceAcrossBlocks(t *testing.T) {
-	operators := []ruleix.Operator{ruleix.OperatorEQ, ruleix.OperatorLT, ruleix.OperatorLTE, ruleix.OperatorGT, ruleix.OperatorGTE}
+	operators := []ruleix.Operator{
+		ruleix.OperatorEQ,
+		ruleix.OperatorLT,
+		ruleix.OperatorLTE,
+		ruleix.OperatorGT,
+		ruleix.OperatorGTE,
+	}
 	rng := rand.New(rand.NewSource(1))
 	comparisonSchema := ruleix.CompareBy(
 		func(v differentialComparison) *int { return &v.value },

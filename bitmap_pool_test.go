@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBitmapPoolReusesSmallBitmap(t *testing.T) {
+func TestBitmapPoolReturnsEmptyBitmapAfterPut(t *testing.T) {
 	pool := newBitmapPool()
 	bits := pool.get()
 	bits.AddRange(0, 1_000)
@@ -14,7 +14,10 @@ func TestBitmapPoolReusesSmallBitmap(t *testing.T) {
 
 	pool.put(bits)
 
-	require.Same(t, bits, pool.get())
+	reused := pool.get()
+	require.True(t, reused.IsEmpty())
+	reused.Add(42)
+	require.True(t, reused.Contains(42))
 }
 
 func TestBitmapPoolDiscardsOversizedBitmap(t *testing.T) {

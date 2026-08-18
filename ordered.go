@@ -50,7 +50,12 @@ func Less[T any, V any](get func(T) *V, compare Compare[V]) Rule[T] {
 	return newOrderedRule(get, compare, lessThan, false)
 }
 
-func newOrderedRule[T any, V any](get func(T) *V, compare Compare[V], dir direction, inclusive bool) *orderedRule[T, V] {
+func newOrderedRule[T any, V any](
+	get func(T) *V,
+	compare Compare[V],
+	dir direction,
+	inclusive bool,
+) *orderedRule[T, V] {
 	return &orderedRule[T, V]{
 		get:       get,
 		dir:       dir,

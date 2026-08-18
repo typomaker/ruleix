@@ -289,7 +289,10 @@ func BenchmarkBetweenManyUniqueBounds(b *testing.B) {
 	), benchmarkEntries, func(n int) (benchmarkInterval, int) {
 		return benchmarkInterval{from: benchmarkPtr(n), until: benchmarkPtr(benchmarkEntries*2 - n)}, n
 	})
-	query := benchmarkInterval{from: benchmarkPtr(benchmarkEntries / 2), until: benchmarkPtr(benchmarkEntries + benchmarkEntries/2)}
+	query := benchmarkInterval{
+		from:  benchmarkPtr(benchmarkEntries / 2),
+		until: benchmarkPtr(benchmarkEntries + benchmarkEntries/2),
+	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -491,7 +494,12 @@ func benchmarkAllIndex(b *testing.B, nested bool) *ruleix.Index[benchmarkAllValu
 		schema = ruleix.All(eqA, eqB, eqC, eqD)
 	}
 	return buildGenerated(b, schema, benchmarkEntries, func(n int) (benchmarkAllValue, int) {
-		return benchmarkAllValue{benchmarkPtr(n % 2), benchmarkPtr(n % 5), benchmarkPtr(n % 10), benchmarkPtr(n % benchmarkCardinality)}, n
+		return benchmarkAllValue{
+			benchmarkPtr(n % 2),
+			benchmarkPtr(n % 5),
+			benchmarkPtr(n % 10),
+			benchmarkPtr(n % benchmarkCardinality),
+		}, n
 	})
 }
 

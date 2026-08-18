@@ -80,7 +80,12 @@ const (
 	repeatedBuildPerNode
 )
 
-func runRepeatedBuild(schema Rule[repeatedBuildConstraint], data repeatedBuildData, mode repeatedBuildHintMode, history *buildStatistics) (*Index[repeatedBuildConstraint, int], error) {
+func runRepeatedBuild(
+	schema Rule[repeatedBuildConstraint],
+	data repeatedBuildData,
+	mode repeatedBuildHintMode,
+	history *buildStatistics,
+) (*Index[repeatedBuildConstraint, int], error) {
 	if mode == repeatedBuildOneShot {
 		index, _, err := buildIndex[repeatedBuildConstraint, int](schema, data.entries, false, nil)
 		return index, err
@@ -104,15 +109,29 @@ func BenchmarkRepeatedBuild(b *testing.B) {
 		repeat, random bool
 	}
 	workloads := []workload{
-		{name: "Stable/UniqueIDs/LowEqualityCardinality/Sequential", sizes: []int{repeatedBuildEntries, repeatedBuildEntries}, card: 1},
-		{name: "Stable/RepeatedIDs/HighEqualityCardinality/Random", sizes: []int{repeatedBuildEntries, repeatedBuildEntries}, card: 100, repeat: true, random: true},
+		{
+			name:  "Stable/UniqueIDs/LowEqualityCardinality/Sequential",
+			sizes: []int{repeatedBuildEntries, repeatedBuildEntries},
+			card:  1,
+		},
+		{
+			name:   "Stable/RepeatedIDs/HighEqualityCardinality/Random",
+			sizes:  []int{repeatedBuildEntries, repeatedBuildEntries},
+			card:   100,
+			repeat: true,
+			random: true,
+		},
 		{name: "Grow5Percent", sizes: []int{repeatedBuildEntries, repeatedBuildEntries * 105 / 100}, card: 10},
 		{name: "Grow25Percent", sizes: []int{repeatedBuildEntries, repeatedBuildEntries * 125 / 100}, card: 10},
 		{name: "Grow50Percent", sizes: []int{repeatedBuildEntries, repeatedBuildEntries * 150 / 100}, card: 10},
 		{name: "Shrink5Percent", sizes: []int{repeatedBuildEntries, repeatedBuildEntries * 95 / 100}, card: 10},
 		{name: "Shrink25Percent", sizes: []int{repeatedBuildEntries, repeatedBuildEntries * 75 / 100}, card: 10},
 		{name: "Shrink50Percent", sizes: []int{repeatedBuildEntries, repeatedBuildEntries / 2}, card: 10},
-		{name: "LargeSmallSmall", sizes: []int{repeatedBuildEntries, repeatedBuildEntries / 2, repeatedBuildEntries / 2}, card: 10},
+		{
+			name:  "LargeSmallSmall",
+			sizes: []int{repeatedBuildEntries, repeatedBuildEntries / 2, repeatedBuildEntries / 2},
+			card:  10,
+		},
 	}
 	for _, workload := range workloads {
 		data := make([]repeatedBuildData, len(workload.sizes))
