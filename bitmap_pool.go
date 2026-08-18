@@ -25,10 +25,16 @@ type rankedBitmap struct {
 	card uint64
 }
 
+type rankedBitmapBuffer struct {
+	items []rankedBitmap
+}
+
 func newBitmapPool() *bitmapPool {
 	p := &bitmapPool{}
 	p.pool.New = func() interface{} { return roaring.New() }
-	p.rankedPool.New = func() interface{} { return make([]rankedBitmap, 0, 16) }
+	p.rankedPool.New = func() interface{} {
+		return &rankedBitmapBuffer{items: make([]rankedBitmap, 0, 16)}
+	}
 	return p
 }
 
@@ -49,14 +55,17 @@ func (p *bitmapPool) put(bm *roaring.Bitmap) {
 	bm.Clear()
 	p.pool.Put(bm)
 }
-func (p *bitmapPool) getRanked(n int) []rankedBitmap {
-	ranked := p.rankedPool.Get().([]rankedBitmap)
-	if cap(ranked) < n {
-		return make([]rankedBitmap, n)
+func (p *bitmapPool) getRanked(n int) *rankedBitmapBuffer {
+	buffer := p.rankedPool.Get().(*rankedBitmapBuffer)
+	if cap(buffer.items) < n {
+		buffer.items = make([]rankedBitmap, n)
+	} else {
+		buffer.items = buffer.items[:n]
 	}
-	return ranked[:n]
+	return buffer
 }
-func (p *bitmapPool) putRanked(ranked []rankedBitmap) {
-	clear(ranked)
-	p.rankedPool.Put(ranked[:0])
+func (p *bitmapPool) putRanked(buffer *rankedBitmapBuffer) {
+	clear(buffer.items)
+	buffer.items = buffer.items[:0]
+	p.rankedPool.Put(buffer)
 }

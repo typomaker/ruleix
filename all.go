@@ -57,9 +57,9 @@ func (r *allRule[T]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		r.searchRanked(v, dst, pool, inline[:len(r.children)])
 		return
 	}
-	rankedChildren := pool.getRanked(len(r.children))
-	r.searchRanked(v, dst, pool, rankedChildren)
-	pool.putRanked(rankedChildren)
+	buffer := pool.getRanked(len(r.children))
+	r.searchRanked(v, dst, pool, buffer.items)
+	pool.putRanked(buffer)
 }
 
 func (r *allRule[T]) searchRanked(

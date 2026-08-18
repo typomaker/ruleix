@@ -1,3 +1,4 @@
+// Command local_search demonstrates repeated searches with a local cache.
 package main
 
 import (

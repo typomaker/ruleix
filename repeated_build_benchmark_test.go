@@ -171,7 +171,6 @@ func BenchmarkRepeatedBuildMemory(b *testing.B) {
 				runtime.ReadMemStats(&peak)
 				runtime.KeepAlive(previous)
 				runtime.KeepAlive(current)
-				previous, current = nil, nil
 				runtime.GC()
 				runtime.ReadMemStats(&after)
 				if peak.HeapAlloc > before.HeapAlloc {
