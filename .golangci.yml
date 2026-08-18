@@ -15,6 +15,7 @@ linters:
     - ineffassign
     - lll
     - misspell
+    - nestif
     - nilerr
     - noctx
     - revive
