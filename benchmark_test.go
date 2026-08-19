@@ -506,6 +506,10 @@ func BenchmarkAll(b *testing.B) {
 	}
 }
 
+// BenchmarkAllCardinalityOrder keeps the expensive ordered filter first in the
+// schema on purpose. It measures the value of query-dependent candidate sizing:
+// replacing it with fixed schema order makes both cases materialize the broad
+// ordered result before discovering the empty or narrow equality result.
 func BenchmarkAllCardinalityOrder(b *testing.B) {
 	schema := ruleix.All(
 		ruleix.Greater(ruleix.GetterFromPointer(func(v benchmarkCardinalityOrderValue) *int { return v.threshold }), cmp.Compare[int]),
