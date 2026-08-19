@@ -160,14 +160,16 @@ func Zip[C any, ID any](constraints []C, ids []ID) iter.Seq2[C, ID] {
 	}
 }
 
-// Search appends the unique IDs of every stored rule matching value to dst and
-// updates the slice through its pointer if append allocates a larger backing
-// array. Results preserve first-insertion order. Search panics when dst is nil.
-func (ix *Index[C, ID]) Search(value C, dst *[]ID) {
+// Search appends the unique IDs of every stored rule matching value to dst,
+// reports whether this call found any matches, and updates the slice through
+// its pointer if append allocates a larger backing array. Existing elements in
+// dst do not affect the reported result. Results preserve first-insertion
+// order. Search panics when dst is nil.
+func (ix *Index[C, ID]) Search(value C, dst *[]ID) bool {
 	if dst == nil {
 		panic("ruleix: nil search destination")
 	}
-	ix.search(value, dst, ix.pool)
+	return ix.search(value, dst, ix.pool)
 }
 
 // Local returns a search context that caches the two most recent intermediate
@@ -188,13 +190,14 @@ func (ix *Index[C, ID]) Local() *Local[C, ID] {
 	return &Local[C, ID]{index: ix, pool: newLocalBitmapPool(ix.nodes)}
 }
 
-// Search appends matching IDs to dst while reusing this Local's cached state.
-// Search panics when dst is nil.
-func (local *Local[C, ID]) Search(value C, dst *[]ID) {
+// Search appends matching IDs to dst while reusing this Local's cached state
+// and reports whether this call found any matches. Existing elements in dst do
+// not affect the reported result. Search panics when dst is nil.
+func (local *Local[C, ID]) Search(value C, dst *[]ID) bool {
 	if dst == nil {
 		panic("ruleix: nil search destination")
 	}
-	local.index.search(value, dst, local.pool)
+	return local.index.search(value, dst, local.pool)
 }
 
 // Reset releases all per-node cached search results while keeping the Local
@@ -223,10 +226,11 @@ func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
 	visitMatches(ix.root, ix.values, ix.pool, ix.exclusions, value, yield)
 }
 
-func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) {
+func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
+	before := len(*dst)
 	if root, ok := ix.root.(*allRule[C]); ok {
 		searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst)
-		return
+		return len(*dst) != before
 	}
 	bits := pool.get()
 	defer pool.put(bits)
@@ -238,6 +242,7 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) {
 		pool.put(excluded)
 	}
 	*dst = appendBitmapValues(bits, ix.values, *dst)
+	return len(*dst) != before
 }
 
 func searchAllMatches[C any, ID comparable](

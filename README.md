@@ -216,11 +216,19 @@ not needed:
 
 ```go
 var matches []string
-index.Search(value, &matches)
+if index.Search(value, &matches) {
+	fmt.Println("matched", matches)
+}
 
 matches = matches[:0]
 index.Search(anotherValue, &matches)
 ```
+
+`Search` returns `true` when the current call finds at least one match. Elements
+already present in the destination slice do not affect the return value.
+
+The proposed design for a separate ranked-result layer and its `Search` and
+`Match` signatures is recorded in [docs/rankix.md](docs/rankix.md).
 
 When adjacent searches repeat constraint values, `Local` can reuse intermediate
 bitmap results from `Include`, `Greater`, `GreaterOrEqual`, `Less`, `LessOrEqual`,

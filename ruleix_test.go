@@ -278,9 +278,33 @@ func TestSearchDeduplicatesAndAppendsToDestination(t *testing.T) {
 	dst := make([]string, 1, 8)
 	dst[0] = "existing"
 	before := &dst[0]
-	ix.Search(benchmarkEquality{required: 1}, &dst)
+	require.True(t, ix.Search(benchmarkEquality{required: 1}, &dst))
 	require.Equal(t, []string{"existing", "same", "other"}, dst)
 	require.Same(t, before, &dst[0])
+}
+
+func TestSearchReportsWhetherCurrentCallMatched(t *testing.T) {
+	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return &v.required })),
+		[]benchmarkEquality{{required: 1}},
+		[]string{"match"})
+
+	dst := []string{"existing"}
+	require.False(t, ix.Search(benchmarkEquality{required: 2}, &dst))
+	require.Equal(t, []string{"existing"}, dst)
+	require.True(t, ix.Search(benchmarkEquality{required: 1}, &dst))
+	require.Equal(t, []string{"existing", "match"}, dst)
+}
+
+func TestLocalSearchReportsWhetherCurrentCallMatched(t *testing.T) {
+	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return &v.required })),
+		[]benchmarkEquality{{required: 1}},
+		[]string{"match"})
+	local := ix.Local()
+
+	var dst []string
+	require.False(t, local.Search(benchmarkEquality{required: 2}, &dst))
+	require.True(t, local.Search(benchmarkEquality{required: 1}, &dst))
+	require.Equal(t, []string{"match"}, dst)
 }
 
 func TestEqNilStoredValueMatchesConcreteSearchValue(t *testing.T) {
