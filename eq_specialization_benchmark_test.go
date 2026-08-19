@@ -74,6 +74,7 @@ func BenchmarkEqualitySpecialization(b *testing.B) {
 					b.ReportAllocs()
 					b.ResetTimer()
 					for range b.N {
+						result = result[:0]
 						index.Search(query, &result)
 					}
 					equalitySpecializationIndexResult = result

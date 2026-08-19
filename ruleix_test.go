@@ -257,6 +257,7 @@ func TestConcurrentSearchAndBitmapReuse(t *testing.T) {
 			defer wg.Done()
 			var dst []int
 			for j := 0; j < 50; j++ {
+				dst = dst[:0]
 				ix.Search(CustomerOrderCount{Operator: ptr(ruleix.OperatorGTE), Total: 49}, &dst)
 				lengths <- len(dst)
 			}
@@ -269,16 +270,16 @@ func TestConcurrentSearchAndBitmapReuse(t *testing.T) {
 	}
 }
 
-func TestSearchDeduplicatesAndReusesDestination(t *testing.T) {
+func TestSearchDeduplicatesAndAppendsToDestination(t *testing.T) {
 	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return &v.required })),
 		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}},
 		[]string{"same", "other", "same"})
 
-	dst := make([]string, 3, 8)
-	dst[0] = "stale"
+	dst := make([]string, 1, 8)
+	dst[0] = "existing"
 	before := &dst[0]
 	ix.Search(benchmarkEquality{required: 1}, &dst)
-	require.Equal(t, []string{"same", "other"}, dst)
+	require.Equal(t, []string{"existing", "same", "other"}, dst)
 	require.Same(t, before, &dst[0])
 }
 
@@ -367,10 +368,13 @@ func TestLocalSearchCachesEqualityNodesWithoutChangingResults(t *testing.T) {
 	var got []string
 	local.Search(pair{store: ptr(10), region: ptr(20)}, &got)
 	require.Equal(t, []string{"global", "store", "region-20"}, got)
+	got = got[:0]
 	local.Search(pair{store: ptr(10), region: ptr(30)}, &got)
 	require.Equal(t, []string{"global", "store", "region-30"}, got)
+	got = got[:0]
 	local.Search(pair{}, &got)
 	require.Equal(t, []string{"global"}, got)
+	got = got[:0]
 	local.Search(pair{store: ptr(10), region: ptr(20)}, &got)
 	require.Equal(t, []string{"global", "store", "region-20"}, got)
 }
@@ -395,10 +399,13 @@ func TestLocalSearchCachesOrderedNodesWithoutChangingResults(t *testing.T) {
 	var got []string
 	local.Search(benchmarkRange{value: ptr(10)}, &got)
 	require.Equal(t, []string{"wildcard", "five", "ten"}, got)
+	got = got[:0]
 	local.Search(benchmarkRange{value: ptr(15)}, &got)
 	require.Equal(t, []string{"wildcard", "five", "ten", "fifteen"}, got)
+	got = got[:0]
 	local.Search(benchmarkRange{}, &got)
 	require.Equal(t, []string{"wildcard"}, got)
+	got = got[:0]
 	local.Search(benchmarkRange{value: ptr(10)}, &got)
 	require.Equal(t, []string{"wildcard", "five", "ten"}, got)
 }
@@ -415,10 +422,13 @@ func TestLocalSearchCompareByMatchesIndexSearch(t *testing.T) {
 	var got []string
 	local.Search(benchmarkRange{operator: ptr(ruleix.OperatorGTE), value: ptr(10)}, &got)
 	require.Equal(t, []string{"wildcard", "ten", "five", "fifteen"}, got)
+	got = got[:0]
 	local.Search(benchmarkRange{operator: ptr(ruleix.OperatorLTE), value: ptr(10)}, &got)
 	require.Equal(t, []string{"wildcard", "ten", "five", "fifteen"}, got)
+	got = got[:0]
 	local.Search(benchmarkRange{operator: ptr(ruleix.OperatorGTE)}, &got)
 	require.Equal(t, []string{"wildcard"}, got)
+	got = got[:0]
 	local.Search(benchmarkRange{}, &got)
 	require.Equal(t, []string{"wildcard"}, got)
 }
@@ -435,10 +445,13 @@ func TestLocalSearchCachesBetweenNodesWithoutChangingResults(t *testing.T) {
 	var got []string
 	local.Search(benchmarkInterval{from: ptr(10), until: ptr(15)}, &got)
 	require.Equal(t, []string{"wildcard", "wide", "middle", "late"}, got)
+	got = got[:0]
 	local.Search(benchmarkInterval{from: ptr(15), until: ptr(25)}, &got)
 	require.Equal(t, []string{"wildcard", "late"}, got)
+	got = got[:0]
 	local.Search(benchmarkInterval{}, &got)
 	require.Equal(t, []string{"wildcard"}, got)
+	got = got[:0]
 	local.Search(benchmarkInterval{from: ptr(10), until: ptr(15)}, &got)
 	require.Equal(t, []string{"wildcard", "wide", "middle", "late"}, got)
 }
@@ -457,10 +470,13 @@ func TestLocalSearchCachesExclusionsWithoutChangingResults(t *testing.T) {
 	var got []string
 	local.Search(platformConstraint{platform: ptr("android")}, &got)
 	require.Equal(t, []string{"wildcard", "ios-only"}, got)
+	got = got[:0]
 	local.Search(platformConstraint{platform: ptr("ios")}, &got)
 	require.Equal(t, []string{"wildcard"}, got)
+	got = got[:0]
 	local.Search(platformConstraint{}, &got)
 	require.Equal(t, []string{"wildcard", "both", "ios-only"}, got)
+	got = got[:0]
 	local.Search(platformConstraint{platform: ptr("android")}, &got)
 	require.Equal(t, []string{"wildcard", "ios-only"}, got)
 }
@@ -501,6 +517,7 @@ func TestSeparateLocalsSupportConcurrentSearch(t *testing.T) {
 			local := ix.Local()
 			var got []int
 			for range 50 {
+				got = got[:0]
 				local.Search(benchmarkAllValue{a: ptr(1), b: ptr(2)}, &got)
 				results <- append([]int(nil), got...)
 			}

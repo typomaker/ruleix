@@ -60,6 +60,7 @@ func TestLocalResetReleasesNodeCachesAndRemainsUsable(t *testing.T) {
 
 	local.Reset()
 	require.Nil(t, local.pool.local[0].equality)
+	matches = matches[:0]
 	local.Search(constraint{value: 1}, &matches)
 	require.Equal(t, []int{7}, matches)
 }
@@ -82,6 +83,7 @@ func TestBetweenCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	}
 	var matches []int
 	for _, query := range queries {
+		matches = matches[:0]
 		local.Search(query, &matches)
 	}
 

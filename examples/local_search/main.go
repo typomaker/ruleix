@@ -37,6 +37,7 @@ func main() {
 	local := index.Local()
 	var matches []string
 	for _, region := range []int{20, 30, 20} {
+		matches = matches[:0]
 		local.Search(constraint{store: pointer(10), region: pointer(region)}, &matches)
 		fmt.Printf("region %d: %v\n", region, matches)
 	}

@@ -259,6 +259,7 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 			b.ResetTimer()
 			for i := range b.N {
 				query := queries[i%len(queries)]
+				matches = matches[:0]
 				if local {
 					searcher.Search(query, &matches)
 				} else {
@@ -304,6 +305,7 @@ func BenchmarkProductionShapeParallelLocalBatch100(b *testing.B) {
 			matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
 			for work := range jobs {
 				for _, query := range work.queries {
+					matches = matches[:0]
 					local.Search(query, &matches)
 				}
 				work.done.Done()
@@ -454,6 +456,7 @@ func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 				local := index.Local()
 				if warm {
 					for _, query := range queries {
+						matches = matches[:0]
 						local.Search(query, &matches)
 					}
 				}

@@ -58,6 +58,7 @@ func TestAllMaterializesFiltersInSchemaOrder(t *testing.T) {
 	require.Equal(t, []string{"left", "right"}, order)
 
 	order = nil
+	dst = dst[:0]
 	ix.Search(2, &dst)
 	require.Equal(t, []string{"left", "right"}, order)
 }

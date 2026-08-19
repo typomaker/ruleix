@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `Index.Search` and `Local.Search` now append matches to the destination slice
+  instead of resetting its length. Callers that want to replace prior results
+  must reset the slice explicitly with `dst = dst[:0]`.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).

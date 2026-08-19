@@ -991,6 +991,7 @@ func BenchmarkEq(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				benchmarkIntResult = benchmarkIntResult[:0]
 				ix.Search(query, &benchmarkIntResult)
 			}
 		})
@@ -1000,6 +1001,7 @@ func BenchmarkEq(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				benchmarkIntResult = benchmarkIntResult[:0]
 				ix.Search(query, &benchmarkIntResult)
 			}
 		})
@@ -1011,6 +1013,7 @@ func BenchmarkEq(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
+			benchmarkIntResult = benchmarkIntResult[:0]
 			ix.Search(query, &benchmarkIntResult)
 		}
 	})
@@ -1030,6 +1033,7 @@ func BenchmarkLocalCreation(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
 			local := ix.Local()
+			dst = dst[:0]
 			local.Search(query, &dst)
 			benchmarkLocalResult = local
 		}
@@ -1071,6 +1075,7 @@ func BenchmarkLocalEqualityReuse(b *testing.B) {
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
 				q := query{store: &store, region: &regions[n&1]}
+				dst = dst[:0]
 				if local {
 					searcher.Search(q, &dst)
 				} else {
@@ -1112,6 +1117,7 @@ func BenchmarkOrdered(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
+					benchmarkIntResult = benchmarkIntResult[:0]
 					ix.Search(query, &benchmarkIntResult)
 				}
 			})
@@ -1144,6 +1150,7 @@ func BenchmarkLocalOrderedReuse(b *testing.B) {
 				for n := 0; n < b.N; n++ {
 					value := mode.value(n)
 					query := benchmarkRange{value: &value}
+					dst = dst[:0]
 					if local {
 						searcher.Search(query, &dst)
 					} else {
@@ -1180,6 +1187,7 @@ func BenchmarkLocalCompareByReuse(b *testing.B) {
 				for n := 0; n < b.N; n++ {
 					value := mode.value(n)
 					query := benchmarkRange{value: &value}
+					dst = dst[:0]
 					if local {
 						searcher.Search(query, &dst)
 					} else {
@@ -1202,6 +1210,7 @@ func BenchmarkBetweenManyUniqueBounds(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		benchmarkIntResult = benchmarkIntResult[:0]
 		ix.Search(query, &benchmarkIntResult)
 	}
 }
@@ -1234,6 +1243,7 @@ func BenchmarkBetweenNarrowIntersection(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				benchmarkIntResult = benchmarkIntResult[:0]
 				ix.Search(query, &benchmarkIntResult)
 			}
 		})
@@ -1274,6 +1284,7 @@ func BenchmarkLocalBetweenReuse(b *testing.B) {
 				for n := 0; n < b.N; n++ {
 					from, until := mode.value(n)
 					query := benchmarkInterval{from: &from, until: &until}
+					dst = dst[:0]
 					if local {
 						searcher.Search(query, &dst)
 					} else {
@@ -1314,6 +1325,7 @@ func BenchmarkLocalExcludeReuse(b *testing.B) {
 				for n := 0; n < b.N; n++ {
 					value := mode.value(n)
 					query := benchmarkRange{value: &value}
+					dst = dst[:0]
 					if local {
 						searcher.Search(query, &dst)
 					} else {
@@ -1346,6 +1358,7 @@ func BenchmarkBetweenSelectiveSide(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				benchmarkIntResult = benchmarkIntResult[:0]
 				ix.Search(query, &benchmarkIntResult)
 			}
 		})
@@ -1371,6 +1384,7 @@ func BenchmarkFilterWildcard(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				benchmarkIntResult = benchmarkIntResult[:0]
 				ix.Search(query, &benchmarkIntResult)
 			}
 		})
@@ -1411,6 +1425,7 @@ func BenchmarkAll(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				benchmarkIntResult = benchmarkIntResult[:0]
 				ix.Search(query, &benchmarkIntResult)
 			}
 		})
@@ -1425,6 +1440,7 @@ func BenchmarkLocalAllCardinalityReuse(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
+		benchmarkIntResult = benchmarkIntResult[:0]
 		local.Search(query, &benchmarkIntResult)
 	}
 }
@@ -1457,6 +1473,7 @@ func BenchmarkAllCardinalityOrder(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
+				benchmarkIntResult = benchmarkIntResult[:0]
 				ix.Search(query, &benchmarkIntResult)
 			}
 		})
@@ -1498,6 +1515,7 @@ func BenchmarkAllSkewedEquality(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
+				benchmarkIntResult = benchmarkIntResult[:0]
 				ix.Search(query, &benchmarkIntResult)
 			}
 		})
@@ -1531,6 +1549,7 @@ func BenchmarkAllWithExclusions(b *testing.B) {
 					b.ReportAllocs()
 					b.ResetTimer()
 					for range b.N {
+						result = result[:0]
 						if local {
 							searcher.Search(query, &result)
 						} else {
@@ -1551,6 +1570,7 @@ func BenchmarkParallelSearch(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		var dst []int
 		for pb.Next() {
+			dst = dst[:0]
 			ix.Search(query, &dst)
 			if len(dst) == 0 {
 				b.Error("unexpected empty result")
@@ -1566,6 +1586,7 @@ func BenchmarkBuildIndex(b *testing.B) {
 			func(n int) (benchmarkEquality, string) {
 				return benchmarkEquality{optional: benchmarkPtr(n)}, fmt.Sprintf("modifier-%d", n)
 			})
+		benchmarkStringResult = benchmarkStringResult[:0]
 		ix.Search(benchmarkEquality{optional: benchmarkPtr(benchmarkEntries / 2)}, &benchmarkStringResult)
 	}
 	b.ReportMetric(benchmarkEntries, "rules/op")
@@ -1580,6 +1601,7 @@ func BenchmarkBuildEqualityCardinality(b *testing.B) {
 					func(n int) (benchmarkEquality, int) {
 						return benchmarkEquality{optional: benchmarkPtr(n / cardinality)}, n
 					})
+				benchmarkIntResult = benchmarkIntResult[:0]
 				ix.Search(benchmarkEquality{optional: benchmarkPtr(0)}, &benchmarkIntResult)
 			}
 			b.ReportMetric(float64(benchmarkEntries/cardinality), "values/op")
@@ -1596,6 +1618,7 @@ func BenchmarkBuildOrderedIndex(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		ix := buildGenerated(b, ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), cmp.Compare[int]), benchmarkEntries, func(n int) (benchmarkRange, int) { return benchmarkRange{value: &values[n]}, n })
+		benchmarkIntResult = benchmarkIntResult[:0]
 		ix.Search(benchmarkRange{value: &queryValue}, &benchmarkIntResult)
 	}
 	b.ReportMetric(benchmarkEntries, "rules/op")

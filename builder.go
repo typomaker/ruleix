@@ -160,10 +160,9 @@ func Zip[C any, ID any](constraints []C, ids []ID) iter.Seq2[C, ID] {
 	}
 }
 
-// Search writes the unique IDs of every stored rule matching value into dst.
-// It resets the destination length while reusing its capacity and updates the
-// slice through its pointer if append allocates a larger backing array. Results
-// preserve first-insertion order. Search panics when dst is nil.
+// Search appends the unique IDs of every stored rule matching value to dst and
+// updates the slice through its pointer if append allocates a larger backing
+// array. Results preserve first-insertion order. Search panics when dst is nil.
 func (ix *Index[C, ID]) Search(value C, dst *[]ID) {
 	if dst == nil {
 		panic("ruleix: nil search destination")
@@ -189,7 +188,7 @@ func (ix *Index[C, ID]) Local() *Local[C, ID] {
 	return &Local[C, ID]{index: ix, pool: newLocalBitmapPool(ix.nodes)}
 }
 
-// Search writes matching IDs into dst while reusing this Local's cached state.
+// Search appends matching IDs to dst while reusing this Local's cached state.
 // Search panics when dst is nil.
 func (local *Local[C, ID]) Search(value C, dst *[]ID) {
 	if dst == nil {
@@ -238,7 +237,7 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) {
 		bits.AndNot(excluded)
 		pool.put(excluded)
 	}
-	*dst = appendBitmapValues(bits, ix.values, (*dst)[:0])
+	*dst = appendBitmapValues(bits, ix.values, *dst)
 }
 
 func searchAllMatches[C any, ID comparable](
@@ -249,7 +248,7 @@ func searchAllMatches[C any, ID comparable](
 	value C,
 	dst *[]ID,
 ) {
-	result := (*dst)[:0]
+	result := *dst
 	var inline [8]rankedBitmap
 	var rankedChildren []rankedBitmap
 	var buffer *rankedBitmapBuffer

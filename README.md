@@ -210,11 +210,16 @@ second, err := builder.Build(secondEntries)
 
 ## Searching
 
-`Search` reuses the capacity of a destination slice:
+`Search` appends matches to a destination slice, allowing callers to accumulate
+results across searches. Reset the slice explicitly when previous results are
+not needed:
 
 ```go
 var matches []string
 index.Search(value, &matches)
+
+matches = matches[:0]
+index.Search(anotherValue, &matches)
 ```
 
 When adjacent searches repeat constraint values, `Local` can reuse intermediate
@@ -230,6 +235,7 @@ queries := []Constraint{
 	{StoreUUID: pointer("store-10"), RegionID: pointer(30)},
 }
 for _, query := range queries {
+	matches = matches[:0]
 	local.Search(query, &matches)
 	fmt.Println(matches)
 }
@@ -250,6 +256,7 @@ for range workers {
 		local := index.Local()
 		var matches []string
 		for query := range jobs {
+			matches = matches[:0]
 			local.Search(query, &matches)
 			handle(matches)
 		}

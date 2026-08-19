@@ -89,6 +89,7 @@ func BenchmarkWildcardHeavySearch(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
+				matches = matches[:0]
 				index.Search(query, &matches)
 			}
 			benchmarkIntResult = matches

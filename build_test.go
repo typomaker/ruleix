@@ -44,8 +44,10 @@ func TestBuilderCreatesIndependentIndexes(t *testing.T) {
 	var got []string
 	first.Search(buildConstraint{value: 20, operator: ptr(ruleix.OperatorGTE)}, &got)
 	require.Equal(t, []string{"first"}, got)
+	got = got[:0]
 	second.Search(buildConstraint{value: 10, operator: ptr(ruleix.OperatorGTE)}, &got)
 	require.Empty(t, got)
+	got = got[:0]
 	second.Search(buildConstraint{value: 20, operator: ptr(ruleix.OperatorGTE)}, &got)
 	require.Equal(t, []string{"second"}, got)
 }
@@ -73,11 +75,14 @@ func TestSchemaBuildsIndependentIndexes(t *testing.T) {
 	var got []string
 	first.Search(buildConstraint{value: 10}, &got)
 	require.Equal(t, []string{"first"}, got)
+	got = got[:0]
 	first.Search(buildConstraint{value: 20}, &got)
 	require.Empty(t, got, "the later build must not mutate the first index")
 
+	got = got[:0]
 	second.Search(buildConstraint{value: 20}, &got)
 	require.Equal(t, []string{"second"}, got)
+	got = got[:0]
 	second.Search(buildConstraint{value: 10}, &got)
 	require.Empty(t, got, "indexes must not share mutable posting lists")
 }
@@ -94,6 +99,7 @@ func TestBuiltIndexSupportsConcurrentSearch(t *testing.T) {
 			defer wg.Done()
 			var got []int
 			for i := 0; i < 100; i++ {
+				got = got[:0]
 				ix.Search(buildConstraint{value: 20, operator: ptr(ruleix.OperatorGTE)}, &got)
 				require.Equal(t, []int{1}, got)
 			}
