@@ -131,7 +131,6 @@ type orderedBuildStatistics struct {
 type nodeBuildStatistics struct {
 	equalityValues int
 	ordered        orderedBuildStatistics
-	betweenIDs     int
 	between        [2]orderedBuildStatistics
 	compareBy      [5]orderedBuildStatistics
 }

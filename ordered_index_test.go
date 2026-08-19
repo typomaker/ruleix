@@ -19,6 +19,30 @@ func TestOrderedIndexWideWalkUsesBlockAggregates(t *testing.T) {
 	}
 }
 
+func TestOrderedIndexSharesSingleItemBlockBitmapAfterBuild(t *testing.T) {
+	index := newOrderedIndex(cmp.Compare[int])
+	for id := range uint32(100) {
+		index.insert(1, id)
+	}
+
+	index.prepareSearch()
+	block := &index.blocks[0]
+	if block.bits != block.items[0].bits {
+		t.Fatal("single-item block retained a duplicate aggregate bitmap")
+	}
+
+	visits := 0
+	index.walk(1, false, true, func(bits *roaring.Bitmap) {
+		visits++
+		if bits.GetCardinality() != 100 {
+			t.Fatalf("cardinality = %d, want 100", bits.GetCardinality())
+		}
+	})
+	if visits != 1 {
+		t.Fatalf("walk visited %d bitmaps, want 1", visits)
+	}
+}
+
 func TestOrderedIndexFindsValuesAfterUnorderedInsertAndBlockSplits(t *testing.T) {
 	index := newOrderedIndex(cmp.Compare[int])
 	const values = 1_000

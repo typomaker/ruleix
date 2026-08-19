@@ -45,8 +45,8 @@ func TestBuilderCapacitiesFollowLastSuccessfulBuild(t *testing.T) {
 	ordered := root.children[1].(*orderedRule[statisticsConstraint, int])
 	require.Equal(t, orderedBlockSize*2, ordered.index.firstBlockCapacity)
 	between := root.children[2].(*betweenRule[statisticsConstraint, int])
-	require.Equal(t, 315, cap(between.minimumFrom))
-	require.Equal(t, 315, cap(between.maximumUntil))
+	require.Equal(t, orderedBlockSize*2, between.from.index.firstBlockCapacity)
+	require.Equal(t, orderedBlockSize*2, between.until.index.firstBlockCapacity)
 
 	smallAfterSmall := build(1)
 	require.Equal(t, 2, cap(smallAfterSmall.values))
@@ -54,8 +54,8 @@ func TestBuilderCapacitiesFollowLastSuccessfulBuild(t *testing.T) {
 	ordered = root.children[1].(*orderedRule[statisticsConstraint, int])
 	require.Equal(t, 2, ordered.index.firstBlockCapacity)
 	between = root.children[2].(*betweenRule[statisticsConstraint, int])
-	require.Equal(t, 2, cap(between.minimumFrom))
-	require.Equal(t, 2, cap(between.maximumUntil))
+	require.Equal(t, 2, between.from.index.firstBlockCapacity)
+	require.Equal(t, 2, between.until.index.firstBlockCapacity)
 }
 
 type statisticsConstraint struct {
@@ -135,7 +135,6 @@ func TestBuildCollectsCompactPerNodeStatistics(t *testing.T) {
 	require.Equal(t, 2, statistics.nodes[0].equalityValues)
 	require.Equal(t, 2, statistics.nodes[1].equalityValues)
 	require.Equal(t, orderedBuildStatistics{uniqueValues: 3, blocks: 1}, statistics.nodes[2].ordered)
-	require.Equal(t, 4, statistics.nodes[3].betweenIDs)
 	require.Equal(t, [2]orderedBuildStatistics{
 		{uniqueValues: 3, blocks: 1},
 		{uniqueValues: 3, blocks: 1},

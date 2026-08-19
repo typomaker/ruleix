@@ -46,9 +46,16 @@ func (i *orderedIndex[V]) buildStatistics() orderedBuildStatistics {
 func (i *orderedIndex[V]) prepareSearch() {
 	for blockIndex := range i.blocks {
 		block := &i.blocks[blockIndex]
+		// A one-value block's aggregate is identical to its only posting list.
+		// Share the immutable bitmap instead of retaining two copies after Build.
+		if len(block.items) == 1 {
+			block.bits = block.items[0].bits
+		}
 		prepareBitmapForSearch(block.bits)
 		for _, item := range block.items {
-			prepareBitmapForSearch(item.bits)
+			if item.bits != block.bits {
+				prepareBitmapForSearch(item.bits)
+			}
 		}
 	}
 }
