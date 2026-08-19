@@ -2,6 +2,11 @@ package ruleix
 
 import "github.com/RoaringBitmap/roaring/v2"
 
+// Scanning a small candidate posting list avoids materializing the result of
+// an All rule. Larger lists are intersected as bitmaps because container-level
+// operations are substantially faster than repeated Contains calls.
+const allCandidateScanLimit = 256
+
 // All combines rules with logical AND: a stored constraint matches only when
 // every child rule matches. All may be nested.
 //
@@ -95,6 +100,27 @@ func (r *allRule[T]) searchRanked(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) {
+	if !r.collectRanked(v, pool, rankedChildren) {
+		return
+	}
+	if len(rankedChildren) == 0 {
+		return
+	}
+	dst.Or(rankedChildren[0].bits)
+	for _, child := range rankedChildren[1:] {
+		if dst.IsEmpty() {
+			break
+		}
+		dst.And(child.bits)
+	}
+	r.releaseRanked(pool, rankedChildren)
+}
+
+func (r *allRule[T]) collectRanked(
+	v T,
+	pool *bitmapPool,
+	rankedChildren []rankedBitmap,
+) bool {
 	for i, child := range r.children {
 		bits := pool.get()
 		child.search(v, bits, pool)
@@ -104,7 +130,7 @@ func (r *allRule[T]) searchRanked(
 			for j := 0; j < i; j++ {
 				pool.put(rankedChildren[j].bits)
 			}
-			return
+			return false
 		}
 		rankedChildren[i] = rankedBitmap{bits: bits, card: card}
 	}
@@ -115,19 +141,10 @@ func (r *allRule[T]) searchRanked(
 			rankedChildren[j], rankedChildren[j-1] = rankedChildren[j-1], rankedChildren[j]
 		}
 	}
-	if len(rankedChildren) == 0 {
-		return
-	}
-	dst.Or(rankedChildren[0].bits)
-	for _, child := range rankedChildren[1:] {
-		if dst.IsEmpty() {
-			for _, rankedChild := range rankedChildren {
-				pool.put(rankedChild.bits)
-			}
-			return
-		}
-		dst.And(child.bits)
-	}
+	return true
+}
+
+func (*allRule[T]) releaseRanked(pool *bitmapPool, rankedChildren []rankedBitmap) {
 	for _, child := range rankedChildren {
 		pool.put(child.bits)
 	}

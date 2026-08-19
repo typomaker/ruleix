@@ -187,6 +187,10 @@ func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
 }
 
 func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) {
+	if root, ok := ix.root.(*allRule[C]); ok {
+		searchAllMatches(root, ix.values, pool, value, dst)
+		return
+	}
 	bits := pool.get()
 	defer pool.put(bits)
 	ix.root.search(value, bits, pool)
@@ -198,6 +202,81 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) {
 	it := bits.Iterator()
 	for it.HasNext() {
 		result = append(result, ix.values[it.Next()])
+	}
+	*dst = result
+}
+
+func searchAllMatches[C any, ID comparable](
+	root *allRule[C],
+	values []ID,
+	pool *bitmapPool,
+	value C,
+	dst *[]ID,
+) {
+	result := (*dst)[:0]
+	var inline [8]rankedBitmap
+	var rankedChildren []rankedBitmap
+	var buffer *rankedBitmapBuffer
+	if len(root.children) > len(inline) {
+		buffer = pool.getRanked(len(root.children))
+		rankedChildren = buffer.items
+	} else {
+		rankedChildren = inline[:len(root.children)]
+	}
+	if !root.collectRanked(value, pool, rankedChildren) || len(rankedChildren) == 0 {
+		if buffer != nil {
+			pool.putRanked(buffer)
+		}
+		*dst = result
+		return
+	}
+
+	excluded := pool.get()
+	root.exclude(value, excluded, pool)
+	if rankedChildren[0].card > allCandidateScanLimit {
+		bits := pool.get()
+		bits.Or(rankedChildren[0].bits)
+		for _, child := range rankedChildren[1:] {
+			if bits.IsEmpty() {
+				break
+			}
+			bits.And(child.bits)
+		}
+		bits.AndNot(excluded)
+		matches := bits.Iterator()
+		for matches.HasNext() {
+			result = append(result, values[matches.Next()])
+		}
+		pool.put(bits)
+		pool.put(excluded)
+		root.releaseRanked(pool, rankedChildren)
+		if buffer != nil {
+			pool.putRanked(buffer)
+		}
+		*dst = result
+		return
+	}
+	candidates := rankedChildren[0].bits.Iterator()
+	for candidates.HasNext() {
+		id := candidates.Next()
+		if excluded.Contains(id) {
+			continue
+		}
+		matches := true
+		for _, child := range rankedChildren[1:] {
+			if !child.bits.Contains(id) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			result = append(result, values[id])
+		}
+	}
+	pool.put(excluded)
+	root.releaseRanked(pool, rankedChildren)
+	if buffer != nil {
+		pool.putRanked(buffer)
 	}
 	*dst = result
 }
