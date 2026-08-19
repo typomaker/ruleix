@@ -362,6 +362,67 @@ func BenchmarkBitmapIntersects(b *testing.B) {
 	}
 }
 
+func BenchmarkBitmapIntersectsWithInterval(b *testing.B) {
+	// Ruleix's ordered filters range over stored values, while this operation
+	// ranges over internal row IDs. It therefore only applies to a future ID
+	// range/pagination API, where it can avoid materializing an interval bitmap.
+	for _, shape := range []string{"Dense", "Sparse"} {
+		bits := roaring.New()
+		if shape == "Dense" {
+			bits.AddRange(0, 100_000)
+		} else {
+			for id := uint32(0); id < 100_000; id += 100 {
+				bits.Add(id)
+			}
+		}
+		for _, interval := range []struct {
+			name  string
+			start uint64
+			end   uint64
+		}{
+			{name: "EarlyHit", start: 0, end: 100},
+			{name: "LateHit", start: 99_900, end: 100_000},
+			{name: "Miss", start: 100_000, end: 110_000},
+		} {
+			intervalBits := roaring.New()
+			intervalBits.AddRange(interval.start, interval.end)
+			prefix := shape + "/" + interval.name + "/"
+			b.Run(prefix+"IntersectsWithInterval", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					if bits.IntersectsWithInterval(interval.start, interval.end) {
+						benchmarkUint64Result = 1
+					} else {
+						benchmarkUint64Result = 0
+					}
+				}
+			})
+			b.Run(prefix+"PrebuiltIntervalBitmap", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					if bits.Intersects(intervalBits) {
+						benchmarkUint64Result = 1
+					} else {
+						benchmarkUint64Result = 0
+					}
+				}
+			})
+			b.Run(prefix+"BuildIntervalBitmap", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					query := roaring.New()
+					query.AddRange(interval.start, interval.end)
+					if bits.Intersects(query) {
+						benchmarkUint64Result = 1
+					} else {
+						benchmarkUint64Result = 0
+					}
+				}
+			})
+		}
+	}
+}
+
 func BenchmarkBitmapAndCardinality(b *testing.B) {
 	// The cardinality-only operation is useful to a planner or emptiness check;
 	// doing it before an intersection that is still needed duplicates work.
