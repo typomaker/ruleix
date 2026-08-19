@@ -90,6 +90,9 @@ for these decisions lives in `benchmark_test.go`.
   matching postings without first materializing their union.
 - `FastAnd`: used for final intersections of up to eight child bitmaps. Larger
   intersections retain the pooled sequential path.
+- `AddRange`: used to construct the universe of internal IDs when exclusions
+  are present. For 100,000 consecutive IDs it took about 170 ns and 128 B,
+  versus 560 µs and 66 KB for individual `Add` calls on Apple M1 Max.
 
 ### Evaluated, not currently used
 
@@ -141,16 +144,20 @@ for these decisions lives in `benchmark_test.go`.
   and 205 ns versus 409 µs and 315 µs for the equivalent walk. They add no
   allocations beyond the result iterator, but the current API has no offset,
   limit, or cursor operation that can use them.
+- `RemoveRange` and `Flip`: both efficiently mutate contiguous ranges. Removing
+  100,000 IDs took about 260 ns versus 1.13 ms for individual `Remove` calls;
+  flipping a range in an alternating bitmap took about 6 µs versus 15 µs for
+  XOR with a prebuilt range bitmap, while allocating about half as much. The
+  immutable index lifecycle has no deletion or complement operation that can
+  use either primitive.
 
 ### Candidates still to evaluate
 
 Evaluate these only where their semantics match an existing or planned path:
 
-1. `AddRange`, `RemoveRange`, and `Flip` if bulk ID allocation, deletion, or
-   complement operations become part of the index lifecycle.
-2. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
-3. `Xor` if a symmetric-difference rule or planner operation is introduced.
-4. `AddOffset` if indexes need to merge independently built ID shards.
+1. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
+2. `Xor` if a symmetric-difference rule or planner operation is introduced.
+3. `AddOffset` if indexes need to merge independently built ID shards.
 
 ## Suggested evaluation order
 

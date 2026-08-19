@@ -652,6 +652,75 @@ func BenchmarkBitmapAddMany(b *testing.B) {
 	}
 }
 
+//nolint:gocognit // Benchmark matrix intentionally compares each range primitive with its scalar equivalent.
+func BenchmarkBitmapRangeMutations(b *testing.B) {
+	for _, size := range []uint64{1_000, 100_000} {
+		name := fmt.Sprintf("Size%d/", size)
+		b.Run(name+"AddLoop", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				bits := roaring.New()
+				for id := uint64(0); id < size; id++ {
+					bits.Add(uint32(id))
+				}
+				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+		b.Run(name+"AddRange", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				bits := roaring.New()
+				bits.AddRange(0, size)
+				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+
+		dense := roaring.New()
+		dense.AddRange(0, size*2)
+		b.Run(name+"RemoveLoop", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				bits := dense.Clone()
+				for id := uint64(0); id < size; id++ {
+					bits.Remove(uint32(id))
+				}
+				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+		b.Run(name+"RemoveRange", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				bits := dense.Clone()
+				bits.RemoveRange(0, size)
+				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+
+		alternating := roaring.New()
+		for id := uint64(0); id < size*2; id += 2 {
+			alternating.Add(uint32(id))
+		}
+		mask := roaring.New()
+		mask.AddRange(0, size)
+		b.Run(name+"XorRangeBitmap", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				bits := alternating.Clone()
+				bits.Xor(mask)
+				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+		b.Run(name+"Flip", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				bits := alternating.Clone()
+				bits.Flip(0, size)
+				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+	}
+}
+
 func BenchmarkBitmapCheckedAdd(b *testing.B) {
 	// The streaming builder does not use the inserted/not-inserted result, so
 	// CheckedAdd must outperform Add by itself to justify replacing it. Include
