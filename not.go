@@ -22,8 +22,7 @@ type notRule[T any, V comparable] struct {
 	values      map[V]*equalitySet
 }
 
-func (*notRule[T, V]) rule()               {}
-func (*notRule[T, V]) hasExclusions() bool { return true }
+func (*notRule[T, V]) rule() {}
 func (r *notRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
 	return &notRule[T, V]{
@@ -85,6 +84,14 @@ func (r *notRule[T, V]) addExclusions(value optionalValue[V], dst *roaring.Bitma
 			set.addTo(dst)
 		}
 	}
+}
+func (r *notRule[T, V]) isExcluded(v T, id uint32) bool {
+	value, ok := r.get(v)
+	if !ok {
+		return false
+	}
+	set := r.values[value]
+	return set != nil && set.contains(id)
 }
 func (r *notRule[T, V]) optimize(total uint64) Rule[T] {
 	if len(r.values) == 0 && r.wildcard.GetCardinality() == total {

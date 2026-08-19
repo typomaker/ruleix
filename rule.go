@@ -58,13 +58,21 @@ type ruleSearchPreparer interface {
 	prepareSearch()
 }
 
-type ruleWithExclusions interface {
-	hasExclusions() bool
+type exclusionRule[T any] interface {
+	exclude(T, *roaring.Bitmap, *bitmapPool)
+	isExcluded(T, uint32) bool
 }
 
-func hasRuleExclusions[T any](rule Rule[T]) bool {
-	withExclusions, ok := rule.(ruleWithExclusions)
-	return ok && withExclusions.hasExclusions()
+func collectExclusionRules[T any](rule Rule[T], dst []exclusionRule[T]) []exclusionRule[T] {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		for _, child := range typed.children {
+			dst = collectExclusionRules(child, dst)
+		}
+	case exclusionRule[T]:
+		dst = append(dst, typed)
+	}
+	return dst
 }
 
 func prepareRuleSearch[T any](rule Rule[T]) {

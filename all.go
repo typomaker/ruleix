@@ -7,6 +7,10 @@ import "github.com/RoaringBitmap/roaring/v2"
 // operations are substantially faster than repeated Contains calls.
 const allCandidateScanLimit = 256
 
+// Direct exclusion lookups include a getter and a map lookup per exclusion,
+// so they stop paying off sooner than ordinary posting-list membership tests.
+const allDirectExclusionScanLimit = 16
+
 // All combines rules with logical AND: a stored constraint matches only when
 // every child rule matches. All may be nested.
 //
@@ -21,14 +25,6 @@ func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} 
 type allRule[T any] struct{ children []Rule[T] }
 
 func (*allRule[T]) rule() {}
-func (r *allRule[T]) hasExclusions() bool {
-	for _, child := range r.children {
-		if hasRuleExclusions(child) {
-			return true
-		}
-	}
-	return false
-}
 func (r *allRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	children := make([]Rule[T], len(r.children))
 	for i, child := range r.children {

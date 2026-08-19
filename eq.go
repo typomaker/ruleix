@@ -101,6 +101,17 @@ func (s *equalitySet) addTo(dst *roaring.Bitmap) {
 	dst.Add(s.single)
 }
 
+func (s *equalitySet) contains(id uint32) bool {
+	if s.bits != nil {
+		return s.bits.Contains(id)
+	}
+	if s.small != nil {
+		_, found := slices.BinarySearch(s.small, id)
+		return found
+	}
+	return s.single == id
+}
+
 func (s *equalitySet) prepareSearch() {
 	if s.bits != nil {
 		prepareBitmapForSearch(s.bits)

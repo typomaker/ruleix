@@ -30,6 +30,7 @@ type benchmarkRange struct {
 }
 type benchmarkInterval struct{ from, until *int }
 type benchmarkAllValue struct{ a, b, c, d *int }
+type benchmarkExcludeValue struct{ include, excludeA, excludeB *int }
 
 func benchmarkPtr(value int) *int { return &value }
 
@@ -499,6 +500,45 @@ func BenchmarkAll(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				ix.Search(query, &benchmarkIntResult)
+			}
+		})
+	}
+}
+
+func BenchmarkAllWithExclusions(b *testing.B) {
+	for _, candidates := range []int{10, 100} {
+		b.Run(fmt.Sprintf("Candidates%d", candidates), func(b *testing.B) {
+			schema := ruleix.All(
+				ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkExcludeValue) *int { return v.include })),
+				ruleix.Exclude(ruleix.GetterFromPointer(func(v benchmarkExcludeValue) *int { return v.excludeA })),
+				ruleix.Exclude(ruleix.GetterFromPointer(func(v benchmarkExcludeValue) *int { return v.excludeB })),
+			)
+			index := buildGenerated(b, schema, benchmarkEntries, func(n int) (benchmarkExcludeValue, int) {
+				return benchmarkExcludeValue{
+					include:  benchmarkPtr(n % (benchmarkEntries / candidates)),
+					excludeA: benchmarkPtr(n % 10),
+					excludeB: benchmarkPtr(n % 20),
+				}, n
+			})
+			query := benchmarkExcludeValue{include: benchmarkPtr(1), excludeA: benchmarkPtr(2), excludeB: benchmarkPtr(3)}
+			for _, local := range []bool{false, true} {
+				name := "Index"
+				if local {
+					name = "Local"
+				}
+				b.Run(name, func(b *testing.B) {
+					searcher := index.Local()
+					var result []int
+					b.ReportAllocs()
+					b.ResetTimer()
+					for range b.N {
+						if local {
+							searcher.Search(query, &result)
+						} else {
+							index.Search(query, &result)
+						}
+					}
+				})
 			}
 		})
 	}

@@ -13,11 +13,11 @@ func TestBuildDetectsWhetherSchemaHasExclusions(t *testing.T) {
 
 	without, err := New[constraint, int](All(Include(get), Include(get))).Build(entries)
 	require.NoError(t, err)
-	require.False(t, without.hasExclusions)
+	require.Empty(t, without.exclusions)
 
 	with, err := New[constraint, int](All(Include(get), All(Exclude(get)))).Build(entries)
 	require.NoError(t, err)
-	require.True(t, with.hasExclusions)
+	require.Len(t, with.exclusions, 1)
 }
 
 func TestBuildDropsIneffectiveExcludeFromDetection(t *testing.T) {
@@ -28,5 +28,34 @@ func TestBuildDropsIneffectiveExcludeFromDetection(t *testing.T) {
 		Zip([]constraint{{}}, []int{1}),
 	)
 	require.NoError(t, err)
-	require.False(t, index.hasExclusions)
+	require.Empty(t, index.exclusions)
+}
+
+func TestAllExclusionsMatchAcrossCandidateScanThresholds(t *testing.T) {
+	type constraint struct{ included, excluded int }
+	schema := All(
+		Include(func(value constraint) (int, bool) { return value.included, true }),
+		Exclude(func(value constraint) (int, bool) { return value.excluded, true }),
+	)
+	for _, count := range []int{10, 100} {
+		constraints := make([]constraint, count)
+		ids := make([]int, count)
+		want := make([]int, 0, count/2)
+		for id := range count {
+			constraints[id] = constraint{included: 1, excluded: id % 2}
+			ids[id] = id
+			if id%2 == 0 {
+				want = append(want, id)
+			}
+		}
+		index, err := New[constraint, int](schema).Build(Zip(constraints, ids))
+		require.NoError(t, err)
+
+		query := constraint{included: 1, excluded: 1}
+		var got []int
+		index.Search(query, &got)
+		require.Equal(t, want, got)
+		index.Local().Search(query, &got)
+		require.Equal(t, want, got)
+	}
 }
