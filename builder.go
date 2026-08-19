@@ -234,12 +234,7 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) {
 		bits.AndNot(excluded)
 		pool.put(excluded)
 	}
-	result := (*dst)[:0]
-	it := bits.Iterator()
-	for it.HasNext() {
-		result = append(result, ix.values[it.Next()])
-	}
-	*dst = result
+	*dst = appendBitmapValues(bits, ix.values, (*dst)[:0])
 }
 
 func searchAllMatches[C any, ID comparable](
@@ -316,11 +311,32 @@ func appendBitmapAllMatches[ID comparable](
 	if excluded != nil {
 		bits.AndNot(excluded)
 	}
-	matches := bits.Iterator()
-	for matches.HasNext() {
-		result = append(result, values[matches.Next()])
-	}
+	result = appendBitmapValues(bits, values, result)
 	pool.put(bits)
+	return result
+}
+
+// Below this size the extra iterator allocation and batch buffer cost more
+// than they save. Wide results benefit substantially from decoding IDs in
+// batches instead of making one iterator call per match.
+const manyIteratorCardinalityThreshold = 4 << 10
+
+func appendBitmapValues[ID comparable](bits *roaring.Bitmap, values []ID, result []ID) []ID {
+	if bits.GetCardinality() < manyIteratorCardinalityThreshold {
+		iterator := bits.Iterator()
+		for iterator.HasNext() {
+			result = append(result, values[iterator.Next()])
+		}
+		return result
+	}
+
+	iterator := bits.ManyIterator()
+	var ids [256]uint32
+	for count := iterator.NextMany(ids[:]); count != 0; count = iterator.NextMany(ids[:]) {
+		for _, id := range ids[:count] {
+			result = append(result, values[id])
+		}
+	}
 	return result
 }
 

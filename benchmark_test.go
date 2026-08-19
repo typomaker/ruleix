@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/typomaker/ruleix"
 )
 
@@ -18,7 +19,38 @@ var (
 	benchmarkStringResult []string
 	benchmarkIntResult    []int
 	benchmarkLocalResult  *ruleix.Local[benchmarkEquality, int]
+	benchmarkUint64Result uint64
 )
+
+func BenchmarkBitmapResultIteration(b *testing.B) {
+	bits := roaring.New()
+	bits.AddRange(0, 100_000)
+	b.Run("Iterator", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			var sum uint64
+			iterator := bits.Iterator()
+			for iterator.HasNext() {
+				sum += uint64(iterator.Next())
+			}
+			benchmarkUint64Result = sum
+		}
+	})
+	b.Run("ManyIterator", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			var sum uint64
+			iterator := bits.ManyIterator()
+			var values [256]uint32
+			for count := iterator.NextMany(values[:]); count != 0; count = iterator.NextMany(values[:]) {
+				for _, value := range values[:count] {
+					sum += uint64(value)
+				}
+			}
+			benchmarkUint64Result = sum
+		}
+	})
+}
 
 type benchmarkEquality struct {
 	optional *int

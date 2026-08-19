@@ -3,8 +3,25 @@ package ruleix
 import (
 	"testing"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAppendBitmapValuesSupportsScalarAndBatchIteration(t *testing.T) {
+	values := make([]int, manyIteratorCardinalityThreshold+1)
+	for i := range values {
+		values[i] = i * 2
+	}
+
+	for _, size := range []int{manyIteratorCardinalityThreshold - 1, manyIteratorCardinalityThreshold + 1} {
+		bits := roaring.New()
+		bits.AddRange(0, uint64(size))
+		result := appendBitmapValues(bits, values, nil)
+		require.Len(t, result, size)
+		require.Equal(t, 0, result[0])
+		require.Equal(t, (size-1)*2, result[size-1])
+	}
+}
 
 func TestBitmapPoolReturnsEmptyBitmapAfterPut(t *testing.T) {
 	pool := newBitmapPool()
