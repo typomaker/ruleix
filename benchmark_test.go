@@ -31,6 +31,7 @@ type benchmarkRange struct {
 type benchmarkInterval struct{ from, until *int }
 type benchmarkAllValue struct{ a, b, c, d *int }
 type benchmarkExcludeValue struct{ include, excludeA, excludeB *int }
+type benchmarkCardinalityOrderValue struct{ threshold, group *int }
 
 func benchmarkPtr(value int) *int { return &value }
 
@@ -499,6 +500,36 @@ func BenchmarkAll(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				ix.Search(query, &benchmarkIntResult)
+			}
+		})
+	}
+}
+
+func BenchmarkAllCardinalityOrder(b *testing.B) {
+	schema := ruleix.All(
+		ruleix.Greater(ruleix.GetterFromPointer(func(v benchmarkCardinalityOrderValue) *int { return v.threshold }), cmp.Compare[int]),
+		ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkCardinalityOrderValue) *int { return v.group })),
+	)
+	ix := buildGenerated(b, schema, benchmarkEntries, func(n int) (benchmarkCardinalityOrderValue, int) {
+		return benchmarkCardinalityOrderValue{threshold: benchmarkPtr(n), group: benchmarkPtr(n % 100)}, n
+	})
+
+	for _, benchmark := range []struct {
+		name  string
+		group int
+	}{
+		{name: "ExpensiveBeforeEmpty", group: benchmarkEntries + 1},
+		{name: "ExpensiveBeforeNarrow", group: 1},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			query := benchmarkCardinalityOrderValue{
+				threshold: benchmarkPtr(benchmarkEntries - 1),
+				group:     benchmarkPtr(benchmark.group),
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
 				ix.Search(query, &benchmarkIntResult)
 			}
 		})

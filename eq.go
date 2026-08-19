@@ -156,6 +156,13 @@ func (r *eqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	}
 	return n
 }
+func (r *eqRule[T, V]) isCardinalityZero(v T) bool {
+	if !r.wildcard.IsEmpty() {
+		return false
+	}
+	value, ok := r.get(v)
+	return !ok || r.values[value] == nil
+}
 func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)
 	if pool.local == nil {

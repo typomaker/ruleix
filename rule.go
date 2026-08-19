@@ -58,6 +58,12 @@ type ruleSearchPreparer interface {
 	prepareSearch()
 }
 
+// cardinalityZeroChecker is implemented by rules that can determine an empty
+// result without materializing their posting lists.
+type cardinalityZeroChecker[T any] interface {
+	isCardinalityZero(T) bool
+}
+
 type exclusionRule[T any] interface {
 	exclude(T, *roaring.Bitmap, *bitmapPool)
 	isExcluded(T, uint32) bool

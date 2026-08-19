@@ -13,6 +13,10 @@ type countingRule struct {
 	cardinalityCalls int
 }
 
+type zeroCheckingRule struct{ *countingRule }
+
+func (r *zeroCheckingRule) isCardinalityZero(int) bool { return len(r.ids) == 0 }
+
 func (*countingRule) rule()                                                   {}
 func (r *countingRule) newState(*nodeIDAllocator, *buildStatistics) Rule[int] { return r }
 func (*countingRule) validate(int) error                                      { return nil }
@@ -61,4 +65,19 @@ func TestAllStopsMaterializingAfterEmptyChild(t *testing.T) {
 	require.Equal(t, 1, first.searchCalls)
 	require.Equal(t, 1, empty.searchCalls)
 	require.Zero(t, unreached.searchCalls)
+}
+
+func TestAllChecksCheapEmptyChildBeforeMaterializing(t *testing.T) {
+	expensive := &countingRule{ids: []uint32{1}}
+	empty := &zeroCheckingRule{countingRule: &countingRule{}}
+	rule := All[int](expensive, empty)
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	rule.search(0, dst, pool)
+
+	require.True(t, dst.IsEmpty())
+	require.Zero(t, expensive.searchCalls)
+	require.Zero(t, empty.searchCalls)
 }

@@ -125,6 +125,11 @@ func (r *allRule[T]) collectRanked(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) bool {
+	for _, child := range r.children {
+		if checker, ok := child.(cardinalityZeroChecker[T]); ok && checker.isCardinalityZero(v) {
+			return false
+		}
+	}
 	for i, child := range r.children {
 		bits := pool.get()
 		child.search(v, bits, pool)
