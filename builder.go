@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"iter"
 	"math"
+
+	"github.com/RoaringBitmap/roaring/v2"
 )
 
 // Builder constructs immutable indexes from the same Rule schema. A Builder is
@@ -18,10 +20,11 @@ type Builder[C any, ID comparable] struct {
 // Index maps query values to the unique IDs of all matching stored constraints.
 // It is immutable after Build and safe for concurrent calls to Search and Visit.
 type Index[C any, ID comparable] struct {
-	root   Rule[C]
-	values []ID
-	pool   *bitmapPool
-	nodes  int
+	root          Rule[C]
+	values        []ID
+	pool          *bitmapPool
+	nodes         int
+	hasExclusions bool
 }
 
 // Local is a search context that keeps per-node cached results between calls.
@@ -108,6 +111,7 @@ func buildIndex[C any, ID comparable](
 		ix.root.collectBuildStatistics(statistics.nodes)
 	}
 	ix.root = optimizeRule(ix.root, uint64(len(ix.values)))
+	ix.hasExclusions = hasRuleExclusions(ix.root)
 	prepareRuleSearch(ix.root)
 	ix.nodes = int(ids.next)
 	return ix, statistics, nil
@@ -173,7 +177,7 @@ func (local *Local[C, ID]) Visit(value C, yield func(ID) bool) {
 	if yield == nil {
 		return
 	}
-	visitMatches(local.index.root, local.index.values, local.pool, value, yield)
+	visitMatches(local.index.root, local.index.values, local.pool, local.index.hasExclusions, value, yield)
 }
 
 // Visit calls yield once for each unique matching ID in first-match order.
@@ -183,21 +187,23 @@ func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
 	if yield == nil {
 		return
 	}
-	visitMatches(ix.root, ix.values, ix.pool, value, yield)
+	visitMatches(ix.root, ix.values, ix.pool, ix.hasExclusions, value, yield)
 }
 
 func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) {
 	if root, ok := ix.root.(*allRule[C]); ok {
-		searchAllMatches(root, ix.values, pool, value, dst)
+		searchAllMatches(root, ix.values, pool, ix.hasExclusions, value, dst)
 		return
 	}
 	bits := pool.get()
 	defer pool.put(bits)
 	ix.root.search(value, bits, pool)
-	excluded := pool.get()
-	defer pool.put(excluded)
-	ix.root.exclude(value, excluded, pool)
-	bits.AndNot(excluded)
+	if ix.hasExclusions {
+		excluded := pool.get()
+		ix.root.exclude(value, excluded, pool)
+		bits.AndNot(excluded)
+		pool.put(excluded)
+	}
 	result := (*dst)[:0]
 	it := bits.Iterator()
 	for it.HasNext() {
@@ -210,6 +216,7 @@ func searchAllMatches[C any, ID comparable](
 	root *allRule[C],
 	values []ID,
 	pool *bitmapPool,
+	hasExclusions bool,
 	value C,
 	dst *[]ID,
 ) {
@@ -231,35 +238,62 @@ func searchAllMatches[C any, ID comparable](
 		return
 	}
 
-	excluded := pool.get()
-	root.exclude(value, excluded, pool)
-	if rankedChildren[0].card > allCandidateScanLimit {
-		bits := pool.get()
-		bits.Or(rankedChildren[0].bits)
-		for _, child := range rankedChildren[1:] {
-			if bits.IsEmpty() {
-				break
-			}
-			bits.And(child.bits)
-		}
-		bits.AndNot(excluded)
-		matches := bits.Iterator()
-		for matches.HasNext() {
-			result = append(result, values[matches.Next()])
-		}
-		pool.put(bits)
-		pool.put(excluded)
-		root.releaseRanked(pool, rankedChildren)
-		if buffer != nil {
-			pool.putRanked(buffer)
-		}
-		*dst = result
-		return
+	var excluded *roaring.Bitmap
+	if hasExclusions {
+		excluded = pool.get()
+		root.exclude(value, excluded, pool)
 	}
+	if rankedChildren[0].card > allCandidateScanLimit {
+		result = appendBitmapAllMatches(rankedChildren, excluded, values, pool, result)
+	} else {
+		result = appendScannedAllMatches(rankedChildren, excluded, values, result)
+	}
+	if excluded != nil {
+		pool.put(excluded)
+	}
+	root.releaseRanked(pool, rankedChildren)
+	if buffer != nil {
+		pool.putRanked(buffer)
+	}
+	*dst = result
+}
+
+func appendBitmapAllMatches[ID comparable](
+	rankedChildren []rankedBitmap,
+	excluded *roaring.Bitmap,
+	values []ID,
+	pool *bitmapPool,
+	result []ID,
+) []ID {
+	bits := pool.get()
+	bits.Or(rankedChildren[0].bits)
+	for _, child := range rankedChildren[1:] {
+		if bits.IsEmpty() {
+			break
+		}
+		bits.And(child.bits)
+	}
+	if excluded != nil {
+		bits.AndNot(excluded)
+	}
+	matches := bits.Iterator()
+	for matches.HasNext() {
+		result = append(result, values[matches.Next()])
+	}
+	pool.put(bits)
+	return result
+}
+
+func appendScannedAllMatches[ID comparable](
+	rankedChildren []rankedBitmap,
+	excluded *roaring.Bitmap,
+	values []ID,
+	result []ID,
+) []ID {
 	candidates := rankedChildren[0].bits.Iterator()
 	for candidates.HasNext() {
 		id := candidates.Next()
-		if excluded.Contains(id) {
+		if excluded != nil && excluded.Contains(id) {
 			continue
 		}
 		matches := true
@@ -273,22 +307,26 @@ func searchAllMatches[C any, ID comparable](
 			result = append(result, values[id])
 		}
 	}
-	pool.put(excluded)
-	root.releaseRanked(pool, rankedChildren)
-	if buffer != nil {
-		pool.putRanked(buffer)
-	}
-	*dst = result
+	return result
 }
 
-func visitMatches[C any, ID comparable](root Rule[C], values []ID, pool *bitmapPool, value C, yield func(ID) bool) {
+func visitMatches[C any, ID comparable](
+	root Rule[C],
+	values []ID,
+	pool *bitmapPool,
+	hasExclusions bool,
+	value C,
+	yield func(ID) bool,
+) {
 	bits := pool.get()
 	defer pool.put(bits)
 	root.search(value, bits, pool)
-	excluded := pool.get()
-	defer pool.put(excluded)
-	root.exclude(value, excluded, pool)
-	bits.AndNot(excluded)
+	if hasExclusions {
+		excluded := pool.get()
+		root.exclude(value, excluded, pool)
+		bits.AndNot(excluded)
+		pool.put(excluded)
+	}
 	it := bits.Iterator()
 	for it.HasNext() {
 		id := values[it.Next()]

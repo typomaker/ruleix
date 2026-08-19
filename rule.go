@@ -58,6 +58,15 @@ type ruleSearchPreparer interface {
 	prepareSearch()
 }
 
+type ruleWithExclusions interface {
+	hasExclusions() bool
+}
+
+func hasRuleExclusions[T any](rule Rule[T]) bool {
+	withExclusions, ok := rule.(ruleWithExclusions)
+	return ok && withExclusions.hasExclusions()
+}
+
 func prepareRuleSearch[T any](rule Rule[T]) {
 	if preparer, ok := rule.(ruleSearchPreparer); ok {
 		preparer.prepareSearch()

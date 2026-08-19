@@ -22,7 +22,8 @@ type notRule[T any, V comparable] struct {
 	values      map[V]*equalitySet
 }
 
-func (*notRule[T, V]) rule() {}
+func (*notRule[T, V]) rule()               {}
+func (*notRule[T, V]) hasExclusions() bool { return true }
 func (r *notRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
 	return &notRule[T, V]{
