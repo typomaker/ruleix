@@ -142,3 +142,11 @@ func (r *compareByRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics
 		}
 	}
 }
+func (r *compareByRule[T, V]) prepareSearch() {
+	prepareBitmapForSearch(r.wildcard)
+	for _, index := range r.indexes {
+		if index != nil {
+			index.prepareSearch()
+		}
+	}
+}

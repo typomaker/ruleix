@@ -151,3 +151,7 @@ func (r *orderedRule[T, V]) optimize(total uint64) Rule[T] {
 func (r *orderedRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
 	stats[r.nodeID].ordered = r.index.buildStatistics()
 }
+func (r *orderedRule[T, V]) prepareSearch() {
+	prepareBitmapForSearch(r.wildcard)
+	r.index.prepareSearch()
+}

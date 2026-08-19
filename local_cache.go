@@ -42,6 +42,7 @@ func (c *valueBitmapCache[V]) replace(value *V) *roaring.Bitmap {
 	} else {
 		entry.bits.Clear()
 	}
+	entry.bits.SetCopyOnWrite(true)
 	entry.initialized = true
 	entry.hasValue = value != nil
 	var zero V

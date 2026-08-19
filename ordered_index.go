@@ -43,6 +43,15 @@ func (i *orderedIndex[V]) buildStatistics() orderedBuildStatistics {
 	}
 	return statistics
 }
+func (i *orderedIndex[V]) prepareSearch() {
+	for blockIndex := range i.blocks {
+		block := &i.blocks[blockIndex]
+		prepareBitmapForSearch(block.bits)
+		for _, item := range block.items {
+			prepareBitmapForSearch(item.bits)
+		}
+	}
+}
 func (i *orderedIndex[V]) insert(value V, id uint32) {
 	if len(i.blocks) != 0 {
 		blockIndex := i.blockFor(value)

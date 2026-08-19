@@ -91,6 +91,13 @@ func (r *notRule[T, V]) optimize(total uint64) Rule[T] {
 	}
 	return r
 }
+func (r *notRule[T, V]) prepareSearch() {
+	prepareBitmapForSearch(r.wildcard)
+	prepareBitmapForSearch(r.constrained)
+	for _, set := range r.values {
+		set.prepareSearch()
+	}
+}
 func (r *notRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
 	stats[r.nodeID].equalityValues = len(r.values)
 }

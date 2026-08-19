@@ -117,6 +117,7 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	} else {
 		cached.bits.Clear()
 	}
+	cached.bits.SetCopyOnWrite(true)
 	r.searchUncached(v, cached.bits, pool)
 	cached.initialized = true
 	cached.hasFrom, cached.hasUntil = hasFrom, hasUntil
@@ -180,6 +181,10 @@ func (r *betweenRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) 
 	statistics.betweenIDs = len(r.minimumFrom)
 	statistics.between[0] = r.from.index.buildStatistics()
 	statistics.between[1] = r.until.index.buildStatistics()
+}
+func (r *betweenRule[T, V]) prepareSearch() {
+	r.from.prepareSearch()
+	r.until.prepareSearch()
 }
 
 func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmapPool) {

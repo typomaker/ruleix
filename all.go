@@ -46,6 +46,11 @@ func (r *allRule[T]) collectBuildStatistics(stats []nodeBuildStatistics) {
 		child.collectBuildStatistics(stats)
 	}
 }
+func (r *allRule[T]) prepareSearch() {
+	for _, child := range r.children {
+		prepareRuleSearch(child)
+	}
+}
 func (r *allRule[T]) optimize(total uint64) Rule[T] {
 	if len(r.children) == 0 {
 		return r

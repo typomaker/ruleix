@@ -101,6 +101,12 @@ func (s *equalitySet) addTo(dst *roaring.Bitmap) {
 	dst.Add(s.single)
 }
 
+func (s *equalitySet) prepareSearch() {
+	if s.bits != nil {
+		prepareBitmapForSearch(s.bits)
+	}
+}
+
 type eqRule[T any, V comparable] struct {
 	nodeID   nodeID
 	get      func(T) *V
@@ -179,4 +185,10 @@ func (r *eqRule[T, V]) optimize(total uint64) Rule[T] {
 }
 func (r *eqRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
 	stats[r.nodeID].equalityValues = len(r.values)
+}
+func (r *eqRule[T, V]) prepareSearch() {
+	prepareBitmapForSearch(r.wildcard)
+	for _, set := range r.values {
+		set.prepareSearch()
+	}
 }

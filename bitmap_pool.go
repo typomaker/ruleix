@@ -46,6 +46,7 @@ func newLocalBitmapPool(nodes int) *bitmapPool {
 func (p *bitmapPool) get() *roaring.Bitmap {
 	bm := p.pool.Get().(*roaring.Bitmap)
 	bm.Clear()
+	bm.SetCopyOnWrite(true)
 	return bm
 }
 func (p *bitmapPool) put(bm *roaring.Bitmap) {

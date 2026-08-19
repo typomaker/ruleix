@@ -26,6 +26,25 @@ type ruleOptimizer[T any] interface {
 	optimize(uint64) Rule[T]
 }
 
+type ruleSearchPreparer interface {
+	prepareSearch()
+}
+
+func prepareRuleSearch[T any](rule Rule[T]) {
+	if preparer, ok := rule.(ruleSearchPreparer); ok {
+		preparer.prepareSearch()
+	}
+}
+
+// prepareBitmapForSearch enables cheap sharing of immutable posting-list
+// containers. Clone marks every existing container copy-on-write up front;
+// doing it during Build avoids both allocation and mutation (and therefore a
+// potential data race) on the first concurrent Search.
+func prepareBitmapForSearch(bits *roaring.Bitmap) {
+	bits.SetCopyOnWrite(true)
+	_ = bits.Clone()
+}
+
 func optimizeRule[T any](rule Rule[T], total uint64) Rule[T] {
 	if optimizer, ok := rule.(ruleOptimizer[T]); ok {
 		return optimizer.optimize(total)
@@ -43,6 +62,7 @@ func (r *matchAllRule[T]) cardinality(T, *bitmapPool) uint64                   {
 func (r *matchAllRule[T]) search(_ T, dst *roaring.Bitmap, _ *bitmapPool)      { dst.Or(r.bits) }
 func (*matchAllRule[T]) exclude(T, *roaring.Bitmap, *bitmapPool)               {}
 func (*matchAllRule[T]) collectBuildStatistics([]nodeBuildStatistics)          {}
+func (r *matchAllRule[T]) prepareSearch()                                      { prepareBitmapForSearch(r.bits) }
 
 func newMatchAllRule[T any](bits *roaring.Bitmap) Rule[T] {
 	return &matchAllRule[T]{bits: bits}
