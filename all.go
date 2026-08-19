@@ -130,6 +130,12 @@ func (r *allRule[T]) collectRanked(
 			return false
 		}
 	}
+	// TODO: Explore an adaptive planner that estimates selected children before
+	// materializing them, then searches from the narrowest result and stops on
+	// an empty intersection. Equality rules can compute the exact union size of
+	// wildcard and value postings with roaring.OrCardinality. Apply this only
+	// when the saved materializations outweigh the extra cardinality pass; see
+	// BenchmarkBitmapOrCardinality and the cardinality-order benchmarks.
 	for i, child := range r.children {
 		bits := pool.get()
 		child.search(v, bits, pool)
