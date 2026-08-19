@@ -33,28 +33,20 @@ type compareByRule[T any, V any] struct {
 	operator func(T) *Operator
 	compare  Compare[V]
 	wildcard *roaring.Bitmap
-	eq       orderedIndex[V]
-	lt       orderedIndex[V]
-	lte      orderedIndex[V]
-	gt       orderedIndex[V]
-	gte      orderedIndex[V]
+	indexes  [5]*orderedIndex[V]
+	hints    [5]orderedBuildStatistics
 }
 
 func (*compareByRule[T, V]) rule() {}
 func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
-	hint := hints.node(id).compareBy
 	return &compareByRule[T, V]{
 		nodeID:   id,
 		value:    r.value,
 		operator: r.operator,
 		compare:  r.compare,
 		wildcard: roaring.New(),
-		eq:       newOrderedIndexWithHint(r.compare, hint[0]),
-		lt:       newOrderedIndexWithHint(r.compare, hint[1]),
-		lte:      newOrderedIndexWithHint(r.compare, hint[2]),
-		gt:       newOrderedIndexWithHint(r.compare, hint[3]),
-		gte:      newOrderedIndexWithHint(r.compare, hint[4]),
+		hints:    hints.node(id).compareBy,
 	}
 }
 func (r *compareByRule[T, V]) validate(v T) error {
@@ -76,18 +68,14 @@ func (r *compareByRule[T, V]) insert(v T, id uint32) {
 		r.wildcard.Add(id)
 		return
 	}
-	switch *r.operator(v) {
-	case OperatorEQ:
-		r.eq.insert(*value, id)
-	case OperatorLT:
-		r.lt.insert(*value, id)
-	case OperatorLTE:
-		r.lte.insert(*value, id)
-	case OperatorGT:
-		r.gt.insert(*value, id)
-	case OperatorGTE:
-		r.gte.insert(*value, id)
+	operator := *r.operator(v)
+	index := r.indexes[operator]
+	if index == nil {
+		created := newOrderedIndexWithHint(r.compare, r.hints[operator])
+		index = &created
+		r.indexes[operator] = index
 	}
+	index.insert(*value, id)
 }
 func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 	value := r.value(v)
@@ -95,15 +83,25 @@ func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 	if value == nil {
 		return
 	}
-	if bits := r.eq.exact(*value); bits != nil {
-		visit(bits)
+	if index := r.indexes[OperatorEQ]; index != nil {
+		if bits := index.exact(*value); bits != nil {
+			visit(bits)
+		}
 	}
 	// query < stored / query <= stored
-	r.lt.walk(*value, true, false, visit)
-	r.lte.walk(*value, true, true, visit)
+	if index := r.indexes[OperatorLT]; index != nil {
+		index.walk(*value, true, false, visit)
+	}
+	if index := r.indexes[OperatorLTE]; index != nil {
+		index.walk(*value, true, true, visit)
+	}
 	// query > stored / query >= stored
-	r.gt.walk(*value, false, false, visit)
-	r.gte.walk(*value, false, true, visit)
+	if index := r.indexes[OperatorGT]; index != nil {
+		index.walk(*value, false, false, visit)
+	}
+	if index := r.indexes[OperatorGTE]; index != nil {
+		index.walk(*value, false, true, visit)
+	}
 }
 func (r *compareByRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	var n uint64
@@ -138,8 +136,9 @@ func (r *compareByRule[T, V]) optimize(total uint64) Rule[T] {
 	return r
 }
 func (r *compareByRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
-	stats[r.nodeID].compareBy = [5]orderedBuildStatistics{
-		r.eq.buildStatistics(), r.lt.buildStatistics(), r.lte.buildStatistics(),
-		r.gt.buildStatistics(), r.gte.buildStatistics(),
+	for operator, index := range r.indexes {
+		if index != nil {
+			stats[r.nodeID].compareBy[operator] = index.buildStatistics()
+		}
 	}
 }

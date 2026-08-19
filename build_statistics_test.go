@@ -153,3 +153,36 @@ func TestBuildCollectsCompactPerNodeStatistics(t *testing.T) {
 	}, statistics.nodes[3].between)
 	require.Equal(t, [5]orderedBuildStatistics{{1, 1}, {1, 1}, {1, 1}, {1, 1}, {1, 1}}, statistics.nodes[4].compareBy)
 }
+
+func TestCompareByCreatesIndexesOnlyForUsedOperators(t *testing.T) {
+	compare := func(a, b int) int { return a - b }
+	builder := New[statisticsConstraint, string](CompareBy(
+		func(v statisticsConstraint) *int { return v.compared },
+		func(v statisticsConstraint) *Operator { return v.operator },
+		compare,
+	))
+	build := func(operators ...Operator) *Index[statisticsConstraint, string] {
+		t.Helper()
+		index, err := builder.Build(func(yield func(statisticsConstraint, string) bool) {
+			for i, operator := range operators {
+				value := i
+				if !yield(statisticsConstraint{compared: &value, operator: &operator}, fmt.Sprint(i)) {
+					return
+				}
+			}
+		})
+		require.NoError(t, err)
+		return index
+	}
+
+	build(OperatorEQ, OperatorLT, OperatorLTE, OperatorGT, OperatorGTE)
+	index := build(OperatorGTE)
+	rule := index.root.(*compareByRule[statisticsConstraint, int])
+	for operator, ordered := range rule.indexes {
+		if Operator(operator) == OperatorGTE {
+			require.NotNil(t, ordered)
+		} else {
+			require.Nil(t, ordered)
+		}
+	}
+}

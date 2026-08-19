@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- `CompareBy` now allocates ordered indexes only for comparison operators used
+  by the current build.
+
 ## [0.4.2] - 2026-08-18
 
 ### Added
