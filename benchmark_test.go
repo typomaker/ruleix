@@ -508,6 +508,18 @@ func BenchmarkAll(b *testing.B) {
 	}
 }
 
+func BenchmarkLocalAllCardinalityReuse(b *testing.B) {
+	ix := benchmarkAllIndex(b, false)
+	local := ix.Local()
+	query := benchmarkAllValue{benchmarkPtr(1), benchmarkPtr(1), benchmarkPtr(1), benchmarkPtr(1)}
+	local.Search(query, &benchmarkIntResult)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		local.Search(query, &benchmarkIntResult)
+	}
+}
+
 // BenchmarkAllCardinalityOrder keeps the expensive ordered filter first in the
 // schema on purpose. It measures the value of query-dependent candidate sizing:
 // replacing it with fixed schema order makes both cases materialize the broad
