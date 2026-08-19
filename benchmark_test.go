@@ -86,6 +86,36 @@ func BenchmarkBitmapAndAny(b *testing.B) {
 	})
 }
 
+func BenchmarkBitmapFastOr(b *testing.B) {
+	for _, postingsCount := range []int{4, 16, 64, 256} {
+		postings := make([]*roaring.Bitmap, postingsCount)
+		for posting := range postings {
+			bits := roaring.New()
+			for id := uint32(posting); id < 100_000; id += uint32(postingsCount) {
+				bits.Add(id)
+			}
+			postings[posting] = bits
+		}
+		b.Run(fmt.Sprintf("Postings%d/Sequential", postingsCount), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := roaring.New()
+				for _, posting := range postings {
+					result.Or(posting)
+				}
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+		b.Run(fmt.Sprintf("Postings%d/FastOr", postingsCount), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := roaring.FastOr(postings...)
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+	}
+}
+
 type benchmarkEquality struct {
 	optional *int
 	required int
