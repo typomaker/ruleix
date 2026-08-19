@@ -7,10 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-19
+
 ### Changed
 
 - Equality filters with one or two concrete values are specialized into
   compact unary or binary search rules during build.
+- Wide search results are visited in batches to reduce iterator overhead.
+- Small and interval intersections use specialized Roaring bitmap operations
+  that avoid materializing unnecessary intermediate results.
 
 ## [0.5.0] - 2026-08-19
 
@@ -168,7 +173,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/typomaker/ruleix/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/typomaker/ruleix/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/typomaker/ruleix/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/typomaker/ruleix/compare/v0.4.0...v0.4.1

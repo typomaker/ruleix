@@ -86,6 +86,7 @@ func BenchmarkBitmapAndAny(b *testing.B) {
 	})
 }
 
+//nolint:gocognit // Benchmark matrix intentionally keeps all union strategies together.
 func BenchmarkBitmapOrStrategies(b *testing.B) {
 	// HeapOr's heap and intermediate bitmap overhead does not pay off for either
 	// evenly sized or strongly skewed posting lists in the index's size range.
@@ -146,6 +147,7 @@ func BenchmarkBitmapOrStrategies(b *testing.B) {
 	}
 }
 
+//nolint:gocognit // Benchmark matrix intentionally keeps all intersection strategies together.
 func BenchmarkBitmapFastAnd(b *testing.B) {
 	// ParAnd parallelizes work by high-key containers. It does not amortize its
 	// goroutine, heap, and merge overhead in the normal range or even across 10M
@@ -362,6 +364,7 @@ func BenchmarkBitmapIntersects(b *testing.B) {
 	}
 }
 
+//nolint:gocognit // Benchmark matrix intentionally compares every shape and interval case.
 func BenchmarkBitmapIntersectsWithInterval(b *testing.B) {
 	// Ruleix's ordered filters range over stored values, while this operation
 	// ranges over internal row IDs. It therefore only applies to a future ID
