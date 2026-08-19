@@ -334,6 +334,49 @@ func BenchmarkBitmapAndCardinality(b *testing.B) {
 	}
 }
 
+func BenchmarkBitmapAddMany(b *testing.B) {
+	// AddMany can benefit a future bulk builder. The current builder streams one
+	// ID into many postings, so using it would require per-posting buffers and a
+	// separate memory tradeoff; small equality batches are benchmarked elsewhere.
+	const count = 100_000
+	sequential := make([]uint32, count)
+	sparse := make([]uint32, count)
+	shuffled := make([]uint32, count)
+	for i := range count {
+		sequential[i] = uint32(i)
+		sparse[i] = uint32(i * 16)
+		shuffled[i] = uint32((i * 65_537) % count)
+	}
+
+	for _, tt := range []struct {
+		name   string
+		values []uint32
+	}{
+		{name: "Sequential", values: sequential},
+		{name: "Sparse", values: sparse},
+		{name: "Shuffled", values: shuffled},
+	} {
+		b.Run(tt.name+"/Add", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				bits := roaring.New()
+				for _, value := range tt.values {
+					bits.Add(value)
+				}
+				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+		b.Run(tt.name+"/AddMany", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				bits := roaring.New()
+				bits.AddMany(tt.values)
+				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+	}
+}
+
 type benchmarkEquality struct {
 	optional *int
 	required int
