@@ -22,11 +22,11 @@ type valueBitmapCacheEntry[V any] struct {
 	bits        *roaring.Bitmap
 }
 
-func (c *valueBitmapCache[V]) lookup(value *V, equal func(V, V) bool) (*roaring.Bitmap, bool) {
-	hasValue := value != nil
+func (c *valueBitmapCache[V]) lookup(value optionalValue[V], equal func(V, V) bool) (*roaring.Bitmap, bool) {
+	hasValue := value.ok
 	for i := range c.entries {
 		entry := &c.entries[i]
-		if entry.initialized && entry.hasValue == hasValue && (!hasValue || equal(entry.value, *value)) {
+		if entry.initialized && entry.hasValue == hasValue && (!hasValue || equal(entry.value, value.value)) {
 			c.next = uint8(1 - i)
 			return entry.bits, true
 		}
@@ -34,7 +34,7 @@ func (c *valueBitmapCache[V]) lookup(value *V, equal func(V, V) bool) (*roaring.
 	return nil, false
 }
 
-func (c *valueBitmapCache[V]) replace(value *V) *roaring.Bitmap {
+func (c *valueBitmapCache[V]) replace(value optionalValue[V]) *roaring.Bitmap {
 	entry := &c.entries[c.next]
 	c.next = (c.next + 1) % uint8(len(c.entries))
 	if entry.bits == nil {
@@ -44,19 +44,23 @@ func (c *valueBitmapCache[V]) replace(value *V) *roaring.Bitmap {
 	}
 	entry.bits.SetCopyOnWrite(true)
 	entry.initialized = true
-	entry.hasValue = value != nil
+	entry.hasValue = value.ok
 	var zero V
 	entry.value = zero
-	if value != nil {
-		entry.value = *value
+	if value.ok {
+		entry.value = value.value
 	}
 	return entry.bits
 }
 
-func comparableValueCacheLookup[V comparable](c *valueBitmapCache[V], value *V) (*roaring.Bitmap, bool) {
+func comparableValueCacheLookup[V comparable](c *valueBitmapCache[V], value optionalValue[V]) (*roaring.Bitmap, bool) {
 	return c.lookup(value, func(a, b V) bool { return a == b })
 }
 
-func comparedValueCacheLookup[V any](c *valueBitmapCache[V], value *V, compare Compare[V]) (*roaring.Bitmap, bool) {
+func comparedValueCacheLookup[V any](
+	c *valueBitmapCache[V],
+	value optionalValue[V],
+	compare Compare[V],
+) (*roaring.Bitmap, bool) {
 	return c.lookup(value, func(a, b V) bool { return compare(a, b) == 0 })
 }

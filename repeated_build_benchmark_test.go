@@ -1,3 +1,4 @@
+//nolint:lll // Migration benchmark keeps legacy pointer getters inline.
 package ruleix
 
 import (
@@ -20,8 +21,8 @@ type repeatedBuildData struct {
 
 func repeatedBuildSchema() Rule[repeatedBuildConstraint] {
 	return All(
-		Include(func(value repeatedBuildConstraint) *int { return value.equality }),
-		GreaterOrEqual(func(value repeatedBuildConstraint) *int { return value.ordered }, cmp.Compare[int]),
+		Include(GetterFromPointer(func(value repeatedBuildConstraint) *int { return value.equality })),
+		GreaterOrEqual(GetterFromPointer(func(value repeatedBuildConstraint) *int { return value.ordered }), cmp.Compare[int]),
 	)
 }
 

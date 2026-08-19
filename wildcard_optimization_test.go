@@ -1,3 +1,4 @@
+//nolint:lll // Migration coverage keeps legacy pointer getters inline.
 package ruleix
 
 import (
@@ -11,7 +12,7 @@ func optimizationPointer[T any](value T) *T { return &value }
 
 func TestBuildOptimizesWildcardRoot(t *testing.T) {
 	type constraint struct{ value *int }
-	index, err := New[constraint, int](Include(func(value constraint) *int { return value.value })).Build(
+	index, err := New[constraint, int](Include(GetterFromPointer(func(value constraint) *int { return value.value }))).Build(
 		Zip([]constraint{{}, {}}, []int{1, 2}),
 	)
 	require.NoError(t, err)
@@ -26,8 +27,8 @@ func TestBuildOptimizesWildcardRoot(t *testing.T) {
 func TestBuildRemovesWildcardChildrenFromAll(t *testing.T) {
 	type constraint struct{ wildcard, concrete *int }
 	schema := All(
-		Include(func(value constraint) *int { return value.wildcard }),
-		Include(func(value constraint) *int { return value.concrete }),
+		Include(GetterFromPointer(func(value constraint) *int { return value.wildcard })),
+		Include(GetterFromPointer(func(value constraint) *int { return value.concrete })),
 	)
 	one, two := 1, 2
 	index, err := New[constraint, int](schema).Build(Zip(
@@ -44,11 +45,7 @@ func TestBuildRemovesWildcardChildrenFromAll(t *testing.T) {
 
 func TestBuildOptimizesWildcardBetween(t *testing.T) {
 	type constraint struct{ from, until *int }
-	index, err := New[constraint, int](Between(
-		func(value constraint) *int { return value.from },
-		func(value constraint) *int { return value.until },
-		cmp.Compare[int],
-	)).Build(Zip([]constraint{{}, {}}, []int{1, 2}))
+	index, err := New[constraint, int](Between(GetterFromPointer(func(value constraint) *int { return value.from }), GetterFromPointer(func(value constraint) *int { return value.until }), cmp.Compare[int])).Build(Zip([]constraint{{}, {}}, []int{1, 2}))
 	require.NoError(t, err)
 	require.IsType(t, &matchAllRule[constraint]{}, index.root)
 
@@ -59,7 +56,7 @@ func TestBuildOptimizesWildcardBetween(t *testing.T) {
 
 func TestBuildKeepsWildcardExcludeWithConcreteExclusions(t *testing.T) {
 	type constraint struct{ excluded *int }
-	schema := Exclude(func(value constraint) *int { return value.excluded })
+	schema := Exclude(GetterFromPointer(func(value constraint) *int { return value.excluded }))
 	excluded := 42
 	index, err := New[constraint, int](schema).Build(Zip(
 		[]constraint{{}, {excluded: &excluded}, {}},
@@ -75,7 +72,7 @@ func TestBuildKeepsWildcardExcludeWithConcreteExclusions(t *testing.T) {
 
 func TestBuildCollectsStatisticsBeforeWildcardOptimization(t *testing.T) {
 	type constraint struct{ value *int }
-	builder := New[constraint, int](Include(func(value constraint) *int { return value.value }))
+	builder := New[constraint, int](Include(GetterFromPointer(func(value constraint) *int { return value.value })))
 	_, err := builder.Build(Zip([]constraint{{}, {}}, []int{1, 2}))
 	require.NoError(t, err)
 	require.Len(t, builder.hints.nodes, 1)

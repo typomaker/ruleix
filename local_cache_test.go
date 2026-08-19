@@ -1,3 +1,4 @@
+//nolint:lll // Migration coverage keeps legacy pointer getters inline.
 package ruleix
 
 import (
@@ -11,21 +12,21 @@ func TestValueBitmapCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	cache := &valueBitmapCache[int]{}
 	a, b, c := 1, 2, 3
 
-	cache.replace(&a).Add(1)
-	cache.replace(&b).Add(2)
+	cache.replace(optionalValue[int]{value: a, ok: true}).Add(1)
+	cache.replace(optionalValue[int]{value: b, ok: true}).Add(2)
 
-	bits, found := comparableValueCacheLookup(cache, &a)
+	bits, found := comparableValueCacheLookup(cache, optionalValue[int]{value: a, ok: true})
 	require.True(t, found)
 	require.True(t, bits.Contains(1))
 
-	cache.replace(&c).Add(3)
+	cache.replace(optionalValue[int]{value: c, ok: true}).Add(3)
 
-	_, found = comparableValueCacheLookup(cache, &b)
+	_, found = comparableValueCacheLookup(cache, optionalValue[int]{value: b, ok: true})
 	require.False(t, found)
-	bits, found = comparableValueCacheLookup(cache, &a)
+	bits, found = comparableValueCacheLookup(cache, optionalValue[int]{value: a, ok: true})
 	require.True(t, found)
 	require.True(t, bits.Contains(1))
-	bits, found = comparableValueCacheLookup(cache, &c)
+	bits, found = comparableValueCacheLookup(cache, optionalValue[int]{value: c, ok: true})
 	require.True(t, found)
 	require.True(t, bits.Contains(3))
 }
@@ -36,9 +37,9 @@ func TestValueBitmapCacheClearsValueForNilEntry(t *testing.T) {
 	first := &value{id: 1}
 	second := &value{id: 2}
 
-	cache.replace(&first)
-	cache.replace(&second)
-	cache.replace(nil)
+	cache.replace(optionalValue[*value]{value: first, ok: true})
+	cache.replace(optionalValue[*value]{value: second, ok: true})
+	cache.replace(optionalValue[*value]{})
 
 	require.True(t, cache.entries[0].initialized)
 	require.False(t, cache.entries[0].hasValue)
@@ -48,11 +49,7 @@ func TestValueBitmapCacheClearsValueForNilEntry(t *testing.T) {
 func TestBetweenCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	type interval struct{ from, until *int }
 	pointer := func(value int) *int { return &value }
-	schema := Between(
-		func(value interval) *int { return value.from },
-		func(value interval) *int { return value.until },
-		cmp.Compare[int],
-	)
+	schema := Between(GetterFromPointer(func(value interval) *int { return value.from }), GetterFromPointer(func(value interval) *int { return value.until }), cmp.Compare[int])
 	entries := []interval{{from: pointer(0), until: pointer(100)}}
 	sequence := Zip(entries, []int{1})
 	index, err := New[interval, int](schema).Build(sequence)
@@ -84,11 +81,7 @@ func TestBetweenCacheClearsMissingBounds(t *testing.T) {
 	type interval struct{ from, until **bound }
 	pointer := func(value *bound) **bound { return &value }
 	compare := func(a, b *bound) int { return cmp.Compare(a.id, b.id) }
-	schema := Between(
-		func(value interval) **bound { return value.from },
-		func(value interval) **bound { return value.until },
-		compare,
-	)
+	schema := Between(GetterFromPointer(func(value interval) **bound { return value.from }), GetterFromPointer(func(value interval) **bound { return value.until }), compare)
 	low, high := &bound{id: 0}, &bound{id: 100}
 	index, err := New[interval, int](schema).Build(Zip(
 		[]interval{{from: pointer(low), until: pointer(high)}},

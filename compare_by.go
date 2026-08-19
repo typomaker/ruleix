@@ -7,7 +7,7 @@ import (
 )
 
 // CompareBy evaluates the operator stored in each inserted rule against the
-// concrete value supplied to Search. The query-side operator is ignored. A nil
+// concrete value supplied to Search. The query-side operator is ignored. A missing
 // stored value is a wildcard and its operator is not validated. Build returns
 // an error when a non-wildcard rule has no operator or an unsupported operator.
 //
@@ -15,13 +15,13 @@ import (
 // whose value is 7:
 //
 //	ruleix.CompareBy(
-//		func(c Constraint) *int { return c.Orders },
-//		func(c Constraint) *ruleix.Operator { return c.Operator },
+//		func(c Constraint) (int, bool) { return c.Orders, true },
+//		func(c Constraint) (ruleix.Operator, bool) { return c.Operator, true },
 //		cmp.Compare[int],
 //	)
 func CompareBy[T any, V any](
-	value func(T) *V,
-	operator func(T) *Operator,
+	value Getter[T, V],
+	operator Getter[T, Operator],
 	compare Compare[V],
 ) Rule[T] {
 	return &compareByRule[T, V]{value: value, operator: operator, compare: compare}
@@ -29,8 +29,8 @@ func CompareBy[T any, V any](
 
 type compareByRule[T any, V any] struct {
 	nodeID   nodeID
-	value    func(T) *V
-	operator func(T) *Operator
+	value    Getter[T, V]
+	operator Getter[T, Operator]
 	compare  Compare[V]
 	wildcard *roaring.Bitmap
 	indexes  [5]*orderedIndex[V]
@@ -50,57 +50,57 @@ func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatist
 	}
 }
 func (r *compareByRule[T, V]) validate(v T) error {
-	if r.value(v) == nil {
+	if _, ok := r.value(v); !ok {
 		return nil
 	}
-	operator := r.operator(v)
-	if operator == nil {
+	operator, ok := r.operator(v)
+	if !ok {
 		return fmt.Errorf("ruleix: CompareBy operator is nil")
 	}
-	if *operator > OperatorGTE {
-		return fmt.Errorf("ruleix: unsupported operator %d", *operator)
+	if operator > OperatorGTE {
+		return fmt.Errorf("ruleix: unsupported operator %d", operator)
 	}
 	return nil
 }
 func (r *compareByRule[T, V]) insert(v T, id uint32) {
-	value := r.value(v)
-	if value == nil {
+	value, ok := r.value(v)
+	if !ok {
 		r.wildcard.Add(id)
 		return
 	}
-	operator := *r.operator(v)
+	operator, _ := r.operator(v)
 	index := r.indexes[operator]
 	if index == nil {
 		created := newOrderedIndexWithHint(r.compare, r.hints[operator])
 		index = &created
 		r.indexes[operator] = index
 	}
-	index.insert(*value, id)
+	index.insert(value, id)
 }
 func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
-	value := r.value(v)
+	value, ok := r.value(v)
 	visit(r.wildcard)
-	if value == nil {
+	if !ok {
 		return
 	}
 	if index := r.indexes[OperatorEQ]; index != nil {
-		if bits := index.exact(*value); bits != nil {
+		if bits := index.exact(value); bits != nil {
 			visit(bits)
 		}
 	}
 	// query < stored / query <= stored
 	if index := r.indexes[OperatorLT]; index != nil {
-		index.walk(*value, true, false, visit)
+		index.walk(value, true, false, visit)
 	}
 	if index := r.indexes[OperatorLTE]; index != nil {
-		index.walk(*value, true, true, visit)
+		index.walk(value, true, true, visit)
 	}
 	// query > stored / query >= stored
 	if index := r.indexes[OperatorGT]; index != nil {
-		index.walk(*value, false, false, visit)
+		index.walk(value, false, false, visit)
 	}
 	if index := r.indexes[OperatorGTE]; index != nil {
-		index.walk(*value, false, true, visit)
+		index.walk(value, false, true, visit)
 	}
 }
 func (r *compareByRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
@@ -109,7 +109,7 @@ func (r *compareByRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	return n
 }
 func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	value := r.value(v)
+	value := getOptional(r.value, v)
 	if pool.local == nil {
 		r.each(v, dst.Or)
 		return

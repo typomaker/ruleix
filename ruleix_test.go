@@ -1,3 +1,4 @@
+//nolint:lll // Migration coverage keeps legacy pointer getters inline.
 package ruleix_test
 
 import (
@@ -80,59 +81,65 @@ func compareVersion(a, b SemanticVersion) int {
 
 func schema() ruleix.Rule[Constraint] {
 	return ruleix.All(
-		ruleix.Between(
-			ruleix.Path(
-				func(c Constraint) *TimeRange { return c.Activity },
-				func(r TimeRange) *time.Time { return &r.Since },
-			),
-			ruleix.Path(
-				func(c Constraint) *TimeRange { return c.Activity },
-				func(r TimeRange) *time.Time { return &r.Until },
-			),
-			compareTime,
+		ruleix.Between(func(c Constraint) (time.Time, bool) {
+			if c.Activity == nil {
+				return time.Time{}, false
+			}
+			return c.Activity.Since, true
+		}, func(c Constraint) (time.Time, bool) {
+			if c.Activity == nil {
+				return time.Time{}, false
+			}
+			return c.Activity.Until, true
+		}, compareTime,
 		),
-		ruleix.CompareBy(
-			ruleix.Path(
-				func(c Constraint) *CustomerOrderCount { return c.CustomerOrderCount },
-				func(c CustomerOrderCount) *int { return &c.Total },
-			),
-			ruleix.Path(
-				func(c Constraint) *CustomerOrderCount { return c.CustomerOrderCount },
-				func(c CustomerOrderCount) *ruleix.Operator { return c.Operator },
-			),
-			cmp.Compare[int],
+		ruleix.CompareBy(func(c Constraint) (int, bool) {
+			if c.CustomerOrderCount == nil {
+				return 0, false
+			}
+			return c.CustomerOrderCount.Total, true
+		}, func(c Constraint) (ruleix.Operator, bool) {
+			if c.CustomerOrderCount == nil || c.CustomerOrderCount.Operator == nil {
+				return 0, false
+			}
+			return *c.CustomerOrderCount.Operator, true
+		}, cmp.Compare[int],
 		),
-		ruleix.Include(func(c Constraint) *CustomerUUID { return c.CustomerUUID }),
-		ruleix.Include(func(c Constraint) *StoreUUID { return c.StoreUUID }),
-		ruleix.Include(ruleix.Path(
-			func(c Constraint) *Platform { return c.Platform },
-			func(p Platform) *string { return &p.Name },
-		)),
-		ruleix.CompareBy(
-			ruleix.Path3(
-				func(c Constraint) *Platform { return c.Platform },
-				func(p Platform) *Version { return p.Version },
-				func(v Version) *SemanticVersion {
-					return &SemanticVersion{v.Major, v.Minor, v.Patch}
-				},
-			),
-			ruleix.Path3(
-				func(c Constraint) *Platform { return c.Platform },
-				func(p Platform) *Version { return p.Version },
-				func(v Version) *ruleix.Operator { return v.Operator },
-			),
-			compareVersion,
+		ruleix.Include(ruleix.GetterFromPointer(func(c Constraint) *CustomerUUID { return c.CustomerUUID })),
+		ruleix.Include(ruleix.GetterFromPointer(func(c Constraint) *StoreUUID { return c.StoreUUID })),
+		ruleix.Include(func(c Constraint) (string, bool) {
+			if c.Platform == nil {
+				return "", false
+			}
+			return c.Platform.Name, true
+		}),
+		ruleix.CompareBy(func(c Constraint) (SemanticVersion, bool) {
+			if c.Platform == nil || c.Platform.Version == nil {
+				return SemanticVersion{}, false
+			}
+			v := c.Platform.Version
+			return SemanticVersion{v.Major, v.Minor, v.Patch}, true
+		}, func(c Constraint) (ruleix.Operator, bool) {
+			if c.Platform == nil || c.Platform.Version == nil || c.Platform.Version.Operator == nil {
+				return 0, false
+			}
+			return *c.Platform.Version.Operator, true
+		}, compareVersion,
 		),
-		ruleix.Include(func(c Constraint) *DBS { return c.DBS }),
-		ruleix.Include(func(c Constraint) *MarketType { return c.MarketType }),
-		ruleix.Include(ruleix.Path(
-			func(c Constraint) *ABTest { return c.ABTest },
-			func(a ABTest) *string { return &a.Label },
-		)),
-		ruleix.Include(ruleix.Path(
-			func(c Constraint) *ABTest { return c.ABTest },
-			func(a ABTest) *string { return &a.Group },
-		)),
+		ruleix.Include(ruleix.GetterFromPointer(func(c Constraint) *DBS { return c.DBS })),
+		ruleix.Include(ruleix.GetterFromPointer(func(c Constraint) *MarketType { return c.MarketType })),
+		ruleix.Include(func(c Constraint) (string, bool) {
+			if c.ABTest == nil {
+				return "", false
+			}
+			return c.ABTest.Label, true
+		}),
+		ruleix.Include(func(c Constraint) (string, bool) {
+			if c.ABTest == nil {
+				return "", false
+			}
+			return c.ABTest.Group, true
+		}),
 	)
 }
 
@@ -172,11 +179,7 @@ func TestCompleteConstraint(t *testing.T) {
 }
 
 func TestCompareByAllOperators(t *testing.T) {
-	comparisonSchema := ruleix.CompareBy(
-		func(c CustomerOrderCount) *int { return &c.Total },
-		func(c CustomerOrderCount) *ruleix.Operator { return c.Operator },
-		cmp.Compare[int],
-	)
+	comparisonSchema := ruleix.CompareBy(ruleix.GetterFromPointer(func(c CustomerOrderCount) *int { return &c.Total }), ruleix.GetterFromPointer(func(c CustomerOrderCount) *ruleix.Operator { return c.Operator }), cmp.Compare[int])
 	ix := buildZip(t, comparisonSchema, []CustomerOrderCount{
 		{Operator: ptr(ruleix.OperatorGTE), Total: 10},
 		{Operator: ptr(ruleix.OperatorLTE), Total: 20},
@@ -196,27 +199,24 @@ func TestCompareByAllOperators(t *testing.T) {
 
 func TestCompareByRejectsInvalidInsertedOperator(t *testing.T) {
 	invalid := ruleix.Operator(255)
-	_, err := ruleix.New[CustomerOrderCount, string](ruleix.CompareBy(
-		func(c CustomerOrderCount) *int { return &c.Total },
-		func(c CustomerOrderCount) *ruleix.Operator { return c.Operator },
-		cmp.Compare[int],
-	)).Build(ruleix.Zip([]CustomerOrderCount{{Operator: &invalid, Total: 5}}, []string{"invalid"}))
+	_, err := ruleix.New[CustomerOrderCount, string](ruleix.CompareBy(ruleix.GetterFromPointer(func(c CustomerOrderCount) *int { return &c.Total }), ruleix.GetterFromPointer(func(c CustomerOrderCount) *ruleix.Operator { return c.Operator }), cmp.Compare[int])).Build(ruleix.Zip([]CustomerOrderCount{{Operator: &invalid, Total: 5}}, []string{"invalid"}))
 	require.EqualError(t, err, "ruleix: entry 0: ruleix: unsupported operator 255")
 }
 
-func TestBetweenAndPathWildcard(t *testing.T) {
+func TestBetweenNestedWildcard(t *testing.T) {
 	t0 := time.Unix(0, 0)
 	t1, t2, t3 := t0.Add(time.Hour), t0.Add(2*time.Hour), t0.Add(3*time.Hour)
-	intervalSchema := ruleix.Between(
-		ruleix.Path(
-			func(c Constraint) *TimeRange { return c.Activity },
-			func(r TimeRange) *time.Time { return &r.Since },
-		),
-		ruleix.Path(
-			func(c Constraint) *TimeRange { return c.Activity },
-			func(r TimeRange) *time.Time { return &r.Until },
-		),
-		compareTime,
+	intervalSchema := ruleix.Between(func(c Constraint) (time.Time, bool) {
+		if c.Activity == nil {
+			return time.Time{}, false
+		}
+		return c.Activity.Since, true
+	}, func(c Constraint) (time.Time, bool) {
+		if c.Activity == nil {
+			return time.Time{}, false
+		}
+		return c.Activity.Until, true
+	}, compareTime,
 	)
 	ix := buildZip(t, intervalSchema,
 		[]Constraint{{Activity: &TimeRange{t0, t3}}, {}, {Activity: &TimeRange{t2, t3}}},
@@ -224,12 +224,13 @@ func TestBetweenAndPathWildcard(t *testing.T) {
 	require.Equal(t, []string{"covering", "wildcard"}, search(ix, Constraint{Activity: &TimeRange{t1, t2}}))
 }
 
-func TestPath3(t *testing.T) {
-	schema := ruleix.Include(ruleix.Path3(
-		func(c Constraint) *Platform { return c.Platform },
-		func(p Platform) *Version { return p.Version },
-		func(v Version) *int { return &v.Major },
-	))
+func TestNestedGetter(t *testing.T) {
+	schema := ruleix.Include(func(c Constraint) (int, bool) {
+		if c.Platform == nil || c.Platform.Version == nil {
+			return 0, false
+		}
+		return c.Platform.Version.Major, true
+	})
 	ix := buildZip(t, schema,
 		[]Constraint{{}, {Platform: &Platform{}}, {Platform: &Platform{Version: &Version{Major: 2}}}},
 		[]string{"missing-platform", "missing-version", "version-2"})
@@ -240,27 +241,8 @@ func TestPath3(t *testing.T) {
 	)
 }
 
-func TestPath4AndPath5(t *testing.T) {
-	ab := func(a pathA) *pathB { return a.B }
-	bc := func(b pathB) *pathC { return b.C }
-	cd := func(c pathC) *pathD { return c.D }
-	de := func(d pathD) *pathE { return d.E }
-	ef := func(e pathE) *int { return e.Value }
-	value := 42
-	complete := pathA{B: &pathB{C: &pathC{D: &pathD{E: &pathE{Value: &value}}}}}
-
-	require.Same(t, complete.B.C.D.E, ruleix.Path4(ab, bc, cd, de)(complete))
-	require.Equal(t, &value, ruleix.Path5(ab, bc, cd, de, ef)(complete))
-	require.Nil(t, ruleix.Path4(ab, bc, cd, de)(pathA{}))
-	require.Nil(t, ruleix.Path5(ab, bc, cd, de, ef)(pathA{}))
-}
-
 func TestConcurrentSearchAndBitmapReuse(t *testing.T) {
-	comparisonSchema := ruleix.CompareBy(
-		func(c CustomerOrderCount) *int { return &c.Total },
-		func(c CustomerOrderCount) *ruleix.Operator { return c.Operator },
-		cmp.Compare[int],
-	)
+	comparisonSchema := ruleix.CompareBy(ruleix.GetterFromPointer(func(c CustomerOrderCount) *int { return &c.Total }), ruleix.GetterFromPointer(func(c CustomerOrderCount) *ruleix.Operator { return c.Operator }), cmp.Compare[int])
 	constraints := make([]CustomerOrderCount, 100)
 	ids := make([]int, 100)
 	for i := 0; i < 100; i++ {
@@ -288,7 +270,7 @@ func TestConcurrentSearchAndBitmapReuse(t *testing.T) {
 }
 
 func TestSearchDeduplicatesAndReusesDestination(t *testing.T) {
-	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }),
+	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return &v.required })),
 		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}},
 		[]string{"same", "other", "same"})
 
@@ -301,7 +283,7 @@ func TestSearchDeduplicatesAndReusesDestination(t *testing.T) {
 }
 
 func TestEqNilStoredValueMatchesConcreteSearchValue(t *testing.T) {
-	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return v.optional }),
+	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return v.optional })),
 		[]benchmarkEquality{{}, {optional: ptr(7)}, {optional: ptr(8)}},
 		[]string{"wildcard", "exact", "different"})
 
@@ -309,11 +291,7 @@ func TestEqNilStoredValueMatchesConcreteSearchValue(t *testing.T) {
 }
 
 func TestSearchDeduplicatesAcrossMatchingBranches(t *testing.T) {
-	comparisonSchema := ruleix.CompareBy(
-		func(c CustomerOrderCount) *int { return &c.Total },
-		func(c CustomerOrderCount) *ruleix.Operator { return c.Operator },
-		cmp.Compare[int],
-	)
+	comparisonSchema := ruleix.CompareBy(ruleix.GetterFromPointer(func(c CustomerOrderCount) *int { return &c.Total }), ruleix.GetterFromPointer(func(c CustomerOrderCount) *ruleix.Operator { return c.Operator }), cmp.Compare[int])
 	ix := buildZip(t, comparisonSchema,
 		[]CustomerOrderCount{
 			{Operator: ptr(ruleix.OperatorGTE), Total: 10},
@@ -329,7 +307,7 @@ func TestSearchDeduplicatesAcrossMatchingBranches(t *testing.T) {
 }
 
 func TestSearchDeduplicatesNonConsecutiveIDsInPostingList(t *testing.T) {
-	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }),
+	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return &v.required })),
 		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}, {required: 1}},
 		[]string{"first", "second", "third", "first"})
 
@@ -338,7 +316,7 @@ func TestSearchDeduplicatesNonConsecutiveIDsInPostingList(t *testing.T) {
 
 func TestNotExcludesIDWhenAnyConstraintMatches(t *testing.T) {
 	type PlatformConstraint struct{ PlatformName string }
-	ix := buildZip(t, ruleix.Exclude(func(c PlatformConstraint) *string { return &c.PlatformName }),
+	ix := buildZip(t, ruleix.Exclude(ruleix.GetterFromPointer(func(c PlatformConstraint) *string { return &c.PlatformName })),
 		[]PlatformConstraint{{PlatformName: "android"}, {PlatformName: "ios"}, {PlatformName: "ios"}},
 		[]int{1, 1, 2})
 
@@ -349,7 +327,7 @@ func TestNotExcludesIDWhenAnyConstraintMatches(t *testing.T) {
 
 func TestVisitHonorsNotExclusionAcrossConstraints(t *testing.T) {
 	type PlatformConstraint struct{ PlatformName string }
-	ix := buildZip(t, ruleix.Exclude(func(c PlatformConstraint) *string { return &c.PlatformName }),
+	ix := buildZip(t, ruleix.Exclude(ruleix.GetterFromPointer(func(c PlatformConstraint) *string { return &c.PlatformName })),
 		[]PlatformConstraint{{PlatformName: "android"}, {PlatformName: "ios"}}, []int{1, 1})
 
 	var got []int
@@ -366,7 +344,7 @@ func TestSearchUpdatesDestinationWhenItGrows(t *testing.T) {
 	for id := 0; id < 10; id++ {
 		constraints[id], ids[id] = benchmarkEquality{required: 1}, id
 	}
-	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }), constraints, ids)
+	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return &v.required })), constraints, ids)
 	dst := make([]int, 0, 1)
 	ix.Search(benchmarkEquality{required: 1}, &dst)
 	require.Equal(t, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, dst)
@@ -375,8 +353,8 @@ func TestSearchUpdatesDestinationWhenItGrows(t *testing.T) {
 func TestLocalSearchCachesEqualityNodesWithoutChangingResults(t *testing.T) {
 	type pair struct{ store, region *int }
 	ix := buildZip(t, ruleix.All(
-		ruleix.Include(func(v pair) *int { return v.store }),
-		ruleix.Include(func(v pair) *int { return v.region }),
+		ruleix.Include(ruleix.GetterFromPointer(func(v pair) *int { return v.store })),
+		ruleix.Include(ruleix.GetterFromPointer(func(v pair) *int { return v.region })),
 	), []pair{
 		{},
 		{store: ptr(10)},
@@ -398,7 +376,7 @@ func TestLocalSearchCachesEqualityNodesWithoutChangingResults(t *testing.T) {
 }
 
 func TestLocalSearchPanicsWithNilDestination(t *testing.T) {
-	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return v.optional }),
+	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return v.optional })),
 		[]benchmarkEquality{{optional: ptr(1)}}, []int{1})
 	require.PanicsWithValue(t, "ruleix: nil search destination", func() {
 		ix.Local().Search(benchmarkEquality{optional: ptr(1)}, nil)
@@ -406,9 +384,7 @@ func TestLocalSearchPanicsWithNilDestination(t *testing.T) {
 }
 
 func TestLocalSearchCachesOrderedNodesWithoutChangingResults(t *testing.T) {
-	ix := buildZip(t, ruleix.GreaterOrEqual(
-		func(v benchmarkRange) *int { return v.value }, cmp.Compare[int],
-	), []benchmarkRange{
+	ix := buildZip(t, ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), cmp.Compare[int]), []benchmarkRange{
 		{},
 		{value: ptr(5)},
 		{value: ptr(10)},
@@ -428,11 +404,7 @@ func TestLocalSearchCachesOrderedNodesWithoutChangingResults(t *testing.T) {
 }
 
 func TestLocalSearchCompareByMatchesIndexSearch(t *testing.T) {
-	ix := buildZip(t, ruleix.CompareBy(
-		func(v benchmarkRange) *int { return v.value },
-		func(v benchmarkRange) *ruleix.Operator { return v.operator },
-		cmp.Compare[int],
-	), []benchmarkRange{
+	ix := buildZip(t, ruleix.CompareBy(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), ruleix.GetterFromPointer(func(v benchmarkRange) *ruleix.Operator { return v.operator }), cmp.Compare[int]), []benchmarkRange{
 		{},
 		{operator: ptr(ruleix.OperatorEQ), value: ptr(10)},
 		{operator: ptr(ruleix.OperatorGTE), value: ptr(5)},
@@ -452,11 +424,7 @@ func TestLocalSearchCompareByMatchesIndexSearch(t *testing.T) {
 }
 
 func TestLocalSearchCachesBetweenNodesWithoutChangingResults(t *testing.T) {
-	ix := buildZip(t, ruleix.Between(
-		func(v benchmarkInterval) *int { return v.from },
-		func(v benchmarkInterval) *int { return v.until },
-		cmp.Compare[int],
-	), []benchmarkInterval{
+	ix := buildZip(t, ruleix.Between(ruleix.GetterFromPointer(func(v benchmarkInterval) *int { return v.from }), ruleix.GetterFromPointer(func(v benchmarkInterval) *int { return v.until }), cmp.Compare[int]), []benchmarkInterval{
 		{},
 		{from: ptr(0), until: ptr(20)},
 		{from: ptr(5), until: ptr(15)},
@@ -477,7 +445,7 @@ func TestLocalSearchCachesBetweenNodesWithoutChangingResults(t *testing.T) {
 
 func TestLocalSearchCachesExclusionsWithoutChangingResults(t *testing.T) {
 	type platformConstraint struct{ platform *string }
-	ix := buildZip(t, ruleix.Exclude(func(v platformConstraint) *string { return v.platform }),
+	ix := buildZip(t, ruleix.Exclude(ruleix.GetterFromPointer(func(v platformConstraint) *string { return v.platform })),
 		[]platformConstraint{
 			{},
 			{platform: ptr("android")},
@@ -498,7 +466,7 @@ func TestLocalSearchCachesExclusionsWithoutChangingResults(t *testing.T) {
 }
 
 func TestLocalVisitUsesCacheAndStopsEarly(t *testing.T) {
-	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }),
+	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return &v.required })),
 		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}},
 		[]string{"first", "second", "third"})
 	local := ix.Local()
@@ -516,8 +484,8 @@ func TestLocalVisitUsesCacheAndStopsEarly(t *testing.T) {
 
 func TestSeparateLocalsSupportConcurrentSearch(t *testing.T) {
 	ix := buildZip(t, ruleix.All(
-		ruleix.Include(func(v benchmarkAllValue) *int { return v.a }),
-		ruleix.GreaterOrEqual(func(v benchmarkAllValue) *int { return v.b }, cmp.Compare[int]),
+		ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkAllValue) *int { return v.a })),
+		ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(v benchmarkAllValue) *int { return v.b }), cmp.Compare[int]),
 	), []benchmarkAllValue{
 		{a: ptr(1), b: ptr(1)},
 		{a: ptr(1), b: ptr(2)},
@@ -554,16 +522,12 @@ func TestLocalNestedAllMatchesIndexSearch(t *testing.T) {
 		threshold *int
 	}
 	schema := ruleix.All(
-		ruleix.Include(func(v mixed) *string { return v.country }),
+		ruleix.Include(ruleix.GetterFromPointer(func(v mixed) *string { return v.country })),
 		ruleix.All(
-			ruleix.GreaterOrEqual(func(v mixed) *int { return v.minimum }, cmp.Compare[int]),
-			ruleix.Exclude(func(v mixed) *string { return v.excluded }),
+			ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(v mixed) *int { return v.minimum }), cmp.Compare[int]),
+			ruleix.Exclude(ruleix.GetterFromPointer(func(v mixed) *string { return v.excluded })),
 		),
-		ruleix.CompareBy(
-			func(v mixed) *int { return v.threshold },
-			func(v mixed) *ruleix.Operator { return v.operator },
-			cmp.Compare[int],
-		),
+		ruleix.CompareBy(ruleix.GetterFromPointer(func(v mixed) *int { return v.threshold }), ruleix.GetterFromPointer(func(v mixed) *ruleix.Operator { return v.operator }), cmp.Compare[int]),
 	)
 	ix := buildZip(t, schema, []mixed{
 		{},
@@ -603,7 +567,7 @@ func TestLocalNestedAllMatchesIndexSearch(t *testing.T) {
 }
 
 func TestVisitDeduplicatesAndStopsEarly(t *testing.T) {
-	ix := buildZip(t, ruleix.Include(func(v benchmarkEquality) *int { return &v.required }),
+	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return &v.required })),
 		[]benchmarkEquality{{required: 1}, {required: 1}, {required: 1}, {required: 1}},
 		[]string{"first", "first", "second", "third"})
 	var got []string

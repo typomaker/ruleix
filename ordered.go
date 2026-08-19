@@ -2,56 +2,56 @@ package ruleix
 
 import "github.com/RoaringBitmap/roaring/v2"
 
-// GreaterOrEqual matches query >= stored. A nil stored value is a wildcard.
+// GreaterOrEqual matches query >= stored. A missing stored value is a wildcard.
 //
 // For example, a stored minimum total of 100 matches a query total of 150:
 //
 //	ruleix.GreaterOrEqual(
-//		func(c Constraint) *int { return c.MinimumTotal },
+//		func(c Constraint) (int, bool) { return c.MinimumTotal, true },
 //		cmp.Compare[int],
 //	)
-func GreaterOrEqual[T any, V any](get func(T) *V, compare Compare[V]) Rule[T] {
+func GreaterOrEqual[T any, V any](get Getter[T, V], compare Compare[V]) Rule[T] {
 	return newOrderedRule(get, compare, greaterThan, true)
 }
 
-// LessOrEqual matches query <= stored. A nil stored value is a wildcard.
+// LessOrEqual matches query <= stored. A missing stored value is a wildcard.
 //
 // For example, a stored maximum total of 200 matches a query total of 150:
 //
 //	ruleix.LessOrEqual(
-//		func(c Constraint) *int { return c.MaximumTotal },
+//		func(c Constraint) (int, bool) { return c.MaximumTotal, true },
 //		cmp.Compare[int],
 //	)
-func LessOrEqual[T any, V any](get func(T) *V, compare Compare[V]) Rule[T] {
+func LessOrEqual[T any, V any](get Getter[T, V], compare Compare[V]) Rule[T] {
 	return newOrderedRule(get, compare, lessThan, true)
 }
 
-// Greater matches query > stored. A nil stored value is a wildcard.
+// Greater matches query > stored. A missing stored value is a wildcard.
 //
 // For example, a stored order-count threshold of 5 matches a query count of 6:
 //
 //	ruleix.Greater(
-//		func(c Constraint) *int { return c.OrderCountThreshold },
+//		func(c Constraint) (int, bool) { return c.OrderCountThreshold, true },
 //		cmp.Compare[int],
 //	)
-func Greater[T any, V any](get func(T) *V, compare Compare[V]) Rule[T] {
+func Greater[T any, V any](get Getter[T, V], compare Compare[V]) Rule[T] {
 	return newOrderedRule(get, compare, greaterThan, false)
 }
 
-// Less matches query < stored. A nil stored value is a wildcard.
+// Less matches query < stored. A missing stored value is a wildcard.
 //
 // For example, a stored upper limit of 10 matches a query value of 9:
 //
 //	ruleix.Less(
-//		func(c Constraint) *int { return c.UpperLimit },
+//		func(c Constraint) (int, bool) { return c.UpperLimit, true },
 //		cmp.Compare[int],
 //	)
-func Less[T any, V any](get func(T) *V, compare Compare[V]) Rule[T] {
+func Less[T any, V any](get Getter[T, V], compare Compare[V]) Rule[T] {
 	return newOrderedRule(get, compare, lessThan, false)
 }
 
 func newOrderedRule[T any, V any](
-	get func(T) *V,
+	get Getter[T, V],
 	compare Compare[V],
 	dir direction,
 	inclusive bool,
@@ -73,7 +73,7 @@ const (
 
 type orderedRule[T any, V any] struct {
 	nodeID    nodeID
-	get       func(T) *V
+	get       Getter[T, V]
 	compare   Compare[V]
 	dir       direction
 	inclusive bool
@@ -94,26 +94,26 @@ func (r *orderedRule[T, V]) newStateWithID(id nodeID, hint orderedBuildStatistic
 }
 func (*orderedRule[T, V]) validate(T) error { return nil }
 func (r *orderedRule[T, V]) insert(v T, id uint32) {
-	value := r.get(v)
-	if value == nil {
+	value, ok := r.get(v)
+	if !ok {
 		r.wildcard.Add(id)
 		return
 	}
-	r.index.insert(*value, id)
+	r.index.insert(value, id)
 }
 func (r *orderedRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	n := r.wildcard.GetCardinality()
-	value := r.get(v)
-	if value == nil {
+	value, ok := r.get(v)
+	if !ok {
 		return n
 	}
-	r.index.walk(*value, r.dir == lessThan, r.inclusive, func(bits *roaring.Bitmap) {
+	r.index.walk(value, r.dir == lessThan, r.inclusive, func(bits *roaring.Bitmap) {
 		n += bits.GetCardinality()
 	})
 	return n
 }
 func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	value := r.get(v)
+	value := getOptional(r.get, v)
 	if pool.local == nil {
 		r.addMatches(value, dst)
 		return
@@ -135,10 +135,10 @@ func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	dst.Or(bits)
 }
 
-func (r *orderedRule[T, V]) addMatches(value *V, dst *roaring.Bitmap) {
+func (r *orderedRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
 	dst.Or(r.wildcard)
-	if value != nil {
-		r.index.walk(*value, r.dir == lessThan, r.inclusive, dst.Or)
+	if value.ok {
+		r.index.walk(value.value, r.dir == lessThan, r.inclusive, dst.Or)
 	}
 }
 func (*orderedRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}

@@ -40,8 +40,8 @@ from scratch.
 
 - Generic, strongly typed API with no reflection.
 - Equality, exclusion, ordered, interval, and dynamic comparison filters.
-- Wildcards: a `nil` field in a stored constraint matches every concrete value.
-- Multi-column rules composed with `All` and nested getters built with `Path`.
+- Wildcards: a getter returning `ok == false` matches every concrete value.
+- Multi-column rules composed with `All` and direct nested getters.
 - Unique results in first-insertion order.
 - Immutable indexes safe for concurrent searches after `Build`.
 - Roaring bitmap-backed candidate sets with pooled search scratch space.
@@ -79,13 +79,20 @@ type Constraint struct {
 }
 
 func pointer[T any](value T) *T { return &value }
+func optional[T any](value *T) (T, bool) {
+	if value == nil {
+		var zero T
+		return zero, false
+	}
+	return *value, true
+}
 
 func main() {
 	schema := ruleix.All(
-		ruleix.Include(func(c Constraint) *string { return c.Country }),
-		ruleix.Include(func(c Constraint) *string { return c.Tier }),
-		ruleix.GreaterOrEqual(func(c Constraint) *int { return c.MinimumTotal }, cmp.Compare[int]),
-		ruleix.Exclude(func(c Constraint) *string { return c.ExcludedChannel }),
+		ruleix.Include(func(c Constraint) (string, bool) { return optional(c.Country) }),
+		ruleix.Include(func(c Constraint) (string, bool) { return optional(c.Tier) }),
+		ruleix.GreaterOrEqual(func(c Constraint) (int, bool) { return optional(c.MinimumTotal) }, cmp.Compare[int]),
+		ruleix.Exclude(func(c Constraint) (string, bool) { return optional(c.ExcludedChannel) }),
 	)
 
 	constraints := []Constraint{
@@ -140,12 +147,12 @@ operator, use `Greater` or `Less` directly.
 | `Less` | query value is less than the stored value |
 | `Between` | the query interval is fully covered by the stored interval |
 | `CompareBy` | the operator stored with the constraint evaluates to true |
-| `Path` / `Path3`–`Path5` | compose getters to access a nested property |
 | `All` | every child rule matches |
 
-All value getters return pointers. In a stored constraint, `nil` is a wildcard.
-In a search value, `nil` only matches stored wildcards. For `Exclude`, a stored
-`nil` means that no value is forbidden.
+All getters return `(value, ok)`. In a stored constraint, `ok == false` is a
+wildcard. In a search value it only matches stored wildcards. For `Exclude`,
+`ok == false` means that no value is forbidden. Zero values remain concrete
+when returned with `ok == true`.
 
 `Between` applies the following rule; either stored bound may be a wildcard:
 
@@ -157,19 +164,16 @@ stored.from <= query.from AND query.until <= stored.until
 `OperatorGT`, and `OperatorGTE` constants. Its value accessor is used for both
 stored constraints and queries, while its operator accessor is used only when
 building stored constraints. The operator present in a query is ignored. A
-non-wildcard stored constraint must have a valid operator. A nil query value
-matches only stored wildcards. Both accessors return pointers and can be
-composed with `Path`.
-
-`Path` composes pointer getters and propagates `nil`, so the concrete filter
-keeps control of wildcard behavior. Calls can be nested to traverse any depth:
+non-wildcard stored constraint must have a valid operator. A missing query
+value matches only stored wildcards. Nested fields are read directly:
 
 ```go
-ruleix.Include(ruleix.Path3(
-	func(c Constraint) *Platform { return c.Platform },
-	func(p Platform) *Version { return p.Version },
-	func(v Version) *int { return &v.Major },
-))
+ruleix.Include(func(c Constraint) (int, bool) {
+	if c.Platform == nil || c.Platform.Version == nil {
+		return 0, false
+	}
+	return c.Platform.Version.Major, true
+})
 ```
 
 ## Building an index

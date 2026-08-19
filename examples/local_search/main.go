@@ -25,8 +25,8 @@ func main() {
 		[]string{"global", "store", "region-20", "region-30"},
 	)
 	index, err := ruleix.New[constraint, string](ruleix.All(
-		ruleix.Include(func(c constraint) *int { return c.store }),
-		ruleix.Include(func(c constraint) *int { return c.region }),
+		ruleix.Include(func(c constraint) (int, bool) { return optional(c.store) }),
+		ruleix.Include(func(c constraint) (int, bool) { return optional(c.region) }),
 	)).Build(entries)
 	if err != nil {
 		panic(err)
@@ -40,4 +40,11 @@ func main() {
 		local.Search(constraint{store: pointer(10), region: pointer(region)}, &matches)
 		fmt.Printf("region %d: %v\n", region, matches)
 	}
+}
+
+func optional(value *int) (int, bool) {
+	if value == nil {
+		return 0, false
+	}
+	return *value, true
 }

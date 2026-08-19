@@ -1,3 +1,4 @@
+//nolint:lll // Migration examples keep legacy pointer getters inline.
 package ruleix_test
 
 import (
@@ -16,10 +17,10 @@ func Example_multiColumnRules() {
 	}
 
 	schema := ruleix.All(
-		ruleix.Include(func(c targetingConstraint) *string { return c.country }),
-		ruleix.Include(func(c targetingConstraint) *string { return c.tier }),
-		ruleix.GreaterOrEqual(func(c targetingConstraint) *int { return c.minimumTotal }, cmp.Compare[int]),
-		ruleix.Exclude(func(c targetingConstraint) *string { return c.excludedChannel }),
+		ruleix.Include(ruleix.GetterFromPointer(func(c targetingConstraint) *string { return c.country })),
+		ruleix.Include(ruleix.GetterFromPointer(func(c targetingConstraint) *string { return c.tier })),
+		ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(c targetingConstraint) *int { return c.minimumTotal }), cmp.Compare[int]),
+		ruleix.Exclude(ruleix.GetterFromPointer(func(c targetingConstraint) *string { return c.excludedChannel })),
 	)
 
 	countryDE := "DE"
@@ -76,8 +77,8 @@ func ExampleIndex_Local() {
 		[]string{"global", "store", "region-20", "region-30"},
 	)
 	index, err := ruleix.New[constraint, string](ruleix.All(
-		ruleix.Include(func(c constraint) *int { return c.store }),
-		ruleix.Include(func(c constraint) *int { return c.region }),
+		ruleix.Include(ruleix.GetterFromPointer(func(c constraint) *int { return c.store })),
+		ruleix.Include(ruleix.GetterFromPointer(func(c constraint) *int { return c.region })),
 	)).Build(entries)
 	if err != nil {
 		panic(err)

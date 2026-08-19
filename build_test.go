@@ -1,3 +1,4 @@
+//nolint:lll // Migration coverage keeps legacy pointer getters inline.
 package ruleix_test
 
 import (
@@ -14,11 +15,7 @@ type buildConstraint struct {
 }
 
 func buildSchema() ruleix.Rule[buildConstraint] {
-	return ruleix.CompareBy(
-		func(v buildConstraint) *int { return &v.value },
-		func(v buildConstraint) *ruleix.Operator { return v.operator },
-		func(a, b int) int { return a - b },
-	)
+	return ruleix.CompareBy(ruleix.GetterFromPointer(func(v buildConstraint) *int { return &v.value }), ruleix.GetterFromPointer(func(v buildConstraint) *ruleix.Operator { return v.operator }), func(a, b int) int { return a - b })
 }
 
 func TestZipPanicsForDifferentLengths(t *testing.T) {
@@ -55,7 +52,7 @@ func TestBuilderCreatesIndependentIndexes(t *testing.T) {
 
 func TestSchemaBuildsIndependentIndexes(t *testing.T) {
 	schema := ruleix.All(
-		ruleix.Include(func(v buildConstraint) *int { return &v.value }),
+		ruleix.Include(ruleix.GetterFromPointer(func(v buildConstraint) *int { return &v.value })),
 		buildSchema(),
 	)
 

@@ -16,7 +16,7 @@ func BenchmarkBuildSizeEstimate(b *testing.B) {
 			}
 		}
 	}
-	schema := Include(func(value buildEstimateConstraint) *int { return value.value })
+	schema := Include(GetterFromPointer(func(value buildEstimateConstraint) *int { return value.value }))
 	_, measured, err := buildIndex[buildEstimateConstraint, int](schema, entries, true, nil)
 	if err != nil {
 		b.Fatal(err)

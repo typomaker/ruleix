@@ -3,18 +3,18 @@ package ruleix
 import "github.com/RoaringBitmap/roaring/v2"
 
 // Between matches an interval fully covered by a stored interval:
-// stored.from <= query.from AND query.until <= stored.until. Either nil stored
-// bound is a wildcard for that side of the interval; a nil query bound matches
+// stored.from <= query.from AND query.until <= stored.until. Either missing stored
+// bound is a wildcard for that side of the interval; a missing query bound matches
 // only a stored wildcard on the same side.
 //
 // For example, to find stored validity windows that cover a query window:
 //
 //	ruleix.Between(
-//		func(c Constraint) *time.Time { return c.ValidFrom },
-//		func(c Constraint) *time.Time { return c.ValidUntil },
+//		func(c Constraint) (time.Time, bool) { return c.ValidFrom, true },
+//		func(c Constraint) (time.Time, bool) { return c.ValidUntil, true },
 //		time.Time.Compare,
 //	)
-func Between[T any, V any](from, until func(T) *V, compare Compare[V]) Rule[T] {
+func Between[T any, V any](from, until Getter[T, V], compare Compare[V]) Rule[T] {
 	return &betweenRule[T, V]{
 		from:    newOrderedRule(from, compare, greaterThan, true),
 		until:   newOrderedRule(until, compare, lessThan, true),
@@ -79,14 +79,14 @@ func (r *betweenRule[T, V]) insert(v T, id uint32) {
 	r.from.insert(v, id)
 	r.until.insert(v, id)
 	r.ensureID(id)
-	r.updateMinimumFrom(id, r.from.get(v))
-	r.updateMaximumUntil(id, r.until.get(v))
+	r.updateMinimumFrom(id, getOptional(r.from.get, v))
+	r.updateMaximumUntil(id, getOptional(r.until.get, v))
 }
 func (r *betweenRule[T, V]) cardinality(v T, pool *bitmapPool) uint64 {
 	return measuredCardinality[T](r, v, pool)
 }
 func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	from, until := r.from.get(v), r.until.get(v)
+	from, until := getOptional(r.from.get, v), getOptional(r.until.get, v)
 	if pool.local == nil {
 		r.searchUncached(v, dst, pool)
 		return
@@ -98,12 +98,12 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		cache = &betweenCache[V]{}
 		node.between = cache
 	}
-	hasFrom, hasUntil := from != nil, until != nil
+	hasFrom, hasUntil := from.ok, until.ok
 	for i := range cache.entries {
 		cached := &cache.entries[i]
 		if cached.initialized && cached.hasFrom == hasFrom && cached.hasUntil == hasUntil &&
-			(!hasFrom || r.compare(cached.from, *from) == 0) &&
-			(!hasUntil || r.compare(cached.until, *until) == 0) {
+			(!hasFrom || r.compare(cached.from, from.value) == 0) &&
+			(!hasUntil || r.compare(cached.until, until.value) == 0) {
 			cache.next = uint8(1 - i)
 			dst.Or(cached.bits)
 			return
@@ -124,10 +124,10 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	var zero V
 	cached.from, cached.until = zero, zero
 	if hasFrom {
-		cached.from = *from
+		cached.from = from.value
 	}
 	if hasUntil {
-		cached.until = *until
+		cached.until = until.value
 	}
 	dst.Or(cached.bits)
 }
@@ -147,8 +147,8 @@ func (r *betweenRule[T, V]) searchUncached(v T, dst *roaring.Bitmap, pool *bitma
 	defer pool.put(candidates)
 
 	if fromCardinality <= untilCardinality {
-		r.from.addMatches(r.from.get(v), candidates)
-		query := r.until.get(v)
+		r.from.addMatches(getOptional(r.from.get, v), candidates)
+		query := getOptional(r.until.get, v)
 		it := candidates.Iterator()
 		for it.HasNext() {
 			id := it.Next()
@@ -159,8 +159,8 @@ func (r *betweenRule[T, V]) searchUncached(v T, dst *roaring.Bitmap, pool *bitma
 		return
 	}
 
-	r.until.addMatches(r.until.get(v), candidates)
-	query := r.from.get(v)
+	r.until.addMatches(getOptional(r.until.get, v), candidates)
+	query := getOptional(r.from.get, v)
 	it := candidates.Iterator()
 	for it.HasNext() {
 		id := it.Next()
@@ -190,8 +190,8 @@ func (r *betweenRule[T, V]) prepareSearch() {
 func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	left := pool.get()
 	right := pool.get()
-	r.from.addMatches(r.from.get(v), left)
-	r.until.addMatches(r.until.get(v), right)
+	r.from.addMatches(getOptional(r.from.get, v), left)
+	r.until.addMatches(getOptional(r.until.get, v), right)
 	left.And(right)
 	dst.Or(left)
 	pool.put(right)
@@ -206,42 +206,42 @@ func (r *betweenRule[T, V]) ensureID(id uint32) {
 	}
 }
 
-func (r *betweenRule[T, V]) updateMinimumFrom(id uint32, value *V) {
+func (r *betweenRule[T, V]) updateMinimumFrom(id uint32, value optionalValue[V]) {
 	state := &r.minimumFrom[id]
-	if value == nil {
+	if !value.ok {
 		state.wildcard = true
 		return
 	}
-	if !state.set || r.compare(*value, state.value) < 0 {
-		state.value = *value
+	if !state.set || r.compare(value.value, state.value) < 0 {
+		state.value = value.value
 		state.set = true
 	}
 }
 
-func (r *betweenRule[T, V]) updateMaximumUntil(id uint32, value *V) {
+func (r *betweenRule[T, V]) updateMaximumUntil(id uint32, value optionalValue[V]) {
 	state := &r.maximumUntil[id]
-	if value == nil {
+	if !value.ok {
 		state.wildcard = true
 		return
 	}
-	if !state.set || r.compare(*value, state.value) > 0 {
-		state.value = *value
+	if !state.set || r.compare(value.value, state.value) > 0 {
+		state.value = value.value
 		state.set = true
 	}
 }
 
-func (r *betweenRule[T, V]) matchesFrom(id uint32, query *V) bool {
+func (r *betweenRule[T, V]) matchesFrom(id uint32, query optionalValue[V]) bool {
 	state := r.minimumFrom[id]
-	if query == nil {
+	if !query.ok {
 		return state.wildcard
 	}
-	return state.wildcard || state.set && r.compare(*query, state.value) >= 0
+	return state.wildcard || state.set && r.compare(query.value, state.value) >= 0
 }
 
-func (r *betweenRule[T, V]) matchesUntil(id uint32, query *V) bool {
+func (r *betweenRule[T, V]) matchesUntil(id uint32, query optionalValue[V]) bool {
 	state := r.maximumUntil[id]
-	if query == nil {
+	if !query.ok {
 		return state.wildcard
 	}
-	return state.wildcard || state.set && r.compare(*query, state.value) <= 0
+	return state.wildcard || state.set && r.compare(query.value, state.value) <= 0
 }

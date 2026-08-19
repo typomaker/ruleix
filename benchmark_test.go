@@ -1,3 +1,4 @@
+//nolint:lll // Migration benchmarks keep legacy pointer getters inline.
 package ruleix_test
 
 import (
@@ -55,7 +56,7 @@ func buildGenerated[C any, ID comparable](
 
 func benchmarkEqIndex(b *testing.B, highCardinality bool) *ruleix.Index[benchmarkEquality, int] {
 	b.Helper()
-	schema := ruleix.Include(func(v benchmarkEquality) *int { return v.optional })
+	schema := ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return v.optional }))
 	return buildGenerated(b, schema, benchmarkEntries, func(n int) (benchmarkEquality, int) {
 		value := n
 		if highCardinality {
@@ -91,7 +92,7 @@ func BenchmarkEq(b *testing.B) {
 		})
 	}
 	b.Run("Wildcard", func(b *testing.B) {
-		ix := buildGenerated(b, ruleix.Include(func(v benchmarkEquality) *int { return v.optional }), benchmarkEntries,
+		ix := buildGenerated(b, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return v.optional })), benchmarkEntries,
 			func(n int) (benchmarkEquality, int) { return benchmarkEquality{}, n })
 		query := benchmarkEquality{optional: benchmarkPtr(42)}
 		b.ReportAllocs()
@@ -125,8 +126,8 @@ func BenchmarkLocalCreation(b *testing.B) {
 func BenchmarkLocalEqualityReuse(b *testing.B) {
 	type query struct{ store, region *int }
 	ix := buildGenerated(b, ruleix.All(
-		ruleix.Include(func(v query) *int { return v.store }),
-		ruleix.Include(func(v query) *int { return v.region }),
+		ruleix.Include(ruleix.GetterFromPointer(func(v query) *int { return v.store })),
+		ruleix.Include(ruleix.GetterFromPointer(func(v query) *int { return v.region })),
 	), benchmarkEntries, func(n int) (query, int) {
 		switch {
 		case n < 10:
@@ -172,15 +173,11 @@ func benchmarkOrderedIndex(b *testing.B, kind string) *ruleix.Index[benchmarkRan
 	var schema ruleix.Rule[benchmarkRange]
 	switch kind {
 	case "GTE":
-		schema = ruleix.GreaterOrEqual(func(v benchmarkRange) *int { return v.value }, cmp.Compare[int])
+		schema = ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), cmp.Compare[int])
 	case "LTE":
-		schema = ruleix.LessOrEqual(func(v benchmarkRange) *int { return v.value }, cmp.Compare[int])
+		schema = ruleix.LessOrEqual(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), cmp.Compare[int])
 	case "CompareBy":
-		schema = ruleix.CompareBy(
-			func(v benchmarkRange) *int { return v.value },
-			func(v benchmarkRange) *ruleix.Operator { return v.operator },
-			cmp.Compare[int],
-		)
+		schema = ruleix.CompareBy(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), ruleix.GetterFromPointer(func(v benchmarkRange) *ruleix.Operator { return v.operator }), cmp.Compare[int])
 	default:
 		b.Fatalf("unknown ordered benchmark %q", kind)
 	}
@@ -282,11 +279,7 @@ func BenchmarkLocalCompareByReuse(b *testing.B) {
 }
 
 func BenchmarkBetweenManyUniqueBounds(b *testing.B) {
-	ix := buildGenerated(b, ruleix.Between(
-		func(v benchmarkInterval) *int { return v.from },
-		func(v benchmarkInterval) *int { return v.until },
-		cmp.Compare[int],
-	), benchmarkEntries, func(n int) (benchmarkInterval, int) {
+	ix := buildGenerated(b, ruleix.Between(ruleix.GetterFromPointer(func(v benchmarkInterval) *int { return v.from }), ruleix.GetterFromPointer(func(v benchmarkInterval) *int { return v.until }), cmp.Compare[int]), benchmarkEntries, func(n int) (benchmarkInterval, int) {
 		return benchmarkInterval{from: benchmarkPtr(n), until: benchmarkPtr(benchmarkEntries*2 - n)}, n
 	})
 	query := benchmarkInterval{
@@ -307,10 +300,10 @@ func BenchmarkBetweenNarrowIntersection(b *testing.B) {
 		name   string
 		schema ruleix.Rule[benchmarkInterval]
 	}{
-		{"Specialized", ruleix.Between(from, until, cmp.Compare[int])},
+		{"Specialized", ruleix.Between(ruleix.GetterFromPointer(from), ruleix.GetterFromPointer(until), cmp.Compare[int])},
 		{"Composed", ruleix.All(
-			ruleix.GreaterOrEqual(from, cmp.Compare[int]),
-			ruleix.LessOrEqual(until, cmp.Compare[int]),
+			ruleix.GreaterOrEqual(ruleix.GetterFromPointer(from), cmp.Compare[int]),
+			ruleix.LessOrEqual(ruleix.GetterFromPointer(until), cmp.Compare[int]),
 		)},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
@@ -335,11 +328,7 @@ func BenchmarkBetweenNarrowIntersection(b *testing.B) {
 }
 
 func BenchmarkLocalBetweenReuse(b *testing.B) {
-	ix := buildGenerated(b, ruleix.Between(
-		func(v benchmarkInterval) *int { return v.from },
-		func(v benchmarkInterval) *int { return v.until },
-		cmp.Compare[int],
-	), benchmarkEntries, func(n int) (benchmarkInterval, int) {
+	ix := buildGenerated(b, ruleix.Between(ruleix.GetterFromPointer(func(v benchmarkInterval) *int { return v.from }), ruleix.GetterFromPointer(func(v benchmarkInterval) *int { return v.until }), cmp.Compare[int]), benchmarkEntries, func(n int) (benchmarkInterval, int) {
 		switch {
 		case n == 0:
 			return benchmarkInterval{from: benchmarkPtr(0), until: benchmarkPtr(10_000)}, n
@@ -385,9 +374,7 @@ func BenchmarkLocalBetweenReuse(b *testing.B) {
 
 func BenchmarkLocalExcludeReuse(b *testing.B) {
 	const entries = 32
-	ix := buildGenerated(b, ruleix.Exclude(
-		func(v benchmarkRange) *int { return v.value },
-	), entries, func(n int) (benchmarkRange, int) {
+	ix := buildGenerated(b, ruleix.Exclude(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value })), entries, func(n int) (benchmarkRange, int) {
 		value := n & 1
 		return benchmarkRange{value: benchmarkPtr(value)}, n
 	})
@@ -432,10 +419,10 @@ func BenchmarkBetweenSelectiveSide(b *testing.B) {
 		name   string
 		schema ruleix.Rule[benchmarkInterval]
 	}{
-		{"Specialized", ruleix.Between(from, until, cmp.Compare[int])},
+		{"Specialized", ruleix.Between(ruleix.GetterFromPointer(from), ruleix.GetterFromPointer(until), cmp.Compare[int])},
 		{"Composed", ruleix.All(
-			ruleix.GreaterOrEqual(from, cmp.Compare[int]),
-			ruleix.LessOrEqual(until, cmp.Compare[int]),
+			ruleix.GreaterOrEqual(ruleix.GetterFromPointer(from), cmp.Compare[int]),
+			ruleix.LessOrEqual(ruleix.GetterFromPointer(until), cmp.Compare[int]),
 		)},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
@@ -457,14 +444,10 @@ func BenchmarkFilterWildcard(b *testing.B) {
 		name   string
 		schema ruleix.Rule[benchmarkRange]
 	}{
-		{"GTE", ruleix.GreaterOrEqual(func(v benchmarkRange) *int { return v.value }, cmp.Compare[int])},
-		{"LTE", ruleix.LessOrEqual(func(v benchmarkRange) *int { return v.value }, cmp.Compare[int])},
-		{"CompareBy", ruleix.CompareBy(
-			func(v benchmarkRange) *int { return v.value },
-			func(v benchmarkRange) *ruleix.Operator { return v.operator },
-			cmp.Compare[int],
-		)},
-		{"Not", ruleix.Exclude(func(v benchmarkRange) *int { return v.value })},
+		{"GTE", ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), cmp.Compare[int])},
+		{"LTE", ruleix.LessOrEqual(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), cmp.Compare[int])},
+		{"CompareBy", ruleix.CompareBy(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), ruleix.GetterFromPointer(func(v benchmarkRange) *ruleix.Operator { return v.operator }), cmp.Compare[int])},
+		{"Not", ruleix.Exclude(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }))},
 	}
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
@@ -483,10 +466,10 @@ func BenchmarkFilterWildcard(b *testing.B) {
 
 func benchmarkAllIndex(b *testing.B, nested bool) *ruleix.Index[benchmarkAllValue, int] {
 	b.Helper()
-	eqA := ruleix.Include(func(v benchmarkAllValue) *int { return v.a })
-	eqB := ruleix.Include(func(v benchmarkAllValue) *int { return v.b })
-	eqC := ruleix.Include(func(v benchmarkAllValue) *int { return v.c })
-	eqD := ruleix.Include(func(v benchmarkAllValue) *int { return v.d })
+	eqA := ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkAllValue) *int { return v.a }))
+	eqB := ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkAllValue) *int { return v.b }))
+	eqC := ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkAllValue) *int { return v.c }))
+	eqD := ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkAllValue) *int { return v.d }))
 	var schema ruleix.Rule[benchmarkAllValue]
 	if nested {
 		schema = ruleix.All(eqA, ruleix.All(eqB, ruleix.All(eqC, eqD)))
@@ -540,7 +523,7 @@ func BenchmarkParallelSearch(b *testing.B) {
 func BenchmarkBuildIndex(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		ix := buildGenerated(b, ruleix.Include(func(v benchmarkEquality) *int { return v.optional }), benchmarkEntries,
+		ix := buildGenerated(b, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return v.optional })), benchmarkEntries,
 			func(n int) (benchmarkEquality, string) {
 				return benchmarkEquality{optional: benchmarkPtr(n)}, fmt.Sprintf("modifier-%d", n)
 			})
@@ -554,7 +537,7 @@ func BenchmarkBuildEqualityCardinality(b *testing.B) {
 		b.Run(fmt.Sprintf("IDsPerValue/%d", cardinality), func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				ix := buildGenerated(b, ruleix.Include(func(v benchmarkEquality) *int { return v.optional }), benchmarkEntries,
+				ix := buildGenerated(b, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return v.optional })), benchmarkEntries,
 					func(n int) (benchmarkEquality, int) {
 						return benchmarkEquality{optional: benchmarkPtr(n / cardinality)}, n
 					})
@@ -573,10 +556,7 @@ func BenchmarkBuildOrderedIndex(b *testing.B) {
 	queryValue := benchmarkEntries / 2
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		ix := buildGenerated(b, ruleix.GreaterOrEqual(
-			func(v benchmarkRange) *int { return v.value },
-			cmp.Compare[int],
-		), benchmarkEntries, func(n int) (benchmarkRange, int) { return benchmarkRange{value: &values[n]}, n })
+		ix := buildGenerated(b, ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), cmp.Compare[int]), benchmarkEntries, func(n int) (benchmarkRange, int) { return benchmarkRange{value: &values[n]}, n })
 		ix.Search(benchmarkRange{value: &queryValue}, &benchmarkIntResult)
 	}
 	b.ReportMetric(benchmarkEntries, "rules/op")

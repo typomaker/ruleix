@@ -6,14 +6,14 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
-// Include matches a query field when it equals the stored field. A nil stored
-// value is a wildcard and matches every concrete query value; a nil query value
-// matches only stored wildcards.
+// Include matches a query field when it equals the stored field. A missing
+// stored value is a wildcard and matches every concrete query value; a missing
+// query value matches only stored wildcards.
 //
 // For example, to match a rule's optional country:
 //
-//	ruleix.Include(func(c Constraint) *string { return c.Country })
-func Include[T any, V comparable](get func(T) *V) Rule[T] {
+//	ruleix.Include(func(c Constraint) (string, bool) { return c.Country, true })
+func Include[T any, V comparable](get Getter[T, V]) Rule[T] {
 	return &eqRule[T, V]{get: get}
 }
 
@@ -109,7 +109,7 @@ func (s *equalitySet) prepareSearch() {
 
 type eqRule[T any, V comparable] struct {
 	nodeID   nodeID
-	get      func(T) *V
+	get      Getter[T, V]
 	wildcard *roaring.Bitmap
 	values   map[V]*equalitySet
 }
@@ -124,29 +124,29 @@ func (r *eqRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Ru
 }
 func (*eqRule[T, V]) validate(T) error { return nil }
 func (r *eqRule[T, V]) insert(v T, id uint32) {
-	value := r.get(v)
-	if value == nil {
+	value, ok := r.get(v)
+	if !ok {
 		r.wildcard.Add(id)
 		return
 	}
-	set := r.values[*value]
+	set := r.values[value]
 	if set == nil {
-		r.values[*value] = newEqualitySet(id)
+		r.values[value] = newEqualitySet(id)
 		return
 	}
 	set.add(id)
 }
 func (r *eqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	n := r.wildcard.GetCardinality()
-	if value := r.get(v); value != nil {
-		if set := r.values[*value]; set != nil {
+	if value, ok := r.get(v); ok {
+		if set := r.values[value]; set != nil {
 			n += set.cardinality()
 		}
 	}
 	return n
 }
 func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	value := r.get(v)
+	value := getOptional(r.get, v)
 	if pool.local == nil {
 		r.addMatches(value, dst)
 		return
@@ -168,10 +168,10 @@ func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	dst.Or(bits)
 }
 
-func (r *eqRule[T, V]) addMatches(value *V, dst *roaring.Bitmap) {
+func (r *eqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
 	dst.Or(r.wildcard)
-	if value != nil {
-		if set := r.values[*value]; set != nil {
+	if value.ok {
+		if set := r.values[value.value]; set != nil {
 			set.addTo(dst)
 		}
 	}

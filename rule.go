@@ -8,6 +8,34 @@ import "github.com/RoaringBitmap/roaring/v2"
 // a > b. The standard library's cmp.Compare is suitable for ordered types.
 type Compare[V any] func(a, b V) int
 
+// Getter returns a value and reports whether it is present. A missing value is
+// interpreted as a wildcard by filters. The boolean keeps zero values distinct
+// from missing values without requiring pointers or heap allocations.
+type Getter[T, V any] func(T) (V, bool)
+
+// GetterFromPointer adapts an old pointer getter during migration. New schemas
+// should return (value, ok) directly to avoid pointers to temporary values.
+func GetterFromPointer[T, V any](get func(T) *V) Getter[T, V] {
+	return func(value T) (V, bool) {
+		result := get(value)
+		if result == nil {
+			var zero V
+			return zero, false
+		}
+		return *result, true
+	}
+}
+
+type optionalValue[V any] struct {
+	value V
+	ok    bool
+}
+
+func getOptional[T, V any](get Getter[T, V], value T) optionalValue[V] {
+	v, ok := get(value)
+	return optionalValue[V]{value: v, ok: ok}
+}
+
 // Rule describes how constraints and query values of T are matched. Construct
 // rules with Include, Exclude, the ordered filters, Between, CompareBy, and All.
 // Its implementation is sealed so an index can rely on all rule invariants.

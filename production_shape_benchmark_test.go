@@ -1,3 +1,4 @@
+//nolint:lll // Production-shaped getters stay inline for benchmark fidelity.
 package ruleix_test
 
 import (
@@ -58,95 +59,107 @@ var productionBenchmarkIndexResult *ruleix.Index[productionBenchmarkConstraint, 
 func productionBenchmarkSchema() ruleix.Rule[productionBenchmarkConstraint] {
 	return ruleix.All(
 		productionBenchmarkActivityRule(),
-		ruleix.CompareBy(
-			func(value productionBenchmarkConstraint) *int {
-				if value.customerOrderCount == nil {
-					return nil
-				}
-				return &value.customerOrderCount.total
-			},
-			func(value productionBenchmarkConstraint) *ruleix.Operator {
-				if value.customerOrderCount == nil {
-					return nil
-				}
-				return ptr(ruleix.OperatorGTE)
-			},
-			cmp.Compare[int],
+		ruleix.CompareBy(func(value productionBenchmarkConstraint) (int, bool) {
+			if value.customerOrderCount == nil {
+				return 0, false
+			}
+			return value.customerOrderCount.total, true
+		}, func(value productionBenchmarkConstraint) (ruleix.Operator, bool) {
+			if value.customerOrderCount == nil {
+				return 0, false
+			}
+			return ruleix.OperatorGTE, true
+		}, cmp.Compare[int],
 		),
 		productionBenchmarkSlotTimeRule(),
-		ruleix.Include(func(value productionBenchmarkConstraint) *[16]byte { return value.customerUUID }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *uint8 { return value.customerSegment }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *bool { return value.customerFraud }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *[16]byte { return value.storeUUID }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *int { return value.deliveryAreaID }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *int { return value.regionID }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *[16]byte { return value.retailerUUID }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *uint8 { return value.vertical }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *uint8 { return value.slotType }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *int { return value.slotDayOfWeek }),
+		ruleix.Include(func(value productionBenchmarkConstraint) ([16]byte, bool) {
+			return benchmarkOptional(value.customerUUID)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (uint8, bool) {
+			return benchmarkOptional(value.customerSegment)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (bool, bool) { return benchmarkOptional(value.customerFraud) }),
+		ruleix.Include(func(value productionBenchmarkConstraint) ([16]byte, bool) { return benchmarkOptional(value.storeUUID) }),
+		ruleix.Include(func(value productionBenchmarkConstraint) (int, bool) { return benchmarkOptional(value.deliveryAreaID) }),
+		ruleix.Include(func(value productionBenchmarkConstraint) (int, bool) { return benchmarkOptional(value.regionID) }),
+		ruleix.Include(func(value productionBenchmarkConstraint) ([16]byte, bool) {
+			return benchmarkOptional(value.retailerUUID)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (uint8, bool) { return benchmarkOptional(value.vertical) }),
+		ruleix.Include(func(value productionBenchmarkConstraint) (uint8, bool) { return benchmarkOptional(value.slotType) }),
+		ruleix.Include(func(value productionBenchmarkConstraint) (int, bool) { return benchmarkOptional(value.slotDayOfWeek) }),
 		productionBenchmarkPlatformRule(),
-		ruleix.Include(func(value productionBenchmarkConstraint) *bool { return value.dbs }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *uint8 { return value.marketType }),
-		ruleix.Include(func(value productionBenchmarkConstraint) *[2]string { return value.abTest }),
+		ruleix.Include(func(value productionBenchmarkConstraint) (bool, bool) { return benchmarkOptional(value.dbs) }),
+		ruleix.Include(func(value productionBenchmarkConstraint) (uint8, bool) { return benchmarkOptional(value.marketType) }),
+		ruleix.Include(func(value productionBenchmarkConstraint) ([2]string, bool) { return benchmarkOptional(value.abTest) }),
 	)
 }
 
+func benchmarkOptional[V any](value *V) (V, bool) {
+	if value == nil {
+		var zero V
+		return zero, false
+	}
+	return *value, true
+}
+
 func productionBenchmarkActivityRule() ruleix.Rule[productionBenchmarkConstraint] {
-	return ruleix.Between(
-		ruleix.Path(
-			func(value productionBenchmarkConstraint) *productionBenchmarkTimeRange { return value.activity },
-			func(value productionBenchmarkTimeRange) *time.Time { return ptr(value.since.Truncate(time.Second)) },
-		),
-		ruleix.Path(
-			func(value productionBenchmarkConstraint) *productionBenchmarkTimeRange { return value.activity },
-			func(value productionBenchmarkTimeRange) *time.Time { return ptr(value.until.Truncate(time.Second)) },
-		),
-		time.Time.Compare,
+	return ruleix.Between(func(value productionBenchmarkConstraint) (time.Time, bool) {
+		if value.activity == nil {
+			return time.Time{}, false
+		}
+		return value.activity.since.Truncate(time.Second), true
+	}, func(value productionBenchmarkConstraint) (time.Time, bool) {
+		if value.activity == nil {
+			return time.Time{}, false
+		}
+		return value.activity.until.Truncate(time.Second), true
+	}, time.Time.Compare,
 	)
 }
 
 func productionBenchmarkSlotTimeRule() ruleix.Rule[productionBenchmarkConstraint] {
-	return ruleix.Between(
-		ruleix.Path(
-			func(value productionBenchmarkConstraint) *productionBenchmarkTimeRange { return value.slotTime },
-			func(value productionBenchmarkTimeRange) *time.Time { return ptr(value.since.Truncate(time.Second)) },
-		),
-		ruleix.Path(
-			func(value productionBenchmarkConstraint) *productionBenchmarkTimeRange { return value.slotTime },
-			func(value productionBenchmarkTimeRange) *time.Time { return ptr(value.until.Truncate(time.Second)) },
-		),
-		time.Time.Compare,
+	return ruleix.Between(func(value productionBenchmarkConstraint) (time.Time, bool) {
+		if value.slotTime == nil {
+			return time.Time{}, false
+		}
+		return value.slotTime.since.Truncate(time.Second), true
+	}, func(value productionBenchmarkConstraint) (time.Time, bool) {
+		if value.slotTime == nil {
+			return time.Time{}, false
+		}
+		return value.slotTime.until.Truncate(time.Second), true
+	}, time.Time.Compare,
 	)
 }
 
 func productionBenchmarkPlatformRule() ruleix.Rule[productionBenchmarkConstraint] {
 	return ruleix.All(
-		ruleix.Include(ruleix.Path(
-			func(value productionBenchmarkConstraint) *productionBenchmarkPlatform { return value.platform },
-			func(value productionBenchmarkPlatform) *string { return &value.name },
-		)),
-		ruleix.CompareBy(
-			ruleix.Path3(
-				func(value productionBenchmarkConstraint) *productionBenchmarkPlatform { return value.platform },
-				func(value productionBenchmarkPlatform) *productionBenchmarkVersion { return value.version },
-				func(value productionBenchmarkVersion) *[3]int {
-					return &[3]int{value.major, value.minor, value.patch}
-				},
-			),
-			func(value productionBenchmarkConstraint) *ruleix.Operator {
-				if value.platform == nil || value.platform.version == nil {
-					return nil
+		ruleix.Include(func(value productionBenchmarkConstraint) (string, bool) {
+			if value.platform == nil {
+				return "", false
+			}
+			return value.platform.name, true
+		}),
+		ruleix.CompareBy(func(value productionBenchmarkConstraint) ([3]int, bool) {
+			if value.platform == nil || value.platform.version == nil {
+				return [3]int{}, false
+			}
+			version := value.platform.version
+			return [3]int{version.major, version.minor, version.patch}, true
+		}, func(value productionBenchmarkConstraint) (ruleix.Operator, bool) {
+			if value.platform == nil || value.platform.version == nil {
+				return 0, false
+			}
+			return ruleix.OperatorGTE, true
+		}, func(a, b [3]int) int {
+			for i := range a {
+				if result := cmp.Compare(a[i], b[i]); result != 0 {
+					return result
 				}
-				return ptr(ruleix.OperatorGTE)
-			},
-			func(a, b [3]int) int {
-				for i := range a {
-					if result := cmp.Compare(a[i], b[i]); result != 0 {
-						return result
-					}
-				}
-				return 0
-			},
+			}
+			return 0
+		},
 		),
 	)
 }

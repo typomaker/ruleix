@@ -1,3 +1,4 @@
+//nolint:lll // Migration coverage keeps legacy pointer getters inline.
 package ruleix
 
 import (
@@ -17,13 +18,9 @@ func TestCapacityHint(t *testing.T) {
 func TestBuilderCapacitiesFollowLastSuccessfulBuild(t *testing.T) {
 	compare := func(a, b int) int { return a - b }
 	schema := All(
-		Include(func(v statisticsConstraint) *string { return v.name }),
-		GreaterOrEqual(func(v statisticsConstraint) *int { return v.minimum }, compare),
-		Between(
-			func(v statisticsConstraint) *int { return v.from },
-			func(v statisticsConstraint) *int { return v.until },
-			compare,
-		),
+		Include(GetterFromPointer(func(v statisticsConstraint) *string { return v.name })),
+		GreaterOrEqual(GetterFromPointer(func(v statisticsConstraint) *int { return v.minimum }), compare),
+		Between(GetterFromPointer(func(v statisticsConstraint) *int { return v.from }), GetterFromPointer(func(v statisticsConstraint) *int { return v.until }), compare),
 	)
 	builder := New[statisticsConstraint, string](schema)
 	build := func(size int) *Index[statisticsConstraint, string] {
@@ -75,19 +72,11 @@ func statisticsPtr[T any](value T) *T { return &value }
 func TestBuildCollectsCompactPerNodeStatistics(t *testing.T) {
 	compare := func(a, b int) int { return a - b }
 	schema := All(
-		Include(func(v statisticsConstraint) *string { return v.name }),
-		Exclude(func(v statisticsConstraint) *string { return v.name }),
-		GreaterOrEqual(func(v statisticsConstraint) *int { return v.minimum }, compare),
-		Between(
-			func(v statisticsConstraint) *int { return v.from },
-			func(v statisticsConstraint) *int { return v.until },
-			compare,
-		),
-		CompareBy(
-			func(v statisticsConstraint) *int { return v.compared },
-			func(v statisticsConstraint) *Operator { return v.operator },
-			compare,
-		),
+		Include(GetterFromPointer(func(v statisticsConstraint) *string { return v.name })),
+		Exclude(GetterFromPointer(func(v statisticsConstraint) *string { return v.name })),
+		GreaterOrEqual(GetterFromPointer(func(v statisticsConstraint) *int { return v.minimum }), compare),
+		Between(GetterFromPointer(func(v statisticsConstraint) *int { return v.from }), GetterFromPointer(func(v statisticsConstraint) *int { return v.until }), compare),
+		CompareBy(GetterFromPointer(func(v statisticsConstraint) *int { return v.compared }), GetterFromPointer(func(v statisticsConstraint) *Operator { return v.operator }), compare),
 	)
 
 	entries := func(yield func(statisticsConstraint, string) bool) {
@@ -156,11 +145,7 @@ func TestBuildCollectsCompactPerNodeStatistics(t *testing.T) {
 
 func TestCompareByCreatesIndexesOnlyForUsedOperators(t *testing.T) {
 	compare := func(a, b int) int { return a - b }
-	builder := New[statisticsConstraint, string](CompareBy(
-		func(v statisticsConstraint) *int { return v.compared },
-		func(v statisticsConstraint) *Operator { return v.operator },
-		compare,
-	))
+	builder := New[statisticsConstraint, string](CompareBy(GetterFromPointer(func(v statisticsConstraint) *int { return v.compared }), GetterFromPointer(func(v statisticsConstraint) *Operator { return v.operator }), compare))
 	build := func(operators ...Operator) *Index[statisticsConstraint, string] {
 		t.Helper()
 		index, err := builder.Build(func(yield func(statisticsConstraint, string) bool) {

@@ -1,3 +1,4 @@
+//nolint:lll // Migration coverage keeps legacy pointer getters inline.
 package ruleix_test
 
 import (
@@ -22,13 +23,13 @@ func TestOrderedRulesSupportWildcard(t *testing.T) {
 	}{
 		{
 			name:   "GreaterOrEqual",
-			schema: ruleix.GreaterOrEqual(func(v wildcardValue) *int { return v.value }, cmp.Compare[int]),
+			schema: ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(v wildcardValue) *int { return v.value }), cmp.Compare[int]),
 			query:  10,
 			want:   []string{"wildcard", "match"},
 		},
 		{
 			name:   "LessOrEqual",
-			schema: ruleix.LessOrEqual(func(v wildcardValue) *int { return v.value }, cmp.Compare[int]),
+			schema: ruleix.LessOrEqual(ruleix.GetterFromPointer(func(v wildcardValue) *int { return v.value }), cmp.Compare[int]),
 			query:  10,
 			want:   []string{"wildcard", "different"},
 		},
@@ -53,22 +54,22 @@ func TestOrderedRulesHonorStrictness(t *testing.T) {
 	}{
 		{
 			name:   "GreaterOrEqual",
-			schema: ruleix.GreaterOrEqual(func(v wildcardValue) *int { return v.value }, cmp.Compare[int]),
+			schema: ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(v wildcardValue) *int { return v.value }), cmp.Compare[int]),
 			want:   []string{"wildcard", "less", "equal"},
 		},
 		{
 			name:   "Greater",
-			schema: ruleix.Greater(func(v wildcardValue) *int { return v.value }, cmp.Compare[int]),
+			schema: ruleix.Greater(ruleix.GetterFromPointer(func(v wildcardValue) *int { return v.value }), cmp.Compare[int]),
 			want:   []string{"wildcard", "less"},
 		},
 		{
 			name:   "LessOrEqual",
-			schema: ruleix.LessOrEqual(func(v wildcardValue) *int { return v.value }, cmp.Compare[int]),
+			schema: ruleix.LessOrEqual(ruleix.GetterFromPointer(func(v wildcardValue) *int { return v.value }), cmp.Compare[int]),
 			want:   []string{"wildcard", "equal", "greater"},
 		},
 		{
 			name:   "Less",
-			schema: ruleix.Less(func(v wildcardValue) *int { return v.value }, cmp.Compare[int]),
+			schema: ruleix.Less(ruleix.GetterFromPointer(func(v wildcardValue) *int { return v.value }), cmp.Compare[int]),
 			want:   []string{"wildcard", "greater"},
 		},
 	}
@@ -85,11 +86,7 @@ func TestOrderedRulesHonorStrictness(t *testing.T) {
 }
 
 func TestCompareBySupportsWildcard(t *testing.T) {
-	schema := ruleix.CompareBy(
-		func(v wildcardValue) *int { return v.value },
-		func(v wildcardValue) *ruleix.Operator { return v.operator },
-		cmp.Compare[int],
-	)
+	schema := ruleix.CompareBy(ruleix.GetterFromPointer(func(v wildcardValue) *int { return v.value }), ruleix.GetterFromPointer(func(v wildcardValue) *ruleix.Operator { return v.operator }), cmp.Compare[int])
 	invalid := ruleix.Operator(255)
 	ix := buildZip(t, schema,
 		[]wildcardValue{
@@ -114,11 +111,7 @@ type wildcardInterval struct {
 }
 
 func TestBetweenUsesWildcardBoundsFromChildren(t *testing.T) {
-	schema := ruleix.Between(
-		func(v wildcardInterval) *int { return v.from },
-		func(v wildcardInterval) *int { return v.until },
-		cmp.Compare[int],
-	)
+	schema := ruleix.Between(ruleix.GetterFromPointer(func(v wildcardInterval) *int { return v.from }), ruleix.GetterFromPointer(func(v wildcardInterval) *int { return v.until }), cmp.Compare[int])
 	ix := buildZip(t, schema,
 		[]wildcardInterval{
 			{},
@@ -136,7 +129,7 @@ func TestBetweenUsesWildcardBoundsFromChildren(t *testing.T) {
 }
 
 func TestNotWildcardDoesNotOverrideConcreteExclusion(t *testing.T) {
-	schema := ruleix.Exclude(func(v wildcardValue) *int { return v.value })
+	schema := ruleix.Exclude(ruleix.GetterFromPointer(func(v wildcardValue) *int { return v.value }))
 	ix := buildZip(t, schema,
 		[]wildcardValue{{value: ptr(1)}, {value: ptr(2)}, {value: ptr(3)}, {}},
 		[]int{1, 1, 1, 1})

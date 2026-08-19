@@ -1,3 +1,4 @@
+//nolint:lll // Migration coverage keeps legacy pointer getters inline.
 package ruleix
 
 import (
@@ -13,10 +14,10 @@ type schemaStateConstraint struct {
 
 func TestSchemaStateUsesStableSequentialNodeIDs(t *testing.T) {
 	schema := All(
-		Include(func(v schemaStateConstraint) *string { return v.name }),
+		Include(GetterFromPointer(func(v schemaStateConstraint) *string { return v.name })),
 		All(
-			GreaterOrEqual(func(v schemaStateConstraint) *int { return v.value }, func(a, b int) int { return a - b }),
-			Exclude(func(v schemaStateConstraint) *string { return v.name }),
+			GreaterOrEqual(GetterFromPointer(func(v schemaStateConstraint) *int { return v.value }), func(a, b int) int { return a - b }),
+			Exclude(GetterFromPointer(func(v schemaStateConstraint) *string { return v.name })),
 		),
 	)
 

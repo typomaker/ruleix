@@ -39,9 +39,9 @@ func wildcardBenchmarkSchema(filters int) ruleix.Rule[wildcardBenchmarkConstrain
 	rules := make([]ruleix.Rule[wildcardBenchmarkConstraint], filters)
 	for i := range rules {
 		position := i
-		rules[i] = ruleix.Include(func(value wildcardBenchmarkConstraint) *int {
+		rules[i] = ruleix.Include(ruleix.GetterFromPointer(func(value wildcardBenchmarkConstraint) *int {
 			return value.values[position]
-		})
+		}))
 	}
 	return ruleix.All(rules...)
 }

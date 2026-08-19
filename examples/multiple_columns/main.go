@@ -17,10 +17,10 @@ type constraint struct {
 
 func main() {
 	schema := ruleix.All(
-		ruleix.Include(func(c constraint) *string { return c.country }),
-		ruleix.Include(func(c constraint) *string { return c.tier }),
-		ruleix.GreaterOrEqual(func(c constraint) *int { return c.minimumTotal }, cmp.Compare[int]),
-		ruleix.Exclude(func(c constraint) *string { return c.excludedChannel }),
+		ruleix.Include(func(c constraint) (string, bool) { return optional(c.country) }),
+		ruleix.Include(func(c constraint) (string, bool) { return optional(c.tier) }),
+		ruleix.GreaterOrEqual(func(c constraint) (int, bool) { return optional(c.minimumTotal) }, cmp.Compare[int]),
+		ruleix.Exclude(func(c constraint) (string, bool) { return optional(c.excludedChannel) }),
 	)
 
 	constraints := []constraint{
@@ -66,3 +66,10 @@ func printMatches(index *ruleix.Index[constraint, string], query constraint) {
 }
 
 func pointer[T any](value T) *T { return &value }
+func optional[T any](value *T) (T, bool) {
+	if value == nil {
+		var zero T
+		return zero, false
+	}
+	return *value, true
+}

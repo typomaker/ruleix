@@ -8,8 +8,8 @@ import "github.com/RoaringBitmap/roaring/v2"
 // For example, to match both country and customer tier:
 //
 //	ruleix.All(
-//		ruleix.Include(func(c Constraint) *string { return c.Country }),
-//		ruleix.Include(func(c Constraint) *string { return c.Tier }),
+//		ruleix.Include(func(c Constraint) (string, bool) { return c.Country, true }),
+//		ruleix.Include(func(c Constraint) (string, bool) { return c.Tier, true }),
 //	)
 func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} }
 

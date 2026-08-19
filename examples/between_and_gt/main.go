@@ -26,27 +26,29 @@ type orderCountRule struct {
 
 func main() {
 	schema := ruleix.All(
-		ruleix.Between(
-			ruleix.Path(
-				func(c constraint) *timeRange { return c.active },
-				func(r timeRange) *time.Time { return r.from },
-			),
-			ruleix.Path(
-				func(c constraint) *timeRange { return c.active },
-				func(r timeRange) *time.Time { return r.until },
-			),
-			time.Time.Compare,
+		ruleix.Between(func(c constraint) (time.Time, bool) {
+			if c.active == nil || c.active.from == nil {
+				return time.Time{}, false
+			}
+			return *c.active.from, true
+		}, func(c constraint) (time.Time, bool) {
+			if c.active == nil || c.active.until == nil {
+				return time.Time{}, false
+			}
+			return *c.active.until, true
+		}, time.Time.Compare,
 		),
-		ruleix.CompareBy(
-			ruleix.Path(
-				func(c constraint) *orderCountRule { return c.orderCount },
-				func(r orderCountRule) *int { return r.value },
-			),
-			ruleix.Path(
-				func(c constraint) *orderCountRule { return c.orderCount },
-				func(r orderCountRule) *ruleix.Operator { return r.operator },
-			),
-			cmp.Compare[int],
+		ruleix.CompareBy(func(c constraint) (int, bool) {
+			if c.orderCount == nil || c.orderCount.value == nil {
+				return 0, false
+			}
+			return *c.orderCount.value, true
+		}, func(c constraint) (ruleix.Operator, bool) {
+			if c.orderCount == nil || c.orderCount.operator == nil {
+				return 0, false
+			}
+			return *c.orderCount.operator, true
+		}, cmp.Compare[int],
 		),
 	)
 
