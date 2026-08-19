@@ -83,6 +83,10 @@ func buildIndex[C any, ID comparable](
 	internalIDs := make(map[ID]uint32, uniqueIDCapacity)
 	var buildErr error
 	entryIndex := 0
+	// TODO: Explore an optional bulk-build path that buffers IDs per posting and
+	// flushes them with roaring.AddMany. It substantially reduces insertion CPU
+	// for large postings, but per-posting buffers increase peak build memory and
+	// do not suit the current streaming contract; see BenchmarkBitmapAddMany.
 	entries(func(constraint C, id ID) bool {
 		if uint64(len(ix.values)) > math.MaxUint32 {
 			buildErr = fmt.Errorf("ruleix: at most 2^32 rules are supported")
