@@ -26,10 +26,10 @@ func TestBuildInternsEqualPostingBitmaps(t *testing.T) {
 	index, err := New[constraint, int](All(Include(getLeft), Include(getRight))).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	root := index.root.(*allRule[constraint])
-	left := root.children[0].(*eqRule[constraint, int])
-	right := root.children[1].(*eqRule[constraint, int])
+	left := root.children[0].(*unaryEqRule[constraint, int])
+	right := root.children[1].(*unaryEqRule[constraint, int])
 	require.Same(t, left.wildcard, right.wildcard)
-	require.Same(t, left.values.get(concrete).bits, right.values.get(concrete).bits)
+	require.Same(t, left.set.bits, right.set.bits)
 
 	var matches []int
 	index.Search(constraint{left: &concrete, right: &concrete}, &matches)

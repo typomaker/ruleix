@@ -36,11 +36,62 @@ func TestBuildRemovesWildcardChildrenFromAll(t *testing.T) {
 		[]int{1, 2},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &eqRule[constraint, int]{}, index.root)
+	require.IsType(t, &binaryEqRule[constraint, int]{}, index.root)
 
 	var matches []int
 	index.Search(constraint{concrete: &two}, &matches)
 	require.Equal(t, []int{2}, matches)
+}
+
+func TestBuildSpecializesUnaryEquality(t *testing.T) {
+	type constraint struct{ value *bool }
+	falseValue, trueValue := false, true
+	index, err := New[constraint, int](Include(GetterFromPointer(func(value constraint) *bool { return value.value }))).Build(Zip(
+		[]constraint{{value: &falseValue}, {}, {value: &falseValue}},
+		[]int{1, 2, 3},
+	))
+	require.NoError(t, err)
+	require.IsType(t, &unaryEqRule[constraint, bool]{}, index.root)
+
+	for _, tt := range []struct {
+		query constraint
+		want  []int
+	}{
+		{constraint{value: &falseValue}, []int{1, 2, 3}},
+		{constraint{value: &trueValue}, []int{2}},
+		{constraint{}, []int{2}},
+	} {
+		var matches []int
+		index.Search(tt.query, &matches)
+		require.Equal(t, tt.want, matches)
+		matches = nil
+		index.Local().Search(tt.query, &matches)
+		require.Equal(t, tt.want, matches)
+	}
+}
+
+func TestBuildSpecializesBinaryEquality(t *testing.T) {
+	type constraint struct{ value *bool }
+	falseValue, trueValue := false, true
+	index, err := New[constraint, int](Include(GetterFromPointer(func(value constraint) *bool { return value.value }))).Build(Zip(
+		[]constraint{{value: &falseValue}, {value: &trueValue}, {}},
+		[]int{1, 2, 3},
+	))
+	require.NoError(t, err)
+	require.IsType(t, &binaryEqRule[constraint, bool]{}, index.root)
+
+	for _, tt := range []struct {
+		query constraint
+		want  []int
+	}{
+		{constraint{value: &falseValue}, []int{1, 3}},
+		{constraint{value: &trueValue}, []int{2, 3}},
+		{constraint{}, []int{3}},
+	} {
+		var matches []int
+		index.Search(tt.query, &matches)
+		require.Equal(t, tt.want, matches)
+	}
 }
 
 func TestBuildOptimizesWildcardBetween(t *testing.T) {

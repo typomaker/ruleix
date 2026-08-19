@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Equality filters with one or two concrete values are specialized into
+  compact unary or binary search rules during build.
+
 ## [0.5.0] - 2026-08-19
 
 ### Added

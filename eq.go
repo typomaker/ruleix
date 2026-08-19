@@ -252,6 +252,18 @@ func (r *eqRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {
 		return newMatchAllRule[T](r.wildcard)
 	}
+	switch len(r.values.sets) {
+	case 1:
+		return &unaryEqRule[T, V]{
+			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
+			key: r.values.keys[0], set: r.values.sets[0],
+		}
+	case 2:
+		return &binaryEqRule[T, V]{
+			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
+			keys: r.values.keys, sets: [2]equalitySet{r.values.sets[0], r.values.sets[1]},
+		}
+	}
 	return r
 }
 func (r *eqRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
@@ -268,4 +280,147 @@ func (r *eqRule[T, V]) internBitmaps(interner *bitmapInterner) {
 	for i := range r.values.sets {
 		r.values.sets[i].internBitmaps(interner)
 	}
+}
+
+// unaryEqRule and binaryEqRule are immutable build-time specializations for
+// low-cardinality equality filters. Besides avoiding a map lookup, they discard
+// the slice and capacity retained by the general equality index.
+type unaryEqRule[T any, V comparable] struct {
+	nodeID   nodeID
+	get      Getter[T, V]
+	wildcard *roaring.Bitmap
+	key      V
+	set      equalitySet
+}
+
+func (*unaryEqRule[T, V]) rule()                                                 {}
+func (r *unaryEqRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
+func (*unaryEqRule[T, V]) validate(T) error                                      { return nil }
+func (*unaryEqRule[T, V]) insert(T, uint32)                                      {}
+func (r *unaryEqRule[T, V]) matchingSet(value optionalValue[V]) *equalitySet {
+	if value.ok && value.value == r.key {
+		return &r.set
+	}
+	return nil
+}
+func (r *unaryEqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
+	n := r.wildcard.GetCardinality()
+	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
+		n += set.cardinality()
+	}
+	return n
+}
+func (r *unaryEqRule[T, V]) isCardinalityZero(v T) bool {
+	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
+}
+func (r *unaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	value := getOptional(r.get, v)
+	if pool.local == nil {
+		r.addMatches(value, dst)
+		return
+	}
+	cache := equalityCache[V](pool, r.nodeID)
+	if bits, found := comparableValueCacheLookup(cache, value); found {
+		dst.Or(bits)
+		return
+	}
+	bits := cache.replace(value)
+	r.addMatches(value, bits)
+	dst.Or(bits)
+}
+func (r *unaryEqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
+	dst.Or(r.wildcard)
+	if set := r.matchingSet(value); set != nil {
+		set.addTo(dst)
+	}
+}
+func (*unaryEqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
+func (*unaryEqRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
+func (r *unaryEqRule[T, V]) prepareSearch() {
+	prepareBitmapForSearch(r.wildcard)
+	r.set.prepareSearch()
+}
+func (r *unaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
+	interner.intern(&r.wildcard)
+	r.set.internBitmaps(interner)
+}
+
+type binaryEqRule[T any, V comparable] struct {
+	nodeID   nodeID
+	get      Getter[T, V]
+	wildcard *roaring.Bitmap
+	keys     [2]V
+	sets     [2]equalitySet
+}
+
+func (*binaryEqRule[T, V]) rule()                                                 {}
+func (r *binaryEqRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
+func (*binaryEqRule[T, V]) validate(T) error                                      { return nil }
+func (*binaryEqRule[T, V]) insert(T, uint32)                                      {}
+func (r *binaryEqRule[T, V]) matchingSet(value optionalValue[V]) *equalitySet {
+	if !value.ok {
+		return nil
+	}
+	if value.value == r.keys[0] {
+		return &r.sets[0]
+	}
+	if value.value == r.keys[1] {
+		return &r.sets[1]
+	}
+	return nil
+}
+func (r *binaryEqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
+	n := r.wildcard.GetCardinality()
+	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
+		n += set.cardinality()
+	}
+	return n
+}
+func (r *binaryEqRule[T, V]) isCardinalityZero(v T) bool {
+	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
+}
+func (r *binaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	value := getOptional(r.get, v)
+	if pool.local == nil {
+		r.addMatches(value, dst)
+		return
+	}
+	cache := equalityCache[V](pool, r.nodeID)
+	if bits, found := comparableValueCacheLookup(cache, value); found {
+		dst.Or(bits)
+		return
+	}
+	bits := cache.replace(value)
+	r.addMatches(value, bits)
+	dst.Or(bits)
+}
+func (r *binaryEqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
+	dst.Or(r.wildcard)
+	if set := r.matchingSet(value); set != nil {
+		set.addTo(dst)
+	}
+}
+func (*binaryEqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
+func (*binaryEqRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
+func (r *binaryEqRule[T, V]) prepareSearch() {
+	prepareBitmapForSearch(r.wildcard)
+	for i := range r.sets {
+		r.sets[i].prepareSearch()
+	}
+}
+func (r *binaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
+	interner.intern(&r.wildcard)
+	for i := range r.sets {
+		r.sets[i].internBitmaps(interner)
+	}
+}
+
+func equalityCache[V comparable](pool *bitmapPool, id nodeID) *valueBitmapCache[V] {
+	node := &pool.local[int(id)]
+	cache, _ := node.equality.(*valueBitmapCache[V])
+	if cache == nil {
+		cache = &valueBitmapCache[V]{}
+		node.equality = cache
+	}
+	return cache
 }
