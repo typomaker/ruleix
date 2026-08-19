@@ -33,6 +33,8 @@ type benchmarkAllValue struct{ a, b, c, d *int }
 type benchmarkExcludeValue struct{ include, excludeA, excludeB *int }
 type benchmarkCardinalityOrderValue struct{ threshold, group *int }
 
+type benchmarkSkewedEqualityValue struct{ manyValues, skewed *int }
+
 func benchmarkPtr(value int) *int { return &value }
 
 func buildGenerated[C any, ID comparable](
@@ -530,6 +532,47 @@ func BenchmarkAllCardinalityOrder(b *testing.B) {
 			query := benchmarkCardinalityOrderValue{
 				threshold: benchmarkPtr(benchmarkEntries - 1),
 				group:     benchmarkPtr(benchmark.group),
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				ix.Search(query, &benchmarkIntResult)
+			}
+		})
+	}
+}
+
+// BenchmarkAllSkewedEquality prevents the number of unique map keys from being
+// mistaken for query selectivity. The many-values filter is usually selective,
+// while the two-value filter is either almost universal or uniquely selective
+// depending on the queried value.
+func BenchmarkAllSkewedEquality(b *testing.B) {
+	schema := ruleix.All(
+		ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkSkewedEqualityValue) *int { return v.manyValues })),
+		ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkSkewedEqualityValue) *int { return v.skewed })),
+	)
+	ix := buildGenerated(b, schema, benchmarkEntries, func(n int) (benchmarkSkewedEqualityValue, int) {
+		skewed := 0
+		if n == benchmarkEntries-1 {
+			skewed = 1
+		}
+		return benchmarkSkewedEqualityValue{
+			manyValues: benchmarkPtr(n % benchmarkCardinality),
+			skewed:     benchmarkPtr(skewed),
+		}, n
+	})
+
+	for _, benchmark := range []struct {
+		name   string
+		skewed int
+	}{
+		{name: "ManyKeysSelective", skewed: 0},
+		{name: "FewKeysSelective", skewed: 1},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			query := benchmarkSkewedEqualityValue{
+				manyValues: benchmarkPtr(benchmarkEntries % benchmarkCardinality),
+				skewed:     benchmarkPtr(benchmark.skewed),
 			}
 			b.ReportAllocs()
 			b.ResetTimer()
