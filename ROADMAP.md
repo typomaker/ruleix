@@ -150,14 +150,23 @@ for these decisions lives in `benchmark_test.go`.
   XOR with a prebuilt range bitmap, while allocating about half as much. The
   immutable index lifecycle has no deletion or complement operation that can
   use either primitive.
+- `Freeze` and `FrozenView`: frozen views preserve read performance for
+  intersection and iteration. They also made a sparse union about 6x faster in
+  the microbenchmark because copy-on-write containers can be shared, but every
+  posting needs its own serialized buffer plus view metadata; opening one view
+  allocated 176 B for a two-container dense bitmap and 6.6 KB for a
+  153-container sparse bitmap. The current index has no persistent format or
+  memory-mapped lifetime over which to share and manage those buffers, so
+  freezing all in-memory postings would complicate ownership and duplicate peak
+  build memory. Reconsider as part of an index persistence design rather than
+  as an isolated in-memory optimization.
 
 ### Candidates still to evaluate
 
 Evaluate these only where their semantics match an existing or planned path:
 
-1. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
-2. `Xor` if a symmetric-difference rule or planner operation is introduced.
-3. `AddOffset` if indexes need to merge independently built ID shards.
+1. `Xor` if a symmetric-difference rule or planner operation is introduced.
+2. `AddOffset` if indexes need to merge independently built ID shards.
 
 ## Suggested evaluation order
 

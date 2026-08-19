@@ -19,7 +19,9 @@ var (
 	benchmarkStringResult []string
 	benchmarkIntResult    []int
 	benchmarkLocalResult  *ruleix.Local[benchmarkEquality, int]
+	benchmarkBitmapResult *roaring.Bitmap
 	benchmarkBitmapStats  roaring.Statistics
+	benchmarkBytesResult  []byte
 	benchmarkBoolResult   bool
 	benchmarkUint64Result uint64
 )
@@ -826,6 +828,102 @@ func BenchmarkBitmapPlannerSignals(b *testing.B) {
 				benchmarkBitmapStats = shape.bits.Stats()
 				benchmarkUint64Result = shape.bits.DenseSize()
 				benchmarkBoolResult = shape.bits.HasRunCompression()
+			}
+		})
+	}
+}
+
+// BenchmarkBitmapFrozenView evaluates Roaring's persistent/memory-mapped
+// representation independently of an index persistence API. A frozen view
+// keeps its serialized buffer alive and allocates bitmap metadata when opened;
+// the current in-memory builder has neither a shared backing file nor an index
+// format over which those fixed costs could be amortized.
+func BenchmarkBitmapFrozenView(b *testing.B) {
+	for _, shape := range []struct {
+		name string
+		make func() *roaring.Bitmap
+	}{
+		{name: "Dense", make: func() *roaring.Bitmap {
+			bits := roaring.New()
+			bits.AddRange(0, 100_000)
+			return bits
+		}},
+		{name: "Sparse", make: func() *roaring.Bitmap {
+			bits := roaring.New()
+			for id := uint32(0); id < 10_000_000; id += 97 {
+				bits.Add(id)
+			}
+			return bits
+		}},
+	} {
+		b.Run(shape.name, func(b *testing.B) {
+			original := shape.make()
+			frozenBuffer, err := original.Freeze()
+			if err != nil {
+				b.Fatal(err)
+			}
+			frozen := roaring.New()
+			if err := frozen.FrozenView(frozenBuffer); err != nil {
+				b.Fatal(err)
+			}
+			b.ReportMetric(float64(original.GetSizeInBytes()), "original-bytes")
+			b.ReportMetric(float64(len(frozenBuffer)), "frozen-bytes")
+
+			b.Run("Freeze", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					benchmarkBytesResult, err = original.Freeze()
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+			b.Run("Open", func(b *testing.B) {
+				b.ReportAllocs()
+				b.ReportMetric(float64(original.GetSizeInBytes()), "original-bytes")
+				b.ReportMetric(float64(len(frozenBuffer)), "frozen-bytes")
+				for range b.N {
+					view := roaring.New()
+					if err := view.FrozenView(frozenBuffer); err != nil {
+						b.Fatal(err)
+					}
+					benchmarkBitmapResult = view
+				}
+			})
+
+			probe := roaring.New()
+			probe.AddRange(50_000, 150_000)
+			for _, source := range []struct {
+				name string
+				bits *roaring.Bitmap
+			}{{name: "Original", bits: original}, {name: "Frozen", bits: frozen}} {
+				b.Run(source.name+"/Or", func(b *testing.B) {
+					b.ReportAllocs()
+					for range b.N {
+						result := probe.Clone()
+						result.Or(source.bits)
+						benchmarkBitmapResult = result
+					}
+				})
+				b.Run(source.name+"/And", func(b *testing.B) {
+					b.ReportAllocs()
+					for range b.N {
+						result := probe.Clone()
+						result.And(source.bits)
+						benchmarkBitmapResult = result
+					}
+				})
+				b.Run(source.name+"/Iterate", func(b *testing.B) {
+					b.ReportAllocs()
+					for range b.N {
+						var sum uint64
+						source.bits.Iterate(func(value uint32) bool {
+							sum += uint64(value)
+							return true
+						})
+						benchmarkUint64Result = sum
+					}
+				})
 			}
 		})
 	}
