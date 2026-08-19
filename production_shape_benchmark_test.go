@@ -241,6 +241,10 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	queries := [...]productionBenchmarkConstraint{
+		productionBenchmarkQuery(100),
+		productionBenchmarkQuery(101),
+	}
 	for _, local := range []bool{false, true} {
 		name := "Index"
 		if local {
@@ -252,7 +256,7 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := range b.N {
-				query := productionBenchmarkQuery(100 + i%2)
+				query := queries[i%len(queries)]
 				if local {
 					searcher.Search(query, &matches)
 				} else {
