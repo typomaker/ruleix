@@ -120,30 +120,35 @@ for these decisions lives in `benchmark_test.go`.
 - `AddMany`: substantially improves bulk insertion, but the current build is
   streaming. Reconsider with an optional bulk builder that can bound the memory
   used by per-posting ID buffers.
+- `Stats`, `DenseSize`, and `HasRunCompression`: `DenseSize` is constant-time
+  and about 3 ns, but only reports the dense representation implied by the
+  maximum ID. `HasRunCompression` scans until it finds a run container and took
+  about 108 ns across 153 array containers. `Stats` scans every container and
+  took about 14 ns for two containers, 0.5 µs for 153 array containers, and 0.7
+  µs for 500 run containers on Apple M1 Max. All are allocation-free, but none
+  predicts posting overlap; do not pay the linear scans on every search without
+  a concrete adaptive strategy that demonstrates an end-to-end gain.
 
 ### Candidates still to evaluate
 
 Evaluate these only where their semantics match an existing or planned path:
 
-1. `Stats`, `DenseSize`, and `HasRunCompression` as cheap signals for the
-   adaptive cardinality/union planner.
-2. `Iterate`, `Minimum`, `Maximum`, `NextValue`, and `PreviousValue` for result
+1. `Iterate`, `Minimum`, `Maximum`, `NextValue`, and `PreviousValue` for result
    materialization, early limits, or future pagination.
-3. `Rank` and `Select` for offset/limit pagination without walking all earlier
+2. `Rank` and `Select` for offset/limit pagination without walking all earlier
    matches.
-4. `AddRange`, `RemoveRange`, and `Flip` if bulk ID allocation, deletion, or
+3. `AddRange`, `RemoveRange`, and `Flip` if bulk ID allocation, deletion, or
    complement operations become part of the index lifecycle.
-5. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
-6. `Xor` if a symmetric-difference rule or planner operation is introduced.
-7. `AddOffset` if indexes need to merge independently built ID shards.
+4. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
+5. `Xor` if a symmetric-difference rule or planner operation is introduced.
+6. `AddOffset` if indexes need to merge independently built ID shards.
 
 ## Suggested evaluation order
 
-1. Evaluate `Stats`, `DenseSize`, and `HasRunCompression` as planner signals.
-2. Evaluate iterator and boundary APIs for faster result materialization and
+1. Evaluate iterator and boundary APIs for faster result materialization and
    early limits.
-3. Evaluate `Rank` and `Select` if pagination becomes an active requirement.
-4. Revisit the remaining bitmap operations only when the corresponding index
+2. Evaluate `Rank` and `Select` if pagination becomes an active requirement.
+3. Revisit the remaining bitmap operations only when the corresponding index
    lifecycle or planner use case exists.
 
 For every optimization, compare production-shaped build time, search time,

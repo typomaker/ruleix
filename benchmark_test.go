@@ -19,6 +19,8 @@ var (
 	benchmarkStringResult []string
 	benchmarkIntResult    []int
 	benchmarkLocalResult  *ruleix.Local[benchmarkEquality, int]
+	benchmarkBitmapStats  roaring.Statistics
+	benchmarkBoolResult   bool
 	benchmarkUint64Result uint64
 )
 
@@ -548,6 +550,68 @@ func BenchmarkBitmapCheckedAdd(b *testing.B) {
 					bits.CheckedAdd(value)
 				}
 				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+	}
+}
+
+func BenchmarkBitmapPlannerSignals(b *testing.B) {
+	// These APIs expose potentially useful shape information, but a planner
+	// would inspect postings on every search. Measure the signal itself rather
+	// than folding its cost into an operation whose strategy is not yet chosen.
+	shapes := []struct {
+		name string
+		bits *roaring.Bitmap
+	}{
+		{name: "Empty", bits: roaring.New()},
+		{name: "Dense", bits: roaring.New()},
+		{name: "Sparse", bits: roaring.New()},
+		{name: "ManyContainers", bits: roaring.New()},
+		{name: "RunCompressed", bits: roaring.New()},
+	}
+	shapes[1].bits.AddRange(0, 100_000)
+	for id := uint32(0); id < 100_000; id += 100 {
+		shapes[2].bits.Add(id)
+	}
+	for id := uint32(0); id < 10_000_000; id += 65_537 {
+		shapes[3].bits.Add(id)
+	}
+	for start := uint64(0); start < 100_000; start += 200 {
+		shapes[4].bits.AddRange(start, start+150)
+	}
+	shapes[4].bits.RunOptimize()
+
+	for _, shape := range shapes {
+		b.Run(shape.name+"/Cardinality", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				benchmarkUint64Result = shape.bits.GetCardinality()
+			}
+		})
+		b.Run(shape.name+"/DenseSize", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				benchmarkUint64Result = shape.bits.DenseSize()
+			}
+		})
+		b.Run(shape.name+"/HasRunCompression", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				benchmarkBoolResult = shape.bits.HasRunCompression()
+			}
+		})
+		b.Run(shape.name+"/Stats", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				benchmarkBitmapStats = shape.bits.Stats()
+			}
+		})
+		b.Run(shape.name+"/AllSignals", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				benchmarkBitmapStats = shape.bits.Stats()
+				benchmarkUint64Result = shape.bits.DenseSize()
+				benchmarkBoolResult = shape.bits.HasRunCompression()
 			}
 		})
 	}
