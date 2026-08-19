@@ -204,6 +204,51 @@ func BenchmarkBitmapOrCardinality(b *testing.B) {
 	}
 }
 
+func BenchmarkBitmapRunOptimize(b *testing.B) {
+	// Ruleix materializes unions and intersections during Search. This workload
+	// captures why build-time RunOptimize is not enabled globally: it reduces
+	// retained bitmap bytes, but operations on these fragmented runs cost more.
+	left := roaring.New()
+	right := roaring.New()
+	for start := uint32(0); start < 100_000; start += 200 {
+		for id := start; id < start+150; id++ {
+			left.Add(id)
+		}
+		for id := start + 50; id < start+200; id++ {
+			right.Add(id)
+		}
+	}
+	optimizedLeft := left.Clone()
+	optimizedRight := right.Clone()
+	optimizedLeft.RunOptimize()
+	optimizedRight.RunOptimize()
+
+	for _, operation := range []struct {
+		name  string
+		apply func(*roaring.Bitmap, *roaring.Bitmap)
+	}{
+		{name: "Or", apply: (*roaring.Bitmap).Or},
+		{name: "And", apply: (*roaring.Bitmap).And},
+	} {
+		b.Run(operation.name+"/Regular", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := left.Clone()
+				operation.apply(result, right)
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+		b.Run(operation.name+"/RunOptimized", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := optimizedLeft.Clone()
+				operation.apply(result, optimizedRight)
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+	}
+}
+
 type benchmarkEquality struct {
 	optional *int
 	required int
