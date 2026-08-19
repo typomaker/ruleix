@@ -116,6 +116,40 @@ func BenchmarkBitmapFastOr(b *testing.B) {
 	}
 }
 
+func BenchmarkBitmapOrCardinality(b *testing.B) {
+	for _, overlapPercent := range []int{0, 50, 100} {
+		left := roaring.New()
+		left.AddRange(0, 100_000)
+		right := roaring.New()
+		overlap := uint64(overlapPercent * 1_000)
+		right.AddRange(100_000-overlap, 200_000-overlap)
+
+		b.Run(fmt.Sprintf("Overlap%d/MaterializeUnion", overlapPercent), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := left.Clone()
+				result.Or(right)
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+		b.Run(fmt.Sprintf("Overlap%d/OrCardinality", overlapPercent), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				benchmarkUint64Result = left.OrCardinality(right)
+			}
+		})
+		b.Run(fmt.Sprintf("Overlap%d/OrCardinalityThenUnion", overlapPercent), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				benchmarkUint64Result = left.OrCardinality(right)
+				result := left.Clone()
+				result.Or(right)
+				benchmarkUint64Result += result.GetCardinality()
+			}
+		})
+	}
+}
+
 type benchmarkEquality struct {
 	optional *int
 	required int
