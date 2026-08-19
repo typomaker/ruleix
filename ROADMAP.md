@@ -83,7 +83,9 @@ for these decisions lives in `benchmark_test.go`.
 ### Adopted
 
 - `ManyIterator`: used for result materialization at cardinality 4096 and above;
-  smaller results retain `Iterator`.
+  smaller results use allocation-free `Iterate`, which is about 2.5x faster
+  than `Iterator` for 16 results. `Iterate` also powers `Visit` and is about
+  2-3x faster when consumers stop after 16 results.
 - `AndAny`: used by `Between` to intersect the selective side with several
   matching postings without first materializing their union.
 - `FastAnd`: used for final intersections of up to eight child bitmaps. Larger
@@ -128,27 +130,27 @@ for these decisions lives in `benchmark_test.go`.
   µs for 500 run containers on Apple M1 Max. All are allocation-free, but none
   predicts posting overlap; do not pay the linear scans on every search without
   a concrete adaptive strategy that demonstrates an end-to-end gain.
+- `Minimum`, `Maximum`, `NextValue`, and `PreviousValue`: boundary lookup is
+  allocation-free and cheap (about 3 ns for either bound and 25-26 ns for an
+  adjacent sparse value on Apple M1 Max), but the current API has no result
+  pagination or ID-range operation that can use it.
 
 ### Candidates still to evaluate
 
 Evaluate these only where their semantics match an existing or planned path:
 
-1. `Iterate`, `Minimum`, `Maximum`, `NextValue`, and `PreviousValue` for result
-   materialization, early limits, or future pagination.
-2. `Rank` and `Select` for offset/limit pagination without walking all earlier
+1. `Rank` and `Select` for offset/limit pagination without walking all earlier
    matches.
-3. `AddRange`, `RemoveRange`, and `Flip` if bulk ID allocation, deletion, or
+2. `AddRange`, `RemoveRange`, and `Flip` if bulk ID allocation, deletion, or
    complement operations become part of the index lifecycle.
-4. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
-5. `Xor` if a symmetric-difference rule or planner operation is introduced.
-6. `AddOffset` if indexes need to merge independently built ID shards.
+3. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
+4. `Xor` if a symmetric-difference rule or planner operation is introduced.
+5. `AddOffset` if indexes need to merge independently built ID shards.
 
 ## Suggested evaluation order
 
-1. Evaluate iterator and boundary APIs for faster result materialization and
-   early limits.
-2. Evaluate `Rank` and `Select` if pagination becomes an active requirement.
-3. Revisit the remaining bitmap operations only when the corresponding index
+1. Evaluate `Rank` and `Select` if pagination becomes an active requirement.
+2. Revisit the remaining bitmap operations only when the corresponding index
    lifecycle or planner use case exists.
 
 For every optimization, compare production-shaped build time, search time,

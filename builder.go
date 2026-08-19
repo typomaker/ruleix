@@ -335,17 +335,17 @@ func appendBitmapAllMatches[ID comparable](
 	return result
 }
 
-// Below this size the extra iterator allocation and batch buffer cost more
-// than they save. Wide results benefit substantially from decoding IDs in
-// batches instead of making one iterator call per match.
+// Below this size Iterate avoids an iterator allocation and its callback cost
+// is lower than the batch setup. Wide results benefit substantially from
+// decoding IDs in batches.
 const manyIteratorCardinalityThreshold = 4 << 10
 
 func appendBitmapValues[ID comparable](bits *roaring.Bitmap, values []ID, result []ID) []ID {
 	if bits.GetCardinality() < manyIteratorCardinalityThreshold {
-		iterator := bits.Iterator()
-		for iterator.HasNext() {
-			result = append(result, values[iterator.Next()])
-		}
+		bits.Iterate(func(id uint32) bool {
+			result = append(result, values[id])
+			return true
+		})
 		return result
 	}
 
@@ -404,13 +404,7 @@ func visitMatches[C any, ID comparable](
 		bits.AndNot(excluded)
 		pool.put(excluded)
 	}
-	it := bits.Iterator()
-	for it.HasNext() {
-		id := values[it.Next()]
-		if !yield(id) {
-			return
-		}
-	}
+	bits.Iterate(func(id uint32) bool { return yield(values[id]) })
 }
 
 func addExclusions[C any](rules []exclusionRule[C], value C, dst *roaring.Bitmap, pool *bitmapPool) {

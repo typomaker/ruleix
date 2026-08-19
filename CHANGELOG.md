@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Small search results and visitor callbacks use allocation-free bitmap
+  iteration, reducing traversal overhead while retaining batched iteration for
+  wide results.
+
 ## [0.5.1] - 2026-08-19
 
 ### Changed

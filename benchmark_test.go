@@ -24,34 +24,109 @@ var (
 	benchmarkUint64Result uint64
 )
 
+//nolint:gocognit // Benchmark matrix intentionally compares every result shape and traversal mode.
 func BenchmarkBitmapResultIteration(b *testing.B) {
-	bits := roaring.New()
-	bits.AddRange(0, 100_000)
-	b.Run("Iterator", func(b *testing.B) {
-		b.ReportAllocs()
-		for range b.N {
-			var sum uint64
-			iterator := bits.Iterator()
-			for iterator.HasNext() {
-				sum += uint64(iterator.Next())
+	// Iterate avoids the iterator allocation and supports early termination,
+	// while ManyIterator amortizes calls for wide results. Compare both shapes
+	// used by result materialization and by Visit's early-limit behavior.
+	for _, cardinality := range []uint64{16, 4 << 10, 100_000} {
+		for _, shape := range []string{"Dense", "Sparse"} {
+			bits := roaring.New()
+			step := uint64(1)
+			if shape == "Sparse" {
+				step = 97
 			}
-			benchmarkUint64Result = sum
-		}
-	})
-	b.Run("ManyIterator", func(b *testing.B) {
-		b.ReportAllocs()
-		for range b.N {
-			var sum uint64
-			iterator := bits.ManyIterator()
-			var values [256]uint32
-			for count := iterator.NextMany(values[:]); count != 0; count = iterator.NextMany(values[:]) {
-				for _, value := range values[:count] {
-					sum += uint64(value)
+			for id := uint64(0); id < cardinality*step; id += step {
+				bits.Add(uint32(id))
+			}
+			name := fmt.Sprintf("%s/%d", shape, cardinality)
+			b.Run(name+"/Full/Iterator", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					var sum uint64
+					iterator := bits.Iterator()
+					for iterator.HasNext() {
+						sum += uint64(iterator.Next())
+					}
+					benchmarkUint64Result = sum
 				}
-			}
-			benchmarkUint64Result = sum
+			})
+			b.Run(name+"/Full/ManyIterator", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					var sum uint64
+					iterator := bits.ManyIterator()
+					var values [256]uint32
+					for count := iterator.NextMany(values[:]); count != 0; count = iterator.NextMany(values[:]) {
+						for _, value := range values[:count] {
+							sum += uint64(value)
+						}
+					}
+					benchmarkUint64Result = sum
+				}
+			})
+			b.Run(name+"/Full/Iterate", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					var sum uint64
+					bits.Iterate(func(value uint32) bool {
+						sum += uint64(value)
+						return true
+					})
+					benchmarkUint64Result = sum
+				}
+			})
+			b.Run(name+"/First16/Iterator", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					var sum uint64
+					iterator := bits.Iterator()
+					for count := 0; count < 16 && iterator.HasNext(); count++ {
+						sum += uint64(iterator.Next())
+					}
+					benchmarkUint64Result = sum
+				}
+			})
+			b.Run(name+"/First16/Iterate", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					var sum uint64
+					count := 0
+					bits.Iterate(func(value uint32) bool {
+						sum += uint64(value)
+						count++
+						return count < 16
+					})
+					benchmarkUint64Result = sum
+				}
+			})
 		}
-	})
+	}
+}
+
+func BenchmarkBitmapBoundaries(b *testing.B) {
+	bits := roaring.New()
+	for id := uint32(1); id < 10_000_000; id += 97 {
+		bits.Add(id)
+	}
+	target := uint32(5_000_000)
+
+	for _, benchmark := range []struct {
+		name string
+		call func() uint64
+	}{
+		{name: "Minimum", call: func() uint64 { return uint64(bits.Minimum()) }},
+		{name: "Maximum", call: func() uint64 { return uint64(bits.Maximum()) }},
+		{name: "NextValue", call: func() uint64 { return uint64(bits.NextValue(target)) }},
+		{name: "PreviousValue", call: func() uint64 { return uint64(bits.PreviousValue(target)) }},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				benchmarkUint64Result = benchmark.call()
+			}
+		})
+	}
 }
 
 func BenchmarkBitmapAndAny(b *testing.B) {
