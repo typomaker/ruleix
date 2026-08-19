@@ -4,6 +4,7 @@ package ruleix_test
 import (
 	"cmp"
 	"encoding/binary"
+	"runtime"
 	"testing"
 	"time"
 
@@ -280,4 +281,114 @@ func BenchmarkProductionShapeBuild(b *testing.B) {
 		productionBenchmarkIndexResult = index
 	}
 	b.ReportMetric(productionBenchmarkEntries, "entries/op")
+}
+
+// BenchmarkProductionShapeRetainedMemory measures the live heap owned by a
+// completed index rather than the allocation traffic reported by B/op. Run it
+// with a fixed iteration count so all indexes can remain live until the final
+// heap sample, for example:
+//
+//	go test -run '^$' -bench '^BenchmarkProductionShapeRetainedMemory$' -benchtime=5x -count=5
+func BenchmarkProductionShapeRetainedMemory(b *testing.B) {
+	constraints, ids := productionBenchmarkData()
+	builder := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](productionBenchmarkSchema())
+	// Prime reusable Builder hints before the baseline so their retained memory
+	// is not incorrectly attributed to the measured indexes.
+	if _, err := builder.Build(ruleix.Zip(constraints, ids)); err != nil {
+		b.Fatal(err)
+	}
+	indexes := make([]*ruleix.Index[productionBenchmarkConstraint, productionBenchmarkID], b.N)
+
+	runtime.GC()
+	runtime.GC() // A second cycle also drops objects retained by sync.Pool.
+	before := heapAlloc()
+
+	b.ResetTimer()
+	for i := range b.N {
+		index, err := builder.Build(ruleix.Zip(constraints, ids))
+		if err != nil {
+			b.Fatal(err)
+		}
+		indexes[i] = index
+	}
+	b.StopTimer()
+
+	runtime.GC()
+	runtime.GC()
+	after := heapAlloc()
+	runtime.KeepAlive(constraints)
+	runtime.KeepAlive(ids)
+	runtime.KeepAlive(builder)
+	runtime.KeepAlive(indexes)
+
+	var retained uint64
+	if after > before {
+		retained = after - before
+	}
+	perIndex := float64(retained) / float64(b.N)
+	b.ReportMetric(perIndex, "retained-B/index")
+	b.ReportMetric(perIndex/productionBenchmarkEntries, "retained-B/ID")
+}
+
+// BenchmarkProductionShapeLocalRetainedMemory measures the incremental live
+// heap of one Local while keeping its shared Index and caller-owned result
+// storage in the baseline. Warm alternates the same two queries as the search
+// benchmark, filling both entries of each per-node cache.
+func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
+	constraints, ids := productionBenchmarkData()
+	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+		productionBenchmarkSchema(),
+	).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	queries := [...]productionBenchmarkConstraint{
+		productionBenchmarkQuery(100),
+		productionBenchmarkQuery(101),
+	}
+
+	for _, warm := range []bool{false, true} {
+		name := "Cold"
+		if warm {
+			name = "Warm"
+		}
+		b.Run(name, func(b *testing.B) {
+			locals := make([]*ruleix.Local[productionBenchmarkConstraint, productionBenchmarkID], b.N)
+			matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
+			runtime.GC()
+			runtime.GC()
+			before := heapAlloc()
+
+			b.ResetTimer()
+			for i := range b.N {
+				local := index.Local()
+				if warm {
+					for _, query := range queries {
+						local.Search(query, &matches)
+					}
+				}
+				locals[i] = local
+			}
+			b.StopTimer()
+
+			runtime.GC()
+			runtime.GC()
+			after := heapAlloc()
+			runtime.KeepAlive(index)
+			runtime.KeepAlive(locals)
+			runtime.KeepAlive(matches)
+
+			var retained uint64
+			if after > before {
+				retained = after - before
+			}
+			b.ReportMetric(float64(retained)/float64(b.N), "retained-B/local")
+		})
+	}
+}
+
+func heapAlloc() uint64 {
+	var statistics runtime.MemStats
+	runtime.ReadMemStats(&statistics)
+	return statistics.HeapAlloc
 }
