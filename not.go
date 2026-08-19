@@ -85,6 +85,12 @@ func (r *notRule[T, V]) addExclusions(value *V, dst *roaring.Bitmap) {
 		}
 	}
 }
+func (r *notRule[T, V]) optimize(total uint64) Rule[T] {
+	if len(r.values) == 0 && r.wildcard.GetCardinality() == total {
+		return newMatchAllRule[T](r.wildcard)
+	}
+	return r
+}
 func (r *notRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
 	stats[r.nodeID].equalityValues = len(r.values)
 }

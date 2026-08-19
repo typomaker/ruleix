@@ -171,6 +171,12 @@ func (r *eqRule[T, V]) addMatches(value *V, dst *roaring.Bitmap) {
 	}
 }
 func (*eqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
+func (r *eqRule[T, V]) optimize(total uint64) Rule[T] {
+	if r.wildcard.GetCardinality() == total {
+		return newMatchAllRule[T](r.wildcard)
+	}
+	return r
+}
 func (r *eqRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
 	stats[r.nodeID].equalityValues = len(r.values)
 }

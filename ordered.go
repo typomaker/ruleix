@@ -142,6 +142,12 @@ func (r *orderedRule[T, V]) addMatches(value *V, dst *roaring.Bitmap) {
 	}
 }
 func (*orderedRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
+func (r *orderedRule[T, V]) optimize(total uint64) Rule[T] {
+	if r.wildcard.GetCardinality() == total {
+		return newMatchAllRule[T](r.wildcard)
+	}
+	return r
+}
 func (r *orderedRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
 	stats[r.nodeID].ordered = r.index.buildStatistics()
 }

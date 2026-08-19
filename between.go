@@ -169,6 +169,12 @@ func (r *betweenRule[T, V]) searchUncached(v T, dst *roaring.Bitmap, pool *bitma
 	}
 }
 func (*betweenRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
+func (r *betweenRule[T, V]) optimize(total uint64) Rule[T] {
+	if r.from.wildcard.GetCardinality() == total && r.until.wildcard.GetCardinality() == total {
+		return newMatchAllRule[T](r.from.wildcard)
+	}
+	return r
+}
 func (r *betweenRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
 	statistics := &stats[r.nodeID]
 	statistics.betweenIDs = len(r.minimumFrom)

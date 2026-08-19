@@ -22,6 +22,32 @@ type Rule[T any] interface {
 	collectBuildStatistics([]nodeBuildStatistics)
 }
 
+type ruleOptimizer[T any] interface {
+	optimize(uint64) Rule[T]
+}
+
+func optimizeRule[T any](rule Rule[T], total uint64) Rule[T] {
+	if optimizer, ok := rule.(ruleOptimizer[T]); ok {
+		return optimizer.optimize(total)
+	}
+	return rule
+}
+
+type matchAllRule[T any] struct{ bits *roaring.Bitmap }
+
+func (*matchAllRule[T]) rule()                                                 {}
+func (r *matchAllRule[T]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
+func (*matchAllRule[T]) validate(T) error                                      { return nil }
+func (*matchAllRule[T]) insert(T, uint32)                                      {}
+func (r *matchAllRule[T]) cardinality(T, *bitmapPool) uint64                   { return r.bits.GetCardinality() }
+func (r *matchAllRule[T]) search(_ T, dst *roaring.Bitmap, _ *bitmapPool)      { dst.Or(r.bits) }
+func (*matchAllRule[T]) exclude(T, *roaring.Bitmap, *bitmapPool)               {}
+func (*matchAllRule[T]) collectBuildStatistics([]nodeBuildStatistics)          {}
+
+func newMatchAllRule[T any](bits *roaring.Bitmap) Rule[T] {
+	return &matchAllRule[T]{bits: bits}
+}
+
 type nodeID uint32
 
 type nodeIDAllocator struct{ next nodeID }

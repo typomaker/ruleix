@@ -107,6 +107,7 @@ func buildIndex[C any, ID comparable](
 		statistics.nodes = make([]nodeBuildStatistics, int(ids.next))
 		ix.root.collectBuildStatistics(statistics.nodes)
 	}
+	ix.root = optimizeRule(ix.root, uint64(len(ix.values)))
 	ix.nodes = int(ids.next)
 	return ix, statistics, nil
 }

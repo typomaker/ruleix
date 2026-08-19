@@ -46,6 +46,28 @@ func (r *allRule[T]) collectBuildStatistics(stats []nodeBuildStatistics) {
 		child.collectBuildStatistics(stats)
 	}
 }
+func (r *allRule[T]) optimize(total uint64) Rule[T] {
+	if len(r.children) == 0 {
+		return r
+	}
+	children := make([]Rule[T], 0, len(r.children))
+	var universal *matchAllRule[T]
+	for _, child := range r.children {
+		optimized := optimizeRule(child, total)
+		if matchAll, ok := optimized.(*matchAllRule[T]); ok {
+			universal = matchAll
+			continue
+		}
+		children = append(children, optimized)
+	}
+	if len(children) == 0 {
+		return universal
+	}
+	if len(children) == 1 {
+		return children[0]
+	}
+	return &allRule[T]{children: children}
+}
 func (r *allRule[T]) cardinality(v T, pool *bitmapPool) uint64 {
 	return measuredCardinality[T](r, v, pool)
 }

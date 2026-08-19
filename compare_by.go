@@ -131,6 +131,12 @@ func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool)
 	dst.Or(bits)
 }
 func (*compareByRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
+func (r *compareByRule[T, V]) optimize(total uint64) Rule[T] {
+	if r.wildcard.GetCardinality() == total {
+		return newMatchAllRule[T](r.wildcard)
+	}
+	return r
+}
 func (r *compareByRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
 	stats[r.nodeID].compareBy = [5]orderedBuildStatistics{
 		r.eq.buildStatistics(), r.lt.buildStatistics(), r.lte.buildStatistics(),
