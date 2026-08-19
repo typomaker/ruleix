@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"encoding/binary"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -266,6 +267,73 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 			}
 		})
 	}
+}
+
+func BenchmarkProductionShapeParallelLocalBatch100(b *testing.B) {
+	const (
+		workers           = 5
+		searchesPerWorker = 20
+		searchesPerBatch  = workers * searchesPerWorker
+	)
+	type job struct {
+		queries []productionBenchmarkConstraint
+		done    *sync.WaitGroup
+	}
+
+	constraints, ids := productionBenchmarkData()
+	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+		productionBenchmarkSchema(),
+	).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	queries := make([]productionBenchmarkConstraint, searchesPerBatch)
+	for i := range queries {
+		queries[i] = productionBenchmarkQuery(100 + i%2)
+	}
+
+	jobs := make([]chan job, workers)
+	var workersDone sync.WaitGroup
+	workersDone.Add(workers)
+	for worker := range workers {
+		jobs[worker] = make(chan job)
+		go func(jobs <-chan job) {
+			defer workersDone.Done()
+			local := index.Local()
+			matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
+			for work := range jobs {
+				for _, query := range work.queries {
+					local.Search(query, &matches)
+				}
+				work.done.Done()
+			}
+		}(jobs[worker])
+	}
+	defer func() {
+		for _, workerJobs := range jobs {
+			close(workerJobs)
+		}
+		workersDone.Wait()
+	}()
+
+	b.ReportAllocs()
+	b.ReportMetric(searchesPerBatch, "searches/op")
+	b.ResetTimer()
+	for range b.N {
+		var batchDone sync.WaitGroup
+		batchDone.Add(workers)
+		for worker, workerJobs := range jobs {
+			from := worker * searchesPerWorker
+			workerJobs <- job{
+				queries: queries[from : from+searchesPerWorker],
+				done:    &batchDone,
+			}
+		}
+		batchDone.Wait()
+	}
+	b.StopTimer()
+	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*searchesPerBatch), "ns/search")
 }
 
 func BenchmarkProductionShapeBuild(b *testing.B) {
