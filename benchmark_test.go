@@ -856,77 +856,78 @@ func BenchmarkBitmapFrozenView(b *testing.B) {
 			return bits
 		}},
 	} {
-		b.Run(shape.name, func(b *testing.B) {
-			original := shape.make()
-			frozenBuffer, err := original.Freeze()
+		b.Run(shape.name, func(b *testing.B) { benchmarkBitmapFrozenShape(b, shape.make()) })
+	}
+}
+
+func benchmarkBitmapFrozenShape(b *testing.B, original *roaring.Bitmap) {
+	frozenBuffer, err := original.Freeze()
+	if err != nil {
+		b.Fatal(err)
+	}
+	frozen := roaring.New()
+	if err := frozen.FrozenView(frozenBuffer); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportMetric(float64(original.GetSizeInBytes()), "original-bytes")
+	b.ReportMetric(float64(len(frozenBuffer)), "frozen-bytes")
+
+	b.Run("Freeze", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			benchmarkBytesResult, err = original.Freeze()
 			if err != nil {
 				b.Fatal(err)
 			}
-			frozen := roaring.New()
-			if err := frozen.FrozenView(frozenBuffer); err != nil {
+		}
+	})
+	b.Run("Open", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ReportMetric(float64(original.GetSizeInBytes()), "original-bytes")
+		b.ReportMetric(float64(len(frozenBuffer)), "frozen-bytes")
+		for range b.N {
+			view := roaring.New()
+			if err := view.FrozenView(frozenBuffer); err != nil {
 				b.Fatal(err)
 			}
-			b.ReportMetric(float64(original.GetSizeInBytes()), "original-bytes")
-			b.ReportMetric(float64(len(frozenBuffer)), "frozen-bytes")
+			benchmarkBitmapResult = view
+		}
+	})
 
-			b.Run("Freeze", func(b *testing.B) {
-				b.ReportAllocs()
-				for range b.N {
-					benchmarkBytesResult, err = original.Freeze()
-					if err != nil {
-						b.Fatal(err)
-					}
-				}
-			})
-			b.Run("Open", func(b *testing.B) {
-				b.ReportAllocs()
-				b.ReportMetric(float64(original.GetSizeInBytes()), "original-bytes")
-				b.ReportMetric(float64(len(frozenBuffer)), "frozen-bytes")
-				for range b.N {
-					view := roaring.New()
-					if err := view.FrozenView(frozenBuffer); err != nil {
-						b.Fatal(err)
-					}
-					benchmarkBitmapResult = view
-				}
-			})
+	probe := roaring.New()
+	probe.AddRange(50_000, 150_000)
+	benchmarkBitmapFrozenOperations(b, probe, "Original", original)
+	benchmarkBitmapFrozenOperations(b, probe, "Frozen", frozen)
+}
 
-			probe := roaring.New()
-			probe.AddRange(50_000, 150_000)
-			for _, source := range []struct {
-				name string
-				bits *roaring.Bitmap
-			}{{name: "Original", bits: original}, {name: "Frozen", bits: frozen}} {
-				b.Run(source.name+"/Or", func(b *testing.B) {
-					b.ReportAllocs()
-					for range b.N {
-						result := probe.Clone()
-						result.Or(source.bits)
-						benchmarkBitmapResult = result
-					}
-				})
-				b.Run(source.name+"/And", func(b *testing.B) {
-					b.ReportAllocs()
-					for range b.N {
-						result := probe.Clone()
-						result.And(source.bits)
-						benchmarkBitmapResult = result
-					}
-				})
-				b.Run(source.name+"/Iterate", func(b *testing.B) {
-					b.ReportAllocs()
-					for range b.N {
-						var sum uint64
-						source.bits.Iterate(func(value uint32) bool {
-							sum += uint64(value)
-							return true
-						})
-						benchmarkUint64Result = sum
-					}
-				})
-			}
-		})
-	}
+func benchmarkBitmapFrozenOperations(b *testing.B, probe *roaring.Bitmap, name string, bits *roaring.Bitmap) {
+	b.Run(name+"/Or", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			result := probe.Clone()
+			result.Or(bits)
+			benchmarkBitmapResult = result
+		}
+	})
+	b.Run(name+"/And", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			result := probe.Clone()
+			result.And(bits)
+			benchmarkBitmapResult = result
+		}
+	})
+	b.Run(name+"/Iterate", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			var sum uint64
+			bits.Iterate(func(value uint32) bool {
+				sum += uint64(value)
+				return true
+			})
+			benchmarkUint64Result = sum
+		}
+	})
 }
 
 type benchmarkEquality struct {

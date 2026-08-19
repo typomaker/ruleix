@@ -1,11 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- `Index.Search` and `Local.Search` now append matches to the destination slice
-  instead of resetting its length. Callers that want to replace prior results
-  must reset the slice explicitly with `dst = dst[:0]`.
-
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
@@ -13,8 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-19
+
 ### Changed
 
+- `Index.Search` and `Local.Search` now append matches to the destination slice
+  instead of resetting its length. Callers that want to replace prior results
+  must reset the slice explicitly with `dst = dst[:0]`.
+- `Index.Search` and `Local.Search` now report whether the current search found
+  at least one match.
 - Small search results and visitor callbacks use allocation-free bitmap
   iteration, reducing traversal overhead while retaining batched iteration for
   wide results.
