@@ -7,10 +7,42 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-19
+
+### Added
+
+- Production-shaped build, search, retained-memory, and wildcard-heavy
+  benchmarks for a 38,098-constraint workload with UUID IDs.
+- Functional coverage for the complete production-shaped matching schema.
+- `Local.Reset` for releasing per-node cached results while keeping the local
+  search context usable.
+
 ### Changed
 
+- Getters now return `(value, ok)` directly, eliminating temporary pointer
+  allocations and making missing values explicit.
+- Wildcard-only filters are collapsed during build, and `All` avoids
+  materializing results when a selective candidate list can be scanned.
+- Search bitmaps use copy-on-write sharing and skip exclusion scratch storage
+  for schemas without effective exclusions.
+- Equality postings use contiguous indexed storage with inline handling for up
+  to two distinct values.
+- Identical immutable posting bitmaps are interned within an index.
+- Ordered indexes no longer retain duplicate endpoint and singleton aggregate
+  storage.
+- Exclusions are removed from the positive match tree and retain only their
+  value postings.
 - `CompareBy` now allocates ordered indexes only for comparison operators used
   by the current build.
+
+### Fixed
+
+- Local caches clear stale getter values when a cache entry becomes a wildcard.
+
+### Removed
+
+- `Path`, `Path3`, `Path4`, and `Path5`; nested optional values are now read by
+  allocation-free getters returning `(value, ok)`.
 
 ## [0.4.2] - 2026-08-18
 
@@ -131,7 +163,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/typomaker/ruleix/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/typomaker/ruleix/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/typomaker/ruleix/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/typomaker/ruleix/compare/v0.3.0...v0.4.0
