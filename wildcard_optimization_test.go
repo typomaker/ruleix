@@ -63,7 +63,10 @@ func TestBuildKeepsWildcardExcludeWithConcreteExclusions(t *testing.T) {
 		[]int{1, 1, 2},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &notRule[constraint, int]{}, index.root)
+	require.IsType(t, &allRule[constraint]{}, index.root)
+	root := index.root.(*allRule[constraint])
+	require.Len(t, root.children, 1)
+	require.IsType(t, &matchAllRule[constraint]{}, root.children[0])
 
 	var matches []int
 	index.Search(constraint{excluded: &excluded}, &matches)

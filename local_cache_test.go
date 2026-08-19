@@ -46,6 +46,24 @@ func TestValueBitmapCacheClearsValueForNilEntry(t *testing.T) {
 	require.Nil(t, cache.entries[0].value)
 }
 
+func TestLocalResetReleasesNodeCachesAndRemainsUsable(t *testing.T) {
+	type constraint struct{ value int }
+	get := func(value constraint) (int, bool) { return value.value, true }
+	index, err := New[constraint, int](Include(get)).Build(
+		Zip([]constraint{{value: 1}}, []int{7}),
+	)
+	require.NoError(t, err)
+	local := index.Local()
+	var matches []int
+	local.Search(constraint{value: 1}, &matches)
+	require.NotNil(t, local.pool.local[0].equality)
+
+	local.Reset()
+	require.Nil(t, local.pool.local[0].equality)
+	local.Search(constraint{value: 1}, &matches)
+	require.Equal(t, []int{7}, matches)
+}
+
 func TestBetweenCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	type interval struct{ from, until *int }
 	pointer := func(value int) *int { return &value }

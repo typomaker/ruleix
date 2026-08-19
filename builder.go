@@ -112,7 +112,29 @@ func buildIndex[C any, ID comparable](
 	}
 	ix.root = optimizeRule(ix.root, uint64(len(ix.values)))
 	ix.exclusions = collectExclusionRules(ix.root, nil)
-	internRuleBitmaps(ix.root)
+	if len(ix.exclusions) != 0 {
+		universe := roaring.New()
+		universe.AddRange(0, uint64(len(ix.values)))
+		ix.root = removeExclusionRules(ix.root, universe)
+		// Keep the specialized All search path even when removing exclusions
+		// leaves one positive child. It can test small candidate sets directly
+		// without materializing a separate exclusion bitmap.
+		if _, ok := ix.root.(*allRule[C]); !ok {
+			ix.root = &allRule[C]{children: []Rule[C]{ix.root}}
+		}
+	}
+	interner := newBitmapInterner()
+	internRuleWith(interner, ix.root)
+	for _, exclusion := range ix.exclusions {
+		if rule, ok := exclusion.(bitmapInternable); ok {
+			// Exclude nodes are no longer reachable from the positive tree.
+			// Their value postings remain immutable and independently internable.
+			rule.internBitmaps(interner)
+		}
+		if preparer, ok := exclusion.(ruleSearchPreparer); ok {
+			preparer.prepareSearch()
+		}
+	}
 	prepareRuleSearch(ix.root)
 	ix.nodes = int(ids.next)
 	return ix, statistics, nil
@@ -170,6 +192,13 @@ func (local *Local[C, ID]) Search(value C, dst *[]ID) {
 		panic("ruleix: nil search destination")
 	}
 	local.index.search(value, dst, local.pool)
+}
+
+// Reset releases all per-node cached search results while keeping the Local
+// usable. Call it when a worker becomes idle or after an unusually broad query
+// to return the context to its small cold-memory footprint.
+func (local *Local[C, ID]) Reset() {
+	local.pool = newLocalBitmapPool(local.index.nodes)
 }
 
 // Visit calls yield for matching IDs while reusing this Local's cached state.

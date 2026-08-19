@@ -67,6 +67,7 @@ type cardinalityZeroChecker[T any] interface {
 type exclusionRule[T any] interface {
 	exclude(T, *roaring.Bitmap, *bitmapPool)
 	isExcluded(T, uint32) bool
+	hasExclusions() bool
 }
 
 func collectExclusionRules[T any](rule Rule[T], dst []exclusionRule[T]) []exclusionRule[T] {
@@ -76,9 +77,29 @@ func collectExclusionRules[T any](rule Rule[T], dst []exclusionRule[T]) []exclus
 			dst = collectExclusionRules(child, dst)
 		}
 	case exclusionRule[T]:
-		dst = append(dst, typed)
+		if typed.hasExclusions() {
+			dst = append(dst, typed)
+		}
 	}
 	return dst
+}
+
+// removeExclusionRules removes Exclude nodes from the positive match tree.
+// Exclusions are evaluated separately after candidate selection, so retaining
+// their wildcard/concrete union in the positive tree only duplicates every ID.
+func removeExclusionRules[T any](rule Rule[T], universe *roaring.Bitmap) Rule[T] {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		children := make([]Rule[T], len(typed.children))
+		for i, child := range typed.children {
+			children[i] = removeExclusionRules(child, universe)
+		}
+		return (&allRule[T]{children: children}).optimize(universe.GetCardinality())
+	case exclusionRule[T]:
+		return newMatchAllRule[T](universe)
+	default:
+		return rule
+	}
 }
 
 func prepareRuleSearch[T any](rule Rule[T]) {

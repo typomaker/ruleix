@@ -34,6 +34,59 @@ type equalitySet struct {
 
 func newEqualitySet(id uint32) *equalitySet { return &equalitySet{single: id} }
 
+type equalityIndex[V comparable] struct {
+	offsets map[V]uint32
+	sets    []equalitySet
+	keys    [2]V
+	count   uint8
+	hint    int
+}
+
+func newEqualityIndex[V comparable](capacity int) equalityIndex[V] {
+	return equalityIndex[V]{sets: make([]equalitySet, 0, capacity), hint: capacity}
+}
+
+func (i *equalityIndex[V]) get(value V) *equalitySet {
+	if i.offsets == nil {
+		for index := range int(i.count) {
+			if i.keys[index] == value {
+				return &i.sets[index]
+			}
+		}
+		return nil
+	}
+	offset, ok := i.offsets[value]
+	if !ok {
+		return nil
+	}
+	return &i.sets[offset]
+}
+
+func (i *equalityIndex[V]) add(value V, id uint32) {
+	if set := i.get(value); set != nil {
+		set.add(id)
+		return
+	}
+	if i.offsets == nil && i.count < uint8(len(i.keys)) {
+		i.keys[i.count] = value
+		i.count++
+		i.sets = append(i.sets, equalitySet{single: id})
+		return
+	}
+	if i.offsets == nil {
+		capacity := i.hint
+		if capacity < len(i.keys)+1 {
+			capacity = len(i.keys) + 1
+		}
+		i.offsets = make(map[V]uint32, capacity)
+		for index := range int(i.count) {
+			i.offsets[i.keys[index]] = uint32(index)
+		}
+	}
+	i.sets = append(i.sets, equalitySet{single: id})
+	i.offsets[value] = uint32(len(i.sets) - 1)
+}
+
 func (s *equalitySet) add(id uint32) {
 	if s.bits != nil {
 		s.bits.Add(id)
@@ -127,7 +180,7 @@ type eqRule[T any, V comparable] struct {
 	nodeID   nodeID
 	get      Getter[T, V]
 	wildcard *roaring.Bitmap
-	values   map[V]*equalitySet
+	values   equalityIndex[V]
 }
 
 func (*eqRule[T, V]) rule() {}
@@ -135,7 +188,7 @@ func (r *eqRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Ru
 	id := ids.allocate()
 	return &eqRule[T, V]{
 		nodeID: id, get: r.get,
-		wildcard: roaring.New(), values: make(map[V]*equalitySet, capacityHint(hints.node(id).equalityValues)),
+		wildcard: roaring.New(), values: newEqualityIndex[V](capacityHint(hints.node(id).equalityValues)),
 	}
 }
 func (*eqRule[T, V]) validate(T) error { return nil }
@@ -145,17 +198,12 @@ func (r *eqRule[T, V]) insert(v T, id uint32) {
 		r.wildcard.Add(id)
 		return
 	}
-	set := r.values[value]
-	if set == nil {
-		r.values[value] = newEqualitySet(id)
-		return
-	}
-	set.add(id)
+	r.values.add(value, id)
 }
 func (r *eqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	n := r.wildcard.GetCardinality()
 	if value, ok := r.get(v); ok {
-		if set := r.values[value]; set != nil {
+		if set := r.values.get(value); set != nil {
 			n += set.cardinality()
 		}
 	}
@@ -166,7 +214,7 @@ func (r *eqRule[T, V]) isCardinalityZero(v T) bool {
 		return false
 	}
 	value, ok := r.get(v)
-	return !ok || r.values[value] == nil
+	return !ok || r.values.get(value) == nil
 }
 func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)
@@ -194,7 +242,7 @@ func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 func (r *eqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
 	dst.Or(r.wildcard)
 	if value.ok {
-		if set := r.values[value.value]; set != nil {
+		if set := r.values.get(value.value); set != nil {
 			set.addTo(dst)
 		}
 	}
@@ -207,17 +255,17 @@ func (r *eqRule[T, V]) optimize(total uint64) Rule[T] {
 	return r
 }
 func (r *eqRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
-	stats[r.nodeID].equalityValues = len(r.values)
+	stats[r.nodeID].equalityValues = len(r.values.sets)
 }
 func (r *eqRule[T, V]) prepareSearch() {
 	prepareBitmapForSearch(r.wildcard)
-	for _, set := range r.values {
-		set.prepareSearch()
+	for i := range r.values.sets {
+		r.values.sets[i].prepareSearch()
 	}
 }
 func (r *eqRule[T, V]) internBitmaps(interner *bitmapInterner) {
 	interner.intern(&r.wildcard)
-	for _, set := range r.values {
-		set.internBitmaps(interner)
+	for i := range r.values.sets {
+		r.values.sets[i].internBitmaps(interner)
 	}
 }

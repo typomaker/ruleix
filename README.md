@@ -237,7 +237,9 @@ for _, query := range queries {
 
 `Local` keeps up to two recent intermediate bitmaps per filter node. This makes
 memory use bounded while covering repeated and alternating values. The cached
-bitmaps remain allocated until the `Local` becomes unreachable.
+bitmaps remain allocated until the `Local` becomes unreachable. Call
+`local.Reset()` when a worker becomes idle to release cached results while
+keeping the same search context usable.
 
 A local search context is not safe for concurrent use. Create one inside each
 goroutine while sharing the immutable index:
