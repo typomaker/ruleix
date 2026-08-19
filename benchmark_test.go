@@ -249,6 +249,55 @@ func BenchmarkBitmapRunOptimize(b *testing.B) {
 	}
 }
 
+func BenchmarkBitmapIntersects(b *testing.B) {
+	// Intersects is valuable when an empty result avoids later materialization,
+	// but it duplicates the intersection pass when the result is still needed.
+	for _, tt := range []struct {
+		name       string
+		rightStart uint64
+	}{
+		{name: "Disjoint", rightStart: 100_000},
+		{name: "LateMatch", rightStart: 99_999},
+		{name: "HalfOverlap", rightStart: 50_000},
+	} {
+		left := roaring.New()
+		left.AddRange(0, 100_000)
+		right := roaring.New()
+		right.AddRange(tt.rightStart, tt.rightStart+100_000)
+
+		b.Run(tt.name+"/AndIsEmpty", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := left.Clone()
+				result.And(right)
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+		b.Run(tt.name+"/Intersects", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				if left.Intersects(right) {
+					benchmarkUint64Result = 1
+				} else {
+					benchmarkUint64Result = 0
+				}
+			}
+		})
+		b.Run(tt.name+"/IntersectsThenAnd", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				if !left.Intersects(right) {
+					benchmarkUint64Result = 0
+					continue
+				}
+				result := left.Clone()
+				result.And(right)
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+	}
+}
+
 type benchmarkEquality struct {
 	optional *int
 	required int
