@@ -5,7 +5,17 @@ their presence here does not promise implementation or inclusion in a specific
 release. Candidates should be promoted only after their semantics, indexing
 cost, and expected usage are understood.
 
-## High-priority candidates
+## Current priority: performance and memory optimization
+
+Optimize the existing feature set before expanding the public API. Prefer work
+that improves production-shaped build time, search latency, or retained memory
+and require benchmark evidence before adopting an optimization.
+
+New filters and combinators are deferred until a concrete use case cannot be
+expressed reasonably with the existing API. When that happens, validate the
+semantics and indexing cost before promoting the feature back into active work.
+
+## Deferred feature candidates
 
 ### Not equal
 
@@ -26,8 +36,6 @@ Before implementation, define:
 - wildcard and empty-set behavior;
 - the representation of stored and query values;
 - how repeated external IDs interact with multiple allowed or forbidden sets.
-
-## Medium-priority candidates
 
 ### Interval overlap
 
@@ -129,13 +137,15 @@ Evaluate these only where their semantics match an existing or planned path:
 
 ## Suggested evaluation order
 
-1. `!=` and `NotEqual`
-2. `In`
-3. `NotIn`
-4. `Overlaps`
-5. `Any`
-6. `Exists` and `Missing`
+1. Benchmark `CheckedAdd` versus `Add` during streaming build.
+2. Evaluate `Stats`, `DenseSize`, and `HasRunCompression` as planner signals.
+3. Evaluate iterator and boundary APIs for faster result materialization and
+   early limits.
+4. Evaluate `Rank` and `Select` if pagination becomes an active requirement.
+5. Revisit the remaining bitmap operations only when the corresponding index
+   lifecycle or planner use case exists.
 
-For each candidate, validate real use cases first, document exact matching
-semantics, and benchmark build time, search time, and memory use against rule
-expansion with the existing filters.
+For every optimization, compare production-shaped build time, search time,
+allocations, and retained memory. Keep new feature candidates deferred unless
+real usage demonstrates that the existing filters cannot express them without
+unacceptable complexity or cost.
