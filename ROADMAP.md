@@ -66,6 +66,67 @@ demand and an efficient indexing strategy are clear:
 - collection operators such as `ContainsAny` and `ContainsAll`;
 - arbitrary predicates that cannot be indexed ahead of time.
 
+## Roaring bitmap optimization backlog
+
+Track bitmap API experiments here so they are not repeated and so rejected
+optimizations can be reconsidered if the workload changes. Benchmark evidence
+for these decisions lives in `benchmark_test.go`.
+
+### Adopted
+
+- `ManyIterator`: used for result materialization at cardinality 4096 and above;
+  smaller results retain `Iterator`.
+- `AndAny`: used by `Between` to intersect the selective side with several
+  matching postings without first materializing their union.
+- `FastAnd`: used for final intersections of up to eight child bitmaps. Larger
+  intersections retain the pooled sequential path.
+
+### Evaluated, not currently used
+
+- `FastOr`: faster than sequential union for uniform postings, but returning a
+  new bitmap and copying it into pooled search state regressed real searches.
+- `HeapOr`: substantially slower and more allocation-heavy for both uniform and
+  skewed posting lists.
+- `ParOr`: can beat `FastOr` for many similarly sized sparse postings, but is
+  several times slower for skewed or heavily overlapping postings. Revisit only
+  with a cheap shape-aware planner.
+- `ParAnd`: does not amortize goroutine and merge overhead in normal indexes or
+  in the tested 10-million-ID case.
+- `OrCardinality`: useful only as an input to a future adaptive union planner;
+  calling it before a union that is still required duplicates work.
+- `AndCardinality`: a cheap selectivity/emptiness estimate, but a preflight
+  before required materialization regresses the matching path. Reserve for a
+  future planner.
+- `Intersects`: very fast for rejecting disjoint bitmaps, but duplicates work
+  when the intersection must subsequently be materialized. Reserve for a
+  planner that can predict mostly-empty intersections.
+- `IntersectsWithInterval`: 3-9x faster than building a temporary interval
+  bitmap for dynamic ID ranges. Current ordered filters range over values, not
+  internal IDs; reconsider for an ID-range or pagination API.
+- `RunOptimize`: reduced some bitmap sizes but significantly regressed
+  production-shaped search because operations on the resulting run containers
+  became more expensive.
+- `AddMany`: substantially improves bulk insertion, but the current build is
+  streaming. Reconsider with an optional bulk builder that can bound the memory
+  used by per-posting ID buffers.
+
+### Candidates still to evaluate
+
+Evaluate these only where their semantics match an existing or planned path:
+
+1. `CheckedAdd` versus `Add` during streaming build.
+2. `Stats`, `DenseSize`, and `HasRunCompression` as cheap signals for the
+   adaptive cardinality/union planner.
+3. `Iterate`, `Minimum`, `Maximum`, `NextValue`, and `PreviousValue` for result
+   materialization, early limits, or future pagination.
+4. `Rank` and `Select` for offset/limit pagination without walking all earlier
+   matches.
+5. `AddRange`, `RemoveRange`, and `Flip` if bulk ID allocation, deletion, or
+   complement operations become part of the index lifecycle.
+6. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
+7. `Xor` if a symmetric-difference rule or planner operation is introduced.
+8. `AddOffset` if indexes need to merge independently built ID shards.
+
 ## Suggested evaluation order
 
 1. `!=` and `NotEqual`
