@@ -44,6 +44,8 @@ func (c *valueBitmapCache[V]) replace(value *V) *roaring.Bitmap {
 	}
 	entry.initialized = true
 	entry.hasValue = value != nil
+	var zero V
+	entry.value = zero
 	if value != nil {
 		entry.value = *value
 	}

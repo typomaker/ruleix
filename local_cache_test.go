@@ -30,6 +30,21 @@ func TestValueBitmapCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	require.True(t, bits.Contains(3))
 }
 
+func TestValueBitmapCacheClearsValueForNilEntry(t *testing.T) {
+	type value struct{ id int }
+	cache := &valueBitmapCache[*value]{}
+	first := &value{id: 1}
+	second := &value{id: 2}
+
+	cache.replace(&first)
+	cache.replace(&second)
+	cache.replace(nil)
+
+	require.True(t, cache.entries[0].initialized)
+	require.False(t, cache.entries[0].hasValue)
+	require.Nil(t, cache.entries[0].value)
+}
+
 func TestBetweenCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	type interval struct{ from, until *int }
 	pointer := func(value int) *int { return &value }
@@ -62,4 +77,40 @@ func TestBetweenCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 		cachedBounds[[2]int{entry.from, entry.until}] = true
 	}
 	require.Equal(t, map[[2]int]bool{{10, 20}: true, {12, 22}: true}, cachedBounds)
+}
+
+func TestBetweenCacheClearsMissingBounds(t *testing.T) {
+	type bound struct{ id int }
+	type interval struct{ from, until **bound }
+	pointer := func(value *bound) **bound { return &value }
+	compare := func(a, b *bound) int { return cmp.Compare(a.id, b.id) }
+	schema := Between(
+		func(value interval) **bound { return value.from },
+		func(value interval) **bound { return value.until },
+		compare,
+	)
+	low, high := &bound{id: 0}, &bound{id: 100}
+	index, err := New[interval, int](schema).Build(Zip(
+		[]interval{{from: pointer(low), until: pointer(high)}},
+		[]int{1},
+	))
+	require.NoError(t, err)
+	local := index.Local()
+
+	for _, query := range []interval{
+		{from: pointer(&bound{id: 10}), until: pointer(&bound{id: 20})},
+		{from: pointer(&bound{id: 11}), until: pointer(&bound{id: 21})},
+		{},
+	} {
+		var matches []int
+		local.Search(query, &matches)
+	}
+
+	rule := index.root.(*betweenRule[interval, *bound])
+	cache := local.pool.local[rule.nodeID].between.(*betweenCache[*bound])
+	require.True(t, cache.entries[0].initialized)
+	require.False(t, cache.entries[0].hasFrom)
+	require.False(t, cache.entries[0].hasUntil)
+	require.Nil(t, cache.entries[0].from)
+	require.Nil(t, cache.entries[0].until)
 }

@@ -120,6 +120,8 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	r.searchUncached(v, cached.bits, pool)
 	cached.initialized = true
 	cached.hasFrom, cached.hasUntil = hasFrom, hasUntil
+	var zero V
+	cached.from, cached.until = zero, zero
 	if hasFrom {
 		cached.from = *from
 	}
