@@ -298,6 +298,42 @@ func BenchmarkBitmapIntersects(b *testing.B) {
 	}
 }
 
+func BenchmarkBitmapAndCardinality(b *testing.B) {
+	// The cardinality-only operation is useful to a planner or emptiness check;
+	// doing it before an intersection that is still needed duplicates work.
+	for _, overlapPercent := range []int{0, 1, 50, 100} {
+		left := roaring.New()
+		left.AddRange(0, 100_000)
+		right := roaring.New()
+		overlap := uint64(overlapPercent * 1_000)
+		right.AddRange(100_000-overlap, 200_000-overlap)
+
+		b.Run(fmt.Sprintf("Overlap%d/MaterializeIntersection", overlapPercent), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := left.Clone()
+				result.And(right)
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+		b.Run(fmt.Sprintf("Overlap%d/AndCardinality", overlapPercent), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				benchmarkUint64Result = left.AndCardinality(right)
+			}
+		})
+		b.Run(fmt.Sprintf("Overlap%d/AndCardinalityThenIntersection", overlapPercent), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				benchmarkUint64Result = left.AndCardinality(right)
+				result := left.Clone()
+				result.And(right)
+				benchmarkUint64Result += result.GetCardinality()
+			}
+		})
+	}
+}
+
 type benchmarkEquality struct {
 	optional *int
 	required int
