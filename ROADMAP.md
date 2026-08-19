@@ -134,23 +134,27 @@ for these decisions lives in `benchmark_test.go`.
   allocation-free and cheap (about 3 ns for either bound and 25-26 ns for an
   adjacent sparse value on Apple M1 Max), but the current API has no result
   pagination or ID-range operation that can use it.
+- `Rank` and `Select`: both make deep pagination independent of the number of
+  preceding matches. For a 16-item page at offset 65,536, `Select` plus iterator
+  positioning took about 130 ns for dense results and 690 ns for sparse results,
+  versus 273 µs and 196 µs for walking from the start. `Rank` took about 5 ns
+  and 205 ns versus 409 µs and 315 µs for the equivalent walk. They add no
+  allocations beyond the result iterator, but the current API has no offset,
+  limit, or cursor operation that can use them.
 
 ### Candidates still to evaluate
 
 Evaluate these only where their semantics match an existing or planned path:
 
-1. `Rank` and `Select` for offset/limit pagination without walking all earlier
-   matches.
-2. `AddRange`, `RemoveRange`, and `Flip` if bulk ID allocation, deletion, or
+1. `AddRange`, `RemoveRange`, and `Flip` if bulk ID allocation, deletion, or
    complement operations become part of the index lifecycle.
-3. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
-4. `Xor` if a symmetric-difference rule or planner operation is introduced.
-5. `AddOffset` if indexes need to merge independently built ID shards.
+2. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
+3. `Xor` if a symmetric-difference rule or planner operation is introduced.
+4. `AddOffset` if indexes need to merge independently built ID shards.
 
 ## Suggested evaluation order
 
-1. Evaluate `Rank` and `Select` if pagination becomes an active requirement.
-2. Revisit the remaining bitmap operations only when the corresponding index
+1. Revisit the remaining bitmap operations only when the corresponding index
    lifecycle or planner use case exists.
 
 For every optimization, compare production-shaped build time, search time,

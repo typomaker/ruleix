@@ -129,6 +129,76 @@ func BenchmarkBitmapBoundaries(b *testing.B) {
 	}
 }
 
+//nolint:gocognit // Benchmark matrix intentionally compares pagination primitives across result shapes.
+func BenchmarkBitmapPagination(b *testing.B) {
+	const (
+		cardinality = uint32(100_000)
+		pageSize    = uint32(16)
+	)
+	for _, shape := range []string{"Dense", "Sparse"} {
+		bits := roaring.New()
+		step := uint32(1)
+		if shape == "Sparse" {
+			step = 97
+		}
+		for id := uint32(0); id < cardinality; id++ {
+			bits.Add(id * step)
+		}
+		for _, offset := range []uint32{16, 4 << 10, 64 << 10} {
+			prefix := fmt.Sprintf("%s/Offset%d/", shape, offset)
+			b.Run(prefix+"WalkPage", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					iterator := bits.Iterator()
+					for range offset {
+						iterator.Next()
+					}
+					var sum uint64
+					for range pageSize {
+						sum += uint64(iterator.Next())
+					}
+					benchmarkUint64Result = sum
+				}
+			})
+			b.Run(prefix+"SelectAndAdvancePage", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					first, err := bits.Select(offset)
+					if err != nil {
+						b.Fatal(err)
+					}
+					iterator := bits.Iterator()
+					iterator.AdvanceIfNeeded(first)
+					var sum uint64
+					for range pageSize {
+						sum += uint64(iterator.Next())
+					}
+					benchmarkUint64Result = sum
+				}
+			})
+			cursor := offset * step
+			b.Run(prefix+"WalkRank", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					var rank uint64
+					iterator := bits.Iterator()
+					for iterator.HasNext() && iterator.PeekNext() <= cursor {
+						iterator.Next()
+						rank++
+					}
+					benchmarkUint64Result = rank
+				}
+			})
+			b.Run(prefix+"Rank", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					benchmarkUint64Result = bits.Rank(cursor)
+				}
+			})
+		}
+	}
+}
+
 func BenchmarkBitmapAndAny(b *testing.B) {
 	const postingsCount = 64
 	candidates := roaring.New()
