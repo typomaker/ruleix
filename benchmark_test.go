@@ -89,6 +89,9 @@ func BenchmarkBitmapAndAny(b *testing.B) {
 func BenchmarkBitmapOrStrategies(b *testing.B) {
 	// HeapOr's heap and intermediate bitmap overhead does not pay off for either
 	// evenly sized or strongly skewed posting lists in the index's size range.
+	// ParOr can outperform FastOr for many similarly sized sparse postings, but
+	// is several times slower for skewed or heavily overlapping postings. Keep
+	// it out of search until a planner can distinguish those shapes cheaply.
 	for _, shape := range []string{"Uniform", "Skewed"} {
 		for _, postingsCount := range []int{4, 16, 64, 256} {
 			postings := make([]*roaring.Bitmap, postingsCount)
@@ -128,6 +131,17 @@ func BenchmarkBitmapOrStrategies(b *testing.B) {
 					benchmarkUint64Result = result.GetCardinality()
 				}
 			})
+			if postingsCount >= 64 {
+				for _, parallelism := range []int{2, 4, 8} {
+					b.Run(fmt.Sprintf("%sParOr%d", prefix, parallelism), func(b *testing.B) {
+						b.ReportAllocs()
+						for range b.N {
+							result := roaring.ParOr(parallelism, postings...)
+							benchmarkUint64Result = result.GetCardinality()
+						}
+					})
+				}
+			}
 		}
 	}
 }
