@@ -91,6 +91,9 @@ for these decisions lives in `benchmark_test.go`.
 
 ### Evaluated, not currently used
 
+- `CheckedAdd`: 10-30% slower than `Add` for sequential, sparse, shuffled,
+  and duplicate-heavy streaming insertion, with no allocation or retained-size
+  benefit. The builder does not need its inserted/not-inserted result.
 - `FastOr`: faster than sequential union for uniform postings, but returning a
   new bitmap and copying it into pooled search state regressed real searches.
 - `HeapOr`: substantially slower and more allocation-heavy for both uniform and
@@ -122,27 +125,25 @@ for these decisions lives in `benchmark_test.go`.
 
 Evaluate these only where their semantics match an existing or planned path:
 
-1. `CheckedAdd` versus `Add` during streaming build.
-2. `Stats`, `DenseSize`, and `HasRunCompression` as cheap signals for the
+1. `Stats`, `DenseSize`, and `HasRunCompression` as cheap signals for the
    adaptive cardinality/union planner.
-3. `Iterate`, `Minimum`, `Maximum`, `NextValue`, and `PreviousValue` for result
+2. `Iterate`, `Minimum`, `Maximum`, `NextValue`, and `PreviousValue` for result
    materialization, early limits, or future pagination.
-4. `Rank` and `Select` for offset/limit pagination without walking all earlier
+3. `Rank` and `Select` for offset/limit pagination without walking all earlier
    matches.
-5. `AddRange`, `RemoveRange`, and `Flip` if bulk ID allocation, deletion, or
+4. `AddRange`, `RemoveRange`, and `Flip` if bulk ID allocation, deletion, or
    complement operations become part of the index lifecycle.
-6. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
-7. `Xor` if a symmetric-difference rule or planner operation is introduced.
-8. `AddOffset` if indexes need to merge independently built ID shards.
+5. `Freeze` and `FrozenView` for persistent or memory-mapped immutable indexes.
+6. `Xor` if a symmetric-difference rule or planner operation is introduced.
+7. `AddOffset` if indexes need to merge independently built ID shards.
 
 ## Suggested evaluation order
 
-1. Benchmark `CheckedAdd` versus `Add` during streaming build.
-2. Evaluate `Stats`, `DenseSize`, and `HasRunCompression` as planner signals.
-3. Evaluate iterator and boundary APIs for faster result materialization and
+1. Evaluate `Stats`, `DenseSize`, and `HasRunCompression` as planner signals.
+2. Evaluate iterator and boundary APIs for faster result materialization and
    early limits.
-4. Evaluate `Rank` and `Select` if pagination becomes an active requirement.
-5. Revisit the remaining bitmap operations only when the corresponding index
+3. Evaluate `Rank` and `Select` if pagination becomes an active requirement.
+4. Revisit the remaining bitmap operations only when the corresponding index
    lifecycle or planner use case exists.
 
 For every optimization, compare production-shaped build time, search time,

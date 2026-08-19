@@ -505,6 +505,54 @@ func BenchmarkBitmapAddMany(b *testing.B) {
 	}
 }
 
+func BenchmarkBitmapCheckedAdd(b *testing.B) {
+	// The streaming builder does not use the inserted/not-inserted result, so
+	// CheckedAdd must outperform Add by itself to justify replacing it. Include
+	// repeated IDs because one external ID can occur in multiple stored rules.
+	const count = 100_000
+	sequential := make([]uint32, count)
+	sparse := make([]uint32, count)
+	shuffled := make([]uint32, count)
+	repeated := make([]uint32, count)
+	for i := range count {
+		sequential[i] = uint32(i)
+		sparse[i] = uint32(i * 16)
+		shuffled[i] = uint32((i * 65_537) % count)
+		repeated[i] = uint32(i / 4)
+	}
+
+	for _, tt := range []struct {
+		name   string
+		values []uint32
+	}{
+		{name: "Sequential", values: sequential},
+		{name: "Sparse", values: sparse},
+		{name: "Shuffled", values: shuffled},
+		{name: "Repeated", values: repeated},
+	} {
+		b.Run(tt.name+"/Add", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				bits := roaring.New()
+				for _, value := range tt.values {
+					bits.Add(value)
+				}
+				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+		b.Run(tt.name+"/CheckedAdd", func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				bits := roaring.New()
+				for _, value := range tt.values {
+					bits.CheckedAdd(value)
+				}
+				benchmarkUint64Result = bits.GetCardinality()
+			}
+		})
+	}
+}
+
 type benchmarkEquality struct {
 	optional *int
 	required int
