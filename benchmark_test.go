@@ -86,33 +86,49 @@ func BenchmarkBitmapAndAny(b *testing.B) {
 	})
 }
 
-func BenchmarkBitmapFastOr(b *testing.B) {
-	for _, postingsCount := range []int{4, 16, 64, 256} {
-		postings := make([]*roaring.Bitmap, postingsCount)
-		for posting := range postings {
-			bits := roaring.New()
-			for id := uint32(posting); id < 100_000; id += uint32(postingsCount) {
-				bits.Add(id)
-			}
-			postings[posting] = bits
-		}
-		b.Run(fmt.Sprintf("Postings%d/Sequential", postingsCount), func(b *testing.B) {
-			b.ReportAllocs()
-			for range b.N {
-				result := roaring.New()
-				for _, posting := range postings {
-					result.Or(posting)
+func BenchmarkBitmapOrStrategies(b *testing.B) {
+	// HeapOr's heap and intermediate bitmap overhead does not pay off for either
+	// evenly sized or strongly skewed posting lists in the index's size range.
+	for _, shape := range []string{"Uniform", "Skewed"} {
+		for _, postingsCount := range []int{4, 16, 64, 256} {
+			postings := make([]*roaring.Bitmap, postingsCount)
+			for posting := range postings {
+				bits := roaring.New()
+				if shape == "Uniform" {
+					for id := uint32(posting); id < 100_000; id += uint32(postingsCount) {
+						bits.Add(id)
+					}
+				} else {
+					bits.AddRange(0, uint64(100_000/(posting+1)))
 				}
-				benchmarkUint64Result = result.GetCardinality()
+				postings[posting] = bits
 			}
-		})
-		b.Run(fmt.Sprintf("Postings%d/FastOr", postingsCount), func(b *testing.B) {
-			b.ReportAllocs()
-			for range b.N {
-				result := roaring.FastOr(postings...)
-				benchmarkUint64Result = result.GetCardinality()
-			}
-		})
+			prefix := fmt.Sprintf("%s/Postings%d/", shape, postingsCount)
+			b.Run(prefix+"Sequential", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					result := roaring.New()
+					for _, posting := range postings {
+						result.Or(posting)
+					}
+					benchmarkUint64Result = result.GetCardinality()
+				}
+			})
+			b.Run(prefix+"FastOr", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					result := roaring.FastOr(postings...)
+					benchmarkUint64Result = result.GetCardinality()
+				}
+			})
+			b.Run(prefix+"HeapOr", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					result := roaring.HeapOr(postings...)
+					benchmarkUint64Result = result.GetCardinality()
+				}
+			})
+		}
 	}
 }
 
