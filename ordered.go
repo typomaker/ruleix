@@ -141,6 +141,17 @@ func (r *orderedRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitm
 		r.index.walk(value.value, r.dir == lessThan, r.inclusive, dst.Or)
 	}
 }
+func (r *orderedRule[T, V]) appendMatchingBitmaps(value optionalValue[V], dst []*roaring.Bitmap) []*roaring.Bitmap {
+	if !r.wildcard.IsEmpty() {
+		dst = append(dst, r.wildcard)
+	}
+	if value.ok {
+		r.index.walk(value.value, r.dir == lessThan, r.inclusive, func(bits *roaring.Bitmap) {
+			dst = append(dst, bits)
+		})
+	}
+	return dst
+}
 func (*orderedRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
 func (r *orderedRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {

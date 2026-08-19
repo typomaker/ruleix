@@ -52,6 +52,40 @@ func BenchmarkBitmapResultIteration(b *testing.B) {
 	})
 }
 
+func BenchmarkBitmapAndAny(b *testing.B) {
+	const postingsCount = 64
+	candidates := roaring.New()
+	candidates.AddRange(0, 100_000)
+	postings := make([]*roaring.Bitmap, postingsCount)
+	for posting := range postings {
+		bits := roaring.New()
+		for id := uint32(posting); id < 100_000; id += postingsCount * 2 {
+			bits.Add(id)
+		}
+		postings[posting] = bits
+	}
+	b.Run("UnionThenAnd", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			union := roaring.New()
+			for _, posting := range postings {
+				union.Or(posting)
+			}
+			result := candidates.Clone()
+			result.And(union)
+			benchmarkUint64Result = result.GetCardinality()
+		}
+	})
+	b.Run("AndAny", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			result := candidates.Clone()
+			result.AndAny(postings...)
+			benchmarkUint64Result = result.GetCardinality()
+		}
+	})
+}
+
 type benchmarkEquality struct {
 	optional *int
 	required int

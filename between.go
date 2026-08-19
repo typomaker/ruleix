@@ -136,12 +136,24 @@ func (r *betweenRule[T, V]) internBitmaps(interner *bitmapInterner) {
 }
 
 func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	left := pool.get()
-	right := pool.get()
-	r.from.addMatches(getOptional(r.from.get, v), left)
-	r.until.addMatches(getOptional(r.until.get, v), right)
-	left.And(right)
-	dst.Or(left)
-	pool.put(right)
-	pool.put(left)
+	fromValue := getOptional(r.from.get, v)
+	untilValue := getOptional(r.until.get, v)
+	base, other := r.from, r.until
+	baseValue, otherValue := fromValue, untilValue
+	if r.until.cardinality(v, pool) < r.from.cardinality(v, pool) {
+		base, other = r.until, r.from
+		baseValue, otherValue = untilValue, fromValue
+	}
+
+	candidates := pool.get()
+	base.addMatches(baseValue, candidates)
+	var inline [16]*roaring.Bitmap
+	postings := other.appendMatchingBitmaps(otherValue, inline[:0])
+	if len(postings) == 0 {
+		candidates.Clear()
+	} else {
+		candidates.AndAny(postings...)
+	}
+	dst.Or(candidates)
+	pool.put(candidates)
 }
