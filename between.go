@@ -130,6 +130,10 @@ func (r *betweenRule[T, V]) prepareSearch() {
 	r.from.prepareSearch()
 	r.until.prepareSearch()
 }
+func (r *betweenRule[T, V]) internBitmaps(interner *bitmapInterner) {
+	r.from.internBitmaps(interner)
+	r.until.internBitmaps(interner)
+}
 
 func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	left := pool.get()

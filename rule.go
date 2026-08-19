@@ -114,6 +114,7 @@ func (r *matchAllRule[T]) search(_ T, dst *roaring.Bitmap, _ *bitmapPool)      {
 func (*matchAllRule[T]) exclude(T, *roaring.Bitmap, *bitmapPool)               {}
 func (*matchAllRule[T]) collectBuildStatistics([]nodeBuildStatistics)          {}
 func (r *matchAllRule[T]) prepareSearch()                                      { prepareBitmapForSearch(r.bits) }
+func (r *matchAllRule[T]) internBitmaps(interner *bitmapInterner)              { interner.intern(&r.bits) }
 
 func newMatchAllRule[T any](bits *roaring.Bitmap) Rule[T] {
 	return &matchAllRule[T]{bits: bits}

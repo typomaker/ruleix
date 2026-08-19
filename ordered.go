@@ -155,3 +155,7 @@ func (r *orderedRule[T, V]) prepareSearch() {
 	prepareBitmapForSearch(r.wildcard)
 	r.index.prepareSearch()
 }
+func (r *orderedRule[T, V]) internBitmaps(interner *bitmapInterner) {
+	interner.intern(&r.wildcard)
+	r.index.internBitmaps(interner)
+}

@@ -150,3 +150,11 @@ func (r *compareByRule[T, V]) prepareSearch() {
 		}
 	}
 }
+func (r *compareByRule[T, V]) internBitmaps(interner *bitmapInterner) {
+	interner.intern(&r.wildcard)
+	for _, index := range r.indexes {
+		if index != nil {
+			index.internBitmaps(interner)
+		}
+	}
+}

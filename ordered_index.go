@@ -59,6 +59,15 @@ func (i *orderedIndex[V]) prepareSearch() {
 		}
 	}
 }
+func (i *orderedIndex[V]) internBitmaps(interner *bitmapInterner) {
+	for blockIndex := range i.blocks {
+		block := &i.blocks[blockIndex]
+		interner.intern(&block.bits)
+		for _, item := range block.items {
+			interner.intern(&item.bits)
+		}
+	}
+}
 func (i *orderedIndex[V]) insert(value V, id uint32) {
 	if len(i.blocks) != 0 {
 		blockIndex := i.blockFor(value)

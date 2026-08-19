@@ -117,6 +117,11 @@ func (s *equalitySet) prepareSearch() {
 		prepareBitmapForSearch(s.bits)
 	}
 }
+func (s *equalitySet) internBitmaps(interner *bitmapInterner) {
+	if s.bits != nil {
+		interner.intern(&s.bits)
+	}
+}
 
 type eqRule[T any, V comparable] struct {
 	nodeID   nodeID
@@ -208,5 +213,11 @@ func (r *eqRule[T, V]) prepareSearch() {
 	prepareBitmapForSearch(r.wildcard)
 	for _, set := range r.values {
 		set.prepareSearch()
+	}
+}
+func (r *eqRule[T, V]) internBitmaps(interner *bitmapInterner) {
+	interner.intern(&r.wildcard)
+	for _, set := range r.values {
+		set.internBitmaps(interner)
 	}
 }

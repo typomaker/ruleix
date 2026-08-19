@@ -106,6 +106,13 @@ func (r *notRule[T, V]) prepareSearch() {
 		set.prepareSearch()
 	}
 }
+func (r *notRule[T, V]) internBitmaps(interner *bitmapInterner) {
+	interner.intern(&r.wildcard)
+	interner.intern(&r.constrained)
+	for _, set := range r.values {
+		set.internBitmaps(interner)
+	}
+}
 func (r *notRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
 	stats[r.nodeID].equalityValues = len(r.values)
 }

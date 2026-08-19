@@ -291,6 +291,28 @@ func BenchmarkProductionShapeBuild(b *testing.B) {
 //	go test -run '^$' -bench '^BenchmarkProductionShapeRetainedMemory$' -benchtime=5x -count=5
 func BenchmarkProductionShapeRetainedMemory(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
+	benchmarkProductionRetainedMemory(b, constraints, ids)
+}
+
+// BenchmarkProductionShapeShuffledRetainedMemory removes insertion-order
+// locality while preserving the same production field distribution.
+func BenchmarkProductionShapeShuffledRetainedMemory(b *testing.B) {
+	constraints, ids := productionBenchmarkData()
+	state := uint64(0x9e3779b97f4a7c15)
+	for i := len(constraints) - 1; i > 0; i-- {
+		state = state*6364136223846793005 + 1442695040888963407
+		j := int(state % uint64(i+1))
+		constraints[i], constraints[j] = constraints[j], constraints[i]
+		ids[i], ids[j] = ids[j], ids[i]
+	}
+	benchmarkProductionRetainedMemory(b, constraints, ids)
+}
+
+func benchmarkProductionRetainedMemory(
+	b *testing.B,
+	constraints []productionBenchmarkConstraint,
+	ids []productionBenchmarkID,
+) {
 	builder := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](productionBenchmarkSchema())
 	// Prime reusable Builder hints before the baseline so their retained memory
 	// is not incorrectly attributed to the measured indexes.
