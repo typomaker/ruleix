@@ -147,6 +147,9 @@ func BenchmarkBitmapOrStrategies(b *testing.B) {
 }
 
 func BenchmarkBitmapFastAnd(b *testing.B) {
+	// ParAnd parallelizes work by high-key containers. It does not amortize its
+	// goroutine, heap, and merge overhead in the normal range or even across 10M
+	// IDs, so keep FastAnd in the search path.
 	for _, postingsCount := range []int{2, 4, 8, 16} {
 		postings := make([]*roaring.Bitmap, postingsCount)
 		for posting := range postings {
@@ -168,6 +171,37 @@ func BenchmarkBitmapFastAnd(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
 				result := roaring.FastAnd(postings...)
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+		for _, parallelism := range []int{2, 4} {
+			b.Run(fmt.Sprintf("Postings%d/ParAnd%d", postingsCount, parallelism), func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					result := roaring.ParAnd(parallelism, postings...)
+					benchmarkUint64Result = result.GetCardinality()
+				}
+			})
+		}
+	}
+
+	large := make([]*roaring.Bitmap, 8)
+	for posting := range large {
+		large[posting] = roaring.New()
+		large[posting].AddRange(uint64(posting*100), uint64(10_000_000-posting*100))
+	}
+	b.Run("LargeContainers/FastAnd", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			result := roaring.FastAnd(large...)
+			benchmarkUint64Result = result.GetCardinality()
+		}
+	})
+	for _, parallelism := range []int{2, 4, 8} {
+		b.Run(fmt.Sprintf("LargeContainers/ParAnd%d", parallelism), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := roaring.ParAnd(parallelism, large...)
 				benchmarkUint64Result = result.GetCardinality()
 			}
 		})
