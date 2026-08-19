@@ -116,6 +116,60 @@ func BenchmarkBitmapFastOr(b *testing.B) {
 	}
 }
 
+func BenchmarkBitmapFastAnd(b *testing.B) {
+	for _, postingsCount := range []int{2, 4, 8, 16} {
+		postings := make([]*roaring.Bitmap, postingsCount)
+		for posting := range postings {
+			bits := roaring.New()
+			bits.AddRange(uint64(posting*100), uint64(100_000-posting*100))
+			postings[posting] = bits
+		}
+		b.Run(fmt.Sprintf("Postings%d/Sequential", postingsCount), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := postings[0].Clone()
+				for _, posting := range postings[1:] {
+					result.And(posting)
+				}
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+		b.Run(fmt.Sprintf("Postings%d/FastAnd", postingsCount), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := roaring.FastAnd(postings...)
+				benchmarkUint64Result = result.GetCardinality()
+			}
+		})
+	}
+
+	disjoint := []*roaring.Bitmap{roaring.New(), roaring.New(), roaring.New(), roaring.New()}
+	disjoint[0].AddRange(0, 25_000)
+	disjoint[1].AddRange(25_000, 50_000)
+	disjoint[2].AddRange(0, 100_000)
+	disjoint[3].AddRange(0, 100_000)
+	b.Run("EarlyEmpty/Sequential", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			result := disjoint[0].Clone()
+			for _, posting := range disjoint[1:] {
+				if result.IsEmpty() {
+					break
+				}
+				result.And(posting)
+			}
+			benchmarkUint64Result = result.GetCardinality()
+		}
+	})
+	b.Run("EarlyEmpty/FastAnd", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			result := roaring.FastAnd(disjoint...)
+			benchmarkUint64Result = result.GetCardinality()
+		}
+	})
+}
+
 func BenchmarkBitmapOrCardinality(b *testing.B) {
 	for _, overlapPercent := range []int{0, 50, 100} {
 		left := roaring.New()

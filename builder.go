@@ -300,19 +300,34 @@ func appendBitmapAllMatches[ID comparable](
 	pool *bitmapPool,
 	result []ID,
 ) []ID {
-	bits := pool.get()
-	bits.Or(rankedChildren[0].bits)
-	for _, child := range rankedChildren[1:] {
-		if bits.IsEmpty() {
-			break
+	// FastAnd can return the final result directly here. The generic All search
+	// cannot use it efficiently because it must copy that result into dst.
+	var inline [8]*roaring.Bitmap
+	if len(rankedChildren) > len(inline) {
+		bits := pool.get()
+		bits.Or(rankedChildren[0].bits)
+		for _, child := range rankedChildren[1:] {
+			if bits.IsEmpty() {
+				break
+			}
+			bits.And(child.bits)
 		}
-		bits.And(child.bits)
+		if excluded != nil {
+			bits.AndNot(excluded)
+		}
+		result = appendBitmapValues(bits, values, result)
+		pool.put(bits)
+		return result
 	}
+	postings := inline[:len(rankedChildren)]
+	for i := range rankedChildren {
+		postings[i] = rankedChildren[i].bits
+	}
+	bits := roaring.FastAnd(postings...)
 	if excluded != nil {
 		bits.AndNot(excluded)
 	}
 	result = appendBitmapValues(bits, values, result)
-	pool.put(bits)
 	return result
 }
 
