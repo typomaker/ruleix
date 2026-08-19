@@ -297,7 +297,7 @@ func BenchmarkProductionShapeParallelLocalBatch100(b *testing.B) {
 	var workersDone sync.WaitGroup
 	workersDone.Add(workers)
 	for worker := range workers {
-		jobs[worker] = make(chan job)
+		jobs[worker] = make(chan job, 1)
 		go func(jobs <-chan job) {
 			defer workersDone.Done()
 			local := index.Local()
