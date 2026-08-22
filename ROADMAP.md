@@ -15,6 +15,72 @@ New filters and combinators are deferred until a concrete use case cannot be
 expressed reasonably with the existing API. When that happens, validate the
 semantics and indexing cost before promoting the feature back into active work.
 
+### Architectural guardrails
+
+Performance work should preserve the properties that make the current index
+useful: an immutable index after `Build`, lock-free concurrent searches,
+`uint32` internal rule IDs, and Roaring bitmaps as the primary representation
+for large candidate sets. Do not add mutex-protected mutable postings, switch to
+larger IDs, or replace Roaring without workload-specific benchmark evidence.
+
+Keep the first planner internal and deliberately small. Avoid a general-purpose
+database optimizer, expensive runtime statistics, or public API changes until a
+measured need justifies them.
+
+### Adaptive `All` execution planner
+
+The primary optimization candidate is a hybrid executor that avoids
+materializing every child bitmap before intersection. Wildcard-heavy fields can
+match nearly the whole index, so their expected result cardinality, including
+both the wildcard and value-specific postings, matters more than the size of
+either posting alone.
+
+Develop this incrementally:
+
+1. Add a cheap internal cardinality estimate for the simple leaf indexes.
+   Distinguish estimated output size from execution cost in the design, but use
+   cardinality alone in the first implementation. Permit coarse or explicitly
+   inexact estimates for range indexes rather than duplicating search work.
+2. Make `All` sort children by estimate and materialize them one at a time.
+   Check for an empty result after every intersection and never build remaining
+   child results once execution can terminate.
+3. Add a cheap, type-safe way to validate one internal rule ID, either through
+   leaf-level `MatchID` operations or a compiled-rule representation indexed by
+   rule ID. Once the candidate set becomes small, validate the remaining
+   predicates directly and stay in candidate mode for the rest of the query.
+4. Choose the bitmap-to-candidate threshold from benchmarks, not from a fixed
+   assumption. Start with one shared threshold; introduce operator-specific
+   cost classes only if measurements show a material benefit.
+
+Compare leaf-level `MatchID` with a cache-friendly compiled-rule fallback before
+committing to reverse constraint storage in every leaf. The latter may improve
+candidate scans but also duplicates source data and increases retained memory.
+
+Planner ordering is operator-specific. For `All`, start with the most selective
+predicate. If `Any` or `Not` is added later, design their planning separately:
+`Any` may prefer cheap, broad predicates and can stop after covering the rule
+universe, while `Not` should avoid materializing a large complement when a
+small parent candidate set can be checked directly.
+
+### Planner and memory benchmark matrix
+
+Establish a reproducible baseline before implementing the planner. Cover 10K,
+100K, and 1M rules initially, with larger 5M and 10M cases where the test host
+allows them. Include sparse constraints, dense constraints, high- and
+low-cardinality values, highly skewed wildcard distributions, empty and small
+results, large results, nested combinators, and range-heavy queries.
+
+Measure build time, search time and allocations, retained index bytes, peak
+build memory, GC pressure, posting count and size, and wildcard ratio. Compare
+bitmap-only, candidate-only, and adaptive execution over candidate counts from
+1 through at least 16K. Benchmark bitmap-pool reuse under concurrent searches;
+keep it only where it improves end-to-end allocation or latency behavior.
+
+The first planner iteration is successful only if it preserves the public API,
+immutability, and concurrent search safety; avoids eager materialization; exits
+early on empty results; improves selective and wildcard-heavy workloads; and
+does not materially regress large-result latency or allocations.
+
 ### Shared wildcard evaluation in `All`
 
 When two or more positive child rules have the same wildcard posting bitmap,
@@ -29,6 +95,40 @@ equality filters under one `All`, keep exclusions and the two `Between` bounds
 out of the initial fast path, and require benchmarks with large partial
 wildcards. Compare against the existing path for small bitmaps and warmed
 `Local` caches, where grouping overhead may outweigh the saved unions.
+
+### Optional planner diagnostics
+
+After the execution strategy is stable, consider an opt-in `Explain` facility
+that reports estimates, actual cardinalities, ordering, and the switch between
+bitmap and candidate modes. Build-time metadata such as total rules, wildcard
+count, distinct values, and maximum posting cardinality can support both
+diagnostics and cheap estimates. Keep instrumentation out of the default hot
+path.
+
+### Rebuild scalability
+
+Retain full immutable rebuilds until benchmarks show that update frequency,
+peak memory, or publication latency is a real bottleneck. A lightweight store
+may build a new index separately and atomically publish the completed
+generation, keeping searches read-only.
+
+If full rebuilds eventually become prohibitive, evaluate immutable base and
+delta generations with tombstones and periodic compaction. Account for the
+temporary memory of two generations and build allocations. Do not make mutable
+posting lists the primary update mechanism.
+
+### Ordered and time-range indexes
+
+Measure traversal of indexes with many distinct boundaries before changing
+their representation. If repeated unions dominate, evaluate block-level
+prefix/suffix aggregates before a segment tree: both trade retained memory and
+build cost for fewer bitmap operations, but block aggregation is the simpler
+first experiment.
+
+For `TimeRange`, estimate and execute the more selective bound first, then use
+candidate validation for the other bound when the set is small. Storing bounds
+by internal rule ID may make this validation cheap, but its memory cost should
+be compared with the compiled-rule approach used by the general planner.
 
 ## Deferred feature candidates
 
@@ -185,7 +285,16 @@ Evaluate these only where their semantics match an existing or planned path:
 
 ## Suggested evaluation order
 
-1. Revisit the remaining bitmap operations only when the corresponding index
+1. Capture production-shaped latency, allocation, build, and memory baselines.
+2. Add cheap estimates and lazy, empty-aware `All` execution.
+3. Benchmark and add candidate scanning below a measured crossover threshold.
+4. Revisit shared wildcard evaluation in light of the planner: retain the
+   specialized identity only where it still wins.
+5. Add optional planner diagnostics, then optimize other logical operators when
+   their semantics exist.
+6. Investigate range aggregation or generation-based updates only after their
+   respective benchmarks demonstrate a bottleneck.
+7. Revisit the remaining bitmap operations only when the corresponding index
    lifecycle or planner use case exists.
 
 For every optimization, compare production-shaped build time, search time,
