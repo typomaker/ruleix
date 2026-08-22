@@ -119,3 +119,35 @@ func TestAllChecksCheapEmptyChildBeforeMaterializing(t *testing.T) {
 	require.Zero(t, expensive.searchCalls)
 	require.Zero(t, empty.searchCalls)
 }
+
+func TestAllCandidateScanLimit(t *testing.T) {
+	for _, test := range []struct {
+		name             string
+		candidates       int
+		wantSecondSearch int
+		wantMatchCalls   int
+	}{
+		{name: "scan at limit", candidates: allCandidateScanLimit, wantMatchCalls: allCandidateScanLimit},
+		{name: "bitmap above limit", candidates: allCandidateScanLimit + 1, wantSecondSearch: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ids := make([]uint32, test.candidates)
+			for i := range ids {
+				ids[i] = uint32(i)
+			}
+			first := &countingRule{ids: ids}
+			second := &countingRule{ids: ids}
+			rule := All[int](first, second)
+			pool := newBitmapPool()
+			dst := pool.get()
+			defer pool.put(dst)
+
+			rule.search(0, dst, pool)
+
+			require.Equal(t, ids, dst.ToArray())
+			require.Equal(t, 1, first.searchCalls)
+			require.Equal(t, test.wantSecondSearch, second.searchCalls)
+			require.Equal(t, test.wantMatchCalls, second.matchIDCalls)
+		})
+	}
+}

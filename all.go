@@ -2,10 +2,11 @@ package ruleix
 
 import "github.com/RoaringBitmap/roaring/v2"
 
-// Scanning a small candidate posting list avoids materializing the result of
-// an All rule. Larger lists are intersected as bitmaps because container-level
-// operations are substantially faster than repeated Contains calls.
-const allCandidateScanLimit = 256
+// Scanning up to four candidate IDs avoids materializing every child result.
+// Benchmarks across dense and sparse postings with 2, 4, and 8 children show
+// bitmap intersection winning above this shared limit; see
+// BenchmarkAllExecutionThreshold.
+const allCandidateScanLimit = 4
 
 // Direct exclusion lookups include a getter and a map lookup per exclusion,
 // so they stop paying off sooner than ordinary posting-list membership tests.

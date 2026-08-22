@@ -59,6 +59,29 @@ without reverse constraint storage or a public API change. This leaf-level
 approach was preferred over a compiled-rule array because it reuses existing
 posting data and adds no retained copy of the source constraints.
 
+## 2026-08-22: adaptive `All` execution threshold
+
+`BenchmarkAllExecutionThreshold` compares candidate-only, bitmap-only, and
+adaptive execution for dense and sparse postings, 2, 4, and 8 children, and
+candidate cardinalities from 1 through 16K. On Apple M1 Max, candidate scans
+consistently won at 1 and 4 IDs. Results became shape-dependent by 16 IDs, and
+bitmap execution won decisively for dense postings and wider `All` groups from
+that point onward. The first shared threshold is therefore 4 IDs.
+
+End-to-end 10K-rule benchmarks confirmed the choice. Medians of five runs
+improved flat `All` search from 13.75 us/op to 2.58 us/op, nested `All` from
+10.79 us/op to 2.88 us/op, and skewed equality with a 100-ID selective posting
+from 2.78 us/op to 708 ns/op. The one-ID selective case remained effectively
+unchanged at 242 ns/op. The bitmap path trades additional scratch allocation
+for substantially lower latency above the threshold.
+
+Reproduce the threshold matrix with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllExecutionThreshold/' \
+  -benchmem -benchtime=200ms -count=5 .
+```
+
 ## Ordered index aggregation
 
 Ordered indexes use block aggregates and binary search, reducing repeated

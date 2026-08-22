@@ -337,7 +337,11 @@ func buildAllExclusions[C any](
 	candidates uint64,
 	pool *bitmapPool,
 ) *roaring.Bitmap {
-	if len(rules) == 0 || candidates <= allDirectExclusionScanLimit {
+	// Direct exclusion checks only run in appendScannedAllMatches. Bitmap
+	// execution always needs an exclusion bitmap, even when the candidate set
+	// is below the otherwise profitable direct-lookup limit.
+	direct := candidates <= allDirectExclusionScanLimit && candidates <= allCandidateScanLimit
+	if len(rules) == 0 || direct {
 		return nil
 	}
 	excluded := pool.get()

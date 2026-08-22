@@ -40,11 +40,10 @@ match nearly the whole index, so their expected result cardinality, including
 both the wildcard and value-specific postings, matters more than the size of
 either posting alone.
 
-The initial estimate-based ordering and lazy empty-aware execution are recorded
-in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Continue by choosing the
-bitmap-to-candidate threshold from benchmarks, not from a fixed assumption.
-Start with one shared threshold; introduce operator-specific cost classes only
-if measurements show a material benefit.
+The initial estimate-based ordering, lazy empty-aware execution, and benchmark-
+selected bitmap-to-candidate threshold are recorded in
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Introduce operator-specific cost
+classes only if measurements show a material benefit.
 
 Planner ordering is operator-specific. For `All`, start with the most selective
 predicate. If `Any` or `Not` is added later, design their planning separately:
