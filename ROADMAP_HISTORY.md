@@ -367,3 +367,18 @@ This preserves immutable indexes, first-insertion result order, duplicate-ID
 semantics, rebuild hints, and failure publication behavior. More importantly,
 future lossy planners can inspect analyzed input and select a representation
 before any complete exact index is constructed and discarded.
+
+## 2026-08-22: canonical scalar encodings for lossy prototypes
+
+The first lossy-index foundation now provides architecture-independent,
+type-tagged encodings for booleans, strings, integer scalars, and floating-
+point scalars. Floating-point encodings canonicalize signed zero and NaN so
+semantically equivalent comparison values cannot be separated by a future
+bucket strategy.
+
+Ordered integer and floating-point scalars also have monotonic `uint64` keys.
+The mapping follows `cmp.Compare` semantics, including NaN before non-NaN and
+equal keys for negative and positive zero. Boundary tests cover every integer
+width, infinities, NaN, signed zero, and unsupported types. Time values remain
+deferred: the full `time.Time` domain cannot be represented injectively by one
+`uint64`, so a time strategy needs an explicit supported range or a wider key.
