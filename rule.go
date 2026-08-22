@@ -64,6 +64,12 @@ type cardinalityZeroChecker[T any] interface {
 	isCardinalityZero(T) bool
 }
 
+// cardinalityEstimator is implemented by rules whose output size can be
+// estimated without doing work comparable to materializing their result.
+type cardinalityEstimator[T any] interface {
+	estimateCardinality(T) uint64
+}
+
 type exclusionRule[T any] interface {
 	exclude(T, *roaring.Bitmap, *bitmapPool)
 	isExcluded(T, uint32) bool
@@ -131,6 +137,7 @@ func (r *matchAllRule[T]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] {
 func (*matchAllRule[T]) validate(T) error                                      { return nil }
 func (*matchAllRule[T]) insert(T, uint32)                                      {}
 func (r *matchAllRule[T]) cardinality(T, *bitmapPool) uint64                   { return r.bits.GetCardinality() }
+func (r *matchAllRule[T]) estimateCardinality(T) uint64                        { return r.bits.GetCardinality() }
 func (r *matchAllRule[T]) search(_ T, dst *roaring.Bitmap, _ *bitmapPool)      { dst.Or(r.bits) }
 func (*matchAllRule[T]) exclude(T, *roaring.Bitmap, *bitmapPool)               {}
 func (*matchAllRule[T]) collectBuildStatistics([]nodeBuildStatistics)          {}

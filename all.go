@@ -104,25 +104,47 @@ func (r *allRule[T]) searchRanked(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) {
-	if !r.collectRanked(v, pool, rankedChildren) {
+	if !r.rankChildren(v, pool, rankedChildren) {
 		return
 	}
 	if len(rankedChildren) == 0 {
 		return
 	}
-	dst.Or(rankedChildren[0].bits)
-	for _, child := range rankedChildren[1:] {
-		if dst.IsEmpty() {
-			break
+	if rankedChildren[0].card > allCandidateScanLimit {
+		if !r.collectRankedInOrder(v, pool, rankedChildren) {
+			return
 		}
-		dst.And(child.bits)
+		dst.Or(rankedChildren[0].bits)
+		for _, child := range rankedChildren[1:] {
+			dst.And(child.bits)
+			if dst.IsEmpty() {
+				break
+			}
+		}
+		r.releaseRanked(pool, rankedChildren)
+		return
+	}
+	for i, ranked := range rankedChildren {
+		bits := pool.get()
+		r.children[ranked.childIdx].search(v, bits, pool)
+		rankedChildren[i].bits = bits
+		rankedChildren[i].card = bits.GetCardinality()
+		if i == 0 {
+			dst.Or(bits)
+		} else {
+			dst.And(bits)
+		}
+		if dst.IsEmpty() {
+			r.releaseRanked(pool, rankedChildren[:i+1])
+			return
+		}
 	}
 	r.releaseRanked(pool, rankedChildren)
 }
 
-func (r *allRule[T]) collectRanked(
+func (r *allRule[T]) rankChildren(
 	v T,
-	pool *bitmapPool,
+	_ *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) bool {
 	for _, child := range r.children {
@@ -130,17 +152,42 @@ func (r *allRule[T]) collectRanked(
 			return false
 		}
 	}
-	// TODO: Explore an adaptive planner that estimates selected children before
-	// materializing them, then searches from the narrowest result and stops on
-	// an empty intersection. Equality rules can compute the exact union size of
-	// wildcard and value postings with roaring.OrCardinality. Apply this only
-	// when the saved materializations outweigh the extra cardinality pass.
-	// roaring.AndCardinality can likewise reject disjoint materialized children
-	// before building their intersection, but duplicates work for matching ones;
-	// see the bitmap-cardinality and cardinality-order benchmarks.
 	for i, child := range r.children {
+		estimate := ^uint64(0)
+		if estimator, ok := child.(cardinalityEstimator[T]); ok {
+			estimate = estimator.estimateCardinality(v)
+		}
+		rankedChildren[i] = rankedBitmap{card: estimate, childIdx: i}
+	}
+	// Filter groups are normally small; insertion sort avoids reflection and a
+	// closure allocation while preserving schema order for equal estimates.
+	for i := 1; i < len(rankedChildren); i++ {
+		for j := i; j > 0 && rankedChildren[j].card < rankedChildren[j-1].card; j-- {
+			rankedChildren[j], rankedChildren[j-1] = rankedChildren[j-1], rankedChildren[j]
+		}
+	}
+	return true
+}
+
+func (r *allRule[T]) collectRanked(
+	v T,
+	pool *bitmapPool,
+	rankedChildren []rankedBitmap,
+) bool {
+	if !r.rankChildren(v, pool, rankedChildren) {
+		return false
+	}
+	return r.collectRankedInOrder(v, pool, rankedChildren)
+}
+
+func (r *allRule[T]) collectRankedInOrder(
+	v T,
+	pool *bitmapPool,
+	rankedChildren []rankedBitmap,
+) bool {
+	for i := range rankedChildren {
 		bits := pool.get()
-		child.search(v, bits, pool)
+		r.children[rankedChildren[i].childIdx].search(v, bits, pool)
 		card := bits.GetCardinality()
 		if card == 0 {
 			pool.put(bits)
@@ -149,10 +196,9 @@ func (r *allRule[T]) collectRanked(
 			}
 			return false
 		}
-		rankedChildren[i] = rankedBitmap{bits: bits, card: card}
+		rankedChildren[i].bits = bits
+		rankedChildren[i].card = card
 	}
-	// Filter groups are normally small; insertion sort avoids reflection and a
-	// closure allocation while preserving schema order for equal cardinalities.
 	for i := 1; i < len(rankedChildren); i++ {
 		for j := i; j > 0 && rankedChildren[j].card < rankedChildren[j-1].card; j-- {
 			rankedChildren[j], rankedChildren[j-1] = rankedChildren[j-1], rankedChildren[j]

@@ -201,6 +201,9 @@ func (r *eqRule[T, V]) insert(v T, id uint32) {
 	r.values.add(value, id)
 }
 func (r *eqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
+	return r.estimateCardinality(v)
+}
+func (r *eqRule[T, V]) estimateCardinality(v T) uint64 {
 	n := r.wildcard.GetCardinality()
 	if value, ok := r.get(v); ok {
 		if set := r.values.get(value); set != nil {
@@ -304,6 +307,9 @@ func (r *unaryEqRule[T, V]) matchingSet(value optionalValue[V]) *equalitySet {
 	return nil
 }
 func (r *unaryEqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
+	return r.estimateCardinality(v)
+}
+func (r *unaryEqRule[T, V]) estimateCardinality(v T) uint64 {
 	n := r.wildcard.GetCardinality()
 	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
 		n += set.cardinality()
@@ -370,6 +376,9 @@ func (r *binaryEqRule[T, V]) matchingSet(value optionalValue[V]) *equalitySet {
 	return nil
 }
 func (r *binaryEqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
+	return r.estimateCardinality(v)
+}
+func (r *binaryEqRule[T, V]) estimateCardinality(v T) uint64 {
 	n := r.wildcard.GetCardinality()
 	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
 		n += set.cardinality()

@@ -25,6 +25,10 @@ func (r *countingRule) cardinality(int, *bitmapPool) uint64 {
 	r.cardinalityCalls++
 	return uint64(len(r.ids))
 }
+func (r *countingRule) estimateCardinality(int) uint64 {
+	r.cardinalityCalls++
+	return uint64(len(r.ids))
+}
 func (r *countingRule) search(_ int, dst *roaring.Bitmap, _ *bitmapPool) {
 	r.searchCalls++
 	dst.AddMany(r.ids)
@@ -32,7 +36,7 @@ func (r *countingRule) search(_ int, dst *roaring.Bitmap, _ *bitmapPool) {
 func (*countingRule) exclude(int, *roaring.Bitmap, *bitmapPool)    {}
 func (*countingRule) collectBuildStatistics([]nodeBuildStatistics) {}
 
-func TestAllMaterializesEachChildOnce(t *testing.T) {
+func TestAllEstimatesAndMaterializesEachChildOnce(t *testing.T) {
 	first := &countingRule{ids: []uint32{1, 2, 3}}
 	second := &countingRule{ids: []uint32{2}}
 	third := &countingRule{ids: []uint32{2, 3}}
@@ -46,7 +50,7 @@ func TestAllMaterializesEachChildOnce(t *testing.T) {
 	require.Equal(t, []uint32{2}, dst.ToArray())
 	for _, child := range []*countingRule{first, second, third} {
 		require.Equal(t, 1, child.searchCalls)
-		require.Zero(t, child.cardinalityCalls)
+		require.Equal(t, 1, child.cardinalityCalls)
 	}
 }
 
@@ -62,8 +66,25 @@ func TestAllStopsMaterializingAfterEmptyChild(t *testing.T) {
 	rule.search(0, dst, pool)
 
 	require.True(t, dst.IsEmpty())
-	require.Equal(t, 1, first.searchCalls)
+	require.Zero(t, first.searchCalls)
 	require.Equal(t, 1, empty.searchCalls)
+	require.Zero(t, unreached.searchCalls)
+}
+
+func TestAllStopsAfterEmptyIntersection(t *testing.T) {
+	first := &countingRule{ids: []uint32{1}}
+	disjoint := &countingRule{ids: []uint32{2}}
+	unreached := &countingRule{ids: []uint32{1, 2, 3}}
+	rule := All[int](first, disjoint, unreached)
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	rule.search(0, dst, pool)
+
+	require.True(t, dst.IsEmpty())
+	require.Equal(t, 1, first.searchCalls)
+	require.Equal(t, 1, disjoint.searchCalls)
 	require.Zero(t, unreached.searchCalls)
 }
 

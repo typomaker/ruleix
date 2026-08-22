@@ -20,6 +20,9 @@ func (*observedRule) insert(int, uint32)                                      {}
 func (r *observedRule) cardinality(value int, _ *bitmapPool) uint64 {
 	return r.cardinalityFor(value)
 }
+func (r *observedRule) estimateCardinality(value int) uint64 {
+	return r.cardinalityFor(value)
+}
 func (r *observedRule) search(_ int, dst *roaring.Bitmap, _ *bitmapPool) {
 	*r.order = append(*r.order, r.name)
 	dst.Add(0)
@@ -27,7 +30,7 @@ func (r *observedRule) search(_ int, dst *roaring.Bitmap, _ *bitmapPool) {
 func (*observedRule) exclude(int, *roaring.Bitmap, *bitmapPool)    {}
 func (*observedRule) collectBuildStatistics([]nodeBuildStatistics) {}
 
-func TestAllMaterializesFiltersInSchemaOrder(t *testing.T) {
+func TestAllMaterializesFiltersInEstimatedCardinalityOrder(t *testing.T) {
 	var order []string
 	left := &observedRule{
 		name: "left",
@@ -55,7 +58,7 @@ func TestAllMaterializesFiltersInSchemaOrder(t *testing.T) {
 
 	var dst []string
 	ix.Search(1, &dst)
-	require.Equal(t, []string{"left", "right"}, order)
+	require.Equal(t, []string{"right", "left"}, order)
 
 	order = nil
 	dst = dst[:0]

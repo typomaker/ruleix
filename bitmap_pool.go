@@ -21,8 +21,9 @@ type bitmapPool struct {
 const maxPooledBitmapBytes = 64 << 10
 
 type rankedBitmap struct {
-	bits *roaring.Bitmap
-	card uint64
+	bits     *roaring.Bitmap
+	card     uint64
+	childIdx int
 }
 
 type rankedBitmapBuffer struct {

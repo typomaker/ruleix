@@ -52,6 +52,14 @@ Develop this incrementally:
    assumption. Start with one shared threshold; introduce operator-specific
    cost classes only if measurements show a material benefit.
 
+The first two stages now have an initial implementation. `All` orders children
+using estimates only when a leaf can provide one without range traversal or
+bitmap materialization, keeps schema order for unknown costs, and executes
+small estimated results lazily with an empty-intersection exit. Broad results
+retain the established materialize-and-rank path to avoid regressing
+production-shaped and nested workloads. Extending cheap estimates to other
+leaf types remains benchmark-dependent.
+
 Compare leaf-level `MatchID` with a cache-friendly compiled-rule fallback before
 committing to reverse constraint storage in every leaf. The latter may improve
 candidate scans but also duplicates source data and increases retained memory.
@@ -370,7 +378,8 @@ Evaluate these only where their semantics match an existing or planned path:
 ## Suggested evaluation order
 
 1. Capture production-shaped latency, allocation, build, and memory baselines.
-2. Add cheap estimates and lazy, empty-aware `All` execution.
+2. Extend cheap estimates and lazy, empty-aware `All` execution only where
+   benchmarks show a benefit.
 3. Benchmark and add candidate scanning below a measured crossover threshold.
 4. Revisit shared wildcard evaluation in light of the planner: retain the
    specialized identity only where it still wins.
