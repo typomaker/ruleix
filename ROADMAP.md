@@ -5,6 +5,11 @@ their presence here does not promise implementation or inclusion in a specific
 release. Candidates should be promoted only after their semantics, indexing
 cost, and expected usage are understood.
 
+Keep this file limited to active and deferred work. Once a roadmap step is
+completed or an experiment reaches a decision, remove it from this file and
+record the outcome and supporting evidence in
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md) or a dedicated historical document.
+
 ## Current priority: performance and memory optimization
 
 Optimize the existing feature set before expanding the public API. Prefer work
@@ -35,30 +40,16 @@ match nearly the whole index, so their expected result cardinality, including
 both the wildcard and value-specific postings, matters more than the size of
 either posting alone.
 
-Develop this incrementally:
+The initial estimate-based ordering and lazy empty-aware execution are recorded
+in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Continue with these stages:
 
-1. Add a cheap internal cardinality estimate for the simple leaf indexes.
-   Distinguish estimated output size from execution cost in the design, but use
-   cardinality alone in the first implementation. Permit coarse or explicitly
-   inexact estimates for range indexes rather than duplicating search work.
-2. Make `All` sort children by estimate and materialize them one at a time.
-   Check for an empty result after every intersection and never build remaining
-   child results once execution can terminate.
-3. Add a cheap, type-safe way to validate one internal rule ID, either through
+1. Add a cheap, type-safe way to validate one internal rule ID, either through
    leaf-level `MatchID` operations or a compiled-rule representation indexed by
    rule ID. Once the candidate set becomes small, validate the remaining
    predicates directly and stay in candidate mode for the rest of the query.
-4. Choose the bitmap-to-candidate threshold from benchmarks, not from a fixed
+2. Choose the bitmap-to-candidate threshold from benchmarks, not from a fixed
    assumption. Start with one shared threshold; introduce operator-specific
    cost classes only if measurements show a material benefit.
-
-The first two stages now have an initial implementation. `All` orders children
-using estimates only when a leaf can provide one without range traversal or
-bitmap materialization, keeps schema order for unknown costs, and executes
-small estimated results lazily with an empty-intersection exit. Broad results
-retain the established materialize-and-rank path to avoid regressing
-production-shaped and nested workloads. Extending cheap estimates to other
-leaf types remains benchmark-dependent.
 
 Compare leaf-level `MatchID` with a cache-friendly compiled-rule fallback before
 committing to reverse constraint storage in every leaf. The latter may improve
@@ -72,9 +63,9 @@ small parent candidate set can be checked directly.
 
 ### Planner and memory benchmark matrix
 
-Establish a reproducible baseline before implementing the planner. Cover 10K,
-100K, and 1M rules initially, with larger 5M and 10M cases where the test host
-allows them. Include sparse constraints, dense constraints, high- and
+Expand the initial reproducible production baseline to cover 10K, 100K, and 1M
+rules, with larger 5M and 10M cases where the test host allows them. Include
+sparse constraints, dense constraints, high- and
 low-cardinality values, highly skewed wildcard distributions, empty and small
 results, large results, nested combinators, and range-heavy queries.
 
@@ -170,12 +161,6 @@ temporary memory of two generations and build allocations. Do not make mutable
 posting lists the primary update mechanism.
 
 ### Ordered and time-range indexes
-
-Measure traversal of indexes with many distinct boundaries before changing
-their representation. If repeated unions dominate, evaluate block-level
-prefix/suffix aggregates before a segment tree: both trade retained memory and
-build cost for fewer bitmap operations, but block aggregation is the simpler
-first experiment.
 
 For `TimeRange`, estimate and execute the more selective bound first, then use
 candidate validation for the other bound when the set is small. Storing bounds
@@ -281,113 +266,27 @@ demand and an efficient indexing strategy are clear:
 - collection operators such as `ContainsAny` and `ContainsAll`;
 - arbitrary predicates that cannot be indexed ahead of time.
 
-## Roaring bitmap optimization backlog
+## Roaring bitmap candidates
 
-Track bitmap API experiments here so they are not repeated and so rejected
-optimizations can be reconsidered if the workload changes. Benchmark evidence
-for these decisions lives in `benchmark_test.go`.
-
-### Adopted
-
-- `ManyIterator`: used for result materialization at cardinality 4096 and above;
-  smaller results use allocation-free `Iterate`, which is about 2.5x faster
-  than `Iterator` for 16 results. `Iterate` also powers `Visit` and is about
-  2-3x faster when consumers stop after 16 results.
-- `AndAny`: used by `Between` to intersect the selective side with several
-  matching postings without first materializing their union.
-- `FastAnd`: used for final intersections of up to eight child bitmaps. Larger
-  intersections retain the pooled sequential path.
-- `AddRange`: used to construct the universe of internal IDs when exclusions
-  are present. For 100,000 consecutive IDs it took about 170 ns and 128 B,
-  versus 560 µs and 66 KB for individual `Add` calls on Apple M1 Max.
-
-### Evaluated, not currently used
-
-- `CheckedAdd`: 10-30% slower than `Add` for sequential, sparse, shuffled,
-  and duplicate-heavy streaming insertion, with no allocation or retained-size
-  benefit. The builder does not need its inserted/not-inserted result.
-- `FastOr`: faster than sequential union for uniform postings, but returning a
-  new bitmap and copying it into pooled search state regressed real searches.
-- `HeapOr`: substantially slower and more allocation-heavy for both uniform and
-  skewed posting lists.
-- `ParOr`: can beat `FastOr` for many similarly sized sparse postings, but is
-  several times slower for skewed or heavily overlapping postings. Revisit only
-  with a cheap shape-aware planner.
-- `ParAnd`: does not amortize goroutine and merge overhead in normal indexes or
-  in the tested 10-million-ID case.
-- `OrCardinality`: useful only as an input to a future adaptive union planner;
-  calling it before a union that is still required duplicates work.
-- `AndCardinality`: a cheap selectivity/emptiness estimate, but a preflight
-  before required materialization regresses the matching path. Reserve for a
-  future planner.
-- `Intersects`: very fast for rejecting disjoint bitmaps, but duplicates work
-  when the intersection must subsequently be materialized. Reserve for a
-  planner that can predict mostly-empty intersections.
-- `IntersectsWithInterval`: 3-9x faster than building a temporary interval
-  bitmap for dynamic ID ranges. Current ordered filters range over values, not
-  internal IDs; reconsider for an ID-range or pagination API.
-- `RunOptimize`: reduced some bitmap sizes but significantly regressed
-  production-shaped search because operations on the resulting run containers
-  became more expensive.
-- `AddMany`: substantially improves bulk insertion, but the current build is
-  streaming. Reconsider with an optional bulk builder that can bound the memory
-  used by per-posting ID buffers.
-- `Stats`, `DenseSize`, and `HasRunCompression`: `DenseSize` is constant-time
-  and about 3 ns, but only reports the dense representation implied by the
-  maximum ID. `HasRunCompression` scans until it finds a run container and took
-  about 108 ns across 153 array containers. `Stats` scans every container and
-  took about 14 ns for two containers, 0.5 µs for 153 array containers, and 0.7
-  µs for 500 run containers on Apple M1 Max. All are allocation-free, but none
-  predicts posting overlap; do not pay the linear scans on every search without
-  a concrete adaptive strategy that demonstrates an end-to-end gain.
-- `Minimum`, `Maximum`, `NextValue`, and `PreviousValue`: boundary lookup is
-  allocation-free and cheap (about 3 ns for either bound and 25-26 ns for an
-  adjacent sparse value on Apple M1 Max), but the current API has no result
-  pagination or ID-range operation that can use it.
-- `Rank` and `Select`: both make deep pagination independent of the number of
-  preceding matches. For a 16-item page at offset 65,536, `Select` plus iterator
-  positioning took about 130 ns for dense results and 690 ns for sparse results,
-  versus 273 µs and 196 µs for walking from the start. `Rank` took about 5 ns
-  and 205 ns versus 409 µs and 315 µs for the equivalent walk. They add no
-  allocations beyond the result iterator, but the current API has no offset,
-  limit, or cursor operation that can use them.
-- `RemoveRange` and `Flip`: both efficiently mutate contiguous ranges. Removing
-  100,000 IDs took about 260 ns versus 1.13 ms for individual `Remove` calls;
-  flipping a range in an alternating bitmap took about 6 µs versus 15 µs for
-  XOR with a prebuilt range bitmap, while allocating about half as much. The
-  immutable index lifecycle has no deletion or complement operation that can
-  use either primitive.
-- `Freeze` and `FrozenView`: frozen views preserve read performance for
-  intersection and iteration. They also made a sparse union about 6x faster in
-  the microbenchmark because copy-on-write containers can be shared, but every
-  posting needs its own serialized buffer plus view metadata; opening one view
-  allocated 176 B for a two-container dense bitmap and 6.6 KB for a
-  153-container sparse bitmap. The current index has no persistent format or
-  memory-mapped lifetime over which to share and manage those buffers, so
-  freezing all in-memory postings would complicate ownership and duplicate peak
-  build memory. Reconsider as part of an index persistence design rather than
-  as an isolated in-memory optimization.
-
-### Candidates still to evaluate
-
-Evaluate these only where their semantics match an existing or planned path:
+Prior adopted and rejected experiments are recorded in
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Evaluate the remaining operations
+only where their semantics match an existing or planned path:
 
 1. `Xor` if a symmetric-difference rule or planner operation is introduced.
 2. `AddOffset` if indexes need to merge independently built ID shards.
 
 ## Suggested evaluation order
 
-1. Capture production-shaped latency, allocation, build, and memory baselines.
-2. Extend cheap estimates and lazy, empty-aware `All` execution only where
+1. Extend cheap estimates and lazy, empty-aware `All` execution only where
    benchmarks show a benefit.
-3. Benchmark and add candidate scanning below a measured crossover threshold.
-4. Revisit shared wildcard evaluation in light of the planner: retain the
+2. Benchmark and add candidate scanning below a measured crossover threshold.
+3. Revisit shared wildcard evaluation in light of the planner: retain the
    specialized identity only where it still wins.
-5. Add optional planner diagnostics, then optimize other logical operators when
+4. Add optional planner diagnostics, then optimize other logical operators when
    their semantics exist.
-6. Investigate range aggregation or generation-based updates only after their
-   respective benchmarks demonstrate a bottleneck.
-7. Revisit the remaining bitmap operations only when the corresponding index
+5. Investigate generation-based updates only after rebuild benchmarks
+   demonstrate a bottleneck.
+6. Revisit the remaining bitmap operations only when the corresponding index
    lifecycle or planner use case exists.
 
 For every optimization, compare production-shaped build time, search time,

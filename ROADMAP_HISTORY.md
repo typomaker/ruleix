@@ -1,0 +1,94 @@
+# Roadmap history
+
+This document records completed roadmap work and concluded experiments. The
+active [`ROADMAP.md`](ROADMAP.md) contains only work that may still be done.
+
+When a roadmap item is completed or rejected, move it here (or to a dedicated
+historical document) with the date, outcome, and enough benchmark or design
+evidence to avoid repeating the work. Release-facing changes still belong in
+[`CHANGELOG.md`](CHANGELOG.md).
+
+## 2026-08-22: production-shaped baseline
+
+The existing 38,098-rule benchmark is the initial reproducible baseline for the
+planner work. Measurements are medians of five runs on Apple M1 Max, using Go's
+default `GOMAXPROCS` of 10.
+
+| Metric | Baseline |
+|---|---:|
+| `Index.Search` | 104.3 µs/op, 108,250 B/op, 34 allocs/op |
+| warm `Local.Search` | 4.60 µs/op, 4,665 B/op, 4 allocs/op |
+| parallel warm local search | 2.39 µs/search |
+| `Build` | 34.85 ms/op, 5,128,740 B/op, 24,626 allocs/op |
+| retained index memory | 1,288,998 B/index, 33.83 B/ID |
+| shuffled retained index memory | 1,289,504 B/index, 33.85 B/ID |
+| cold `Local` retained memory | 1,664 B/local |
+| warm `Local` retained memory | 88,216 B/local |
+
+Reproduce the timed and allocation measurements with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkProductionShapeSearch|BenchmarkProductionShapeParallelLocalBatch100|BenchmarkProductionShapeBuild)$' \
+  -benchmem -benchtime=200ms -count=5 .
+```
+
+Retained-memory benchmarks deliberately keep five indexes or locals alive:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkProductionShapeRetainedMemory|BenchmarkProductionShapeShuffledRetainedMemory|BenchmarkProductionShapeLocalRetainedMemory)$' \
+  -benchtime=5x -count=5 .
+```
+
+The broader 10K, 100K, and 1M planner matrix remains active roadmap work.
+
+## Adaptive `All` planner: initial stages
+
+The first two planner stages were implemented before this history was created.
+`All` orders children only when a leaf can estimate cardinality without range
+traversal or bitmap materialization, preserves schema order for unknown costs,
+and executes small estimated results lazily with an empty-intersection exit.
+Broad results retain the materialize-and-rank path to protect production-shaped
+and nested workloads. Further estimates remain benchmark-dependent.
+
+## Ordered index aggregation
+
+Ordered indexes use block aggregates and binary search, reducing repeated
+unions for broad range queries. The remaining `TimeRange` candidate is tracked
+separately in the active roadmap.
+
+## Roaring bitmap decisions
+
+Benchmark implementations and detailed evidence live in `benchmark_test.go`.
+
+Adopted:
+
+- `ManyIterator` for result materialization at cardinality 4096 and above;
+  smaller results use allocation-free `Iterate`.
+- `AndAny` for `Between` intersections without a temporary union.
+- `FastAnd` for final intersections of up to eight child bitmaps.
+- `AddRange` for constructing the universe of internal IDs.
+
+Evaluated and not adopted:
+
+- `CheckedAdd`, `HeapOr`, and `ParAnd` were slower without a compensating
+  allocation or retained-memory benefit.
+- `FastOr` and `ParOr` won selected microbenchmarks but regressed real or skewed
+  searches.
+- `OrCardinality`, `AndCardinality`, and `Intersects` duplicate work unless a
+  planner can use their answer to avoid materialization.
+- `IntersectsWithInterval` is useful for ID ranges, which the current API does
+  not expose.
+- `RunOptimize` reduced some bitmap sizes but regressed production searches.
+- `AddMany` helps bulk insertion, while the builder's contract is streaming.
+- `Stats`, `DenseSize`, and `HasRunCompression` do not predict posting overlap
+  well enough to justify hot-path scans.
+- `Minimum`, `Maximum`, `NextValue`, `PreviousValue`, `Rank`, and `Select` need a
+  pagination or ID-range API.
+- `RemoveRange` and `Flip` need mutable deletion or complement operations.
+- `Freeze` and `FrozenView` need a persistent or memory-mapped index lifetime;
+  using them only in memory complicates ownership and peak memory.
+
+Historical release-to-release benchmark comparisons remain in
+[`BENCHMARK_OPTIMIZATIONS.md`](BENCHMARK_OPTIMIZATIONS.md).
