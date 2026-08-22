@@ -97,24 +97,21 @@ every rule constructor.
 
 Develop the feature in stages:
 
-1. Define the public contract for `Lossy`, `MaxMemory`, unsupported rule/value
-   combinations, invalid budgets, and build failures. Keep false-positive
-   targets, hash counts, bucket sizes, prefixes, and shifts internal.
-2. Split `Build` conceptually into analysis, planning, and materialization so it
+1. Split `Build` conceptually into analysis, planning, and materialization so it
    can estimate an exact representation and choose a strategy without first
    constructing and discarding a full exact index.
-3. Prototype operator-aware strategies for equality and ordered ranges. Use
+2. Prototype operator-aware strategies for equality and ordered ranges. Use
    canonical value encodings rather than Go's in-memory layout; investigate a
    monotonic `uint64` key for ordered scalar and time values so range rules can
    share bucket machinery.
-4. Select granularity automatically from the budget, actual data distribution,
+3. Select granularity automatically from the budget, actual data distribution,
    operator, and value type. Resolve type-specific behavior once during
    `Build`; do not add type switches to the search hot path.
-5. Add build statistics describing the selected exact or lossy representation,
+4. Add build statistics describing the selected exact or lossy representation,
    retained memory, budget, item and distinct-value counts, strategy, and
    granularity, exposed through the proposed `Inspect` API. Report an estimated
    false-positive rate only where it can be computed meaningfully.
-6. Extend the policy to `All` only after defining how one budget is divided
+5. Extend the policy to `All` only after defining how one budget is divided
    among children and proving that composition preserves the no-false-negative
    invariant.
 

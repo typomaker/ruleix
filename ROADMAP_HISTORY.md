@@ -326,3 +326,21 @@ using it for multiple rules returns a build error.
 `Inspector` is a sealed interface rather than a public concrete type. This
 allows rule-specific snapshot implementations to evolve behind stable
 observation methods.
+
+## 2026-08-22: lossy index public contract
+
+The first memory-bounded lossy-index stage now has a concrete API and failure
+contract in [`docs/lossy-index.md`](docs/lossy-index.md). The planned API is a
+sealed `LossyOption`, `Lossy(rule, options...)`, and a single required
+`MaxMemory(uint64)` byte limit. Strategy controls and false-positive targets
+remain internal.
+
+The limit covers storage retained exclusively by the decorated runtime rule,
+with explicit exclusions for transient build state and index-wide structures.
+Exact storage remains selected when it fits. Unsupported combinations fail
+only when approximation is actually required; invalid policies, accounting
+overflow, insufficient budgets, nested policies, and a policy directly around
+`All` fail the build without publishing an index or inspector snapshot.
+Independently budgeted children of `All` remain composable. These decisions
+complete the contract stage without exporting constructors before a usable
+analysis and planning path exists.

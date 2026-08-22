@@ -40,10 +40,81 @@ positive rate, hash-function count, bucket count, segment size, prefix length,
 and retained bit count are implementation choices. Adding strategies must not
 require changing the public API.
 
-Before implementation, specify behavior for non-positive and impossibly small
-budgets, unsupported operator/value pairs, overflow, and a representation that
-cannot meet the budget without violating correctness. These cases should fail
-at build time rather than silently weakening the no-false-negative guarantee.
+The first implementation will expose this shape:
+
+```go
+type LossyOption interface {
+	// sealed by an unexported method
+}
+
+func Lossy[T any](rule Rule[T], options ...LossyOption) Rule[T]
+func MaxMemory(bytes uint64) LossyOption
+```
+
+`LossyOption` is sealed so configuration can grow without accepting arbitrary
+third-party implementations. `Lossy` panics when `rule` is nil, consistently
+with `New` and `Inspect`. All policy validation is deferred to `Build`:
+schema constructors do not return errors, and a caller may prepare one schema
+before its input distribution is known.
+
+Exactly one `MaxMemory` option is required in the initial API. A missing or
+repeated option, a zero budget, or an option value that overflows an internal
+size calculation makes `Build` fail. `uint64` avoids architecture-dependent
+meaning at the API boundary; converting it to `int` is a checked build-time
+operation. There is no implicit default and values are bytes, not MiB units.
+
+### Budget contract
+
+`MaxMemory` is a hard upper bound for memory retained exclusively by the
+decorated rule's selected search representation after a successful `Build`.
+It includes its posting containers, value keys or buckets, lookup tables, and
+strategy metadata. It excludes the builder's transient analysis state, the
+index's external-ID table, bitmap pool state, the rule's getter/comparator,
+and structural overhead belonging to an enclosing `All`.
+
+Shared immutable storage is charged once to its owning decorated rule. The
+initial implementation must not share budgeted storage across independently
+budgeted decorators: doing so would make either inspector's accounting depend
+on whether the other decorator exists. Alignment and allocator overhead that
+cannot be measured portably may be covered by a documented conservative
+estimate, but the planned retained byte count must not exceed the budget.
+`Inspect` will eventually report both that planned count and the configured
+limit using explicit byte units.
+
+The policy selects the exact representation whenever its planned retained size
+fits. Otherwise it selects a supported lossy representation whose planned size
+fits and whose result is a superset of the exact result. `Lossy` therefore
+never forces approximation and does not promise that every positive budget is
+usable.
+
+`Build` fails, without publishing an index or a new inspector snapshot, when:
+
+- exact storage exceeds the budget and no lossy strategy supports that
+  operator and value type;
+- no supported strategy fits the budget, including its minimum viable
+  metadata, without risking a false negative;
+- canonical encoding rejects an input value, or an accounting calculation
+  overflows;
+- the policy is invalid, including a missing, duplicate, or zero memory limit;
+- `Lossy` directly decorates `All` before whole-composite budget allocation is
+  implemented.
+
+The error identifies the decorated operator and the reason, but strategy names
+and minimum byte counts are diagnostic rather than stable strings. A failed
+rebuild leaves the previous immutable index and latest successful `Inspect`
+snapshot unchanged, matching the existing builder lifecycle.
+
+Unsupported does not by itself cause failure when the exact representation
+fits: no lossy encoder is needed in that case. This permits callers to apply a
+uniform policy while operator-specific strategies are rolled out. Custom rule
+implementations cannot occur because `Rule` is sealed.
+
+Independently budgeted children of `All` are valid and each owns its entire
+limit. Nested `Lossy` decorators are rejected during `Build`; they do not form
+multiple tiers or combine budgets. `Inspect` may wrap `Lossy` or be wrapped by
+it, and both forms refer to the selected representation. Other option types,
+aggregate budgets around `All`, soft limits, and caller-selected false-positive
+targets require separate contracts and are not part of the initial API.
 
 ## Build-time planning
 
