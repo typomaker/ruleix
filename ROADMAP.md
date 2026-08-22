@@ -97,8 +97,17 @@ every rule constructor.
 
 The policy now supports one aggregate budget around `All`; its deterministic
 proportional allocation and composition invariant are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The next operator expansion should
-be driven by a concrete workload and benchmark evidence.
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Improve this allocator so unused
+bytes from children that cannot benefit from their initial share are
+redistributed to children that can use them. Treat `MemoryLimit` as one pooled
+hard limit for the entire `All`: the selected child representations must remain
+deterministic and their combined accounted memory must not exceed the limit.
+Avoid failing a build merely because the initial proportional share of one
+child is too small when another feasible allocation exists within the same
+total budget. Validate the allocator against skewed child sizes and minimum
+viable representations, and benchmark planning cost and search quality before
+adoption. The next operator expansion should be driven by a concrete workload
+and benchmark evidence.
 
 Require property tests comparing lossy and exact results across supported
 operators and value types, adversarial boundary tests for ordered encodings,
