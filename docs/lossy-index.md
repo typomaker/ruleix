@@ -131,7 +131,9 @@ benchmarks rather than exposed as an initial user setting.
 
 ## Diagnostics
 
-Consider build-time statistics containing:
+Expose build-time statistics through the general-purpose `Inspect` proposal
+described in [`inspect-api.md`](inspect-api.md), rather than adding a
+lossy-specific handle. Useful fields include:
 
 - selected mode (`Exact` or `Lossy`);
 - memory used and configured maximum;
@@ -140,7 +142,9 @@ Consider build-time statistics containing:
 - estimated false-positive rate, when meaningful and computable.
 
 False-positive rate is an observable characteristic, not an initial tuning
-parameter. Diagnostics must not add work to the default search hot path.
+parameter. `Inspect` must reveal the representation that planning actually
+selected, including an exact representation when it fits the budget.
+Diagnostics must not add work to the default search hot path.
 
 ## Validation and rollout
 
