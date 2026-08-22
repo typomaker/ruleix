@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"testing"
+	"time"
 
 	"github.com/typomaker/ruleix"
 )
@@ -75,10 +76,10 @@ func BenchmarkProductionScaleBuild(b *testing.B) {
 	for _, entries := range productionScaleBenchmarkSizes() {
 		b.Run(fmt.Sprintf("Rules%d", entries), func(b *testing.B) {
 			constraints, ids := productionBenchmarkDataN(entries)
+			distribution := productionBenchmarkPostingDistribution(constraints)
 			builder := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
 				productionBenchmarkSchema(),
 			)
-			b.ReportMetric(float64(entries), "rules/op")
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
@@ -88,8 +89,114 @@ func BenchmarkProductionScaleBuild(b *testing.B) {
 				}
 				productionBenchmarkIndexResult = index
 			}
+			b.ReportMetric(float64(entries), "rules/op")
+			b.ReportMetric(float64(distribution.postings), "postings/index")
+			b.ReportMetric(float64(distribution.memberships)/float64(distribution.postings), "IDs/posting")
+			b.ReportMetric(float64(distribution.maxPosting), "max-IDs/posting")
+			b.ReportMetric(100*float64(distribution.wildcards)/float64(distribution.memberships), "wildcard-%")
 		})
 	}
+}
+
+type productionPostingDistribution struct {
+	postings    int
+	memberships int
+	maxPosting  int
+	wildcards   int
+}
+
+// productionBenchmarkPostingDistribution describes the input distribution in
+// the same units as the leaf indexes: one wildcard posting plus one posting per
+// distinct concrete value. It deliberately measures logical postings rather
+// than Roaring's physical containers, which may be interned during Build.
+func productionBenchmarkPostingDistribution(constraints []productionBenchmarkConstraint) productionPostingDistribution {
+	var result productionPostingDistribution
+	collect := func(counts map[any]int, wildcards int) {
+		result.postings += len(counts) + 1
+		result.memberships += len(constraints)
+		result.wildcards += wildcards
+		result.maxPosting = max(result.maxPosting, wildcards)
+		for _, count := range counts {
+			result.maxPosting = max(result.maxPosting, count)
+		}
+	}
+	values := func(value func(productionBenchmarkConstraint) (any, bool)) {
+		counts := make(map[any]int)
+		wildcards := 0
+		for _, constraint := range constraints {
+			if concrete, ok := value(constraint); ok {
+				counts[concrete]++
+			} else {
+				wildcards++
+			}
+		}
+		collect(counts, wildcards)
+	}
+
+	values(func(v productionBenchmarkConstraint) (any, bool) {
+		if v.activity == nil {
+			return nil, false
+		}
+		return v.activity.since.Truncate(time.Second), true
+	})
+	values(func(v productionBenchmarkConstraint) (any, bool) {
+		if v.activity == nil {
+			return nil, false
+		}
+		return v.activity.until.Truncate(time.Second), true
+	})
+	values(func(v productionBenchmarkConstraint) (any, bool) {
+		if v.customerOrderCount == nil {
+			return nil, false
+		}
+		return v.customerOrderCount.total, true
+	})
+	values(func(v productionBenchmarkConstraint) (any, bool) {
+		if v.slotTime == nil {
+			return nil, false
+		}
+		return v.slotTime.since.Truncate(time.Second), true
+	})
+	values(func(v productionBenchmarkConstraint) (any, bool) {
+		if v.slotTime == nil {
+			return nil, false
+		}
+		return v.slotTime.until.Truncate(time.Second), true
+	})
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.customerUUID) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.customerSegment) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.customerFraud) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.storeUUID) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.deliveryAreaID) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.regionID) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.retailerUUID) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.vertical) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.slotType) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.slotDayOfWeek) })
+	values(func(v productionBenchmarkConstraint) (any, bool) {
+		if v.platform == nil {
+			return nil, false
+		}
+		return v.platform.name, true
+	})
+	values(func(v productionBenchmarkConstraint) (any, bool) {
+		if v.platform == nil || v.platform.version == nil {
+			return nil, false
+		}
+		version := v.platform.version
+		return [3]int{version.major, version.minor, version.patch}, true
+	})
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.dbs) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.marketType) })
+	values(func(v productionBenchmarkConstraint) (any, bool) { return benchmarkAnyOptional(v.abTest) })
+	return result
+}
+
+func benchmarkAnyOptional[V any](value *V) (any, bool) {
+	if value == nil {
+		return nil, false
+	}
+	return *value, true
 }
 
 // BenchmarkProductionScaleRetainedMemory reports live index bytes. Use a

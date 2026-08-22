@@ -80,6 +80,13 @@ go test -run '^$' \
 `BuildGCPressure` reports GC cycles and cumulative stop-the-world pause time
 with the process's normal GC setting.
 
+The build matrix also reports logical postings per index, average and maximum
+IDs per posting, and the percentage of leaf memberships stored in wildcard
+postings. These distribution metrics are computed from the generated input in
+the same units as leaf indexes, before bitmap interning and other physical
+representation optimizations, so benchmark runs remain comparable when the
+internal layout changes.
+
 The same matrix includes 5M and 10M rule cases when
 `RULEIX_BENCHMARK_LARGE=1` is set. They are opt-in because constructing the
 production-shaped source data and index can require several gigabytes of peak
