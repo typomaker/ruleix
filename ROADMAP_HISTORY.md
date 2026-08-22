@@ -490,6 +490,20 @@ allocations. The improvement is material, but the remaining gap makes repeated
 representation construction the next allocator bottleneck; operator expansion
 is not justified until that cost is reduced.
 
+## 2026-08-22: pooled equality representation planning
+
+Pooled `Lossy(All(...))` planning now prepares each equality leaf's complete
+bucket-granularity ladder once and reuses those immutable candidates during
+minimum-limit discovery, proportional allocation, and redistribution. The
+ladder remains lazy: when the exact representation fits the aggregate budget,
+no lossy buckets are constructed.
+
+On Apple M1 Max, the median two-child 50% planning case fell from 821
+milliseconds and about 6.4 million allocations to 24.6 milliseconds and
+158.6 thousand allocations. The exact case remained on its direct path at 2.8
+milliseconds and 6.1 thousand allocations. Selection semantics, accounted
+memory, deterministic redistribution, and the public API are unchanged.
+
 Reproduce the matrix with:
 
 ```sh

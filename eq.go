@@ -8,6 +8,17 @@ import (
 )
 
 func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
+	return r.newLossyAllPlanner().compile(limit)
+}
+
+type equalityLossyAllPlanner[T any, V comparable] struct {
+	representations []Rule[T]
+	exact           Rule[T]
+	prepare         func() []Rule[T]
+	err             error
+}
+
+func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	// V1 accounting: wildcard payload, 16 bytes of strategy metadata, and for
 	// each occupied bucket an 8-byte key, 8-byte logical slot, and payload.
 	exact := uint64(16) + bitmapBytes(r.wildcard)
@@ -50,32 +61,57 @@ func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 			exact += uint64(len(encoded)) + 8 + equalitySetBytes(&r.values.sets[offset])
 		}
 	}
-	if exact <= limit {
-		return &inspectionDetailsRule[T]{child: r, details: representationDetails(exact, items, distinct, 0, false)}, nil
+	exactRepresentation := Rule[T](&inspectionDetailsRule[T]{
+		child:   r,
+		details: representationDetails(exact, items, distinct, 0, false),
+	})
+	planner := &equalityLossyAllPlanner[T, V]{exact: exactRepresentation}
+	if !valid {
+		planner.err = fmt.Errorf("ruleix: Lossy equality requires a supported scalar value type")
+		return planner
 	}
-	var selected *lossyEqualityRule[T, V]
-	for bits := uint(0); bits <= lossyMaxBucketBits; bits++ {
-		candidate := &lossyEqualityRule[T, V]{
-			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			shift: 64 - bits, buckets: make(map[uint64]*roaring.Bitmap),
-		}
-		for _, value := range hashed {
-			bucket := value.hash >> candidate.shift
-			posting := candidate.buckets[bucket]
-			if posting == nil {
-				posting = roaring.New()
-				candidate.buckets[bucket] = posting
+	planner.prepare = func() []Rule[T] {
+		representations := make([]Rule[T], 0, lossyMaxBucketBits+1)
+		for bits := uint(0); bits <= lossyMaxBucketBits; bits++ {
+			candidate := &lossyEqualityRule[T, V]{
+				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
+				shift: 64 - bits, buckets: make(map[uint64]*roaring.Bitmap),
 			}
-			value.set.addTo(posting)
+			for _, value := range hashed {
+				bucket := value.hash >> candidate.shift
+				posting := candidate.buckets[bucket]
+				if posting == nil {
+					posting = roaring.New()
+					candidate.buckets[bucket] = posting
+				}
+				value.set.addTo(posting)
+			}
+			usage := uint64(16) + bitmapBytes(candidate.wildcard)
+			for _, posting := range candidate.buckets {
+				usage += 16 + bitmapBytes(posting)
+			}
+			details := representationDetails(usage, items, distinct, uint64(len(candidate.buckets)), true)
+			representations = append(representations, &inspectionDetailsRule[T]{child: candidate, details: details})
 		}
-		if !valid {
-			return nil, fmt.Errorf("ruleix: Lossy equality requires a supported scalar value type")
-		}
-		usage := uint64(16) + bitmapBytes(candidate.wildcard)
-		for _, posting := range candidate.buckets {
-			usage += 16 + bitmapBytes(posting)
-		}
-		if usage <= limit {
+		return representations
+	}
+	return planner
+}
+
+func (p *equalityLossyAllPlanner[T, V]) compile(limit uint64) (Rule[T], error) {
+	if inspectionDetailsOf(p.exact).MemoryUsageBytes <= limit {
+		return p.exact, nil
+	}
+	if p.err != nil {
+		return nil, p.err
+	}
+	if p.representations == nil {
+		p.representations = p.prepare()
+		p.prepare = nil
+	}
+	var selected Rule[T]
+	for _, candidate := range p.representations {
+		if inspectionDetailsOf(candidate).MemoryUsageBytes <= limit {
 			selected = candidate
 		} else {
 			break
@@ -84,12 +120,7 @@ func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 	if selected == nil {
 		return nil, fmt.Errorf("ruleix: Lossy equality cannot fit the memory limit")
 	}
-	usage := uint64(16) + bitmapBytes(selected.wildcard)
-	for _, posting := range selected.buckets {
-		usage += 16 + bitmapBytes(posting)
-	}
-	details := representationDetails(usage, items, distinct, uint64(len(selected.buckets)), true)
-	return &inspectionDetailsRule[T]{child: selected, details: details}, nil
+	return selected, nil
 }
 
 func equalitySetCardinality(s *equalitySet) uint64 {

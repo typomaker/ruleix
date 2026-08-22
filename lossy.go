@@ -77,6 +77,16 @@ func (r *lossyRule[T]) collectBuildStatistics(s []nodeBuildStatistics) {
 
 type lossyCompiler[T any] interface{ compileLossy(uint64) (Rule[T], error) }
 
+type lossyAllPlanner[T any] interface{ compile(uint64) (Rule[T], error) }
+
+type lossyAllCompiler[T any] interface{ newLossyAllPlanner() lossyAllPlanner[T] }
+
+type defaultLossyAllPlanner[T any] struct{ compiler lossyCompiler[T] }
+
+func (p defaultLossyAllPlanner[T]) compile(limit uint64) (Rule[T], error) {
+	return p.compiler.compileLossy(limit)
+}
+
 type inspectionDetailsRule[T any] struct {
 	child   Rule[T]
 	details inspectionDetails
@@ -171,7 +181,7 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 }
 
 type lossyAllLeaf[T any] struct {
-	compiler     lossyCompiler[T]
+	planner      lossyAllPlanner[T]
 	exact        uint64
 	minimum      uint64
 	limit        uint64
@@ -202,12 +212,12 @@ func compileLossyAll[T any](rule *allRule[T], limit uint64) (*allRule[T], inspec
 	if total <= limit {
 		for i := range leaves {
 			leaves[i].limit = leaves[i].exact
-			leaves[i].compiled, _ = leaves[i].compiler.compileLossy(leaves[i].limit)
+			leaves[i].compiled, _ = leaves[i].planner.compile(leaves[i].limit)
 		}
 	} else if total != 0 {
 		var minimumTotal uint64
 		for i := range leaves {
-			minimum, compiled, err := minimumLossyAllLimit(leaves[i].compiler, leaves[i].exact)
+			minimum, compiled, err := minimumLossyAllLimit(leaves[i].planner, leaves[i].exact)
 			if err != nil {
 				return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All child %d: %w", i+1, err)
 			}
@@ -244,7 +254,7 @@ func compileLossyAll[T any](rule *allRule[T], limit uint64) (*allRule[T], inspec
 		}
 		var used uint64
 		for i := range leaves {
-			leaves[i].compiled, _ = leaves[i].compiler.compileLossy(leaves[i].limit)
+			leaves[i].compiled, _ = leaves[i].planner.compile(leaves[i].limit)
 			used += inspectionDetailsOf(leaves[i].compiled).MemoryUsageBytes
 		}
 		redistributeLossyAllBudget(leaves, limit-used)
@@ -276,7 +286,11 @@ func collectLossyAllLeaves[T any](rule Rule[T], leaves *[]lossyAllLeaf[T]) error
 		if !ok {
 			return fmt.Errorf("ruleix: Lossy All does not support a child rule representation")
 		}
-		exact, err := compiler.compileLossy(math.MaxUint64)
+		planner := lossyAllPlanner[T](defaultLossyAllPlanner[T]{compiler: compiler})
+		if factory, ok := rule.(lossyAllCompiler[T]); ok {
+			planner = factory.newLossyAllPlanner()
+		}
+		exact, err := planner.compile(math.MaxUint64)
 		if err != nil {
 			return err
 		}
@@ -284,7 +298,7 @@ func collectLossyAllLeaves[T any](rule Rule[T], leaves *[]lossyAllLeaf[T]) error
 		if !details.MemoryUsageAvailable {
 			return fmt.Errorf("ruleix: Lossy All child has no memory accounting")
 		}
-		*leaves = append(*leaves, lossyAllLeaf[T]{compiler: compiler, exact: details.MemoryUsageBytes})
+		*leaves = append(*leaves, lossyAllLeaf[T]{planner: planner, exact: details.MemoryUsageBytes})
 		return nil
 	}
 }
@@ -323,15 +337,15 @@ func materializeLossyAll[T any](rule Rule[T], leaves []lossyAllLeaf[T], index *i
 	}
 }
 
-func minimumLossyAllLimit[T any](compiler lossyCompiler[T], exact uint64) (uint64, Rule[T], error) {
+func minimumLossyAllLimit[T any](planner lossyAllPlanner[T], exact uint64) (uint64, Rule[T], error) {
 	low, high := uint64(0), exact
-	compiled, err := compiler.compileLossy(high)
+	compiled, err := planner.compile(high)
 	if err != nil {
 		return 0, nil, err
 	}
 	for low < high {
 		mid := low + (high-low)/2
-		candidate, candidateErr := compiler.compileLossy(mid)
+		candidate, candidateErr := planner.compile(mid)
 		if candidateErr != nil {
 			low = mid + 1
 			continue
@@ -376,14 +390,14 @@ func prepareLossyAllUpgrade[T any](leaf *lossyAllLeaf[T], usage uint64) {
 	low, high := usage+1, leaf.exact
 	for low < high {
 		mid := low + (high-low)/2
-		candidate, err := leaf.compiler.compileLossy(mid)
+		candidate, err := leaf.planner.compile(mid)
 		if err != nil || inspectionDetailsOf(candidate).MemoryUsageBytes <= usage {
 			low = mid + 1
 		} else {
 			high = mid
 		}
 	}
-	candidate, err := leaf.compiler.compileLossy(low)
+	candidate, err := leaf.planner.compile(low)
 	if err != nil {
 		return
 	}

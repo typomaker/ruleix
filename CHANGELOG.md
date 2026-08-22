@@ -29,6 +29,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   deterministically redistributed to improve other children.
 - Pooled lossy planning caches each leaf's next representation upgrade, and
   equality compilation reuses canonical hashes across bucket granularities.
+- Pooled lossy equality planning prepares bucket representations once per leaf
+  and reuses them across allocation passes without penalizing exact-fit builds.
 - Lossy `All` benchmarks now report planning cost, search latency, candidate
   amplification, and observed false-positive rate across memory budgets.
 - The production-shaped planner benchmark matrix now covers 10K, 100K, and 1M
