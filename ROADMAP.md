@@ -129,13 +129,6 @@ delta generations with tombstones and periodic compaction. Account for the
 temporary memory of two generations and build allocations. Do not make mutable
 posting lists the primary update mechanism.
 
-### Ordered and time-range indexes
-
-For `TimeRange`, estimate and execute the more selective bound first, then use
-candidate validation for the other bound when the set is small. Storing bounds
-by internal rule ID may make this validation cheap, but its memory cost should
-be compared with the compiled-rule approach used by the general planner.
-
 ### Memory-bounded lossy indexes
 
 Add an opt-in `Lossy` policy for indexes whose exact representation would

@@ -99,3 +99,27 @@ func TestBetweenPreservesIndependentBoundsForRepeatedID(t *testing.T) {
 
 	require.Equal(t, []string{"repeated"}, search(ix, differentialInterval{from: 10, until: 10}))
 }
+
+func TestBetweenSelectiveBoundPreservesWildcards(t *testing.T) {
+	type optionalInterval struct {
+		from  *int
+		until *int
+	}
+	schema := ruleix.Between(
+		ruleix.GetterFromPointer(func(v optionalInterval) *int { return v.from }),
+		ruleix.GetterFromPointer(func(v optionalInterval) *int { return v.until }),
+		cmp.Compare[int],
+	)
+	ix := buildZip(t, schema,
+		[]optionalInterval{
+			{from: ptr(0), until: ptr(20)},
+			{from: ptr(10), until: ptr(30)},
+			{from: nil, until: ptr(25)},
+			{from: ptr(5), until: nil},
+		},
+		[]string{"covering", "late", "open-from", "open-until"},
+	)
+
+	require.Equal(t, []string{"covering", "open-from", "open-until"},
+		search(ix, optionalInterval{from: ptr(5), until: ptr(15)}))
+}

@@ -32,6 +32,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `Local` admits intermediate result bitmaps after their second recent use, so
   one-off query values no longer displace reusable entries or retain bitmap
   memory.
+- `Between` validates the second interval bound directly when the more
+  selective bound produces at most four candidates, avoiding a second range
+  bitmap without retaining per-ID interval copies.
 - Completed roadmap work and concluded experiments now move to
   `ROADMAP_HISTORY.md`, keeping `ROADMAP.md` limited to active and deferred
   work.

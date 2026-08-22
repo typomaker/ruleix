@@ -212,6 +212,17 @@ func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmap
 
 	candidates := pool.get()
 	base.addMatches(baseValue, candidates)
+	if candidates.GetCardinality() <= allCandidateScanLimit {
+		iterator := candidates.Iterator()
+		for iterator.HasNext() {
+			id := iterator.Next()
+			if other.matchesID(v, id) {
+				dst.Add(id)
+			}
+		}
+		pool.put(candidates)
+		return
+	}
 	var inline [16]*roaring.Bitmap
 	postings := other.appendMatchingBitmaps(otherValue, inline[:0])
 	if len(postings) == 0 {

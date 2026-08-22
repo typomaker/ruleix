@@ -259,6 +259,20 @@ go test -run '^$' -bench '^BenchmarkOrderedIndexCardinalityEstimate/' \
   -benchmem -benchtime=300ms -count=5 .
 ```
 
+## 2026-08-22: selective `Between` bound validation
+
+`Between` now materializes the bound with the smaller exact cardinality first.
+When that bound produces at most four IDs, it validates the other bound
+directly against those candidates instead of materializing and intersecting a
+second range bitmap. The threshold is shared with the measured adaptive `All`
+candidate limit, and the implementation reuses ordered posting membership
+without retaining a second copy of stored interval bounds.
+
+The direct path preserves independent wildcard semantics for both bounds and
+is also used by uncached and cache-fill `Local` searches. Wider candidate sets
+retain aggregate bitmap intersection. This completes the active ordered/time-
+range roadmap item without changing the public API or retained index layout.
+
 ## Roaring bitmap decisions
 
 Benchmark implementations and detailed evidence live in `benchmark_test.go`.
