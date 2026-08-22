@@ -37,6 +37,8 @@ type compareByRule[T any, V any] struct {
 	hints    [5]orderedBuildStatistics
 }
 
+func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
+
 func (*compareByRule[T, V]) rule() {}
 func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()

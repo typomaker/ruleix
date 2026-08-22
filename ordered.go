@@ -81,6 +81,8 @@ type orderedRule[T any, V any] struct {
 	index     orderedIndex[V]
 }
 
+func (*orderedRule[T, V]) inspectionStrategy() string { return "ordered" }
+
 func (*orderedRule[T, V]) rule() {}
 func (r *orderedRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()

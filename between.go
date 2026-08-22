@@ -29,6 +29,8 @@ type betweenRule[T any, V any] struct {
 	compare Compare[V]
 }
 
+func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
+
 type betweenCache[V any] struct {
 	entries [2]betweenCacheEntry[V]
 	seen    *betweenCacheSeen[V]

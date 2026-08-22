@@ -73,50 +73,6 @@ immutability, and concurrent search safety; avoids eager materialization; exits
 early on empty results; improves selective and wildcard-heavy workloads; and
 does not materially regress large-result latency or allocations.
 
-### Rule inspection API
-
-Add a transparent `Inspect` decorator that binds a caller-owned
-`RuleInspector` to the compiled runtime representation of one rule during
-`Build`. This gives callers a stable way to observe a particular rule inside a
-composite tree without treating the declarative `Rule` itself as a runtime
-handle:
-
-```go
-var customer ruleix.RuleInspector
-
-schema := ruleix.All(
-	ruleix.Inspect(
-		&customer,
-		ruleix.Lossy(
-			ruleix.Include(...),
-			ruleix.MaxMemory(20<<20),
-		),
-	),
-)
-
-index, err := ruleix.New[Constraint, string](schema).Build(entries)
-if err != nil {
-	// handle the build error
-}
-
-stats := customer.Stats()
-```
-
-`Inspect` must not change matching semantics or constrain the optimizer's
-choice of representation. The inspector should be unbound before a successful
-build and, afterward, report the representation the planner actually selected.
-Initial statistics may be a subset of mode (`Exact` or `Lossy`), retained
-memory, configured memory limit, cardinality, item and distinct-value counts,
-strategy, granularity, and estimated false-positive rate.
-
-Keep this mechanism general rather than coupling it to lossy indexes. Future
-runtime metadata may include optimizer decisions, bucket or prefix
-configuration, and opt-in performance counters. Specify binding lifetime,
-repeated-build behavior, build-failure behavior, concurrency guarantees, and
-the stability of the returned statistics before promoting the API. The full
-proposal and open decisions are recorded in
-[`docs/inspect-api.md`](docs/inspect-api.md).
-
 ### Rebuild scalability
 
 Retain full immutable rebuilds until benchmarks show that update frequency,

@@ -183,6 +183,8 @@ type eqRule[T any, V comparable] struct {
 	values   equalityIndex[V]
 }
 
+func (*eqRule[T, V]) inspectionStrategy() string { return "equality" }
+
 func (*eqRule[T, V]) rule() {}
 func (r *eqRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
@@ -320,6 +322,8 @@ type unaryEqRule[T any, V comparable] struct {
 	set      equalitySet
 }
 
+func (*unaryEqRule[T, V]) inspectionStrategy() string { return "equality-unary" }
+
 func (*unaryEqRule[T, V]) rule()                                                 {}
 func (r *unaryEqRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
 func (*unaryEqRule[T, V]) validate(T) error                                      { return nil }
@@ -399,6 +403,8 @@ type binaryEqRule[T any, V comparable] struct {
 	keys     [2]V
 	sets     [2]equalitySet
 }
+
+func (*binaryEqRule[T, V]) inspectionStrategy() string { return "equality-binary" }
 
 func (*binaryEqRule[T, V]) rule()                                                 {}
 func (r *binaryEqRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }

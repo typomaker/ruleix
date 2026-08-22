@@ -155,6 +155,7 @@ func (r *matchAllRule[T]) matchesID(_ T, id uint32) bool                       {
 func (r *matchAllRule[T]) search(_ T, dst *roaring.Bitmap, _ *bitmapPool)      { dst.Or(r.bits) }
 func (*matchAllRule[T]) exclude(T, *roaring.Bitmap, *bitmapPool)               {}
 func (*matchAllRule[T]) collectBuildStatistics([]nodeBuildStatistics)          {}
+func (*matchAllRule[T]) inspectionStrategy() string                            { return "match-all" }
 func (r *matchAllRule[T]) prepareSearch()                                      { prepareBitmapForSearch(r.bits) }
 func (r *matchAllRule[T]) internBitmaps(interner *bitmapInterner)              { interner.intern(&r.bits) }
 

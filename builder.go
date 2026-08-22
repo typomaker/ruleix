@@ -115,6 +115,15 @@ func buildIndex[C any, ID comparable](
 		ix.root.collectBuildStatistics(statistics.nodes)
 	}
 	ix.root = optimizeRule(ix.root, uint64(len(ix.values)))
+	var inspections []pendingInspection
+	var err error
+	ix.root, err = stripInspectors(ix.root, make(map[*RuleInspector]struct{}), &inspections)
+	if err != nil {
+		return nil, buildStatistics{}, err
+	}
+	// Removing transparent decorators can expose All simplifications that were
+	// intentionally hidden while retaining the inspector-to-child association.
+	ix.root = optimizeRule(ix.root, uint64(len(ix.values)))
 	ix.exclusions = collectExclusionRules(ix.root, nil)
 	if len(ix.exclusions) != 0 {
 		universe := roaring.New()
@@ -141,6 +150,15 @@ func buildIndex[C any, ID comparable](
 	}
 	prepareRuleSearch(ix.root)
 	ix.nodes = int(ids.next)
+	for _, inspection := range inspections {
+		inspection.dst.stats.Store(&RuleStats{
+			Bound:      true,
+			Mode:       RuleModeExact,
+			Strategy:   inspection.strategy,
+			EntryCount: uint64(statistics.entries),
+			RuleCount:  uint64(statistics.uniqueIDs),
+		})
+	}
 	return ix, statistics, nil
 }
 

@@ -12,6 +12,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `Index.Explain` provides opt-in planner estimates, actual child
   cardinalities, execution ordering, selected search strategy, and result
   cardinality without adding instrumentation to ordinary searches.
+- `Inspect` and `RuleInspector` expose an immutable snapshot of the compiled
+  strategy and build counts for one marked rule without changing its search
+  representation.
 
 ### Changed
 

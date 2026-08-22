@@ -20,6 +20,8 @@ type notRule[T any, V comparable] struct {
 	values equalityIndex[V]
 }
 
+func (*notRule[T, V]) inspectionStrategy() string { return "exclusion" }
+
 func (*notRule[T, V]) rule() {}
 func (r *notRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()

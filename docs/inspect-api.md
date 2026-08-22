@@ -11,9 +11,9 @@ changes or grants mutable access to the rule.
 constraints match a query, nor should it prevent the planner from replacing
 the declarative rule with a different compiled representation.
 
-## Proposed API
+## API
 
-The conceptual API is:
+The initial API is:
 
 ```go
 type RuleInspector struct {
@@ -76,26 +76,19 @@ behavior with or without `Inspect`, and attaching an inspector must not force a
 specific strategy, disable optimization, or add work to the default search hot
 path.
 
-The implementation must define these lifecycle details before the API is
-released:
-
-- what `Stats` returns, or whether it reports an error, before the first
-  successful build;
-- whether a later successful build with the same reusable builder atomically
-  replaces the binding with the new generation;
-- whether a failed build preserves the last successful binding;
-- whether copying a `RuleInspector` is supported;
-- whether `Stats` may be called concurrently with searches or a later build;
-- whether one inspector may be attached to more than one rule.
-
-A useful default is for the inspector to refer to the latest successful build,
-with failed builds leaving the previous binding intact. That choice needs to be
-validated against the builder's reuse and concurrency contract.
+Before the first successful build, `Stats` returns a zero `RuleStats` with
+`Bound == false`. A later successful build atomically replaces the snapshot;
+a failed build preserves the last successful snapshot. `Stats` may run
+concurrently with searches and with a later build (the builder itself still
+requires external serialization). A `RuleInspector` must not be copied after
+first use and may identify only one schema location per build. Reusing it at
+multiple locations makes `Build` return an error.
 
 ## Statistics
 
-The primary operation is `RuleInspector.Stats()`. The first version need not
-populate every possible field, but the statistics model should leave room for:
+The primary operation is `RuleInspector.Stats()`. The first version reports
+the exact representation mode, selected strategy, number of input entries, and
+number of unique external rule IDs. The statistics model leaves room for:
 
 - representation mode: exact or lossy;
 - retained memory and configured maximum memory;

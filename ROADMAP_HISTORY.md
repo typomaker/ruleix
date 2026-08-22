@@ -307,3 +307,18 @@ Evaluated and not adopted:
 
 Historical release-to-release benchmark comparisons remain in
 [`BENCHMARK_OPTIMIZATIONS.md`](BENCHMARK_OPTIMIZATIONS.md).
+
+## 2026-08-22: transparent rule inspection
+
+`Inspect` now binds a caller-owned `RuleInspector` to the representation chosen
+for one decorated rule by a successful `Build`. The initial immutable snapshot
+reports exact mode, the selected strategy, consumed entry count, and unique
+external-rule count. Inspectors are unbound before their first successful
+build, atomically advance on later successful builds, and retain their prior
+snapshot after a failed build.
+
+Inspection decorators are removed before an index is published and the cleaned
+tree is optimized again. Consequently inspection adds no wrapper, counter, or
+branch to `Search`, `Visit`, or `Local`, and does not block equality or `All`
+specialization. One inspector may identify only one schema location per build;
+using it for multiple rules returns a build error.
