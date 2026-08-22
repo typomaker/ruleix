@@ -171,13 +171,18 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 }
 
 type lossyAllLeaf[T any] struct {
-	exact uint64
-	limit uint64
+	compiler lossyCompiler[T]
+	exact    uint64
+	minimum  uint64
+	limit    uint64
+	compiled Rule[T]
 }
 
-// compileLossyAll divides one composite budget proportionally to the exact
-// accounted size of its leaves. Largest remainders are assigned in schema
-// order, making the allocation deterministic while using the entire budget.
+// compileLossyAll treats the composite limit as a pool. Every leaf first gets
+// enough bytes for its smallest viable representation, then the remaining
+// bytes are divided proportionally. Representation granularity can leave part
+// of a share unused, so those bytes are reclaimed for deterministic upgrades
+// of other leaves.
 func compileLossyAll[T any](rule *allRule[T], limit uint64) (*allRule[T], inspectionDetails, error) {
 	var leaves []lossyAllLeaf[T]
 	if err := collectLossyAllLeaves[T](rule, &leaves); err != nil {
@@ -193,25 +198,52 @@ func compileLossyAll[T any](rule *allRule[T], limit uint64) (*allRule[T], inspec
 	if total <= limit {
 		for i := range leaves {
 			leaves[i].limit = leaves[i].exact
+			leaves[i].compiled, _ = leaves[i].compiler.compileLossy(leaves[i].limit)
 		}
 	} else if total != 0 {
+		var minimumTotal uint64
+		for i := range leaves {
+			minimum, compiled, err := minimumLossyAllLimit(leaves[i].compiler, leaves[i].exact)
+			if err != nil {
+				return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All child %d: %w", i+1, err)
+			}
+			leaves[i].minimum, leaves[i].limit, leaves[i].compiled = minimum, minimum, compiled
+			if math.MaxUint64-minimumTotal < minimum {
+				return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All memory accounting overflow")
+			}
+			minimumTotal += minimum
+		}
+		if minimumTotal > limit {
+			return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All cannot fit the memory limit")
+		}
+
 		type remainder struct {
 			index int
 			value uint64
 		}
 		remainders := make([]remainder, len(leaves))
-		var allocated uint64
+		available := limit - minimumTotal
+		var headroomTotal, allocated uint64
 		for i := range leaves {
-			hi, lo := bits.Mul64(limit, leaves[i].exact)
-			quotient, rem := bits.Div64(hi, lo, total)
-			leaves[i].limit = quotient
+			headroomTotal += leaves[i].exact - leaves[i].minimum
+		}
+		for i := range leaves {
+			hi, lo := bits.Mul64(available, leaves[i].exact-leaves[i].minimum)
+			quotient, rem := bits.Div64(hi, lo, headroomTotal)
+			leaves[i].limit += quotient
 			allocated += quotient
 			remainders[i] = remainder{index: i, value: rem}
 		}
 		sort.SliceStable(remainders, func(i, j int) bool { return remainders[i].value > remainders[j].value })
-		for i := uint64(0); i < limit-allocated; i++ {
+		for i := uint64(0); i < available-allocated; i++ {
 			leaves[remainders[i].index].limit++
 		}
+		var used uint64
+		for i := range leaves {
+			leaves[i].compiled, _ = leaves[i].compiler.compileLossy(leaves[i].limit)
+			used += inspectionDetailsOf(leaves[i].compiled).MemoryUsageBytes
+		}
+		redistributeLossyAllBudget(leaves, limit-used)
 	}
 	index := 0
 	compiled, details, err := materializeLossyAll[T](rule, leaves, &index)
@@ -248,7 +280,7 @@ func collectLossyAllLeaves[T any](rule Rule[T], leaves *[]lossyAllLeaf[T]) error
 		if !details.MemoryUsageAvailable {
 			return fmt.Errorf("ruleix: Lossy All child has no memory accounting")
 		}
-		*leaves = append(*leaves, lossyAllLeaf[T]{exact: details.MemoryUsageBytes})
+		*leaves = append(*leaves, lossyAllLeaf[T]{compiler: compiler, exact: details.MemoryUsageBytes})
 		return nil
 	}
 }
@@ -283,11 +315,62 @@ func materializeLossyAll[T any](rule Rule[T], leaves []lossyAllLeaf[T], index *i
 	default:
 		leaf := leaves[*index]
 		*index++
-		compiled, err := rule.(lossyCompiler[T]).compileLossy(leaf.limit)
-		if err != nil {
-			return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All child %d: %w", *index, err)
+		return leaf.compiled, inspectionDetailsOf(leaf.compiled), nil
+	}
+}
+
+func minimumLossyAllLimit[T any](compiler lossyCompiler[T], exact uint64) (uint64, Rule[T], error) {
+	low, high := uint64(0), exact
+	compiled, err := compiler.compileLossy(high)
+	if err != nil {
+		return 0, nil, err
+	}
+	for low < high {
+		mid := low + (high-low)/2
+		candidate, candidateErr := compiler.compileLossy(mid)
+		if candidateErr != nil {
+			low = mid + 1
+			continue
 		}
-		return compiled, inspectionDetailsOf(compiled), nil
+		high, compiled = mid, candidate
+	}
+	return low, compiled, nil
+}
+
+func redistributeLossyAllBudget[T any](leaves []lossyAllLeaf[T], available uint64) {
+	for available != 0 {
+		best := -1
+		var bestLimit, bestCost uint64
+		for i := range leaves {
+			usage := inspectionDetailsOf(leaves[i].compiled).MemoryUsageBytes
+			if usage >= leaves[i].exact {
+				continue
+			}
+			low, high := usage+1, leaves[i].exact
+			for low < high {
+				mid := low + (high-low)/2
+				candidate, err := leaves[i].compiler.compileLossy(mid)
+				if err != nil || inspectionDetailsOf(candidate).MemoryUsageBytes <= usage {
+					low = mid + 1
+				} else {
+					high = mid
+				}
+			}
+			candidate, err := leaves[i].compiler.compileLossy(low)
+			if err != nil || inspectionDetailsOf(candidate).MemoryUsageBytes <= usage {
+				continue
+			}
+			cost := inspectionDetailsOf(candidate).MemoryUsageBytes - usage
+			if cost <= available && (best < 0 || cost < bestCost) {
+				best, bestLimit, bestCost = i, low, cost
+			}
+		}
+		if best < 0 {
+			return
+		}
+		leaves[best].limit = bestLimit
+		leaves[best].compiled, _ = leaves[best].compiler.compileLossy(bestLimit)
+		available -= bestCost
 	}
 }
 

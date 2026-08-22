@@ -457,3 +457,18 @@ supersets cannot remove an ID present in every exact child. Tests exercise both
 exact and lossy composite selection, enforce the aggregate accounting limit,
 compare composite results against an exact index across varied queries, and
 continue to reject nested `Lossy` policies.
+
+## 2026-08-22: pooled lossy All allocation
+
+The aggregate `Lossy(All(...))` allocator now discovers and reserves every
+leaf's minimum viable representation before distributing the remaining budget
+in proportion to exact-size headroom. It compiles those initial selections,
+reclaims bytes left unused by discrete representation granularities, and
+deterministically spends the pool on the smallest affordable child upgrades.
+
+This removes failures caused solely by an undersized proportional share when a
+feasible allocation exists within the aggregate limit. The selected leaf
+representations remain deterministic, and their combined accounted memory
+never exceeds the caller's limit. A skewed equality test covers a small child
+with a relatively expensive minimum beside a much larger, highly compressible
+child and verifies both successful construction and the hard aggregate bound.

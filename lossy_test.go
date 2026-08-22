@@ -132,3 +132,28 @@ func TestLossyAllRetainsExactChildrenWhenCompositeFits(t *testing.T) {
 	require.True(t, ok)
 	require.LessOrEqual(t, usage, uint64(1<<20))
 }
+
+func TestLossyAllRedistributesBudgetForMinimumViableChildren(t *testing.T) {
+	stable := func(v lossyConstraint) (string, bool) { return "stable", true }
+	unique := func(v lossyConstraint) (string, bool) { return v.name, true }
+	constraints := make([]lossyConstraint, 2000)
+	ids := make([]int, len(constraints))
+	for i := range constraints {
+		constraints[i].name = fmt.Sprintf("customer-%d", i)
+		ids[i] = i
+	}
+
+	var inspector Inspector
+	index, err := New[lossyConstraint, int](Inspect(&inspector, Lossy(
+		All(Include(stable), Include(unique)),
+		MemoryLimit(12000),
+	))).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+
+	var matches []int
+	index.Search(lossyConstraint{name: "customer-17"}, &matches)
+	require.Contains(t, matches, 17)
+	usage, ok := inspector.MemoryUsage()
+	require.True(t, ok)
+	require.LessOrEqual(t, usage, uint64(12000))
+}

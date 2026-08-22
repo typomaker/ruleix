@@ -234,13 +234,14 @@ ruleix.All(
 If every child result is a superset of its exact result, intersecting those
 child results remains a superset of the exact conjunction. A policy wrapped
 around `All` first computes every leaf's exact accounted size. If their sum
-fits, every leaf remains exact. Otherwise it divides the limit in proportion to
-those sizes, assigning integer-byte remainders by descending fractional
-remainder and then schema order. Each leaf independently selects the finest
-representation that fits its share. The build fails if any share is below that
-leaf's minimum viable representation; unused bytes are not redistributed in
-this first deterministic allocator. Nested `All` groups use the same flattened
-leaf allocation while retaining their search structure.
+fits, every leaf remains exact. Otherwise it first reserves each leaf's minimum
+viable representation, then divides the remaining bytes in proportion to each
+leaf's exact-size headroom. Since representation granularity can leave a share
+unused, the allocator reclaims those bytes and applies the smallest affordable
+upgrade, breaking ties by schema order, until no child can improve within the
+pool. The build fails only when the sum of minimum viable representations
+exceeds the limit. Nested `All` groups use the same flattened leaf allocation
+while retaining their search structure.
 
 ## Diagnostics
 

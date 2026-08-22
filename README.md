@@ -163,8 +163,9 @@ ruleix.Lossy(
 ```
 
 One limit can cover an entire conjunction. The build keeps every child exact
-when their combined accounted size fits; otherwise the budget is divided among
-the children in proportion to their exact sizes:
+when their combined accounted size fits; otherwise each child receives its
+minimum viable representation before the remaining pooled bytes are divided
+and redistributed among children that can improve:
 
 ```go
 ruleix.Lossy(
