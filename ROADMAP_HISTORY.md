@@ -162,6 +162,27 @@ go test -run '^$' -bench '^BenchmarkSharedWildcardAll/' \
   -benchmem -benchtime=200ms -count=5 .
 ```
 
+## 2026-08-22: bitmap-pool reuse under concurrent search
+
+`BenchmarkBitmapPoolParallelSearch` compares normal shared `Index` scratch
+reuse with the same internal search starting from an empty pool on every
+operation. The production-scale shape uses 100K rules, four equality children,
+and a 1K-result query so the adaptive `All` executor takes its bitmap path.
+`RunParallel` exercises the pool's per-P behavior and concurrent contention.
+
+On Apple M1 Max, medians of five runs were 1.820 us/op with shared reuse and
+3.304 us/op with a fresh pool, a 45% latency reduction. Allocation traffic fell
+from 4,608 B/op and 33 allocs/op to 2,307 B/op and 9 allocs/op. The pool remains
+part of `Index` because it improves end-to-end concurrent latency and allocation
+behavior.
+
+Reproduce the comparison with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkBitmapPoolParallelSearch/' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
 ## 2026-08-22: second-use admission for `Local`
 
 Per-node `Local` caches now admit a materialized bitmap only after the same

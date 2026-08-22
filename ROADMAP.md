@@ -64,8 +64,7 @@ The baseline measures build time, search time and allocations, retained index
 bytes, peak build heap, GC pressure, logical posting count and size, and
 wildcard ratio. Compare
 bitmap-only, candidate-only, and adaptive execution over candidate counts from
-1 through at least 16K. Benchmark bitmap-pool reuse under concurrent searches;
-keep it only where it improves end-to-end allocation or latency behavior.
+1 through at least 16K.
 
 The first planner iteration is successful only if it preserves the public API,
 immutability, and concurrent search safety; avoids eager materialization; exits

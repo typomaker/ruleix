@@ -7,6 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type bitmapPoolBenchmarkConstraint struct {
+	a *int
+	b *int
+	c *int
+	d *int
+}
+
 func TestAppendBitmapValuesSupportsScalarAndBatchIteration(t *testing.T) {
 	values := make([]int, manyIteratorCardinalityThreshold+1)
 	for i := range values {
@@ -68,5 +75,59 @@ func BenchmarkBitmapPoolRareWide(b *testing.B) {
 			bits.Add(uint32(i))
 		}
 		pool.put(bits)
+	}
+}
+
+// BenchmarkBitmapPoolParallelSearch compares the shared Index scratch pool
+// with an otherwise identical search that starts with an empty pool. RunParallel
+// exercises sync.Pool's per-P reuse and contention behavior instead of only
+// measuring a serial best case.
+func BenchmarkBitmapPoolParallelSearch(b *testing.B) {
+	ptr := func(value int) *int { return &value }
+	schema := All(
+		Include(GetterFromPointer(func(value bitmapPoolBenchmarkConstraint) *int { return value.a })),
+		Include(GetterFromPointer(func(value bitmapPoolBenchmarkConstraint) *int { return value.b })),
+		Include(GetterFromPointer(func(value bitmapPoolBenchmarkConstraint) *int { return value.c })),
+		Include(GetterFromPointer(func(value bitmapPoolBenchmarkConstraint) *int { return value.d })),
+	)
+	const entries = 100_000
+	constraints := make([]bitmapPoolBenchmarkConstraint, entries)
+	ids := make([]int, entries)
+	for id := range entries {
+		constraints[id] = bitmapPoolBenchmarkConstraint{
+			a: ptr(id % 2),
+			b: ptr(id % 5),
+			c: ptr(id % 10),
+			d: ptr(id % 100),
+		}
+		ids[id] = id
+	}
+	index, err := New[bitmapPoolBenchmarkConstraint, int](schema).Build(Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	query := bitmapPoolBenchmarkConstraint{a: ptr(1), b: ptr(1), c: ptr(1), d: ptr(1)}
+
+	for _, benchmark := range []struct {
+		name   string
+		search func(*[]int)
+	}{
+		{name: "Reuse", search: func(dst *[]int) { index.Search(query, dst) }},
+		{name: "Fresh", search: func(dst *[]int) { index.search(query, dst, newBitmapPool()) }},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.RunParallel(func(pb *testing.PB) {
+				matches := make([]int, 0, entries/100)
+				for pb.Next() {
+					matches = matches[:0]
+					benchmark.search(&matches)
+					if len(matches) != entries/100 {
+						b.Errorf("got %d matches", len(matches))
+						return
+					}
+				}
+			})
+		})
 	}
 }
