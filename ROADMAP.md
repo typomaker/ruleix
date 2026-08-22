@@ -97,9 +97,9 @@ every rule constructor.
 
 The policy now supports one pooled budget around `All`; its deterministic
 allocation, redistribution behavior, composition invariant, initial cost and
-quality benchmark, and equality planning optimization are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The next operator expansion should
-be driven by a concrete workload and benchmark evidence.
+quality benchmark, and equality and ordered planning optimizations are recorded
+in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The next operator expansion
+should be driven by a concrete workload and benchmark evidence.
 
 Require property tests comparing lossy and exact results across supported
 operators and value types, adversarial boundary tests for ordered encodings,

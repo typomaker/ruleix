@@ -1,6 +1,7 @@
 package ruleix
 
 import (
+	"cmp"
 	"fmt"
 	"testing"
 )
@@ -8,8 +9,20 @@ import (
 const lossyAllBenchmarkEntries = 10_000
 
 type lossyAllBenchmarkConstraint struct {
-	values  [8]string
-	present [8]bool
+	values     [8]string
+	thresholds [8]int
+	present    [8]bool
+}
+
+func lossyAllOrderedBenchmarkSchema(children int) Rule[lossyAllBenchmarkConstraint] {
+	rules := make([]Rule[lossyAllBenchmarkConstraint], children)
+	for field := range rules {
+		field := field
+		rules[field] = GreaterOrEqual(func(value lossyAllBenchmarkConstraint) (int, bool) {
+			return value.thresholds[field], value.present[field]
+		}, cmp.Compare[int])
+	}
+	return All(rules...)
 }
 
 var lossyAllBenchmarkIndex *Index[lossyAllBenchmarkConstraint, int]
@@ -23,6 +36,7 @@ func lossyAllBenchmarkData(entries int) ([]lossyAllBenchmarkConstraint, []int) {
 			// Coprime multipliers keep each leaf's distribution distinct while
 			// retaining enough overlap to exercise composite false positives.
 			constraints[i].values[field] = fmt.Sprintf("f%d-v%d", field, (i*(field*2+3)+field)%entries)
+			constraints[i].thresholds[field] = (i*(field*2+3) + field) % entries
 			constraints[i].present[field] = true
 		}
 	}
@@ -71,6 +85,27 @@ func BenchmarkLossyAllPlanning(b *testing.B) {
 				b.ReportMetric(float64(limit), "limit-bytes")
 			})
 		}
+	}
+}
+
+func BenchmarkLossyAllOrderedPlanning(b *testing.B) {
+	constraints, ids := lossyAllBenchmarkData(lossyAllBenchmarkEntries)
+	for _, children := range []int{2, 4} {
+		exactBytes := lossyAllBenchmarkExactBytesForSchema(b, constraints, ids, lossyAllOrderedBenchmarkSchema(children))
+		b.Run(fmt.Sprintf("Children%d/Budget75", children), func(b *testing.B) {
+			limit := exactBytes * 3 / 4
+			builder := New[lossyAllBenchmarkConstraint, int](Lossy(lossyAllOrderedBenchmarkSchema(children), MemoryLimit(limit)))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				index, err := builder.Build(Zip(constraints, ids))
+				if err != nil {
+					b.Fatal(err)
+				}
+				lossyAllBenchmarkIndex = index
+			}
+			b.ReportMetric(float64(limit), "limit-bytes")
+		})
 	}
 }
 
@@ -126,10 +161,20 @@ func lossyAllBenchmarkExactBytes(
 	children int,
 ) uint64 {
 	b.Helper()
+	return lossyAllBenchmarkExactBytesForSchema(b, constraints, ids, lossyAllBenchmarkSchema(children))
+}
+
+func lossyAllBenchmarkExactBytesForSchema(
+	b testing.TB,
+	constraints []lossyAllBenchmarkConstraint,
+	ids []int,
+	schema Rule[lossyAllBenchmarkConstraint],
+) uint64 {
+	b.Helper()
 	var inspector Inspector
 	_, err := New[lossyAllBenchmarkConstraint, int](Inspect(
 		&inspector,
-		Lossy(lossyAllBenchmarkSchema(children), MemoryLimit(^uint64(0))),
+		Lossy(schema, MemoryLimit(^uint64(0))),
 	)).Build(Zip(constraints, ids))
 	if err != nil {
 		b.Fatal(err)

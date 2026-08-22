@@ -510,3 +510,26 @@ Reproduce the matrix with:
 go test -run '^$' -bench '^BenchmarkLossyAll(Planning|SearchQuality)/' \
   -benchmem -benchtime=300ms -count=5 .
 ```
+
+## 2026-08-22: pooled ordered representation planning
+
+Pooled `Lossy(All(...))` planning now prepares each ordered leaf's complete
+bucket-granularity ladder once and reuses those immutable candidates during
+minimum-limit discovery, proportional allocation, and redistribution. As with
+equality leaves, exact representations retain the lazy direct path and do not
+construct lossy buckets when the aggregate budget can hold them.
+
+`BenchmarkLossyAllOrderedPlanning` covers 10K-entry conjunctions with two and
+four ordered leaves at 75% of their exact accounted size. On Apple M1 Max, the
+median two-child case fell from 994 milliseconds and about 7.79 million
+allocations to 50.6 milliseconds and 519 thousand allocations. The four-child
+case fell from 2.41 seconds and about 19.3 million allocations to 121
+milliseconds and 1.33 million allocations. Selection semantics, deterministic
+accounting, and the public API are unchanged.
+
+Reproduce the matrix with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyAllOrderedPlanning/' \
+  -benchmem -benchtime=200ms -count=3 .
+```
