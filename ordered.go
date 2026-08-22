@@ -102,15 +102,18 @@ func (r *orderedRule[T, V]) insert(v T, id uint32) {
 	r.index.insert(value, id)
 }
 func (r *orderedRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
+	return r.estimateCardinality(v)
+}
+func (r *orderedRule[T, V]) estimateCardinality(v T) uint64 {
 	n := r.wildcard.GetCardinality()
 	value, ok := r.get(v)
 	if !ok {
 		return n
 	}
-	r.index.walk(value, r.dir == lessThan, r.inclusive, func(bits *roaring.Bitmap) {
-		n += bits.GetCardinality()
-	})
-	return n
+	return n + r.index.estimateCardinality(value, r.dir == lessThan, r.inclusive)
+}
+func (r *orderedRule[T, V]) isCardinalityZero(v T) bool {
+	return r.estimateCardinality(v) == 0
 }
 func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)

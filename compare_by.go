@@ -104,9 +104,35 @@ func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 	}
 }
 func (r *compareByRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
-	var n uint64
-	r.each(v, func(bits *roaring.Bitmap) { n += bits.GetCardinality() })
+	return r.estimateCardinality(v)
+}
+func (r *compareByRule[T, V]) estimateCardinality(v T) uint64 {
+	n := r.wildcard.GetCardinality()
+	value, ok := r.value(v)
+	if !ok {
+		return n
+	}
+	if index := r.indexes[OperatorEQ]; index != nil {
+		if bits := index.exact(value); bits != nil {
+			n += bits.GetCardinality()
+		}
+	}
+	if index := r.indexes[OperatorLT]; index != nil {
+		n += index.estimateCardinality(value, true, false)
+	}
+	if index := r.indexes[OperatorLTE]; index != nil {
+		n += index.estimateCardinality(value, true, true)
+	}
+	if index := r.indexes[OperatorGT]; index != nil {
+		n += index.estimateCardinality(value, false, false)
+	}
+	if index := r.indexes[OperatorGTE]; index != nil {
+		n += index.estimateCardinality(value, false, true)
+	}
 	return n
+}
+func (r *compareByRule[T, V]) isCardinalityZero(v T) bool {
+	return r.estimateCardinality(v) == 0
 }
 func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.value, v)

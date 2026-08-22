@@ -1,10 +1,38 @@
 package ruleix
 
 import (
+	"cmp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+type explainRangeConstraint struct {
+	group     int
+	threshold int
+}
+
+func TestExplainUsesOrderedEstimateForCandidateSelection(t *testing.T) {
+	constraints := make([]explainRangeConstraint, 10)
+	ids := make([]int, 10)
+	for i := range constraints {
+		constraints[i] = explainRangeConstraint{group: 1, threshold: i}
+		ids[i] = i
+	}
+	ix, err := New[explainRangeConstraint, int](All(
+		Include(func(value explainRangeConstraint) (int, bool) { return value.group, true }),
+		GreaterOrEqual(func(value explainRangeConstraint) (int, bool) { return value.threshold, true }, cmp.Compare[int]),
+	)).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+
+	plan := ix.Explain(explainRangeConstraint{group: 1, threshold: 0})
+
+	require.Equal(t, SearchStrategyCandidateScan, plan.Strategy)
+	require.Equal(t, uint64(1), plan.CandidateCardinality)
+	require.True(t, plan.Children[1].EstimateAvailable)
+	require.Equal(t, uint64(1), plan.Children[1].EstimatedMatches)
+	require.Equal(t, 0, plan.Children[1].ExecutionOrder)
+}
 
 type explainConstraint struct {
 	country *string

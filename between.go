@@ -78,6 +78,17 @@ func (r *betweenRule[T, V]) insert(v T, id uint32) {
 func (r *betweenRule[T, V]) cardinality(v T, pool *bitmapPool) uint64 {
 	return measuredCardinality[T](r, v, pool)
 }
+func (r *betweenRule[T, V]) estimateCardinality(v T) uint64 {
+	from := r.from.estimateCardinality(v)
+	until := r.until.estimateCardinality(v)
+	if from < until {
+		return from
+	}
+	return until
+}
+func (r *betweenRule[T, V]) isCardinalityZero(v T) bool {
+	return r.from.isCardinalityZero(v) || r.until.isCardinalityZero(v)
+}
 func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	from, until := getOptional(r.from.get, v), getOptional(r.until.get, v)
 	if pool.local == nil {
@@ -194,7 +205,7 @@ func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmap
 	untilValue := getOptional(r.until.get, v)
 	base, other := r.from, r.until
 	baseValue, otherValue := fromValue, untilValue
-	if r.until.cardinality(v, pool) < r.from.cardinality(v, pool) {
+	if r.until.estimateCardinality(v) < r.from.estimateCardinality(v) {
 		base, other = r.until, r.from
 		baseValue, otherValue = untilValue, fromValue
 	}

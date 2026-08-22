@@ -10,6 +10,7 @@ type orderedItem[V any] struct {
 type orderedIndex[V any] struct {
 	compare            Compare[V]
 	blocks             []orderedBlock[V]
+	blockPrefix        []uint64
 	firstBlockCapacity int
 }
 
@@ -44,8 +45,10 @@ func (i *orderedIndex[V]) buildStatistics() orderedBuildStatistics {
 	return statistics
 }
 func (i *orderedIndex[V]) prepareSearch() {
+	i.blockPrefix = make([]uint64, len(i.blocks)+1)
 	for blockIndex := range i.blocks {
 		block := &i.blocks[blockIndex]
+		i.blockPrefix[blockIndex+1] = i.blockPrefix[blockIndex] + block.bits.GetCardinality()
 		// A one-value block's aggregate is identical to its only posting list.
 		// Share the immutable bitmap instead of retaining two copies after Build.
 		if len(block.items) == 1 {
@@ -58,6 +61,65 @@ func (i *orderedIndex[V]) prepareSearch() {
 			}
 		}
 	}
+}
+
+// estimateCardinality returns the exact number of IDs visited by walk without
+// traversing every aggregate bitmap in a wide range. Posting lists for distinct
+// values in one ordered index are disjoint, so build-time block prefix sums can
+// be combined with the at-most-one unaggregated boundary block.
+func (i *orderedIndex[V]) estimateCardinality(value V, ascending, inclusive bool) uint64 {
+	if len(i.blocks) == 0 {
+		return 0
+	}
+	blockIndex := i.blockFor(value)
+	block := &i.blocks[blockIndex]
+	if ascending {
+		lo, hi := 0, len(block.items)
+		for lo < hi {
+			mid := int(uint(lo+hi) >> 1)
+			cmp := i.compare(block.items[mid].value, value)
+			if cmp < 0 || !inclusive && cmp == 0 {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		var n uint64
+		for pos := lo; pos < len(block.items); pos++ {
+			n += block.items[pos].bits.GetCardinality()
+		}
+		if len(i.blockPrefix) == len(i.blocks)+1 {
+			n += i.blockPrefix[len(i.blocks)] - i.blockPrefix[blockIndex+1]
+		} else {
+			for pos := blockIndex + 1; pos < len(i.blocks); pos++ {
+				n += i.blocks[pos].bits.GetCardinality()
+			}
+		}
+		return n
+	}
+
+	lo, hi := 0, len(block.items)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		cmp := i.compare(block.items[mid].value, value)
+		if cmp < 0 || inclusive && cmp == 0 {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	var n uint64
+	for pos := 0; pos < lo; pos++ {
+		n += block.items[pos].bits.GetCardinality()
+	}
+	if len(i.blockPrefix) == len(i.blocks)+1 {
+		n += i.blockPrefix[blockIndex]
+	} else {
+		for pos := 0; pos < blockIndex; pos++ {
+			n += i.blocks[pos].bits.GetCardinality()
+		}
+	}
+	return n
 }
 func (i *orderedIndex[V]) internBitmaps(interner *bitmapInterner) {
 	for blockIndex := range i.blocks {

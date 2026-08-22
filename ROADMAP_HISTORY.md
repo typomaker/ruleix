@@ -234,6 +234,31 @@ Ordered indexes use block aggregates and binary search, reducing repeated
 unions for broad range queries. The remaining `TimeRange` candidate is tracked
 separately in the active roadmap.
 
+## 2026-08-22: build-time range cardinality estimates
+
+Ordered indexes now retain one cumulative cardinality per 128-value block.
+Because distinct values inside one ordered leaf have disjoint posting lists,
+the planner can combine those build-time prefix sums with one boundary block
+to obtain an exact range cardinality without materializing a bitmap or walking
+the full range. The retained overhead is approximately eight bytes per block.
+
+`Greater`, `GreaterOrEqual`, `Less`, `LessOrEqual`, and `CompareBy` expose these
+exact estimates to the adaptive `All` planner. `Between` exposes the upper bound
+of the smaller side, which is sufficient for safe candidate selection, and
+uses the same estimates to choose its materialized side. Empty ranges are
+rejected before materialization. This lets selective range predicates become
+the first candidate source instead of remaining behind known equality costs.
+
+The estimate is checked against aggregate traversal at block boundaries and
+outside the indexed domain. `Index.Explain` coverage verifies that a one-ID
+range switches an otherwise broad `All` query to candidate-scan execution.
+Reproduce the estimator microbenchmark with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkOrderedIndexCardinalityEstimate/' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
 ## Roaring bitmap decisions
 
 Benchmark implementations and detailed evidence live in `benchmark_test.go`.

@@ -7,6 +7,56 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
+var orderedIndexBenchmarkResult uint64
+
+func TestOrderedIndexCardinalityEstimateMatchesWalk(t *testing.T) {
+	index := newOrderedIndex(cmp.Compare[int])
+	for value := 0; value < 1_000; value++ {
+		for duplicate := 0; duplicate <= value%3; duplicate++ {
+			index.insert(value, uint32(value*3+duplicate))
+		}
+	}
+	index.prepareSearch()
+
+	for _, value := range []int{-1, 0, 1, 127, 128, 255, 500, 999, 1_000} {
+		for _, ascending := range []bool{false, true} {
+			for _, inclusive := range []bool{false, true} {
+				var walked uint64
+				index.walk(value, ascending, inclusive, func(bits *roaring.Bitmap) {
+					walked += bits.GetCardinality()
+				})
+				estimated := index.estimateCardinality(value, ascending, inclusive)
+				if estimated != walked {
+					t.Fatalf("estimate(%d, ascending=%t, inclusive=%t) = %d, want %d",
+						value, ascending, inclusive, estimated, walked)
+				}
+			}
+		}
+	}
+}
+
+func BenchmarkOrderedIndexCardinalityEstimate(b *testing.B) {
+	index := newOrderedIndex(cmp.Compare[int])
+	for value := 0; value < 10_000; value++ {
+		index.insert(value, uint32(value))
+	}
+	index.prepareSearch()
+	b.Run("BlockPrefix", func(b *testing.B) {
+		for range b.N {
+			orderedIndexBenchmarkResult = index.estimateCardinality(5_000, true, true)
+		}
+	})
+	b.Run("WalkAggregates", func(b *testing.B) {
+		for range b.N {
+			var cardinality uint64
+			index.walk(5_000, true, true, func(bits *roaring.Bitmap) {
+				cardinality += bits.GetCardinality()
+			})
+			orderedIndexBenchmarkResult = cardinality
+		}
+	})
+}
+
 func TestOrderedIndexWideWalkUsesBlockAggregates(t *testing.T) {
 	index := newOrderedIndex(cmp.Compare[int])
 	for value := 0; value < 10_000; value++ {
