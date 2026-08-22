@@ -189,6 +189,21 @@ go test -run '^$' -bench '^BenchmarkBitmapPoolParallelSearch/' \
   -benchmem -benchtime=300ms -count=5 .
 ```
 
+## 2026-08-22: opt-in planner diagnostics
+
+`Index.Explain` now performs a diagnostic search and reports the optimized
+top-level `All` child positions, available cardinality estimates, actual
+cardinalities, execution order, materialization decisions, candidate
+cardinality, final cardinality, and the selected candidate-scan or bitmap-
+intersection strategy. Non-`All` roots report the single-rule strategy and
+result cardinality.
+
+Diagnostics are computed only by an explicit `Explain` call. The immutable
+index retains no counters or traces, so ordinary `Search`, `Visit`, and `Local`
+hot paths are unchanged. `Explain` intentionally materializes every direct
+child to provide actual cardinalities, including predicates that normal
+candidate execution validates by internal ID.
+
 ## 2026-08-22: second-use admission for `Local`
 
 Per-node `Local` caches now admit a materialized bitmap only after the same

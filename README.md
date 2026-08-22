@@ -45,6 +45,7 @@ from scratch.
 - Unique results in first-insertion order.
 - Immutable indexes safe for concurrent searches after `Build`.
 - Roaring bitmap-backed candidate sets with pooled search scratch space.
+- Opt-in planner diagnostics without instrumentation on ordinary searches.
 
 ## Requirements
 
@@ -290,6 +291,26 @@ index.Visit(value, func(id string) bool {
 
 If the same external ID is inserted more than once, it is returned at most
 once. Its first matching insertion determines result order.
+
+### Planner diagnostics
+
+`Explain` performs an opt-in diagnostic search. For a top-level `All`, it
+reports each optimized child's estimate, actual cardinality and execution
+order, plus the selected candidate-scan or bitmap-intersection strategy:
+
+```go
+plan := index.Explain(query)
+fmt.Println(plan.Strategy, plan.CandidateCardinality, plan.ResultCardinality)
+for _, child := range plan.Children {
+	fmt.Println(child.SchemaIndex, child.ExecutionOrder, child.EstimatedMatches,
+		child.ActualMatches, child.Materialized)
+}
+```
+
+`Explain` is deliberately more expensive than `Search`: it measures children
+that candidate scanning normally checks directly. Ordinary searches do not
+collect or retain diagnostic data. Treat the selected strategy and optimized
+child positions as diagnostics rather than stable application behavior.
 
 ## Development
 

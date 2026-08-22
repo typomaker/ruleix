@@ -73,15 +73,6 @@ immutability, and concurrent search safety; avoids eager materialization; exits
 early on empty results; improves selective and wildcard-heavy workloads; and
 does not materially regress large-result latency or allocations.
 
-### Optional planner diagnostics
-
-After the execution strategy is stable, consider an opt-in `Explain` facility
-that reports estimates, actual cardinalities, ordering, and the switch between
-bitmap and candidate modes. Build-time metadata such as total rules, wildcard
-count, distinct values, and maximum posting cardinality can support both
-diagnostics and cheap estimates. Keep instrumentation out of the default hot
-path.
-
 ### Rule inspection API
 
 Add a transparent `Inspect` decorator that binds a caller-owned
@@ -258,8 +249,7 @@ only where their semantics match an existing or planned path:
 1. Extend cheap estimates and lazy, empty-aware `All` execution only where
    benchmarks show a benefit.
 2. Benchmark and add candidate scanning below a measured crossover threshold.
-3. Add optional planner diagnostics, then optimize other logical operators when
-   their semantics exist.
+3. Optimize other logical operators when their semantics exist.
 4. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
 5. Revisit the remaining bitmap operations only when the corresponding index

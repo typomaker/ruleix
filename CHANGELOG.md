@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- `Index.Explain` provides opt-in planner estimates, actual child
+  cardinalities, execution ordering, selected search strategy, and result
+  cardinality without adding instrumentation to ordinary searches.
+
 ### Changed
 
 - The production-shaped planner benchmark matrix now covers 10K, 100K, and 1M
