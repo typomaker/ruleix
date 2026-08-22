@@ -97,10 +97,11 @@ every rule constructor.
 
 Develop the feature in stages:
 
-1. Prototype operator-aware strategies for equality and ordered ranges. Use
-   canonical value encodings rather than Go's in-memory layout; investigate a
-   monotonic `uint64` key for ordered scalar and time values so range rules can
-   share bucket machinery.
+1. Promote the benchmarked grouped-hash equality and observed-domain ordered
+   bucket prototypes into the build planner, starting with one scalar equality
+   rule and one ordered comparison. Keep the strategy and granularity internal.
+   Time values remain deferred until their supported range or wider key is
+   explicit.
 2. Select granularity automatically from the budget, actual data distribution,
    operator, and value type. Resolve type-specific behavior once during
    `Build`; do not add type switches to the search hot path.

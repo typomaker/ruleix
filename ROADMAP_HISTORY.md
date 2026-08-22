@@ -382,3 +382,31 @@ equal keys for negative and positive zero. Boundary tests cover every integer
 width, infinities, NaN, signed zero, and unsupported types. Time values remain
 deferred: the full `time.Time` domain cannot be represented injectively by one
 `uint64`, so a time strategy needs an explicit supported range or a wider key.
+
+## 2026-08-22: operator-aware lossy strategy prototypes
+
+Test-only prototypes now exercise two representations against the production
+canonical encodings: FNV-1a grouped hashes for equality and dense, ordered
+buckets scaled to the observed scalar-key domain for range comparisons. The
+property coverage checks multiple granularities and proves that every exact
+equality and greater-or-equal match remains in the approximate result.
+
+The 100K-value benchmark confirms that the operators need different lookup
+layouts. Equality lookup stayed near 54-56 ns across 8, 12, and 16 bucket bits,
+while accounted memory and candidates changed from 210,240 bytes / 386 IDs to
+363,832 bytes / 30 IDs and 1,975,832 bytes / 2 IDs. Ordered range lookup uses a
+dense bucket array so it can start at the query boundary without scanning a
+map. Twelve bits gave the useful middle point for the selective benchmark at
+about 320 ns, 296,008 accounted bytes, and 100 candidates. Sixteen bits kept
+the same candidates but regressed to about 2.5 us and 1.4 MB because it unions
+many tiny postings. Consequently the planner must choose granularity from the
+budget and distribution instead of always selecting the finest representation.
+
+These remain prototypes rather than published search representations. The next
+step is to integrate them with build analysis, deterministic budget selection,
+and materialization. Reproduce the experiment with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyStrategyPrototypes/' \
+  -benchmem -benchtime=300ms -count=5 .
+```
