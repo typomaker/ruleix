@@ -97,21 +97,18 @@ every rule constructor.
 
 Develop the feature in stages:
 
-1. Split `Build` conceptually into analysis, planning, and materialization so it
-   can estimate an exact representation and choose a strategy without first
-   constructing and discarding a full exact index.
-2. Prototype operator-aware strategies for equality and ordered ranges. Use
+1. Prototype operator-aware strategies for equality and ordered ranges. Use
    canonical value encodings rather than Go's in-memory layout; investigate a
    monotonic `uint64` key for ordered scalar and time values so range rules can
    share bucket machinery.
-3. Select granularity automatically from the budget, actual data distribution,
+2. Select granularity automatically from the budget, actual data distribution,
    operator, and value type. Resolve type-specific behavior once during
    `Build`; do not add type switches to the search hot path.
-4. Add build statistics describing the selected exact or lossy representation,
+3. Add build statistics describing the selected exact or lossy representation,
    retained memory, budget, item and distinct-value counts, strategy, and
    granularity, exposed through the proposed `Inspect` API. Report an estimated
    false-positive rate only where it can be computed meaningfully.
-5. Extend the policy to `All` only after defining how one budget is divided
+4. Extend the policy to `All` only after defining how one budget is divided
    among children and proving that composition preserves the no-false-negative
    invariant.
 

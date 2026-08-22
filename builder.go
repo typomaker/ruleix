@@ -70,46 +70,103 @@ func buildIndex[C any, ID comparable](
 	if entries == nil {
 		return nil, buildStatistics{}, fmt.Errorf("ruleix: nil entry sequence")
 	}
+	analysis, err := analyzeBuild(schema, entries, hints)
+	if err != nil {
+		return nil, buildStatistics{}, err
+	}
+	plan := planBuild(analysis)
+	return materializeBuild(schema, analysis, plan, collectStatistics, hints)
+}
+
+// analyzedEntry is the representation-independent output of input analysis.
+// Keeping the external constraint here lets a later planner choose a runtime
+// representation before any posting index is materialized.
+type analyzedEntry[C any] struct {
+	constraint C
+	internalID uint32
+}
+
+type buildAnalysis[C any, ID comparable] struct {
+	entries []analyzedEntry[C]
+	values  []ID
+}
+
+type buildPlan struct {
+	mode RuleMode
+}
+
+// analyzeBuild consumes and validates the input exactly once, assigns stable
+// internal IDs, and retains only representation-independent input. In
+// particular, it does not insert values into an exact posting index.
+func analyzeBuild[C any, ID comparable](
+	schema Rule[C],
+	entries iter.Seq2[C, ID],
+	hints *buildStatistics,
+) (buildAnalysis[C, ID], error) {
 	// A schema contains only immutable getters, comparators, and structure.
-	// Every build receives fresh mutable indexes, so even a future reusable
-	// schema cannot modify an Index returned by an earlier build.
+	// Validation gets fresh state as some rules resolve build-only structure.
 	ids := &nodeIDAllocator{}
-	state := schema.newState(ids, hints)
+	validator := schema.newState(ids, hints)
 	uniqueIDCapacity := 0
 	if hints != nil {
 		uniqueIDCapacity = capacityHint(hints.uniqueIDs)
 	}
-	ix := &Index[C, ID]{root: state, values: make([]ID, 0, uniqueIDCapacity), pool: newBitmapPool()}
+	analysis := buildAnalysis[C, ID]{values: make([]ID, 0, uniqueIDCapacity)}
 	internalIDs := make(map[ID]uint32, uniqueIDCapacity)
 	var buildErr error
 	entryIndex := 0
-	// TODO: Explore an optional bulk-build path that buffers IDs per posting and
-	// flushes them with roaring.AddMany. It substantially reduces insertion CPU
-	// for large postings, but per-posting buffers increase peak build memory and
-	// do not suit the current streaming contract; see BenchmarkBitmapAddMany.
 	entries(func(constraint C, id ID) bool {
-		if uint64(len(ix.values)) > math.MaxUint32 {
+		if uint64(len(analysis.values)) > math.MaxUint32 {
 			buildErr = fmt.Errorf("ruleix: at most 2^32 rules are supported")
 			return false
 		}
-		if err := ix.root.validate(constraint); err != nil {
+		if err := validator.validate(constraint); err != nil {
 			buildErr = fmt.Errorf("ruleix: entry %d: %w", entryIndex, err)
 			return false
 		}
 		internalID, exists := internalIDs[id]
 		if !exists {
-			internalID = uint32(len(ix.values))
+			internalID = uint32(len(analysis.values))
 			internalIDs[id] = internalID
-			ix.values = append(ix.values, id)
+			analysis.values = append(analysis.values, id)
 		}
-		ix.root.insert(constraint, internalID)
+		analysis.entries = append(analysis.entries, analyzedEntry[C]{constraint: constraint, internalID: internalID})
 		entryIndex++
 		return true
 	})
 	if buildErr != nil {
-		return nil, buildStatistics{}, buildErr
+		return buildAnalysis[C, ID]{}, buildErr
 	}
-	statistics := buildStatistics{entries: entryIndex, uniqueIDs: len(ix.values)}
+	return analysis, nil
+}
+
+// planBuild is intentionally small: the first pipeline iteration has only the
+// exact representation. Lossy policies can extend this decision without
+// changing input consumption or materialization.
+func planBuild[C any, ID comparable](buildAnalysis[C, ID]) buildPlan {
+	return buildPlan{mode: RuleModeExact}
+}
+
+func materializeBuild[C any, ID comparable](
+	schema Rule[C],
+	analysis buildAnalysis[C, ID],
+	plan buildPlan,
+	collectStatistics bool,
+	hints *buildStatistics,
+) (*Index[C, ID], buildStatistics, error) {
+	if plan.mode != RuleModeExact {
+		return nil, buildStatistics{}, fmt.Errorf("ruleix: unsupported build mode %q", plan.mode)
+	}
+	ids := &nodeIDAllocator{}
+	state := schema.newState(ids, hints)
+	ix := &Index[C, ID]{root: state, values: analysis.values, pool: newBitmapPool()}
+	// TODO: Explore an optional bulk-build path that buffers IDs per posting and
+	// flushes them with roaring.AddMany. It substantially reduces insertion CPU
+	// for large postings; see BenchmarkBitmapAddMany.
+	for _, entry := range analysis.entries {
+		ix.root.insert(entry.constraint, entry.internalID)
+	}
+	statistics := buildStatistics{entries: len(analysis.entries), uniqueIDs: len(ix.values)}
 	if collectStatistics {
 		statistics.nodes = make([]nodeBuildStatistics, int(ids.next))
 		ix.root.collectBuildStatistics(statistics.nodes)

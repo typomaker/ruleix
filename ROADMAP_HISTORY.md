@@ -353,3 +353,17 @@ metadata. Go object headers, capacity slack, allocator classes, and GC metadata
 remain separate benchmark concerns. Planning and inspection use the same
 formula, so identical inputs and strategies produce stable values across Go
 versions and architectures.
+
+## 2026-08-22: staged build pipeline
+
+`Build` now has explicit analysis, planning, and materialization phases.
+Analysis consumes and validates the source once, assigns stable internal IDs,
+and retains representation-independent entries without constructing posting
+indexes. The initial planner deliberately selects only the existing exact
+mode; materialization then creates fresh rule state and populates that selected
+representation.
+
+This preserves immutable indexes, first-insertion result order, duplicate-ID
+semantics, rebuild hints, and failure publication behavior. More importantly,
+future lossy planners can inspect analyzed input and select a representation
+before any complete exact index is constructed and discarded.

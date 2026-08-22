@@ -107,3 +107,27 @@ func TestBuiltIndexSupportsConcurrentSearch(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestAnalyzeBuildAssignsStableIDsWithoutMaterializingPostings(t *testing.T) {
+	schema := ruleix.Include(func(v int) (int, bool) { return v, true })
+	consumed := 0
+	entries := func(yield func(int, string) bool) {
+		for _, entry := range []struct {
+			constraint int
+			id         string
+		}{{10, "first"}, {20, "second"}, {30, "first"}} {
+			consumed++
+			if !yield(entry.constraint, entry.id) {
+				return
+			}
+		}
+	}
+
+	index, err := ruleix.New[int, string](schema).Build(entries)
+	require.NoError(t, err)
+	require.Equal(t, 3, consumed, "analysis must consume the input exactly once")
+
+	var got []string
+	index.Search(30, &got)
+	require.Equal(t, []string{"first"}, got, "materialization must preserve analyzed ID assignments")
+}
