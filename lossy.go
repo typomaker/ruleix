@@ -171,11 +171,15 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 }
 
 type lossyAllLeaf[T any] struct {
-	compiler lossyCompiler[T]
-	exact    uint64
-	minimum  uint64
-	limit    uint64
-	compiled Rule[T]
+	compiler     lossyCompiler[T]
+	exact        uint64
+	minimum      uint64
+	limit        uint64
+	compiled     Rule[T]
+	upgradeLimit uint64
+	upgradeCost  uint64
+	upgrade      Rule[T]
+	upgradeKnown bool
 }
 
 // compileLossyAll treats the composite limit as a pool. Every leaf first gets
@@ -340,38 +344,56 @@ func minimumLossyAllLimit[T any](compiler lossyCompiler[T], exact uint64) (uint6
 func redistributeLossyAllBudget[T any](leaves []lossyAllLeaf[T], available uint64) {
 	for available != 0 {
 		best := -1
-		var bestLimit, bestCost uint64
+		var bestCost uint64
 		for i := range leaves {
 			usage := inspectionDetailsOf(leaves[i].compiled).MemoryUsageBytes
 			if usage >= leaves[i].exact {
 				continue
 			}
-			low, high := usage+1, leaves[i].exact
-			for low < high {
-				mid := low + (high-low)/2
-				candidate, err := leaves[i].compiler.compileLossy(mid)
-				if err != nil || inspectionDetailsOf(candidate).MemoryUsageBytes <= usage {
-					low = mid + 1
-				} else {
-					high = mid
-				}
-			}
-			candidate, err := leaves[i].compiler.compileLossy(low)
-			if err != nil || inspectionDetailsOf(candidate).MemoryUsageBytes <= usage {
-				continue
-			}
-			cost := inspectionDetailsOf(candidate).MemoryUsageBytes - usage
-			if cost <= available && (best < 0 || cost < bestCost) {
-				best, bestLimit, bestCost = i, low, cost
+			prepareLossyAllUpgrade(&leaves[i], usage)
+			cost := leaves[i].upgradeCost
+			if cost != 0 && cost <= available && (best < 0 || cost < bestCost) {
+				best, bestCost = i, cost
 			}
 		}
 		if best < 0 {
 			return
 		}
-		leaves[best].limit = bestLimit
-		leaves[best].compiled, _ = leaves[best].compiler.compileLossy(bestLimit)
+		leaves[best].limit = leaves[best].upgradeLimit
+		leaves[best].compiled = leaves[best].upgrade
+		leaves[best].upgrade = nil
+		leaves[best].upgradeCost = 0
+		leaves[best].upgradeKnown = false
 		available -= bestCost
 	}
+}
+
+func prepareLossyAllUpgrade[T any](leaf *lossyAllLeaf[T], usage uint64) {
+	if leaf.upgradeKnown {
+		return
+	}
+	leaf.upgradeKnown = true
+	low, high := usage+1, leaf.exact
+	for low < high {
+		mid := low + (high-low)/2
+		candidate, err := leaf.compiler.compileLossy(mid)
+		if err != nil || inspectionDetailsOf(candidate).MemoryUsageBytes <= usage {
+			low = mid + 1
+		} else {
+			high = mid
+		}
+	}
+	candidate, err := leaf.compiler.compileLossy(low)
+	if err != nil {
+		return
+	}
+	candidateUsage := inspectionDetailsOf(candidate).MemoryUsageBytes
+	if candidateUsage <= usage {
+		return
+	}
+	leaf.upgradeLimit = low
+	leaf.upgradeCost = candidateUsage - usage
+	leaf.upgrade = candidate
 }
 
 func lossyinspectionDetails[T any](rule Rule[T], limit uint64) inspectionDetails {

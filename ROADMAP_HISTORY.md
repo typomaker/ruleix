@@ -472,3 +472,27 @@ representations remain deterministic, and their combined accounted memory
 never exceeds the caller's limit. A skewed equality test covers a small child
 with a relatively expensive minimum beside a much larger, highly compressible
 child and verifies both successful construction and the hard aggregate bound.
+
+## 2026-08-22: pooled lossy All cost and quality baseline
+
+`BenchmarkLossyAllPlanning` now measures exact and pooled 50% and 25% memory
+budgets at 10K entries with two, four, and eight equality children.
+`BenchmarkLossyAllSearchQuality` reports search latency, allocations, candidates
+per query, and the observed false-positive rate for a four-child workload.
+
+The first benchmark run exposed repeated work in pooled redistribution. The
+allocator now caches each leaf's next compiled upgrade, and equality lossy
+compilation hashes each distinct value once per compilation instead of once per
+bucket granularity. On Apple M1 Max, the two-child 50% case fell from about
+3.4 seconds and 60.9 million allocations to 821 milliseconds and 6.4 million
+allocations. Exact construction took 4.5 milliseconds and 6.3 thousand
+allocations. The improvement is material, but the remaining gap makes repeated
+representation construction the next allocator bottleneck; operator expansion
+is not justified until that cost is reduced.
+
+Reproduce the matrix with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyAll(Planning|SearchQuality)/' \
+  -benchmem -benchtime=300ms -count=5 .
+```

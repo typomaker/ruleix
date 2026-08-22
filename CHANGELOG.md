@@ -27,6 +27,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Aggregate `Lossy(All(...))` limits now form a pooled budget: minimum viable
   child representations are reserved first and unused share bytes are
   deterministically redistributed to improve other children.
+- Pooled lossy planning caches each leaf's next representation upgrade, and
+  equality compilation reuses canonical hashes across bucket granularities.
+- Lossy `All` benchmarks now report planning cost, search latency, candidate
+  amplification, and observed false-positive rate across memory budgets.
 - The production-shaped planner benchmark matrix now covers 10K, 100K, and 1M
   rules by default, with opt-in 5M and 10M cases, across build,
   retained-memory, peak-build-memory, GC-pressure, selective, small-result,

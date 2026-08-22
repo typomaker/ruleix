@@ -96,10 +96,12 @@ as `Lossy(Include(...), MemoryLimit(20<<20))`, not lossy-specific parameters on
 every rule constructor.
 
 The policy now supports one pooled budget around `All`; its deterministic
-allocation, redistribution behavior, and composition invariant are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Benchmark planning cost and search
-quality before extending the allocator further. The next operator expansion
-should be driven by a concrete workload and benchmark evidence.
+allocation, redistribution behavior, composition invariant, and initial cost
+and quality benchmark are recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
+The benchmark identifies pooled planning cost as the next bottleneck: reduce
+repeated representation construction before extending the allocator. The next
+operator expansion should be driven by a concrete workload and benchmark
+evidence.
 
 Require property tests comparing lossy and exact results across supported
 operators and value types, adversarial boundary tests for ordered encodings,

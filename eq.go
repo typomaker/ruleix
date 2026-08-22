@@ -13,10 +13,25 @@ func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 	exact := uint64(16) + bitmapBytes(r.wildcard)
 	items := r.wildcard.GetCardinality()
 	distinct := uint64(0)
+	type hashedSet struct {
+		hash uint64
+		set  *equalitySet
+	}
+	hashed := make([]hashedSet, 0, len(r.values.sets))
+	valid := true
+	addHash := func(value V, set *equalitySet) {
+		hash, ok := hashScalar(any(value))
+		if !ok {
+			valid = false
+			return
+		}
+		hashed = append(hashed, hashedSet{hash: hash, set: set})
+	}
 	if r.values.offsets == nil {
 		for n := range int(r.values.count) {
 			items += equalitySetCardinality(&r.values.sets[n])
 			distinct++
+			addHash(r.values.keys[n], &r.values.sets[n])
 			encoded, ok := canonicalScalar(nil, any(r.values.keys[n]))
 			if !ok {
 				continue
@@ -27,6 +42,7 @@ func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 		for value, offset := range r.values.offsets {
 			items += equalitySetCardinality(&r.values.sets[offset])
 			distinct++
+			addHash(value, &r.values.sets[offset])
 			encoded, ok := canonicalScalar(nil, any(value))
 			if !ok {
 				continue
@@ -39,27 +55,18 @@ func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 	}
 	var selected *lossyEqualityRule[T, V]
 	for bits := uint(0); bits <= lossyMaxBucketBits; bits++ {
-		candidate := &lossyEqualityRule[T, V]{nodeID: r.nodeID, get: r.get, wildcard: r.wildcard, shift: 64 - bits, buckets: make(map[uint64]*roaring.Bitmap)}
-		valid := true
-		add := func(value V, set *equalitySet) {
-			hash, ok := hashScalar(any(value))
-			if !ok {
-				valid = false
-				return
-			}
-			bucket := hash >> candidate.shift
+		candidate := &lossyEqualityRule[T, V]{
+			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
+			shift: 64 - bits, buckets: make(map[uint64]*roaring.Bitmap),
+		}
+		for _, value := range hashed {
+			bucket := value.hash >> candidate.shift
 			posting := candidate.buckets[bucket]
 			if posting == nil {
 				posting = roaring.New()
 				candidate.buckets[bucket] = posting
 			}
-			set.addTo(posting)
-		}
-		for n := range int(r.values.count) {
-			add(r.values.keys[n], &r.values.sets[n])
-		}
-		for value, offset := range r.values.offsets {
-			add(value, &r.values.sets[offset])
+			value.set.addTo(posting)
 		}
 		if !valid {
 			return nil, fmt.Errorf("ruleix: Lossy equality requires a supported scalar value type")
@@ -81,7 +88,8 @@ func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 	for _, posting := range selected.buckets {
 		usage += 16 + bitmapBytes(posting)
 	}
-	return &inspectionDetailsRule[T]{child: selected, details: representationDetails(usage, items, distinct, uint64(len(selected.buckets)), true)}, nil
+	details := representationDetails(usage, items, distinct, uint64(len(selected.buckets)), true)
+	return &inspectionDetailsRule[T]{child: selected, details: details}, nil
 }
 
 func equalitySetCardinality(s *equalitySet) uint64 {
