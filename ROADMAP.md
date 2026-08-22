@@ -15,6 +15,21 @@ New filters and combinators are deferred until a concrete use case cannot be
 expressed reasonably with the existing API. When that happens, validate the
 semantics and indexing cost before promoting the feature back into active work.
 
+### Shared wildcard evaluation in `All`
+
+When two or more positive child rules have the same wildcard posting bitmap,
+evaluate that shared wildcard only once. For concrete query values, preserve
+each child's value-specific match and use the identity
+`(W ∪ A) ∩ (W ∪ B) = W ∪ (A ∩ B)` instead of materializing `W` in
+every intermediate child result.
+
+Build-time bitmap interning already gives equal wildcard postings shared
+storage; this candidate targets the remaining repeated search work. Start with
+equality filters under one `All`, keep exclusions and the two `Between` bounds
+out of the initial fast path, and require benchmarks with large partial
+wildcards. Compare against the existing path for small bitmaps and warmed
+`Local` caches, where grouping overhead may outweigh the saved unions.
+
 ## Deferred feature candidates
 
 ### Not equal
