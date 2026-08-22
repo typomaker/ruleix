@@ -95,9 +95,10 @@ Keep this policy orthogonal to operators: the intended API is a decorator such
 as `Lossy(Include(...), MemoryLimit(20<<20))`, not lossy-specific parameters on
 every rule constructor.
 
-The next stage is to extend the policy to `All`, but only after defining how
-one budget is divided among children and proving that composition preserves the
-no-false-negative invariant.
+The policy now supports one aggregate budget around `All`; its deterministic
+proportional allocation and composition invariant are recorded in
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The next operator expansion should
+be driven by a concrete workload and benchmark evidence.
 
 Require property tests comparing lossy and exact results across supported
 operators and value types, adversarial boundary tests for ordered encodings,

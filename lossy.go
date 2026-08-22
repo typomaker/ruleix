@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"math/bits"
+	"sort"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
@@ -114,9 +116,6 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 		if err := typed.validatePolicy(); err != nil {
 			return nil, err
 		}
-		if _, ok := typed.child.(*allRule[T]); ok {
-			return nil, fmt.Errorf("ruleix: Lossy cannot directly decorate All")
-		}
 		if _, ok := typed.child.(*lossyRule[T]); ok {
 			return nil, fmt.Errorf("ruleix: nested Lossy policies are not supported")
 		}
@@ -125,6 +124,17 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 		if value, ok := child.(*inspectRule[T]); ok {
 			inspected = value
 			child = value.child
+		}
+		if composite, ok := child.(*allRule[T]); ok {
+			compiled, details, err := compileLossyAll(composite, typed.limit)
+			if err != nil {
+				return nil, err
+			}
+			wrapped := Rule[T](&inspectionDetailsRule[T]{child: compiled, details: details})
+			if inspected != nil {
+				return &inspectRule[T]{dst: inspected.dst, child: wrapped}, nil
+			}
+			return wrapped, nil
 		}
 		compiler, ok := child.(lossyCompiler[T])
 		if !ok {
@@ -157,6 +167,127 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 		return &inspectRule[T]{dst: typed.dst, child: child}, nil
 	default:
 		return rule, nil
+	}
+}
+
+type lossyAllLeaf[T any] struct {
+	exact uint64
+	limit uint64
+}
+
+// compileLossyAll divides one composite budget proportionally to the exact
+// accounted size of its leaves. Largest remainders are assigned in schema
+// order, making the allocation deterministic while using the entire budget.
+func compileLossyAll[T any](rule *allRule[T], limit uint64) (*allRule[T], inspectionDetails, error) {
+	var leaves []lossyAllLeaf[T]
+	if err := collectLossyAllLeaves[T](rule, &leaves); err != nil {
+		return nil, inspectionDetails{}, err
+	}
+	var total uint64
+	for _, leaf := range leaves {
+		if math.MaxUint64-total < leaf.exact {
+			return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All memory accounting overflow")
+		}
+		total += leaf.exact
+	}
+	if total <= limit {
+		for i := range leaves {
+			leaves[i].limit = leaves[i].exact
+		}
+	} else if total != 0 {
+		type remainder struct {
+			index int
+			value uint64
+		}
+		remainders := make([]remainder, len(leaves))
+		var allocated uint64
+		for i := range leaves {
+			hi, lo := bits.Mul64(limit, leaves[i].exact)
+			quotient, rem := bits.Div64(hi, lo, total)
+			leaves[i].limit = quotient
+			allocated += quotient
+			remainders[i] = remainder{index: i, value: rem}
+		}
+		sort.SliceStable(remainders, func(i, j int) bool { return remainders[i].value > remainders[j].value })
+		for i := uint64(0); i < limit-allocated; i++ {
+			leaves[remainders[i].index].limit++
+		}
+	}
+	index := 0
+	compiled, details, err := materializeLossyAll[T](rule, leaves, &index)
+	if err != nil {
+		return nil, inspectionDetails{}, err
+	}
+	details.MemoryLimitBytes, details.MemoryLimitAvailable = limit, true
+	return compiled.(*allRule[T]), details, nil
+}
+
+func collectLossyAllLeaves[T any](rule Rule[T], leaves *[]lossyAllLeaf[T]) error {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		for _, child := range typed.children {
+			if err := collectLossyAllLeaves(child, leaves); err != nil {
+				return err
+			}
+		}
+		return nil
+	case *inspectRule[T]:
+		return collectLossyAllLeaves(typed.child, leaves)
+	case *lossyRule[T]:
+		return fmt.Errorf("ruleix: nested Lossy policies are not supported")
+	default:
+		compiler, ok := rule.(lossyCompiler[T])
+		if !ok {
+			return fmt.Errorf("ruleix: Lossy All does not support a child rule representation")
+		}
+		exact, err := compiler.compileLossy(math.MaxUint64)
+		if err != nil {
+			return err
+		}
+		details := inspectionDetailsOf(exact)
+		if !details.MemoryUsageAvailable {
+			return fmt.Errorf("ruleix: Lossy All child has no memory accounting")
+		}
+		*leaves = append(*leaves, lossyAllLeaf[T]{exact: details.MemoryUsageBytes})
+		return nil
+	}
+}
+
+func materializeLossyAll[T any](rule Rule[T], leaves []lossyAllLeaf[T], index *int) (Rule[T], inspectionDetails, error) {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		children := make([]Rule[T], len(typed.children))
+		var aggregate inspectionDetails
+		for i, child := range typed.children {
+			compiled, details, err := materializeLossyAll(child, leaves, index)
+			if err != nil {
+				return nil, inspectionDetails{}, err
+			}
+			children[i] = compiled
+			aggregate.MemoryUsageBytes += details.MemoryUsageBytes
+			aggregate.Items += details.Items
+			aggregate.DistinctValues += details.DistinctValues
+			aggregate.GranularityValue += details.GranularityValue
+			aggregate.MemoryUsageAvailable = aggregate.MemoryUsageAvailable || details.MemoryUsageAvailable
+			aggregate.ItemsAvailable = aggregate.ItemsAvailable || details.ItemsAvailable
+			aggregate.DistinctValuesAvailable = aggregate.DistinctValuesAvailable || details.DistinctValuesAvailable
+			aggregate.GranularityAvailable = aggregate.GranularityAvailable || details.GranularityAvailable
+		}
+		return &allRule[T]{children: children}, aggregate, nil
+	case *inspectRule[T]:
+		child, details, err := materializeLossyAll(typed.child, leaves, index)
+		if err != nil {
+			return nil, inspectionDetails{}, err
+		}
+		return &inspectRule[T]{dst: typed.dst, child: &inspectionDetailsRule[T]{child: child, details: details}}, details, nil
+	default:
+		leaf := leaves[*index]
+		*index++
+		compiled, err := rule.(lossyCompiler[T]).compileLossy(leaf.limit)
+		if err != nil {
+			return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All child %d: %w", *index, err)
+		}
+		return compiled, inspectionDetailsOf(compiled), nil
 	}
 }
 

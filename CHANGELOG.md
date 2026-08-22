@@ -19,8 +19,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   value counts, and selected bucket granularity with explicit availability.
 - `Lossy` and `MemoryLimit` add opt-in, memory-bounded grouped-hash equality and
   ordered-bucket representations for supported scalar equality and ordered
-  rules. Approximate results may contain false positives but never omit an
-  exact match.
+  rules, including one aggregate budget around `All`. Approximate results may
+  contain false positives but never omit an exact match.
 
 ### Changed
 

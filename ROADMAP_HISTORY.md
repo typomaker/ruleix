@@ -440,3 +440,20 @@ metadata. Temporary metadata decorators are removed with inspectors before
 index publication, so searches retain no diagnostic wrapper. No false-positive
 estimate is reported because the supported strategies do not have a meaningful
 workload-independent probability model.
+
+## 2026-08-22: aggregate lossy budgets for All
+
+`Lossy(All(...), MemoryLimit(n))` now bounds the combined accounted leaf
+representations. The planner retains every leaf exactly when their total exact
+size fits. Otherwise it assigns bytes in proportion to exact size with a
+deterministic largest-remainder allocation; nested `All` groups retain their
+search shape but participate in one flattened allocation. A leaf that cannot
+fit its assigned share fails the build rather than exceeding the aggregate
+limit.
+
+The correctness argument follows directly from conservative composition: each
+compiled leaf result is a superset of its exact result, and intersecting those
+supersets cannot remove an ID present in every exact child. Tests exercise both
+exact and lossy composite selection, enforce the aggregate accounting limit,
+compare composite results against an exact index across varied queries, and
+continue to reject nested `Lossy` policies.

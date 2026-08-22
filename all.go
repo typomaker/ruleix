@@ -27,6 +27,14 @@ type allRule[T any] struct{ children []Rule[T] }
 
 func (*allRule[T]) rule()                      {}
 func (*allRule[T]) inspectionStrategy() string { return "all" }
+func (r *allRule[T]) inspectionMode() RuleMode {
+	for _, child := range r.children {
+		if inspectionModeOf(child) == RuleModeLossy {
+			return RuleModeLossy
+		}
+	}
+	return RuleModeExact
+}
 func (r *allRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	children := make([]Rule[T], len(r.children))
 	for i, child := range r.children {

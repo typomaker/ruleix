@@ -162,6 +162,17 @@ ruleix.Lossy(
 )
 ```
 
+One limit can cover an entire conjunction. The build keeps every child exact
+when their combined accounted size fits; otherwise the budget is divided among
+the children in proportion to their exact sizes:
+
+```go
+ruleix.Lossy(
+	ruleix.All(ruleix.Include(customerID), ruleix.GreaterOrEqual(minimumTotal, cmp.Compare[int])),
+	ruleix.MemoryLimit(20<<20),
+)
+```
+
 All getters return `(value, ok)`. In a stored constraint, `ok == false` is a
 wildcard. In a search value it only matches stored wildcards. For `Exclude`,
 `ok == false` means that no value is forbidden. Zero values remain concrete

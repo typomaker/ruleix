@@ -31,9 +31,9 @@ ruleix.Lossy(
 ```
 
 The same policy should eventually apply to `Include`, `Exclude`, `Between`,
-ordered comparisons, and `CompareBy`. It should also compose with independently
-budgeted children of `All`. Applying one policy to an entire `All` is desirable,
-but requires explicit budget-allocation semantics first.
+ordered comparisons, and `CompareBy`. It composes with independently budgeted
+children of `All`, and one policy may also bound an entire `All` when every leaf
+has a supported representation.
 
 The initial public configuration should contain only `MemoryLimit(bytes)`. False
 positive rate, hash-function count, bucket count, segment size, prefix length,
@@ -133,8 +133,8 @@ usable.
 - canonical encoding rejects an input value, or an accounting calculation
   overflows;
 - the policy is invalid, including a missing, duplicate, or zero memory limit;
-- `Lossy` directly decorates `All` before whole-composite budget allocation is
-  implemented.
+- a child of a composite `Lossy(All(...))` is unsupported or cannot fit its
+  deterministic share of the composite budget.
 
 The error identifies the decorated operator and the reason, but strategy names
 and minimum byte counts are diagnostic rather than stable strings. A failed
@@ -147,11 +147,12 @@ uniform policy while operator-specific strategies are rolled out. Custom rule
 implementations cannot occur because `Rule` is sealed.
 
 Independently budgeted children of `All` are valid and each owns its entire
-limit. Nested `Lossy` decorators are rejected during `Build`; they do not form
-multiple tiers or combine budgets. `Inspect` may wrap `Lossy` or be wrapped by
-it, and both forms refer to the selected representation. Other option types,
-aggregate budgets around `All`, soft limits, and caller-selected false-positive
-targets require separate contracts and are not part of the initial API.
+limit. One `Lossy` around `All` owns the combined accounted storage of all leaf
+representations; structural `All` overhead remains excluded. Nested `Lossy`
+decorators are rejected during `Build`; they do not form multiple tiers or
+combine budgets. `Inspect` may wrap `Lossy` or be wrapped by it, and both forms
+refer to the selected representation. Other option types, soft limits, and
+caller-selected false-positive targets require separate contracts.
 
 ## Build-time planning
 
@@ -232,10 +233,14 @@ ruleix.All(
 
 If every child result is a superset of its exact result, intersecting those
 child results remains a superset of the exact conjunction. A policy wrapped
-around `All` additionally needs a deterministic budget allocation strategy.
-Possible allocation inputs include exact-size estimates, minimum viable sizes,
-and expected selectivity; the choice should be driven by memory and search
-benchmarks rather than exposed as an initial user setting.
+around `All` first computes every leaf's exact accounted size. If their sum
+fits, every leaf remains exact. Otherwise it divides the limit in proportion to
+those sizes, assigning integer-byte remainders by descending fractional
+remainder and then schema order. Each leaf independently selects the finest
+representation that fits its share. The build fails if any share is below that
+leaf's minimum viable representation; unused bytes are not redistributed in
+this first deterministic allocator. Nested `All` groups use the same flattened
+leaf allocation while retaining their search structure.
 
 ## Diagnostics
 
