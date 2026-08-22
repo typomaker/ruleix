@@ -150,6 +150,18 @@ operator, use `Greater` or `Less` directly.
 | `CompareBy` | the operator stored with the constraint evaluates to true |
 | `All` | every child rule matches |
 
+Memory-sensitive scalar equality and ordered rules can opt into a bounded,
+conservative representation. The exact representation is retained when it
+fits; otherwise results may include false positives but never omit an exact
+match:
+
+```go
+ruleix.Lossy(
+	ruleix.Include(customerID),
+	ruleix.MemoryLimit(20<<20),
+)
+```
+
 All getters return `(value, ok)`. In a stored constraint, `ok == false` is a
 wildcard. In a search value it only matches stored wildcards. For `Exclude`,
 `ok == false` means that no value is forbidden. Zero values remain concrete

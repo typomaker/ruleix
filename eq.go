@@ -1,10 +1,88 @@
 package ruleix
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
+
+func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
+	// V1 accounting: wildcard payload, 16 bytes of strategy metadata, and for
+	// each occupied bucket an 8-byte key, 8-byte logical slot, and payload.
+	exact := uint64(16) + bitmapBytes(r.wildcard)
+	if r.values.offsets == nil {
+		for n := range int(r.values.count) {
+			encoded, ok := canonicalScalar(nil, any(r.values.keys[n]))
+			if !ok {
+				continue
+			}
+			exact += uint64(len(encoded)) + 8 + equalitySetBytes(&r.values.sets[n])
+		}
+	} else {
+		for value, offset := range r.values.offsets {
+			encoded, ok := canonicalScalar(nil, any(value))
+			if !ok {
+				continue
+			}
+			exact += uint64(len(encoded)) + 8 + equalitySetBytes(&r.values.sets[offset])
+		}
+	}
+	if exact <= limit {
+		return r, nil
+	}
+	var selected *lossyEqualityRule[T, V]
+	for bits := uint(0); bits <= lossyMaxBucketBits; bits++ {
+		candidate := &lossyEqualityRule[T, V]{nodeID: r.nodeID, get: r.get, wildcard: r.wildcard, shift: 64 - bits, buckets: make(map[uint64]*roaring.Bitmap)}
+		valid := true
+		add := func(value V, set *equalitySet) {
+			hash, ok := hashScalar(any(value))
+			if !ok {
+				valid = false
+				return
+			}
+			bucket := hash >> candidate.shift
+			posting := candidate.buckets[bucket]
+			if posting == nil {
+				posting = roaring.New()
+				candidate.buckets[bucket] = posting
+			}
+			set.addTo(posting)
+		}
+		for n := range int(r.values.count) {
+			add(r.values.keys[n], &r.values.sets[n])
+		}
+		for value, offset := range r.values.offsets {
+			add(value, &r.values.sets[offset])
+		}
+		if !valid {
+			return nil, fmt.Errorf("ruleix: Lossy equality requires a supported scalar value type")
+		}
+		usage := uint64(16) + bitmapBytes(candidate.wildcard)
+		for _, posting := range candidate.buckets {
+			usage += 16 + bitmapBytes(posting)
+		}
+		if usage <= limit {
+			selected = candidate
+		} else {
+			break
+		}
+	}
+	if selected == nil {
+		return nil, fmt.Errorf("ruleix: Lossy equality cannot fit the memory limit")
+	}
+	return selected, nil
+}
+
+func equalitySetBytes(s *equalitySet) uint64 {
+	if s.bits != nil {
+		return bitmapBytes(s.bits)
+	}
+	if s.small != nil {
+		return uint64(len(s.small)) * 4
+	}
+	return 4
+}
 
 // Include matches a query field when it equals the stored field. A missing
 // stored value is a wildcard and matches every concrete query value; a missing

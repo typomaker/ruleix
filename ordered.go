@@ -1,6 +1,9 @@
 package ruleix
 
-import "github.com/RoaringBitmap/roaring/v2"
+import (
+	"fmt"
+	"github.com/RoaringBitmap/roaring/v2"
+)
 
 // GreaterOrEqual matches query >= stored. A missing stored value is a wildcard.
 //
@@ -79,6 +82,80 @@ type orderedRule[T any, V any] struct {
 	inclusive bool
 	wildcard  *roaring.Bitmap
 	index     orderedIndex[V]
+}
+
+func (r *orderedRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
+	// Ordered exact accounting is conservative and stable: key encodings,
+	// logical slots, aggregate postings, and wildcard payload.
+	exact := uint64(24) + bitmapBytes(r.wildcard)
+	var values []struct {
+		key  uint64
+		bits *roaring.Bitmap
+	}
+	for _, block := range r.index.blocks {
+		exact += bitmapBytes(block.bits) + 8
+		for _, item := range block.items {
+			encoded, ok := canonicalScalar(nil, any(item.value))
+			if !ok {
+				continue
+			}
+			exact += uint64(len(encoded)) + 8 + bitmapBytes(item.bits)
+			key, supported := orderedScalarKey(any(item.value))
+			if supported {
+				values = append(values, struct {
+					key  uint64
+					bits *roaring.Bitmap
+				}{key, item.bits})
+			}
+		}
+	}
+	if exact <= limit {
+		return r, nil
+	}
+	if len(values) == 0 && r.index.buildStatistics().uniqueValues != 0 {
+		return nil, fmt.Errorf("ruleix: Lossy ordered comparison requires a supported scalar value type")
+	}
+	if len(values) == 0 {
+		if uint64(32)+bitmapBytes(r.wildcard) <= limit {
+			return &lossyOrderedRule[T, V]{nodeID: r.nodeID, get: r.get, dir: r.dir, inclusive: r.inclusive, wildcard: r.wildcard}, nil
+		}
+		return nil, fmt.Errorf("ruleix: Lossy ordered comparison cannot fit the memory limit")
+	}
+	minKey, maxKey := values[0].key, values[0].key
+	for _, value := range values[1:] {
+		minKey = min(minKey, value.key)
+		maxKey = max(maxKey, value.key)
+	}
+	var selected *lossyOrderedRule[T, V]
+	for bits := uint(0); bits <= lossyMaxBucketBits; bits++ {
+		count := uint64(1) << bits
+		span := maxKey - minKey
+		width := span/count + 1
+		used := span/width + 1
+		candidate := &lossyOrderedRule[T, V]{nodeID: r.nodeID, get: r.get, dir: r.dir, inclusive: r.inclusive, wildcard: r.wildcard, min: minKey, max: maxKey, width: width, buckets: make([]*roaring.Bitmap, used)}
+		for _, value := range values {
+			n := (value.key - minKey) / width
+			if candidate.buckets[n] == nil {
+				candidate.buckets[n] = roaring.New()
+			}
+			candidate.buckets[n].Or(value.bits)
+		}
+		usage := uint64(32) + bitmapBytes(r.wildcard) + uint64(len(candidate.buckets))*8
+		for _, posting := range candidate.buckets {
+			if posting != nil {
+				usage += bitmapBytes(posting)
+			}
+		}
+		if usage <= limit {
+			selected = candidate
+		} else {
+			break
+		}
+	}
+	if selected == nil {
+		return nil, fmt.Errorf("ruleix: Lossy ordered comparison cannot fit the memory limit")
+	}
+	return selected, nil
 }
 
 func (*orderedRule[T, V]) inspectionStrategy() string { return "ordered" }

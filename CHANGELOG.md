@@ -15,6 +15,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `Inspect` and the sealed `Inspector` interface expose direct methods over a
   resettable, generation-consistent snapshot of the compiled strategy and
   build counts for one marked rule without changing its search representation.
+- `Lossy` and `MemoryLimit` add opt-in, memory-bounded grouped-hash equality and
+  ordered-bucket representations for supported scalar equality and ordered
+  rules. Approximate results may contain false positives but never omit an
+  exact match.
 
 ### Changed
 

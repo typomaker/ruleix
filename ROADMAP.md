@@ -97,19 +97,11 @@ every rule constructor.
 
 Develop the feature in stages:
 
-1. Promote the benchmarked grouped-hash equality and observed-domain ordered
-   bucket prototypes into the build planner, starting with one scalar equality
-   rule and one ordered comparison. Keep the strategy and granularity internal.
-   Time values remain deferred until their supported range or wider key is
-   explicit.
-2. Select granularity automatically from the budget, actual data distribution,
-   operator, and value type. Resolve type-specific behavior once during
-   `Build`; do not add type switches to the search hot path.
-3. Add build statistics describing the selected exact or lossy representation,
+1. Add build statistics describing the selected exact or lossy representation,
    retained memory, budget, item and distinct-value counts, strategy, and
    granularity, exposed through the proposed `Inspect` API. Report an estimated
    false-positive rate only where it can be computed meaningfully.
-4. Extend the policy to `All` only after defining how one budget is divided
+2. Extend the policy to `All` only after defining how one budget is divided
    among children and proving that composition preserves the no-false-negative
    invariant.
 

@@ -160,11 +160,16 @@ func materializeBuild[C any, ID comparable](
 	ids := &nodeIDAllocator{}
 	state := schema.newState(ids, hints)
 	ix := &Index[C, ID]{root: state, values: analysis.values, pool: newBitmapPool()}
+	var err error
 	// TODO: Explore an optional bulk-build path that buffers IDs per posting and
 	// flushes them with roaring.AddMany. It substantially reduces insertion CPU
 	// for large postings; see BenchmarkBitmapAddMany.
 	for _, entry := range analysis.entries {
 		ix.root.insert(entry.constraint, entry.internalID)
+	}
+	ix.root, err = compileLossyRules(ix.root, false)
+	if err != nil {
+		return nil, buildStatistics{}, err
 	}
 	statistics := buildStatistics{entries: len(analysis.entries), uniqueIDs: len(ix.values)}
 	if collectStatistics {
@@ -173,7 +178,6 @@ func materializeBuild[C any, ID comparable](
 	}
 	ix.root = optimizeRule(ix.root, uint64(len(ix.values)))
 	var inspections []pendingInspection
-	var err error
 	ix.root, err = stripInspectors(ix.root, make(map[*inspectorState]struct{}), &inspections)
 	if err != nil {
 		return nil, buildStatistics{}, err
@@ -210,6 +214,7 @@ func materializeBuild[C any, ID comparable](
 	for _, inspection := range inspections {
 		inspection.dst.published.Store(&inspectorSnapshotBox{snapshot: exactInspectorSnapshot{
 			strategyName: inspection.strategy,
+			modeName:     inspection.mode,
 			entries:      uint64(statistics.entries),
 			rules:        uint64(statistics.uniqueIDs),
 		}})

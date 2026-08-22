@@ -14,6 +14,9 @@ type RuleMode string
 const (
 	// RuleModeExact reports a representation with no false positives.
 	RuleModeExact RuleMode = "exact"
+	// RuleModeLossy reports a conservative representation that may include
+	// false positives but never excludes an exact match.
+	RuleModeLossy RuleMode = "lossy"
 )
 
 // Inspector observes one rule's compiled representation. Its first observation
@@ -60,12 +63,18 @@ func (unboundInspectorSnapshot) ruleCount() uint64  { return 0 }
 
 type exactInspectorSnapshot struct {
 	strategyName string
+	modeName     RuleMode
 	entries      uint64
 	rules        uint64
 }
 
-func (exactInspectorSnapshot) bound() bool          { return true }
-func (exactInspectorSnapshot) mode() RuleMode       { return RuleModeExact }
+func (exactInspectorSnapshot) bound() bool { return true }
+func (s exactInspectorSnapshot) mode() RuleMode {
+	if s.modeName == "" {
+		return RuleModeExact
+	}
+	return s.modeName
+}
 func (s exactInspectorSnapshot) strategy() string   { return s.strategyName }
 func (s exactInspectorSnapshot) entryCount() uint64 { return s.entries }
 func (s exactInspectorSnapshot) ruleCount() uint64  { return s.rules }
@@ -159,6 +168,7 @@ func (r *inspectRule[T]) optimize(total uint64) Rule[T] {
 type pendingInspection struct {
 	dst      *inspectorState
 	strategy string
+	mode     RuleMode
 }
 
 func stripInspectors[T any](
@@ -176,7 +186,7 @@ func stripInspectors[T any](
 		if err != nil {
 			return nil, err
 		}
-		*pending = append(*pending, pendingInspection{dst: typed.dst, strategy: inspectionStrategyOf(child)})
+		*pending = append(*pending, pendingInspection{dst: typed.dst, strategy: inspectionStrategyOf(child), mode: inspectionModeOf(child)})
 		return child, nil
 	case *allRule[T]:
 		children := make([]Rule[T], len(typed.children))
@@ -194,6 +204,14 @@ func stripInspectors[T any](
 }
 
 type inspectionStrategist interface{ inspectionStrategy() string }
+type inspectionModer interface{ inspectionMode() RuleMode }
+
+func inspectionModeOf[T any](rule Rule[T]) RuleMode {
+	if mode, ok := rule.(inspectionModer); ok {
+		return mode.inspectionMode()
+	}
+	return RuleModeExact
+}
 
 func inspectionStrategyOf[T any](rule Rule[T]) string {
 	if strategy, ok := rule.(inspectionStrategist); ok {

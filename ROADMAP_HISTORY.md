@@ -402,11 +402,25 @@ the same candidates but regressed to about 2.5 us and 1.4 MB because it unions
 many tiny postings. Consequently the planner must choose granularity from the
 budget and distribution instead of always selecting the finest representation.
 
-These remain prototypes rather than published search representations. The next
-step is to integrate them with build analysis, deterministic budget selection,
-and materialization. Reproduce the experiment with:
+The original experiment can be reproduced with:
 
 ```sh
 go test -run '^$' -bench '^BenchmarkLossyStrategyPrototypes/' \
   -benchmem -benchtime=300ms -count=5 .
 ```
+
+## 2026-08-22: first memory-bounded lossy representations
+
+`Lossy` and `MemoryLimit` now promote the grouped-hash equality and observed-
+domain ordered-bucket prototypes into compiled search representations. The
+first supported rules are scalar `Include` and the four scalar ordered
+comparisons. Build retains the exact rule when its deterministic accounted
+size fits; otherwise it selects the finest bucket granularity that fits the
+limit. Search preserves wildcards, duplicate external IDs, immutable
+publication, and the no-false-negative invariant.
+
+The policy rejects missing, repeated, and zero limits, nested policies, and a
+limit directly around `All`. Unsupported scalar types fail only when the exact
+representation exceeds the limit. `Inspect` reports the actual exact or lossy
+mode and compiled strategy. Time values remain deferred pending an explicit
+ordered-key range or wider key.
