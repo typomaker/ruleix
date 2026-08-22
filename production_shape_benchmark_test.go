@@ -167,8 +167,12 @@ func productionBenchmarkPlatformRule() ruleix.Rule[productionBenchmarkConstraint
 }
 
 func productionBenchmarkData() ([]productionBenchmarkConstraint, []productionBenchmarkID) {
-	constraints := make([]productionBenchmarkConstraint, productionBenchmarkEntries)
-	ids := make([]productionBenchmarkID, productionBenchmarkEntries)
+	return productionBenchmarkDataN(productionBenchmarkEntries)
+}
+
+func productionBenchmarkDataN(entries int) ([]productionBenchmarkConstraint, []productionBenchmarkID) {
+	constraints := make([]productionBenchmarkConstraint, entries)
+	ids := make([]productionBenchmarkID, entries)
 	customerUUIDs := make([][16]byte, 536)
 	storeUUIDs := make([][16]byte, 179)
 	for i := range customerUUIDs {
@@ -180,38 +184,42 @@ func productionBenchmarkData() ([]productionBenchmarkConstraint, []productionBen
 	baseTime := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
 	for i := range constraints {
 		binary.BigEndian.PutUint64(ids[i][8:], uint64(i))
-		if i < 38_074 {
+		if i < productionBenchmarkScaledCount(entries, 38_074) {
 			day := i % 365
 			constraints[i].activity = &productionBenchmarkTimeRange{
 				since: baseTime.AddDate(0, 0, day),
 				until: baseTime.AddDate(0, 0, day+7),
 			}
 		}
-		if i < 38_095 {
+		if i < productionBenchmarkScaledCount(entries, 38_095) {
 			constraints[i].customerOrderCount = &productionBenchmarkOrderCount{total: 1}
 		}
-		if i < 33_176 {
+		if i < productionBenchmarkScaledCount(entries, 33_176) {
 			constraints[i].customerUUID = &customerUUIDs[i%len(customerUUIDs)]
 			constraints[i].slotType = ptr(uint8(i%2 + 1))
 		}
-		if i < 4_919 {
+		if i < productionBenchmarkScaledCount(entries, 4_919) {
 			constraints[i].storeUUID = &storeUUIDs[i%len(storeUUIDs)]
 		}
-		if i < 24 {
+		if i < productionBenchmarkScaledCount(entries, 24) {
 			constraints[i].regionID = ptr(1)
 		}
-		if i < 38_097 {
+		if i < productionBenchmarkScaledCount(entries, 38_097) {
 			constraints[i].platform = &productionBenchmarkPlatform{name: productionPlatformName(i % 34)}
-			if i < 6_163 {
+			if i < productionBenchmarkScaledCount(entries, 6_163) {
 				constraints[i].platform.version = &productionBenchmarkVersion{major: i%3 + 1}
 			}
 		}
-		if i < 38_074 {
+		if i < productionBenchmarkScaledCount(entries, 38_074) {
 			constraints[i].dbs = ptr(i%2 == 0)
 			constraints[i].marketType = ptr(uint8(1))
 		}
 	}
 	return constraints, ids
+}
+
+func productionBenchmarkScaledCount(entries, baseline int) int {
+	return (entries*baseline + productionBenchmarkEntries - 1) / productionBenchmarkEntries
 }
 
 func productionPlatformName(value int) string {
@@ -419,7 +427,7 @@ func benchmarkProductionRetainedMemory(
 	}
 	perIndex := float64(retained) / float64(b.N)
 	b.ReportMetric(perIndex, "retained-B/index")
-	b.ReportMetric(perIndex/productionBenchmarkEntries, "retained-B/ID")
+	b.ReportMetric(perIndex/float64(len(constraints)), "retained-B/ID")
 }
 
 // BenchmarkProductionShapeLocalRetainedMemory measures the incremental live

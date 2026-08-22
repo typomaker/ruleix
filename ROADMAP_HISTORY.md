@@ -41,7 +41,29 @@ go test -run '^$' \
   -benchtime=5x -count=5 .
 ```
 
-The broader 10K, 100K, and 1M planner matrix remains active roadmap work.
+## 2026-08-22: scalable production-shaped benchmark matrix
+
+The production-shaped workload can now be generated at 10K, 100K, and 1M
+rules while preserving the original field and wildcard ratios. The matrix
+measures build time and allocations, retained index bytes, and search latency
+and allocations for small-result, selective, and wildcard-heavy queries. Each
+search case also reports its actual match count so distribution changes remain
+visible in benchmark output.
+
+Reproduce timed and allocation measurements with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkProductionScaleSearch|BenchmarkProductionScaleBuild)/' \
+  -benchmem -benchtime=200ms -count=5 .
+```
+
+Measure retained memory with a fixed iteration count:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionScaleRetainedMemory/' \
+  -benchtime=1x -count=5 .
+```
 
 ## Adaptive `All` planner: initial stages
 
