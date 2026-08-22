@@ -16,28 +16,28 @@ the declarative rule with a different compiled representation.
 The initial API is:
 
 ```go
-type RuleInspector struct {
-	// unexported reference to runtime state
+type Inspector interface {
+	Bound() bool
+	Mode() RuleMode
+	Strategy() string
+	EntryCount() uint64
+	RuleCount() uint64
+	Reset()
+	// unexported method seals implementations
 }
 
-func Inspect[T any](dst *RuleInspector, rule Rule[T]) Rule[T]
-
-func (inspector *RuleInspector) Bound() bool
-func (inspector *RuleInspector) Mode() RuleMode
-func (inspector *RuleInspector) Strategy() string
-func (inspector *RuleInspector) EntryCount() uint64
-func (inspector *RuleInspector) RuleCount() uint64
-func (inspector *RuleInspector) Reset()
+func NewInspector() Inspector
+func Inspect[T any](dst Inspector, rule Rule[T]) Rule[T]
 ```
 
 For example:
 
 ```go
-var customer ruleix.RuleInspector
+customer := ruleix.NewInspector()
 
 schema := ruleix.All(
 	ruleix.Inspect(
-		&customer,
+		customer,
 		ruleix.Lossy(
 			ruleix.Include(customerID),
 			ruleix.MaxMemory(20<<20),
@@ -56,18 +56,20 @@ if customer.Bound() {
 }
 ```
 
-`RuleInspector` is deliberately separate from `Rule`. A `Rule` is a
+`Inspector` is deliberately separate from `Rule`. A `Rule` is a
 declarative description consumed by the builder; an inspector is a handle to
 the runtime state produced from that description. Keeping the types separate
 avoids exposing planner internals through the rule-construction API or implying
-that callers may mutate a compiled rule.
+that callers may mutate a compiled rule. The sealed interface also lets Ruleix
+select different internal snapshot implementations for different compiled rule
+types without changing the public API.
 
 ## Runtime binding
 
 The intended flow is:
 
 ```text
-Rule -> Inspect(&inspector) -> analyze/plan -> compiled runtime rule
+Rule -> Inspect(inspector) -> analyze/plan -> compiled runtime rule
                                                 |
                                                 v
                                       inspector runtime binding
@@ -93,9 +95,9 @@ the first successful build pins the unbound state (`Bound() == false`) until
 
 A failed build does not replace the latest successful state. Observation
 methods and `Reset` may run concurrently with searches and a later build (the
-builder itself still requires external serialization). A `RuleInspector` must
-not be copied after first use and may identify only one schema location per
-build. Reusing it at multiple locations makes `Build` return an error.
+builder itself still requires external serialization). One `Inspector` may
+identify only one schema location per build. Reusing it at multiple locations
+makes `Build` return an error.
 
 ## Statistics
 

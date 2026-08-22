@@ -16,86 +16,117 @@ const (
 	RuleModeExact RuleMode = "exact"
 )
 
-type ruleStats struct {
-	Bound      bool
-	Mode       RuleMode
-	Strategy   string
-	EntryCount uint64
-	RuleCount  uint64
+// Inspector observes one rule's compiled representation. Its first observation
+// pins a coherent build snapshot until Reset. Inspector implementations are
+// selected internally for the compiled rule; create one with NewInspector.
+type Inspector interface {
+	Bound() bool
+	Mode() RuleMode
+	Strategy() string
+	EntryCount() uint64
+	RuleCount() uint64
+	Reset()
+	inspectionState() *inspectorState
 }
 
-// RuleInspector observes the compiled representation of a rule. Its zero value
-// is ready for use. A RuleInspector must not be copied after first use.
-//
-// Its observation methods may be called concurrently with searches and later
-// (externally serialized) builds of the Builder that owns the inspected
-// schema. The first observation pins one coherent build snapshot until Reset.
-type RuleInspector struct {
-	published atomic.Pointer[ruleStats]
-	pinned    atomic.Pointer[ruleStats]
+type inspectorSnapshot interface {
+	bound() bool
+	mode() RuleMode
+	strategy() string
+	entryCount() uint64
+	ruleCount() uint64
 }
 
-var unboundRuleStats = ruleStats{}
+type inspectorSnapshotBox struct{ snapshot inspectorSnapshot }
 
-func (i *RuleInspector) snapshot() *ruleStats {
-	if i == nil {
-		return &unboundRuleStats
-	}
+type inspectorState struct {
+	published atomic.Pointer[inspectorSnapshotBox]
+	pinned    atomic.Pointer[inspectorSnapshotBox]
+}
+
+type inspector struct{ state inspectorState }
+
+var _ Inspector = (*inspector)(nil)
+
+// NewInspector creates an unbound Inspector ready to pass to Inspect.
+func NewInspector() Inspector { return &inspector{} }
+
+func (i *inspector) inspectionState() *inspectorState { return &i.state }
+
+type unboundInspectorSnapshot struct{}
+
+func (unboundInspectorSnapshot) bound() bool        { return false }
+func (unboundInspectorSnapshot) mode() RuleMode     { return "" }
+func (unboundInspectorSnapshot) strategy() string   { return "" }
+func (unboundInspectorSnapshot) entryCount() uint64 { return 0 }
+func (unboundInspectorSnapshot) ruleCount() uint64  { return 0 }
+
+type exactInspectorSnapshot struct {
+	strategyName string
+	entries      uint64
+	rules        uint64
+}
+
+func (exactInspectorSnapshot) bound() bool          { return true }
+func (exactInspectorSnapshot) mode() RuleMode       { return RuleModeExact }
+func (s exactInspectorSnapshot) strategy() string   { return s.strategyName }
+func (s exactInspectorSnapshot) entryCount() uint64 { return s.entries }
+func (s exactInspectorSnapshot) ruleCount() uint64  { return s.rules }
+
+var unboundInspector = &inspectorSnapshotBox{snapshot: unboundInspectorSnapshot{}}
+
+func (i *inspector) snapshot() inspectorSnapshot {
 	for {
-		if stats := i.pinned.Load(); stats != nil {
-			return stats
+		if snapshot := i.state.pinned.Load(); snapshot != nil {
+			return snapshot.snapshot
 		}
-		stats := i.published.Load()
-		if stats == nil {
-			stats = &unboundRuleStats
+		snapshot := i.state.published.Load()
+		if snapshot == nil {
+			snapshot = unboundInspector
 		}
-		if i.pinned.CompareAndSwap(nil, stats) {
-			return stats
+		if i.state.pinned.CompareAndSwap(nil, snapshot) {
+			return snapshot.snapshot
 		}
 	}
 }
 
 // Bound reports whether the pinned snapshot belongs to a successful build.
-func (i *RuleInspector) Bound() bool { return i.snapshot().Bound }
+func (i *inspector) Bound() bool { return i.snapshot().bound() }
 
 // Mode reports the representation mode from the pinned snapshot.
-func (i *RuleInspector) Mode() RuleMode { return i.snapshot().Mode }
+func (i *inspector) Mode() RuleMode { return i.snapshot().mode() }
 
 // Strategy reports the compiled strategy from the pinned snapshot.
-func (i *RuleInspector) Strategy() string { return i.snapshot().Strategy }
+func (i *inspector) Strategy() string { return i.snapshot().strategy() }
 
 // EntryCount reports the number of input entries consumed by the build in the
 // pinned snapshot.
-func (i *RuleInspector) EntryCount() uint64 { return i.snapshot().EntryCount }
+func (i *inspector) EntryCount() uint64 { return i.snapshot().entryCount() }
 
 // RuleCount reports the number of unique external rule IDs in the pinned
 // snapshot.
-func (i *RuleInspector) RuleCount() uint64 { return i.snapshot().RuleCount }
+func (i *inspector) RuleCount() uint64 { return i.snapshot().ruleCount() }
 
 // Reset releases the pinned snapshot. The next observation method pins the
 // latest successful build, or the unbound state if no build has succeeded.
-func (i *RuleInspector) Reset() {
-	if i != nil {
-		i.pinned.Store(nil)
-	}
-}
+func (i *inspector) Reset() { i.state.pinned.Store(nil) }
 
 // Inspect decorates rule with an observational handle. It does not change the
 // compiled search tree or matching semantics. Inspect panics for a nil
 // inspector or rule. Attaching the same inspector more than once in one schema
 // makes Build fail.
-func Inspect[T any](dst *RuleInspector, rule Rule[T]) Rule[T] {
+func Inspect[T any](dst Inspector, rule Rule[T]) Rule[T] {
 	if dst == nil {
 		panic("ruleix: nil rule inspector")
 	}
 	if rule == nil {
 		panic("ruleix: nil inspected rule")
 	}
-	return &inspectRule[T]{dst: dst, child: rule}
+	return &inspectRule[T]{dst: dst.inspectionState(), child: rule}
 }
 
 type inspectRule[T any] struct {
-	dst   *RuleInspector
+	dst   *inspectorState
 	child Rule[T]
 }
 
@@ -122,19 +153,19 @@ func (r *inspectRule[T]) optimize(total uint64) Rule[T] {
 }
 
 type pendingInspection struct {
-	dst      *RuleInspector
+	dst      *inspectorState
 	strategy string
 }
 
 func stripInspectors[T any](
 	rule Rule[T],
-	seen map[*RuleInspector]struct{},
+	seen map[*inspectorState]struct{},
 	pending *[]pendingInspection,
 ) (Rule[T], error) {
 	switch typed := rule.(type) {
 	case *inspectRule[T]:
 		if _, exists := seen[typed.dst]; exists {
-			return nil, fmt.Errorf("ruleix: one RuleInspector cannot inspect multiple rules")
+			return nil, fmt.Errorf("ruleix: one Inspector cannot inspect multiple rules")
 		}
 		seen[typed.dst] = struct{}{}
 		child, err := stripInspectors(typed.child, seen, pending)

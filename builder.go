@@ -117,7 +117,7 @@ func buildIndex[C any, ID comparable](
 	ix.root = optimizeRule(ix.root, uint64(len(ix.values)))
 	var inspections []pendingInspection
 	var err error
-	ix.root, err = stripInspectors(ix.root, make(map[*RuleInspector]struct{}), &inspections)
+	ix.root, err = stripInspectors(ix.root, make(map[*inspectorState]struct{}), &inspections)
 	if err != nil {
 		return nil, buildStatistics{}, err
 	}
@@ -151,13 +151,11 @@ func buildIndex[C any, ID comparable](
 	prepareRuleSearch(ix.root)
 	ix.nodes = int(ids.next)
 	for _, inspection := range inspections {
-		inspection.dst.published.Store(&ruleStats{
-			Bound:      true,
-			Mode:       RuleModeExact,
-			Strategy:   inspection.strategy,
-			EntryCount: uint64(statistics.entries),
-			RuleCount:  uint64(statistics.uniqueIDs),
-		})
+		inspection.dst.published.Store(&inspectorSnapshotBox{snapshot: exactInspectorSnapshot{
+			strategyName: inspection.strategy,
+			entries:      uint64(statistics.entries),
+			rules:        uint64(statistics.uniqueIDs),
+		}})
 	}
 	return ix, statistics, nil
 }

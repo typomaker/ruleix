@@ -310,15 +310,19 @@ Historical release-to-release benchmark comparisons remain in
 
 ## 2026-08-22: transparent rule inspection
 
-`Inspect` now binds a caller-owned `RuleInspector` to the representation chosen
-for one decorated rule by a successful `Build`. Its direct methods report exact
-mode, the selected strategy, consumed entry count, and unique external-rule
-count. The first method call pins one coherent snapshot; `Reset` makes the next
-call pin the latest successful build. Failed builds do not replace the
-published state.
+`Inspect` now binds an `Inspector` created by `NewInspector` to the
+representation chosen for one decorated rule by a successful `Build`. Its
+direct methods report exact mode, the selected strategy, consumed entry count,
+and unique external-rule count. The first method call pins one coherent
+snapshot; `Reset` makes the next call pin the latest successful build. Failed
+builds do not replace the published state.
 
 Inspection decorators are removed before an index is published and the cleaned
 tree is optimized again. Consequently inspection adds no wrapper, counter, or
 branch to `Search`, `Visit`, or `Local`, and does not block equality or `All`
 specialization. One inspector may identify only one schema location per build;
 using it for multiple rules returns a build error.
+
+`Inspector` is a sealed interface rather than a public concrete type. This
+allows rule-specific snapshot implementations to evolve behind stable
+observation methods.

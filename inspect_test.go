@@ -14,9 +14,9 @@ type inspectConstraint struct {
 }
 
 func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
-	var country RuleInspector
+	country := NewInspector()
 	inspected := New[inspectConstraint, string](All(
-		Inspect(&country, Include(func(v inspectConstraint) (string, bool) { return v.country, v.country != "" })),
+		Inspect(country, Include(func(v inspectConstraint) (string, bool) { return v.country, v.country != "" })),
 		Include(func(v inspectConstraint) (string, bool) { return v.tier, v.tier != "" }),
 	))
 	plain := New[inspectConstraint, string](All(
@@ -45,9 +45,9 @@ func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
 }
 
 func TestInspectLifecyclePinsUntilReset(t *testing.T) {
-	var inspector RuleInspector
+	inspector := NewInspector()
 	builder := New[inspectConstraint, string](Inspect(
-		&inspector,
+		inspector,
 		Include(func(v inspectConstraint) (string, bool) { return v.country, true }),
 	))
 	require.False(t, inspector.Bound())
@@ -72,20 +72,20 @@ func TestInspectLifecyclePinsUntilReset(t *testing.T) {
 }
 
 func TestInspectRejectsOneInspectorOnMultipleRules(t *testing.T) {
-	var inspector RuleInspector
+	inspector := NewInspector()
 	schema := All(
-		Inspect(&inspector, Include(func(v inspectConstraint) (string, bool) { return v.country, true })),
-		Inspect(&inspector, Include(func(v inspectConstraint) (string, bool) { return v.tier, true })),
+		Inspect(inspector, Include(func(v inspectConstraint) (string, bool) { return v.country, true })),
+		Inspect(inspector, Include(func(v inspectConstraint) (string, bool) { return v.tier, true })),
 	)
 	_, err := New[inspectConstraint, string](schema).Build(Zip([]inspectConstraint{{}}, []string{"one"}))
-	require.EqualError(t, err, "ruleix: one RuleInspector cannot inspect multiple rules")
+	require.EqualError(t, err, "ruleix: one Inspector cannot inspect multiple rules")
 	require.False(t, inspector.Bound())
 }
 
 func TestInspectMethodsAreSafeDuringRepeatedBuildsAndResets(t *testing.T) {
-	var inspector RuleInspector
+	inspector := NewInspector()
 	builder := New[inspectConstraint, string](Inspect(
-		&inspector,
+		inspector,
 		Include(func(v inspectConstraint) (string, bool) { return v.country, true }),
 	))
 
