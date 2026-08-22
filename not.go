@@ -58,6 +58,10 @@ func (r *notRule[T, V]) exclude(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		dst.Or(bits)
 		return
 	}
+	if !comparableValueCacheAdmit(cache, value) {
+		r.addExclusions(value, dst)
+		return
+	}
 
 	bits := cache.replace(value)
 	r.addExclusions(value, bits)

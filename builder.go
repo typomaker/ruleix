@@ -172,10 +172,11 @@ func (ix *Index[C, ID]) Search(value C, dst *[]ID) bool {
 	return ix.search(value, dst, ix.pool)
 }
 
-// Local returns a search context that caches the two most recent intermediate
-// bitmap results per filter node. It can reduce repeated work when adjacent
-// searches share constraint values, at the cost of retaining those bitmaps for
-// the lifetime of the Local.
+// Local returns a search context that caches up to two recently repeated
+// intermediate bitmap results per filter node. A value is admitted after its
+// second recent use, so one-off queries do not retain their result bitmaps. It
+// can reduce repeated work when adjacent searches share constraint values, at
+// the cost of retaining admitted bitmaps for the lifetime of the Local.
 //
 // A Local is not safe for concurrent use. Create one per goroutine:
 //

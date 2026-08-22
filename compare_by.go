@@ -124,6 +124,10 @@ func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool)
 		dst.Or(bits)
 		return
 	}
+	if !comparedValueCacheAdmit(cache, value, r.compare) {
+		r.each(v, dst.Or)
+		return
+	}
 	bits := cache.replace(value)
 	r.each(v, bits.Or)
 	dst.Or(bits)

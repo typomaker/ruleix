@@ -247,6 +247,10 @@ func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		dst.Or(bits)
 		return
 	}
+	if !comparableValueCacheAdmit(cache, value) {
+		r.addMatches(value, dst)
+		return
+	}
 
 	bits := cache.replace(value)
 	r.addMatches(value, bits)
@@ -357,6 +361,10 @@ func (r *unaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		dst.Or(bits)
 		return
 	}
+	if !comparableValueCacheAdmit(cache, value) {
+		r.addMatches(value, dst)
+		return
+	}
 	bits := cache.replace(value)
 	r.addMatches(value, bits)
 	dst.Or(bits)
@@ -437,6 +445,10 @@ func (r *binaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) 
 	cache := equalityCache[V](pool, r.nodeID)
 	if bits, found := comparableValueCacheLookup(cache, value); found {
 		dst.Or(bits)
+		return
+	}
+	if !comparableValueCacheAdmit(cache, value) {
+		r.addMatches(value, dst)
 		return
 	}
 	bits := cache.replace(value)

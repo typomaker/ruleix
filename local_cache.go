@@ -12,7 +12,19 @@ type localNodeCache struct {
 
 type valueBitmapCache[V any] struct {
 	entries [2]valueBitmapCacheEntry[V]
+	seen    *valueBitmapSeen[V]
 	next    uint8
+}
+
+type valueBitmapSeen[V any] struct {
+	entries [2]valueBitmapCacheKey[V]
+	next    uint8
+}
+
+type valueBitmapCacheKey[V any] struct {
+	initialized bool
+	hasValue    bool
+	value       V
 }
 
 type valueBitmapCacheEntry[V any] struct {
@@ -53,8 +65,43 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V]) *roaring.Bitmap {
 	return entry.bits
 }
 
+// admit reports whether a missed value has been seen recently enough to merit
+// retaining its materialized bitmap. One-off values stay out of the cache,
+// avoiding retained memory and cache pollution on high-churn query streams.
+func (c *valueBitmapCache[V]) admit(value optionalValue[V], equal func(V, V) bool) bool {
+	if c.seen == nil {
+		c.seen = &valueBitmapSeen[V]{}
+	}
+	for i := range c.seen.entries {
+		entry := &c.seen.entries[i]
+		if entry.initialized && entry.hasValue == value.ok && (!value.ok || equal(entry.value, value.value)) {
+			entry.initialized = false
+			var zero V
+			entry.value = zero
+			if !c.seen.entries[0].initialized && !c.seen.entries[1].initialized {
+				c.seen = nil
+			}
+			return true
+		}
+	}
+	entry := &c.seen.entries[c.seen.next]
+	c.seen.next = (c.seen.next + 1) % uint8(len(c.seen.entries))
+	entry.initialized = true
+	entry.hasValue = value.ok
+	var zero V
+	entry.value = zero
+	if value.ok {
+		entry.value = value.value
+	}
+	return false
+}
+
 func comparableValueCacheLookup[V comparable](c *valueBitmapCache[V], value optionalValue[V]) (*roaring.Bitmap, bool) {
 	return c.lookup(value, func(a, b V) bool { return a == b })
+}
+
+func comparableValueCacheAdmit[V comparable](c *valueBitmapCache[V], value optionalValue[V]) bool {
+	return c.admit(value, func(a, b V) bool { return a == b })
 }
 
 func comparedValueCacheLookup[V any](
@@ -63,4 +110,12 @@ func comparedValueCacheLookup[V any](
 	compare Compare[V],
 ) (*roaring.Bitmap, bool) {
 	return c.lookup(value, func(a, b V) bool { return compare(a, b) == 0 })
+}
+
+func comparedValueCacheAdmit[V any](
+	c *valueBitmapCache[V],
+	value optionalValue[V],
+	compare Compare[V],
+) bool {
+	return c.admit(value, func(a, b V) bool { return compare(a, b) == 0 })
 }

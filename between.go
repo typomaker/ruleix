@@ -31,7 +31,21 @@ type betweenRule[T any, V any] struct {
 
 type betweenCache[V any] struct {
 	entries [2]betweenCacheEntry[V]
+	seen    *betweenCacheSeen[V]
 	next    uint8
+}
+
+type betweenCacheSeen[V any] struct {
+	entries [2]betweenCacheKey[V]
+	next    uint8
+}
+
+type betweenCacheKey[V any] struct {
+	initialized bool
+	hasFrom     bool
+	hasUntil    bool
+	from        V
+	until       V
 }
 
 type betweenCacheEntry[V any] struct {
@@ -88,6 +102,10 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 			return
 		}
 	}
+	if !cache.admit(from, until, r.compare) {
+		r.searchUncached(v, dst, pool)
+		return
+	}
 
 	cached := &cache.entries[cache.next]
 	cache.next = (cache.next + 1) % uint8(len(cache.entries))
@@ -109,6 +127,39 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		cached.until = until.value
 	}
 	dst.Or(cached.bits)
+}
+
+func (c *betweenCache[V]) admit(from, until optionalValue[V], compare Compare[V]) bool {
+	if c.seen == nil {
+		c.seen = &betweenCacheSeen[V]{}
+	}
+	for i := range c.seen.entries {
+		entry := &c.seen.entries[i]
+		if entry.initialized && entry.hasFrom == from.ok && entry.hasUntil == until.ok &&
+			(!from.ok || compare(entry.from, from.value) == 0) &&
+			(!until.ok || compare(entry.until, until.value) == 0) {
+			entry.initialized = false
+			var zero V
+			entry.from, entry.until = zero, zero
+			if !c.seen.entries[0].initialized && !c.seen.entries[1].initialized {
+				c.seen = nil
+			}
+			return true
+		}
+	}
+	entry := &c.seen.entries[c.seen.next]
+	c.seen.next = (c.seen.next + 1) % uint8(len(c.seen.entries))
+	entry.initialized = true
+	entry.hasFrom, entry.hasUntil = from.ok, until.ok
+	var zero V
+	entry.from, entry.until = zero, zero
+	if from.ok {
+		entry.from = from.value
+	}
+	if until.ok {
+		entry.until = until.value
+	}
+	return false
 }
 func (r *betweenRule[T, V]) matchesID(v T, id uint32) bool {
 	return r.from.matchesID(v, id) && r.until.matchesID(v, id)

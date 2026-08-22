@@ -129,6 +129,10 @@ func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		dst.Or(bits)
 		return
 	}
+	if !comparedValueCacheAdmit(cache, value, r.compare) {
+		r.addMatches(value, dst)
+		return
+	}
 
 	bits := cache.replace(value)
 	r.addMatches(value, bits)

@@ -106,6 +106,30 @@ go test -run '^$' -bench '^BenchmarkSharedWildcardAll/' \
   -benchmem -benchtime=200ms -count=5 .
 ```
 
+## 2026-08-22: second-use admission for `Local`
+
+Per-node `Local` caches now admit a materialized bitmap only after the same
+query value is observed twice recently. The two-entry LRU remains unchanged for
+admitted values, while one-off values are computed directly into search scratch
+space and retain only a small two-key admission filter. Once its observed keys
+are admitted, that temporary filter is released. This applies uniformly to
+equality, ordered, `CompareBy`, `Between`, and exclusion nodes.
+
+On Apple M1 Max, medians of three 10K-rule runs preserved Repeat and Alternate
+performance. The HotWithInterlopers case improved from 34.6 us to 28.9 us for
+ordered filters, from 34.1 us to 28.7 us for `CompareBy`, and from 1.74 us to
+1.16 us for `Between`, while Churn remained equivalent to uncached search and
+no longer retains its materialized results. Production-shaped warm local search
+remained effectively unchanged at 4.64 us/search with 4 allocations.
+
+Reproduce the workload matrix with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkLocalEqualityReuse|BenchmarkLocalOrderedReuse|BenchmarkLocalCompareByReuse|BenchmarkLocalBetweenReuse|BenchmarkLocalExcludeReuse)$' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
 ## Ordered index aggregation
 
 Ordered indexes use block aggregates and binary search, reducing repeated

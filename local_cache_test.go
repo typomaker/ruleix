@@ -80,6 +80,7 @@ func TestBetweenCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 		{from: pointer(11), until: pointer(21)},
 		{from: pointer(10), until: pointer(20)},
 		{from: pointer(12), until: pointer(22)},
+		{from: pointer(12), until: pointer(22)},
 	}
 	var matches []int
 	for _, query := range queries {
@@ -114,6 +115,7 @@ func TestBetweenCacheClearsMissingBounds(t *testing.T) {
 		{from: pointer(&bound{id: 10}), until: pointer(&bound{id: 20})},
 		{from: pointer(&bound{id: 11}), until: pointer(&bound{id: 21})},
 		{},
+		{},
 	} {
 		var matches []int
 		local.Search(query, &matches)
@@ -126,4 +128,37 @@ func TestBetweenCacheClearsMissingBounds(t *testing.T) {
 	require.False(t, cache.entries[0].hasUntil)
 	require.Nil(t, cache.entries[0].from)
 	require.Nil(t, cache.entries[0].until)
+}
+
+func TestValueBitmapCacheAdmitsOnlyRepeatedValues(t *testing.T) {
+	cache := &valueBitmapCache[int]{}
+	one := optionalValue[int]{value: 1, ok: true}
+	two := optionalValue[int]{value: 2, ok: true}
+
+	require.False(t, comparableValueCacheAdmit(cache, one))
+	require.False(t, comparableValueCacheAdmit(cache, two))
+	require.True(t, comparableValueCacheAdmit(cache, one))
+	require.False(t, comparableValueCacheAdmit(cache, one))
+}
+
+func TestLocalAdmitsEqualityBitmapAfterSecondUse(t *testing.T) {
+	type constraint struct{ value int }
+	index, err := New[constraint, int](Include(func(value constraint) (int, bool) {
+		return value.value, true
+	})).Build(Zip([]constraint{{value: 1}, {value: 2}}, []int{1, 2}))
+	require.NoError(t, err)
+	local := index.Local()
+	query := constraint{value: 1}
+
+	var matches []int
+	local.Search(query, &matches)
+	cache := local.pool.local[0].equality.(*valueBitmapCache[int])
+	require.NotNil(t, cache.seen)
+	require.False(t, cache.entries[0].initialized)
+
+	matches = matches[:0]
+	local.Search(query, &matches)
+	require.Nil(t, cache.seen)
+	require.True(t, cache.entries[0].initialized)
+	require.Equal(t, []int{1}, matches)
 }

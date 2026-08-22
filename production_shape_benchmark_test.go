@@ -455,9 +455,11 @@ func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 			for i := range b.N {
 				local := index.Local()
 				if warm {
-					for _, query := range queries {
-						matches = matches[:0]
-						local.Search(query, &matches)
+					for range 2 {
+						for _, query := range queries {
+							matches = matches[:0]
+							local.Search(query, &matches)
+						}
 					}
 				}
 				locals[i] = local

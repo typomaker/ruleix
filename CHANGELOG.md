@@ -19,6 +19,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   candidates.
 - `All` evaluates pointer-interned partial wildcard postings shared by two or
   more equality children once during uncached index searches.
+- `Local` admits intermediate result bitmaps after their second recent use, so
+  one-off query values no longer displace reusable entries or retain bitmap
+  memory.
 - Completed roadmap work and concluded experiments now move to
   `ROADMAP_HISTORY.md`, keeping `ROADMAP.md` limited to active and deferred
   work.
