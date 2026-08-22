@@ -219,6 +219,17 @@ func (r *eqRule[T, V]) isCardinalityZero(v T) bool {
 	value, ok := r.get(v)
 	return !ok || r.values.get(value) == nil
 }
+func (r *eqRule[T, V]) matchesID(v T, id uint32) bool {
+	if r.wildcard.Contains(id) {
+		return true
+	}
+	value, ok := r.get(v)
+	if !ok {
+		return false
+	}
+	set := r.values.get(value)
+	return set != nil && set.contains(id)
+}
 func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)
 	if pool.local == nil {
@@ -319,6 +330,13 @@ func (r *unaryEqRule[T, V]) estimateCardinality(v T) uint64 {
 func (r *unaryEqRule[T, V]) isCardinalityZero(v T) bool {
 	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
 }
+func (r *unaryEqRule[T, V]) matchesID(v T, id uint32) bool {
+	if r.wildcard.Contains(id) {
+		return true
+	}
+	set := r.matchingSet(getOptional(r.get, v))
+	return set != nil && set.contains(id)
+}
 func (r *unaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)
 	if pool.local == nil {
@@ -387,6 +405,13 @@ func (r *binaryEqRule[T, V]) estimateCardinality(v T) uint64 {
 }
 func (r *binaryEqRule[T, V]) isCardinalityZero(v T) bool {
 	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
+}
+func (r *binaryEqRule[T, V]) matchesID(v T, id uint32) bool {
+	if r.wildcard.Contains(id) {
+		return true
+	}
+	set := r.matchingSet(getOptional(r.get, v))
+	return set != nil && set.contains(id)
 }
 func (r *binaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)

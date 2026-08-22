@@ -110,6 +110,9 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	}
 	dst.Or(cached.bits)
 }
+func (r *betweenRule[T, V]) matchesID(v T, id uint32) bool {
+	return r.from.matchesID(v, id) && r.until.matchesID(v, id)
+}
 
 func (r *betweenRule[T, V]) searchUncached(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	r.searchBitmaps(v, dst, pool)

@@ -11,6 +11,7 @@ type countingRule struct {
 	ids              []uint32
 	searchCalls      int
 	cardinalityCalls int
+	matchIDCalls     int
 }
 
 type zeroCheckingRule struct{ *countingRule }
@@ -28,6 +29,15 @@ func (r *countingRule) cardinality(int, *bitmapPool) uint64 {
 func (r *countingRule) estimateCardinality(int) uint64 {
 	r.cardinalityCalls++
 	return uint64(len(r.ids))
+}
+func (r *countingRule) matchesID(_ int, id uint32) bool {
+	r.matchIDCalls++
+	for _, candidate := range r.ids {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
 }
 func (r *countingRule) search(_ int, dst *roaring.Bitmap, _ *bitmapPool) {
 	r.searchCalls++
@@ -48,10 +58,15 @@ func TestAllEstimatesAndMaterializesEachChildOnce(t *testing.T) {
 	rule.search(0, dst, pool)
 
 	require.Equal(t, []uint32{2}, dst.ToArray())
+	require.Zero(t, first.searchCalls)
+	require.Equal(t, 1, second.searchCalls)
+	require.Zero(t, third.searchCalls)
 	for _, child := range []*countingRule{first, second, third} {
-		require.Equal(t, 1, child.searchCalls)
 		require.Equal(t, 1, child.cardinalityCalls)
 	}
+	require.Equal(t, 1, first.matchIDCalls)
+	require.Zero(t, second.matchIDCalls)
+	require.Equal(t, 1, third.matchIDCalls)
 }
 
 func TestAllStopsMaterializingAfterEmptyChild(t *testing.T) {
@@ -84,8 +99,10 @@ func TestAllStopsAfterEmptyIntersection(t *testing.T) {
 
 	require.True(t, dst.IsEmpty())
 	require.Equal(t, 1, first.searchCalls)
-	require.Equal(t, 1, disjoint.searchCalls)
+	require.Zero(t, disjoint.searchCalls)
+	require.Equal(t, 1, disjoint.matchIDCalls)
 	require.Zero(t, unreached.searchCalls)
+	require.Zero(t, unreached.matchIDCalls)
 }
 
 func TestAllChecksCheapEmptyChildBeforeMaterializing(t *testing.T) {

@@ -70,6 +70,11 @@ type cardinalityEstimator[T any] interface {
 	estimateCardinality(T) uint64
 }
 
+// ruleIDMatcher validates one internal ID without materializing a result.
+type ruleIDMatcher[T any] interface {
+	matchesID(T, uint32) bool
+}
+
 type exclusionRule[T any] interface {
 	exclude(T, *roaring.Bitmap, *bitmapPool)
 	isExcluded(T, uint32) bool
@@ -138,6 +143,7 @@ func (*matchAllRule[T]) validate(T) error                                      {
 func (*matchAllRule[T]) insert(T, uint32)                                      {}
 func (r *matchAllRule[T]) cardinality(T, *bitmapPool) uint64                   { return r.bits.GetCardinality() }
 func (r *matchAllRule[T]) estimateCardinality(T) uint64                        { return r.bits.GetCardinality() }
+func (r *matchAllRule[T]) matchesID(_ T, id uint32) bool                       { return r.bits.Contains(id) }
 func (r *matchAllRule[T]) search(_ T, dst *roaring.Bitmap, _ *bitmapPool)      { dst.Or(r.bits) }
 func (*matchAllRule[T]) exclude(T, *roaring.Bitmap, *bitmapPool)               {}
 func (*matchAllRule[T]) collectBuildStatistics([]nodeBuildStatistics)          {}

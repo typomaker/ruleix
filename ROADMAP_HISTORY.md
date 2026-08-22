@@ -52,6 +52,13 @@ and executes small estimated results lazily with an empty-intersection exit.
 Broad results retain the materialize-and-rank path to protect production-shaped
 and nested workloads. Further estimates remain benchmark-dependent.
 
+The next stage added internal, type-safe single-ID validation to every positive
+leaf and nested `All`. Small candidate paths now materialize only the most
+selective child and validate all remaining predicates directly against its IDs,
+without reverse constraint storage or a public API change. This leaf-level
+approach was preferred over a compiled-rule array because it reuses existing
+posting data and adds no retained copy of the source constraints.
+
 ## Ordered index aggregation
 
 Ordered indexes use block aggregates and binary search, reducing repeated

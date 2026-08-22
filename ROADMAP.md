@@ -41,19 +41,10 @@ both the wildcard and value-specific postings, matters more than the size of
 either posting alone.
 
 The initial estimate-based ordering and lazy empty-aware execution are recorded
-in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Continue with these stages:
-
-1. Add a cheap, type-safe way to validate one internal rule ID, either through
-   leaf-level `MatchID` operations or a compiled-rule representation indexed by
-   rule ID. Once the candidate set becomes small, validate the remaining
-   predicates directly and stay in candidate mode for the rest of the query.
-2. Choose the bitmap-to-candidate threshold from benchmarks, not from a fixed
-   assumption. Start with one shared threshold; introduce operator-specific
-   cost classes only if measurements show a material benefit.
-
-Compare leaf-level `MatchID` with a cache-friendly compiled-rule fallback before
-committing to reverse constraint storage in every leaf. The latter may improve
-candidate scans but also duplicates source data and increases retained memory.
+in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Continue by choosing the
+bitmap-to-candidate threshold from benchmarks, not from a fixed assumption.
+Start with one shared threshold; introduce operator-specific cost classes only
+if measurements show a material benefit.
 
 Planner ordering is operator-specific. For `All`, start with the most selective
 predicate. If `Any` or `Not` is added later, design their planning separately:

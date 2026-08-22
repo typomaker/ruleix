@@ -12,6 +12,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `All` uses cheap leaf cardinality estimates to order execution and stops
   materializing small candidate paths when an intermediate intersection is
   empty.
+- Small `All` candidate sets materialize only the most selective child and
+  validate remaining predicates directly by internal rule ID.
 - Completed roadmap work and concluded experiments now move to
   `ROADMAP_HISTORY.md`, keeping `ROADMAP.md` limited to active and deferred
   work.

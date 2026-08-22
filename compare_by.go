@@ -128,6 +128,15 @@ func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool)
 	r.each(v, bits.Or)
 	dst.Or(bits)
 }
+func (r *compareByRule[T, V]) matchesID(v T, id uint32) bool {
+	found := false
+	r.each(v, func(bits *roaring.Bitmap) {
+		if !found && bits.Contains(id) {
+			found = true
+		}
+	})
+	return found
+}
 func (*compareByRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
 func (r *compareByRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {

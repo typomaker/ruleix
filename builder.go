@@ -263,7 +263,16 @@ func searchAllMatches[C any, ID comparable](
 	} else {
 		rankedChildren = inline[:len(root.children)]
 	}
-	if !root.collectRanked(value, pool, rankedChildren) || len(rankedChildren) == 0 {
+	if !root.rankChildren(value, pool, rankedChildren) || len(rankedChildren) == 0 {
+		if buffer != nil {
+			pool.putRanked(buffer)
+		}
+		*dst = result
+		return
+	}
+
+	if !prepareRankedAllCandidates(root, value, pool, rankedChildren) {
+		root.releaseRanked(pool, rankedChildren)
 		if buffer != nil {
 			pool.putRanked(buffer)
 		}
@@ -275,7 +284,7 @@ func searchAllMatches[C any, ID comparable](
 	if rankedChildren[0].card > allCandidateScanLimit {
 		result = appendBitmapAllMatches(rankedChildren, excluded, values, pool, result)
 	} else {
-		result = appendScannedAllMatches(rankedChildren, exclusions, excluded, value, values, result)
+		result = appendScannedAllMatches(root, rankedChildren, exclusions, excluded, value, values, pool, result)
 	}
 	if excluded != nil {
 		pool.put(excluded)
@@ -285,6 +294,41 @@ func searchAllMatches[C any, ID comparable](
 		pool.putRanked(buffer)
 	}
 	*dst = result
+}
+
+func prepareRankedAllCandidates[C any](
+	root *allRule[C],
+	value C,
+	pool *bitmapPool,
+	rankedChildren []rankedBitmap,
+) bool {
+	if rankedChildren[0].card > allCandidateScanLimit {
+		return root.collectRankedInOrder(value, pool, rankedChildren)
+	}
+	bits := pool.get()
+	root.children[rankedChildren[0].childIdx].search(value, bits, pool)
+	rankedChildren[0].bits = bits
+	rankedChildren[0].card = bits.GetCardinality()
+	return rankedChildren[0].card <= allCandidateScanLimit ||
+		materializeRankedAfterFirst(root, value, pool, rankedChildren)
+}
+
+func materializeRankedAfterFirst[C any](
+	root *allRule[C],
+	value C,
+	pool *bitmapPool,
+	rankedChildren []rankedBitmap,
+) bool {
+	for i := 1; i < len(rankedChildren); i++ {
+		bits := pool.get()
+		root.children[rankedChildren[i].childIdx].search(value, bits, pool)
+		rankedChildren[i].bits = bits
+		rankedChildren[i].card = bits.GetCardinality()
+		if bits.IsEmpty() {
+			return false
+		}
+	}
+	return true
 }
 
 func buildAllExclusions[C any](
@@ -364,11 +408,13 @@ func appendBitmapValues[ID comparable](bits *roaring.Bitmap, values []ID, result
 }
 
 func appendScannedAllMatches[C any, ID comparable](
+	root *allRule[C],
 	rankedChildren []rankedBitmap,
 	exclusions []exclusionRule[C],
 	excluded *roaring.Bitmap,
 	value C,
 	values []ID,
+	pool *bitmapPool,
 	result []ID,
 ) []ID {
 	candidates := rankedChildren[0].bits.Iterator()
@@ -379,7 +425,7 @@ func appendScannedAllMatches[C any, ID comparable](
 		}
 		matches := true
 		for _, child := range rankedChildren[1:] {
-			if !child.bits.Contains(id) {
+			if !matchesRuleID(root.children[child.childIdx], value, id, pool) {
 				matches = false
 				break
 			}

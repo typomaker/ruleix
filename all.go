@@ -85,6 +85,15 @@ func (r *allRule[T]) optimize(total uint64) Rule[T] {
 func (r *allRule[T]) cardinality(v T, pool *bitmapPool) uint64 {
 	return measuredCardinality[T](r, v, pool)
 }
+func (r *allRule[T]) matchesID(v T, id uint32) bool {
+	for _, child := range r.children {
+		matcher, ok := child.(ruleIDMatcher[T])
+		if !ok || !matcher.matchesID(v, id) {
+			return false
+		}
+	}
+	return true
+}
 func (r *allRule[T]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	// Most All groups are small. Keeping their ranking storage on the stack
 	// avoids a service allocation without adding shared mutable state.
@@ -124,22 +133,29 @@ func (r *allRule[T]) searchRanked(
 		r.releaseRanked(pool, rankedChildren)
 		return
 	}
-	for i, ranked := range rankedChildren {
-		bits := pool.get()
-		r.children[ranked.childIdx].search(v, bits, pool)
-		rankedChildren[i].bits = bits
-		rankedChildren[i].card = bits.GetCardinality()
-		if i == 0 {
-			dst.Or(bits)
-		} else {
-			dst.And(bits)
+	first := pool.get()
+	r.children[rankedChildren[0].childIdx].search(v, first, pool)
+	first.Iterate(func(id uint32) bool {
+		for _, ranked := range rankedChildren[1:] {
+			if !matchesRuleID(r.children[ranked.childIdx], v, id, pool) {
+				return true
+			}
 		}
-		if dst.IsEmpty() {
-			r.releaseRanked(pool, rankedChildren[:i+1])
-			return
-		}
+		dst.Add(id)
+		return true
+	})
+	pool.put(first)
+}
+
+func matchesRuleID[T any](rule Rule[T], value T, id uint32, pool *bitmapPool) bool {
+	if matcher, ok := rule.(ruleIDMatcher[T]); ok {
+		return matcher.matchesID(value, id)
 	}
-	r.releaseRanked(pool, rankedChildren)
+	bits := pool.get()
+	rule.search(value, bits, pool)
+	matches := bits.Contains(id)
+	pool.put(bits)
+	return matches
 }
 
 func (r *allRule[T]) rankChildren(
@@ -209,6 +225,8 @@ func (r *allRule[T]) collectRankedInOrder(
 
 func (*allRule[T]) releaseRanked(pool *bitmapPool, rankedChildren []rankedBitmap) {
 	for _, child := range rankedChildren {
-		pool.put(child.bits)
+		if child.bits != nil {
+			pool.put(child.bits)
+		}
 	}
 }

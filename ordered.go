@@ -134,6 +134,13 @@ func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	r.addMatches(value, bits)
 	dst.Or(bits)
 }
+func (r *orderedRule[T, V]) matchesID(v T, id uint32) bool {
+	if r.wildcard.Contains(id) {
+		return true
+	}
+	value, ok := r.get(v)
+	return ok && r.index.matches(value, r.dir == lessThan, r.inclusive, id)
+}
 
 func (r *orderedRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
 	dst.Or(r.wildcard)

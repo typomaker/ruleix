@@ -197,6 +197,16 @@ func (i *orderedIndex[V]) walk(value V, ascending, inclusive bool, visit func(*r
 		visit(i.blocks[n].bits)
 	}
 }
+
+func (i *orderedIndex[V]) matches(value V, ascending, inclusive bool, id uint32) bool {
+	found := false
+	i.walk(value, ascending, inclusive, func(bits *roaring.Bitmap) {
+		if !found && bits.Contains(id) {
+			found = true
+		}
+	})
+	return found
+}
 func (i *orderedIndex[V]) exact(value V) *roaring.Bitmap {
 	if len(i.blocks) == 0 {
 		return nil
