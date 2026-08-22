@@ -130,6 +130,46 @@ candidate validation for the other bound when the set is small. Storing bounds
 by internal rule ID may make this validation cheap, but its memory cost should
 be compared with the compiled-rule approach used by the general planner.
 
+### Memory-bounded lossy indexes
+
+Add an opt-in `Lossy` policy for indexes whose exact representation would
+exceed a caller-provided memory budget. Lossy search results may contain false
+positives, but must never omit an exact match. When the exact representation
+fits the budget, `Build` should retain it rather than approximating needlessly.
+Keep this policy orthogonal to operators: the intended API is a decorator such
+as `Lossy(Include(...), MaxMemory(20<<20))`, not lossy-specific parameters on
+every rule constructor.
+
+Develop the feature in stages:
+
+1. Define the public contract for `Lossy`, `MaxMemory`, unsupported rule/value
+   combinations, invalid budgets, and build failures. Keep false-positive
+   targets, hash counts, bucket sizes, prefixes, and shifts internal.
+2. Split `Build` conceptually into analysis, planning, and materialization so it
+   can estimate an exact representation and choose a strategy without first
+   constructing and discarding a full exact index.
+3. Prototype operator-aware strategies for equality and ordered ranges. Use
+   canonical value encodings rather than Go's in-memory layout; investigate a
+   monotonic `uint64` key for ordered scalar and time values so range rules can
+   share bucket machinery.
+4. Select granularity automatically from the budget, actual data distribution,
+   operator, and value type. Resolve type-specific behavior once during
+   `Build`; do not add type switches to the search hot path.
+5. Add build statistics describing the selected exact or lossy representation,
+   retained memory, budget, item and distinct-value counts, strategy, and
+   granularity. Report an estimated false-positive rate only where it can be
+   computed meaningfully.
+6. Extend the policy to `All` only after defining how one budget is divided
+   among children and proving that composition preserves the no-false-negative
+   invariant.
+
+Require property tests comparing lossy and exact results across supported
+operators and value types, adversarial boundary tests for ordered encodings,
+and production-shaped benchmarks for build time, peak and retained memory,
+search latency, allocations, and observed false-positive rate. The detailed
+design constraints and open decisions are recorded in
+[`docs/lossy-index.md`](docs/lossy-index.md).
+
 ## Deferred feature candidates
 
 ### Not equal
