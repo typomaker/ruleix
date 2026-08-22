@@ -151,7 +151,7 @@ func buildIndex[C any, ID comparable](
 	prepareRuleSearch(ix.root)
 	ix.nodes = int(ids.next)
 	for _, inspection := range inspections {
-		inspection.dst.stats.Store(&RuleStats{
+		inspection.dst.published.Store(&ruleStats{
 			Bound:      true,
 			Mode:       RuleModeExact,
 			Strategy:   inspection.strategy,

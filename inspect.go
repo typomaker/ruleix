@@ -16,10 +16,7 @@ const (
 	RuleModeExact RuleMode = "exact"
 )
 
-// RuleStats is an immutable snapshot of the latest successful build containing
-// an inspected rule. A zero value, with Bound false, means that no build has
-// successfully bound the inspector yet.
-type RuleStats struct {
+type ruleStats struct {
 	Bound      bool
 	Mode       RuleMode
 	Strategy   string
@@ -30,23 +27,57 @@ type RuleStats struct {
 // RuleInspector observes the compiled representation of a rule. Its zero value
 // is ready for use. A RuleInspector must not be copied after first use.
 //
-// Stats may be called concurrently with searches and later (externally
-// serialized) builds of the Builder that owns the inspected schema.
+// Its observation methods may be called concurrently with searches and later
+// (externally serialized) builds of the Builder that owns the inspected
+// schema. The first observation pins one coherent build snapshot until Reset.
 type RuleInspector struct {
-	stats atomic.Pointer[RuleStats]
+	published atomic.Pointer[ruleStats]
+	pinned    atomic.Pointer[ruleStats]
 }
 
-// Stats returns a snapshot from the latest successful build. Failed builds
-// preserve the previous snapshot.
-func (i *RuleInspector) Stats() RuleStats {
+var unboundRuleStats = ruleStats{}
+
+func (i *RuleInspector) snapshot() *ruleStats {
 	if i == nil {
-		return RuleStats{}
+		return &unboundRuleStats
 	}
-	stats := i.stats.Load()
-	if stats == nil {
-		return RuleStats{}
+	for {
+		if stats := i.pinned.Load(); stats != nil {
+			return stats
+		}
+		stats := i.published.Load()
+		if stats == nil {
+			stats = &unboundRuleStats
+		}
+		if i.pinned.CompareAndSwap(nil, stats) {
+			return stats
+		}
 	}
-	return *stats
+}
+
+// Bound reports whether the pinned snapshot belongs to a successful build.
+func (i *RuleInspector) Bound() bool { return i.snapshot().Bound }
+
+// Mode reports the representation mode from the pinned snapshot.
+func (i *RuleInspector) Mode() RuleMode { return i.snapshot().Mode }
+
+// Strategy reports the compiled strategy from the pinned snapshot.
+func (i *RuleInspector) Strategy() string { return i.snapshot().Strategy }
+
+// EntryCount reports the number of input entries consumed by the build in the
+// pinned snapshot.
+func (i *RuleInspector) EntryCount() uint64 { return i.snapshot().EntryCount }
+
+// RuleCount reports the number of unique external rule IDs in the pinned
+// snapshot.
+func (i *RuleInspector) RuleCount() uint64 { return i.snapshot().RuleCount }
+
+// Reset releases the pinned snapshot. The next observation method pins the
+// latest successful build, or the unbound state if no build has succeeded.
+func (i *RuleInspector) Reset() {
+	if i != nil {
+		i.pinned.Store(nil)
+	}
 }
 
 // Inspect decorates rule with an observational handle. It does not change the

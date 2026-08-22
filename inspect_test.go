@@ -37,31 +37,38 @@ func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
 		plainIndex.Search(query, &want)
 		require.Equal(t, want, got)
 	}
-	require.Equal(t, RuleStats{
-		Bound: true, Mode: RuleModeExact, Strategy: "equality-unary", EntryCount: 3, RuleCount: 3,
-	}, country.Stats())
+	require.True(t, country.Bound())
+	require.Equal(t, RuleModeExact, country.Mode())
+	require.Equal(t, "equality-unary", country.Strategy())
+	require.Equal(t, uint64(3), country.EntryCount())
+	require.Equal(t, uint64(3), country.RuleCount())
 }
 
-func TestInspectLifecycleUsesLatestSuccessfulBuild(t *testing.T) {
+func TestInspectLifecyclePinsUntilReset(t *testing.T) {
 	var inspector RuleInspector
 	builder := New[inspectConstraint, string](Inspect(
 		&inspector,
 		Include(func(v inspectConstraint) (string, bool) { return v.country, true }),
 	))
-	require.Equal(t, RuleStats{}, inspector.Stats())
+	require.False(t, inspector.Bound())
 
 	_, err := builder.Build(Zip([]inspectConstraint{{country: "DE"}}, []string{"one"}))
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), inspector.Stats().EntryCount)
+	require.False(t, inspector.Bound(), "the pre-build observation remains pinned")
+	inspector.Reset()
+	require.True(t, inspector.Bound())
+	require.Equal(t, uint64(1), inspector.EntryCount())
 
 	_, err = builder.Build(nil)
 	require.EqualError(t, err, "ruleix: nil entry sequence")
-	require.Equal(t, uint64(1), inspector.Stats().EntryCount)
+	require.Equal(t, uint64(1), inspector.EntryCount())
 
 	constraints := []inspectConstraint{{country: "DE"}, {country: "US"}}
 	_, err = builder.Build(Zip(constraints, []string{"one", "two"}))
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), inspector.Stats().EntryCount)
+	require.Equal(t, uint64(1), inspector.EntryCount(), "a successful build does not replace the pinned snapshot")
+	inspector.Reset()
+	require.Equal(t, uint64(2), inspector.EntryCount())
 }
 
 func TestInspectRejectsOneInspectorOnMultipleRules(t *testing.T) {
@@ -72,10 +79,10 @@ func TestInspectRejectsOneInspectorOnMultipleRules(t *testing.T) {
 	)
 	_, err := New[inspectConstraint, string](schema).Build(Zip([]inspectConstraint{{}}, []string{"one"}))
 	require.EqualError(t, err, "ruleix: one RuleInspector cannot inspect multiple rules")
-	require.Equal(t, RuleStats{}, inspector.Stats())
+	require.False(t, inspector.Bound())
 }
 
-func TestInspectStatsAreSafeDuringRepeatedBuilds(t *testing.T) {
+func TestInspectMethodsAreSafeDuringRepeatedBuildsAndResets(t *testing.T) {
 	var inspector RuleInspector
 	builder := New[inspectConstraint, string](Inspect(
 		&inspector,
@@ -92,7 +99,11 @@ func TestInspectStatsAreSafeDuringRepeatedBuilds(t *testing.T) {
 			case <-done:
 				return
 			default:
-				_ = inspector.Stats()
+				_ = inspector.Bound()
+				_ = inspector.Mode()
+				_ = inspector.Strategy()
+				_ = inspector.EntryCount()
+				_ = inspector.RuleCount()
 			}
 		}
 	}()
@@ -103,8 +114,10 @@ func TestInspectStatsAreSafeDuringRepeatedBuilds(t *testing.T) {
 			}
 		})
 		require.NoError(t, err)
+		inspector.Reset()
 	}
 	close(done)
 	readers.Wait()
-	require.Equal(t, uint64(10), inspector.Stats().RuleCount)
+	inspector.Reset()
+	require.Equal(t, uint64(10), inspector.RuleCount())
 }

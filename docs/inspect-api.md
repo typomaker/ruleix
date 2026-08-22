@@ -22,7 +22,12 @@ type RuleInspector struct {
 
 func Inspect[T any](dst *RuleInspector, rule Rule[T]) Rule[T]
 
-func (inspector *RuleInspector) Stats() RuleStats
+func (inspector *RuleInspector) Bound() bool
+func (inspector *RuleInspector) Mode() RuleMode
+func (inspector *RuleInspector) Strategy() string
+func (inspector *RuleInspector) EntryCount() uint64
+func (inspector *RuleInspector) RuleCount() uint64
+func (inspector *RuleInspector) Reset()
 ```
 
 For example:
@@ -45,7 +50,10 @@ if err != nil {
 	return err
 }
 
-stats := customer.Stats()
+if customer.Bound() {
+	mode := customer.Mode()
+	strategy := customer.Strategy()
+}
 ```
 
 `RuleInspector` is deliberately separate from `Rule`. A `Rule` is a
@@ -76,19 +84,24 @@ behavior with or without `Inspect`, and attaching an inspector must not force a
 specific strategy, disable optimization, or add work to the default search hot
 path.
 
-Before the first successful build, `Stats` returns a zero `RuleStats` with
-`Bound == false`. A later successful build atomically replaces the snapshot;
-a failed build preserves the last successful snapshot. `Stats` may run
-concurrently with searches and with a later build (the builder itself still
-requires external serialization). A `RuleInspector` must not be copied after
-first use and may identify only one schema location per build. Reusing it at
-multiple locations makes `Build` return an error.
+The first observation method pins one immutable snapshot. All later methods
+read that same generation even if another build succeeds. `Reset` releases the
+pinned snapshot, and the next method pins the latest successful build. Thus a
+caller can read several fields without mixing generations. Observing before
+the first successful build pins the unbound state (`Bound() == false`) until
+`Reset`.
+
+A failed build does not replace the latest successful state. Observation
+methods and `Reset` may run concurrently with searches and a later build (the
+builder itself still requires external serialization). A `RuleInspector` must
+not be copied after first use and may identify only one schema location per
+build. Reusing it at multiple locations makes `Build` return an error.
 
 ## Statistics
 
-The primary operation is `RuleInspector.Stats()`. The first version reports
-the exact representation mode, selected strategy, number of input entries, and
-number of unique external rule IDs. The statistics model leaves room for:
+The first version exposes methods for the exact representation mode, selected
+strategy, number of input entries, and number of unique external rule IDs. The
+inspection model leaves room for:
 
 - representation mode: exact or lossy;
 - retained memory and configured maximum memory;
@@ -103,8 +116,8 @@ number of unique external rule IDs. The statistics model leaves room for:
 Fields whose values are unavailable should be distinguishable from meaningful
 zero values. Names and units should be stable and explicit: memory is measured
 in bytes, false-positive rate is a probability, and estimates should be marked
-as estimates. Prefer an immutable snapshot from `Stats` over exposing mutable
-internal structures.
+as estimates. New methods must read the same pinned snapshot as the initial
+ones.
 
 Strategy names and fine-grained representation details may evolve as the
 planner changes. Decide which values are stable public contracts and which are
