@@ -26,7 +26,7 @@ Lossy behavior should decorate an existing `Rule[T]`:
 ```go
 ruleix.Lossy(
 	ruleix.Include(...),
-	ruleix.MaxMemory(20<<20),
+	ruleix.MemoryLimit(20<<20),
 )
 ```
 
@@ -35,7 +35,7 @@ ordered comparisons, and `CompareBy`. It should also compose with independently
 budgeted children of `All`. Applying one policy to an entire `All` is desirable,
 but requires explicit budget-allocation semantics first.
 
-The initial public configuration should contain only `MaxMemory(bytes)`. False
+The initial public configuration should contain only `MemoryLimit(bytes)`. False
 positive rate, hash-function count, bucket count, segment size, prefix length,
 and retained bit count are implementation choices. Adding strategies must not
 require changing the public API.
@@ -48,7 +48,7 @@ type LossyOption interface {
 }
 
 func Lossy[T any](rule Rule[T], options ...LossyOption) Rule[T]
-func MaxMemory(bytes uint64) LossyOption
+func MemoryLimit(bytes uint64) LossyOption
 ```
 
 `LossyOption` is sealed so configuration can grow without accepting arbitrary
@@ -57,7 +57,7 @@ with `New` and `Inspect`. All policy validation is deferred to `Build`:
 schema constructors do not return errors, and a caller may prepare one schema
 before its input distribution is known.
 
-Exactly one `MaxMemory` option is required in the initial API. A missing or
+Exactly one `MemoryLimit` option is required in the initial API. A missing or
 repeated option, a zero budget, or an option value that overflows an internal
 size calculation makes `Build` fail. `uint64` avoids architecture-dependent
 meaning at the API boundary; converting it to `int` is a checked build-time
@@ -65,8 +65,9 @@ operation. There is no implicit default and values are bytes, not MiB units.
 
 ### Budget contract
 
-`MaxMemory` is a hard upper bound for memory retained exclusively by the
-decorated rule's selected search representation after a successful `Build`.
+`MemoryLimit` is a hard upper bound for accounted memory retained exclusively
+by the decorated rule's selected search representation after a successful
+`Build`.
 It includes its posting containers, value keys or buckets, lookup tables, and
 strategy metadata. It excludes the builder's transient analysis state, the
 index's external-ID table, bitmap pool state, the rule's getter/comparator,
@@ -75,11 +76,47 @@ and structural overhead belonging to an enclosing `All`.
 Shared immutable storage is charged once to its owning decorated rule. The
 initial implementation must not share budgeted storage across independently
 budgeted decorators: doing so would make either inspector's accounting depend
-on whether the other decorator exists. Alignment and allocator overhead that
-cannot be measured portably may be covered by a documented conservative
-estimate, but the planned retained byte count must not exceed the budget.
-`Inspect` will eventually report both that planned count and the configured
-limit using explicit byte units.
+on whether the other decorator exists. Allocator overhead is deliberately not
+inferred from the live Go heap. The accounted retained byte count must not
+exceed the budget.
+
+### Stable memory accounting
+
+`Inspector` will expose the selected representation through:
+
+```go
+MemoryUsage() uint64
+MemoryLimit() uint64
+```
+
+Both values are bytes. `MemoryUsage` is a deterministic Ruleix accounting
+value, not a sample from `runtime.MemStats`, a heap profile, or an estimate
+derived from the Go allocator. Given the same input, policy, and selected
+strategy, it must be identical across repeated builds, supported architectures,
+Go versions, and unrelated process activity.
+
+Every representation must define its accounting formula beside its
+implementation. The common rules are:
+
+- canonical key and value encodings contribute their encoded byte lengths;
+- Roaring postings contribute their portable serialized sizes;
+- fixed strategy metadata and logical table slots use explicitly versioned,
+  architecture-independent byte charges;
+- logical lengths are counted, while Go object headers, pointer widths, map
+  implementation details, slice capacity slack, allocator size classes, and
+  garbage-collector metadata are not.
+
+Analysis and planning compute the same formula later reported by
+`MemoryUsage`; materialization must verify it before publishing the index. A
+strategy or accounting-formula change may change the reported usage and must
+be recorded as an observable release change. It does not change what one byte
+means or make results dependent on the runtime allocator.
+
+This is a stable representation budget, not a promise that a heap profile will
+attribute exactly that many physical bytes to the rule. Peak build memory and
+actual process heap remain benchmark metrics reported separately. The explicit
+model makes the build decision reproducible and lets callers compare usage to
+the configured limit without allocator noise.
 
 The policy selects the exact representation whenever its planned retained size
 fits. Otherwise it selects a supported lossy representation whose planned size
@@ -188,8 +225,8 @@ compose normally:
 ```go
 ruleix.All(
 	ruleix.Include(region),
-	ruleix.Lossy(ruleix.Include(customerUUID), ruleix.MaxMemory(20<<20)),
-	ruleix.Lossy(ruleix.Between(...), ruleix.MaxMemory(10<<20)),
+	ruleix.Lossy(ruleix.Include(customerUUID), ruleix.MemoryLimit(20<<20)),
+	ruleix.Lossy(ruleix.Between(...), ruleix.MemoryLimit(10<<20)),
 )
 ```
 

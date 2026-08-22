@@ -39,7 +39,7 @@ schema := ruleix.All(
 		&customer,
 		ruleix.Lossy(
 			ruleix.Include(customerID),
-			ruleix.MaxMemory(20<<20),
+			ruleix.MemoryLimit(20<<20),
 		),
 	),
 )

@@ -332,7 +332,7 @@ observation methods.
 The first memory-bounded lossy-index stage now has a concrete API and failure
 contract in [`docs/lossy-index.md`](docs/lossy-index.md). The planned API is a
 sealed `LossyOption`, `Lossy(rule, options...)`, and a single required
-`MaxMemory(uint64)` byte limit. Strategy controls and false-positive targets
+`MemoryLimit(uint64)` byte limit. Strategy controls and false-positive targets
 remain internal.
 
 The limit covers storage retained exclusively by the decorated runtime rule,
@@ -344,3 +344,12 @@ overflow, insufficient budgets, nested policies, and a policy directly around
 Independently budgeted children of `All` remain composable. These decisions
 complete the contract stage without exporting constructors before a usable
 analysis and planning path exists.
+
+Memory accounting is deterministic rather than allocator-derived. Future
+`Inspector.MemoryUsage` and `Inspector.MemoryLimit` methods report bytes under
+an explicit representation model: canonical encoded values, portable Roaring
+sizes, and fixed architecture-independent charges for logical slots and
+metadata. Go object headers, capacity slack, allocator classes, and GC metadata
+remain separate benchmark concerns. Planning and inspection use the same
+formula, so identical inputs and strategies produce stable values across Go
+versions and architectures.

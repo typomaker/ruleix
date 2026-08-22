@@ -92,7 +92,7 @@ exceed a caller-provided memory budget. Lossy search results may contain false
 positives, but must never omit an exact match. When the exact representation
 fits the budget, `Build` should retain it rather than approximating needlessly.
 Keep this policy orthogonal to operators: the intended API is a decorator such
-as `Lossy(Include(...), MaxMemory(20<<20))`, not lossy-specific parameters on
+as `Lossy(Include(...), MemoryLimit(20<<20))`, not lossy-specific parameters on
 every rule constructor.
 
 Develop the feature in stages:
