@@ -2,6 +2,7 @@ package ruleix_test
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/typomaker/ruleix"
@@ -9,12 +10,22 @@ import (
 
 var productionScaleBenchmarkMatches []productionBenchmarkID
 
+const productionLargeScaleEnv = "RULEIX_BENCHMARK_LARGE"
+
+func productionScaleBenchmarkSizes() []int {
+	sizes := []int{10_000, 100_000, 1_000_000}
+	if os.Getenv(productionLargeScaleEnv) != "" {
+		sizes = append(sizes, 5_000_000, 10_000_000)
+	}
+	return sizes
+}
+
 // BenchmarkProductionScaleSearch extends the production-shaped baseline to
 // the rule counts required by the planner roadmap. Each size covers a small
 // result, the normal selective query, and a wildcard-heavy query. Data setup
 // and index construction stay outside the timed region.
 func BenchmarkProductionScaleSearch(b *testing.B) {
-	for _, entries := range []int{10_000, 100_000, 1_000_000} {
+	for _, entries := range productionScaleBenchmarkSizes() {
 		b.Run(fmt.Sprintf("Rules%d", entries), func(b *testing.B) {
 			constraints, ids := productionBenchmarkDataN(entries)
 			index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
@@ -59,7 +70,7 @@ func BenchmarkProductionScaleSearch(b *testing.B) {
 // BenchmarkProductionScaleBuild measures build time and allocation traffic at
 // the same sizes as the search matrix.
 func BenchmarkProductionScaleBuild(b *testing.B) {
-	for _, entries := range []int{10_000, 100_000, 1_000_000} {
+	for _, entries := range productionScaleBenchmarkSizes() {
 		b.Run(fmt.Sprintf("Rules%d", entries), func(b *testing.B) {
 			constraints, ids := productionBenchmarkDataN(entries)
 			builder := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
@@ -83,7 +94,7 @@ func BenchmarkProductionScaleBuild(b *testing.B) {
 // fixed iteration count, preferably 1x for the 1M case, so every measured
 // index can remain live through the final heap sample.
 func BenchmarkProductionScaleRetainedMemory(b *testing.B) {
-	for _, entries := range []int{10_000, 100_000, 1_000_000} {
+	for _, entries := range productionScaleBenchmarkSizes() {
 		b.Run(fmt.Sprintf("Rules%d", entries), func(b *testing.B) {
 			constraints, ids := productionBenchmarkDataN(entries)
 			benchmarkProductionRetainedMemory(b, constraints, ids)

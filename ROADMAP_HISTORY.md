@@ -65,6 +65,18 @@ go test -run '^$' -bench '^BenchmarkProductionScaleRetainedMemory/' \
   -benchtime=1x -count=5 .
 ```
 
+The same matrix includes 5M and 10M rule cases when
+`RULEIX_BENCHMARK_LARGE=1` is set. They are opt-in because constructing the
+production-shaped source data and index can require several gigabytes of peak
+memory. Run a single large size by combining the environment variable with a
+benchmark subtest filter, for example:
+
+```sh
+RULEIX_BENCHMARK_LARGE=1 go test -run '^$' \
+  -bench '^BenchmarkProductionScaleSearch/Rules5000000/' \
+  -benchmem -benchtime=200ms -count=5 .
+```
+
 ## Adaptive `All` planner: initial stages
 
 The first two planner stages were implemented before this history was created.
