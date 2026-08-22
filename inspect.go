@@ -17,8 +17,8 @@ const (
 )
 
 // Inspector observes one rule's compiled representation. Its first observation
-// pins a coherent build snapshot until Reset. Inspector implementations are
-// selected internally for the compiled rule; create one with NewInspector.
+// pins a coherent build snapshot until Reset. Inspect selects and assigns the
+// implementation when it decorates a rule.
 type Inspector interface {
 	Bound() bool
 	Mode() RuleMode
@@ -47,9 +47,6 @@ type inspectorState struct {
 type inspector struct{ state inspectorState }
 
 var _ Inspector = (*inspector)(nil)
-
-// NewInspector creates an unbound Inspector ready to pass to Inspect.
-func NewInspector() Inspector { return &inspector{} }
 
 func (i *inspector) inspectionState() *inspectorState { return &i.state }
 
@@ -115,15 +112,22 @@ func (i *inspector) Reset() { i.state.pinned.Store(nil) }
 // compiled search tree or matching semantics. Inspect panics for a nil
 // inspector or rule. Attaching the same inspector more than once in one schema
 // makes Build fail.
-func Inspect[T any](dst Inspector, rule Rule[T]) Rule[T] {
+func Inspect[T any](dst *Inspector, rule Rule[T]) Rule[T] {
 	if dst == nil {
 		panic("ruleix: nil rule inspector")
 	}
 	if rule == nil {
 		panic("ruleix: nil inspected rule")
 	}
-	return &inspectRule[T]{dst: dst.inspectionState(), child: rule}
+	implementation := newInspectorFor(rule)
+	*dst = implementation
+	return &inspectRule[T]{dst: implementation.inspectionState(), child: rule}
 }
+
+// newInspectorFor is the dispatch point for rule-specific Inspector
+// implementations. The exact representation currently shares one
+// implementation; future strategies may select specialized implementations.
+func newInspectorFor[T any](Rule[T]) Inspector { return &inspector{} }
 
 type inspectRule[T any] struct {
 	dst   *inspectorState

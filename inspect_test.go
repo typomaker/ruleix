@@ -14,9 +14,9 @@ type inspectConstraint struct {
 }
 
 func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
-	country := NewInspector()
+	var country Inspector
 	inspected := New[inspectConstraint, string](All(
-		Inspect(country, Include(func(v inspectConstraint) (string, bool) { return v.country, v.country != "" })),
+		Inspect(&country, Include(func(v inspectConstraint) (string, bool) { return v.country, v.country != "" })),
 		Include(func(v inspectConstraint) (string, bool) { return v.tier, v.tier != "" }),
 	))
 	plain := New[inspectConstraint, string](All(
@@ -45,9 +45,9 @@ func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
 }
 
 func TestInspectLifecyclePinsUntilReset(t *testing.T) {
-	inspector := NewInspector()
+	var inspector Inspector
 	builder := New[inspectConstraint, string](Inspect(
-		inspector,
+		&inspector,
 		Include(func(v inspectConstraint) (string, bool) { return v.country, true }),
 	))
 	require.False(t, inspector.Bound())
@@ -72,10 +72,11 @@ func TestInspectLifecyclePinsUntilReset(t *testing.T) {
 }
 
 func TestInspectRejectsOneInspectorOnMultipleRules(t *testing.T) {
-	inspector := NewInspector()
+	var inspector Inspector
+	inspected := Inspect(&inspector, Include(func(v inspectConstraint) (string, bool) { return v.country, true }))
 	schema := All(
-		Inspect(inspector, Include(func(v inspectConstraint) (string, bool) { return v.country, true })),
-		Inspect(inspector, Include(func(v inspectConstraint) (string, bool) { return v.tier, true })),
+		inspected,
+		inspected,
 	)
 	_, err := New[inspectConstraint, string](schema).Build(Zip([]inspectConstraint{{}}, []string{"one"}))
 	require.EqualError(t, err, "ruleix: one Inspector cannot inspect multiple rules")
@@ -83,9 +84,9 @@ func TestInspectRejectsOneInspectorOnMultipleRules(t *testing.T) {
 }
 
 func TestInspectMethodsAreSafeDuringRepeatedBuildsAndResets(t *testing.T) {
-	inspector := NewInspector()
+	var inspector Inspector
 	builder := New[inspectConstraint, string](Inspect(
-		inspector,
+		&inspector,
 		Include(func(v inspectConstraint) (string, bool) { return v.country, true }),
 	))
 

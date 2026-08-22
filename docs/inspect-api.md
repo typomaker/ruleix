@@ -26,18 +26,17 @@ type Inspector interface {
 	// unexported method seals implementations
 }
 
-func NewInspector() Inspector
-func Inspect[T any](dst Inspector, rule Rule[T]) Rule[T]
+func Inspect[T any](dst *Inspector, rule Rule[T]) Rule[T]
 ```
 
 For example:
 
 ```go
-customer := ruleix.NewInspector()
+var customer ruleix.Inspector
 
 schema := ruleix.All(
 	ruleix.Inspect(
-		customer,
+		&customer,
 		ruleix.Lossy(
 			ruleix.Include(customerID),
 			ruleix.MaxMemory(20<<20),
@@ -69,17 +68,18 @@ types without changing the public API.
 The intended flow is:
 
 ```text
-Rule -> Inspect(inspector) -> analyze/plan -> compiled runtime rule
+Rule -> Inspect(&inspector) -> analyze/plan -> compiled runtime rule
                                                 |
                                                 v
                                       inspector runtime binding
 ```
 
-Before `Build`, the inspector is unbound. During a successful build, it is
-bound to the runtime representation selected for that particular decorated
-rule. The binding must happen after planning so statistics describe what was
-actually materialized rather than what the source rule requested or what the
-analyzer initially estimated.
+`Inspect` selects an internal implementation and assigns it to the caller's
+interface variable immediately. Before `Build`, that inspector is unbound.
+During a successful build, it is bound to the runtime representation selected
+for that particular decorated rule. The binding must happen after planning so
+statistics describe what was actually materialized rather than what the source
+rule requested or what the analyzer initially estimated.
 
 Binding is observational only. The compiled rule must have the same search
 behavior with or without `Inspect`, and attaching an inspector must not force a

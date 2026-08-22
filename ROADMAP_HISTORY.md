@@ -310,12 +310,12 @@ Historical release-to-release benchmark comparisons remain in
 
 ## 2026-08-22: transparent rule inspection
 
-`Inspect` now binds an `Inspector` created by `NewInspector` to the
-representation chosen for one decorated rule by a successful `Build`. Its
-direct methods report exact mode, the selected strategy, consumed entry count,
-and unique external-rule count. The first method call pins one coherent
-snapshot; `Reset` makes the next call pin the latest successful build. Failed
-builds do not replace the published state.
+`Inspect` now selects an internal implementation, assigns it through a caller-
+owned `*Inspector`, and binds it to the representation chosen for one decorated
+rule by a successful `Build`. Its direct methods report exact mode, the selected
+strategy, consumed entry count, and unique external-rule count. The first
+method call pins one coherent snapshot; `Reset` makes the next call pin the
+latest successful build. Failed builds do not replace the published state.
 
 Inspection decorators are removed before an index is published and the cleaned
 tree is optimized again. Consequently inspection adds no wrapper, counter, or
