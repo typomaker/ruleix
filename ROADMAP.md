@@ -54,11 +54,13 @@ small parent candidate set can be checked directly.
 ### Planner and memory benchmark matrix
 
 The reproducible production baseline now covers 10K, 100K, and 1M rules by
-default, with opt-in 5M and 10M cases for capable hosts; its definition and
+default, with opt-in 5M and 10M cases for capable hosts. Its search matrix
+includes empty and small results, selective and wildcard-heavy queries, large
+results, nested combinators, and range-heavy queries; its definition and
 reproduction commands are recorded in
 [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Include sparse constraints, dense constraints, high- and
-low-cardinality values, highly skewed wildcard distributions, empty and small
-results, large results, nested combinators, and range-heavy queries.
+low-cardinality values, and highly skewed wildcard distributions in future
+workload-specific additions.
 
 The baseline measures build time, search time and allocations, retained index
 bytes, peak build heap, GC pressure, logical posting count and size, and

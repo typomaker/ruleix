@@ -99,6 +99,12 @@ RULEIX_BENCHMARK_LARGE=1 go test -run '^$' \
   -benchmem -benchtime=200ms -count=5 .
 ```
 
+The search matrix also has explicit large-result, nested-`All`, and range-heavy
+cases. The range case populates both time intervals deterministically from the
+same production-shaped source data; the large-result and nested cases use
+smaller dedicated schemas so they measure the intended planner shape instead
+of an unrelated selective leaf in the full schema.
+
 ## Adaptive `All` planner: initial stages
 
 The first two planner stages were implemented before this history was created.
