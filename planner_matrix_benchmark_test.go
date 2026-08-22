@@ -3,6 +3,8 @@ package ruleix_test
 import (
 	"fmt"
 	"os"
+	"runtime"
+	"runtime/debug"
 	"testing"
 
 	"github.com/typomaker/ruleix"
@@ -98,6 +100,78 @@ func BenchmarkProductionScaleRetainedMemory(b *testing.B) {
 		b.Run(fmt.Sprintf("Rules%d", entries), func(b *testing.B) {
 			constraints, ids := productionBenchmarkDataN(entries)
 			benchmarkProductionRetainedMemory(b, constraints, ids)
+		})
+	}
+}
+
+// BenchmarkProductionScaleBuildPeakMemory reports the heap growth while one
+// index is built. GC is disabled around the measured build so temporary build
+// allocations cannot disappear before the peak sample. Use a fixed iteration
+// count; the benchmark performs a full build for every iteration.
+func BenchmarkProductionScaleBuildPeakMemory(b *testing.B) {
+	for _, entries := range productionScaleBenchmarkSizes() {
+		b.Run(fmt.Sprintf("Rules%d", entries), func(b *testing.B) {
+			constraints, ids := productionBenchmarkDataN(entries)
+			builder := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+				productionBenchmarkSchema(),
+			)
+			if _, err := builder.Build(ruleix.Zip(constraints, ids)); err != nil {
+				b.Fatal(err)
+			}
+
+			var peakTotal uint64
+			for range b.N {
+				runtime.GC()
+				runtime.GC()
+				var before, peak runtime.MemStats
+				runtime.ReadMemStats(&before)
+				previousGCPercent := debug.SetGCPercent(-1)
+				index, err := builder.Build(ruleix.Zip(constraints, ids))
+				runtime.ReadMemStats(&peak)
+				debug.SetGCPercent(previousGCPercent)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if peak.HeapAlloc > before.HeapAlloc {
+					peakTotal += peak.HeapAlloc - before.HeapAlloc
+				}
+				runtime.KeepAlive(index)
+			}
+			b.ReportMetric(float64(peakTotal)/float64(b.N), "peak-heap-B/build")
+		})
+	}
+}
+
+// BenchmarkProductionScaleBuildGCPressure reports collections and stop-the-
+// world pause time caused by a build with the process's normal GC settings.
+// Run it with a fixed iteration count to keep the per-build samples explicit.
+func BenchmarkProductionScaleBuildGCPressure(b *testing.B) {
+	for _, entries := range productionScaleBenchmarkSizes() {
+		b.Run(fmt.Sprintf("Rules%d", entries), func(b *testing.B) {
+			constraints, ids := productionBenchmarkDataN(entries)
+			builder := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+				productionBenchmarkSchema(),
+			)
+			if _, err := builder.Build(ruleix.Zip(constraints, ids)); err != nil {
+				b.Fatal(err)
+			}
+
+			var collectionsTotal, pauseTotal uint64
+			for range b.N {
+				runtime.GC()
+				var before, after runtime.MemStats
+				runtime.ReadMemStats(&before)
+				index, err := builder.Build(ruleix.Zip(constraints, ids))
+				if err != nil {
+					b.Fatal(err)
+				}
+				runtime.ReadMemStats(&after)
+				collectionsTotal += uint64(after.NumGC - before.NumGC)
+				pauseTotal += after.PauseTotalNs - before.PauseTotalNs
+				runtime.KeepAlive(index)
+			}
+			b.ReportMetric(float64(collectionsTotal)/float64(b.N), "GC-cycles/build")
+			b.ReportMetric(float64(pauseTotal)/float64(b.N), "GC-pause-ns/build")
 		})
 	}
 }

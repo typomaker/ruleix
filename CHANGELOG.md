@@ -11,8 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - The production-shaped planner benchmark matrix now covers 10K, 100K, and 1M
   rules by default, with opt-in 5M and 10M cases, across build,
-  retained-memory, selective, small-result, and wildcard-heavy search
-  workloads.
+  retained-memory, peak-build-memory, GC-pressure, selective, small-result,
+  and wildcard-heavy search workloads.
 - `All` uses cheap leaf cardinality estimates to order execution and stops
   materializing small candidate paths when an intermediate intersection is
   empty.

@@ -65,6 +65,21 @@ go test -run '^$' -bench '^BenchmarkProductionScaleRetainedMemory/' \
   -benchtime=1x -count=5 .
 ```
 
+Peak build heap and GC pressure use separate benchmarks so disabling GC for an
+unambiguous peak sample does not distort the collection count. Both prime the
+reusable builder before measuring, exclude caller-owned source data from the
+heap baseline, and should be run with a fixed iteration count:
+
+```sh
+go test -run '^$' \
+  -bench '^BenchmarkProductionScaleBuild(PeakMemory|GCPressure)/' \
+  -benchtime=1x -count=5 .
+```
+
+`BuildPeakMemory` reports heap growth with GC disabled around the build.
+`BuildGCPressure` reports GC cycles and cumulative stop-the-world pause time
+with the process's normal GC setting.
+
 The same matrix includes 5M and 10M rule cases when
 `RULEIX_BENCHMARK_LARGE=1` is set. They are opt-in because constructing the
 production-shaped source data and index can require several gigabytes of peak

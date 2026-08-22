@@ -60,8 +60,9 @@ reproduction commands are recorded in
 low-cardinality values, highly skewed wildcard distributions, empty and small
 results, large results, nested combinators, and range-heavy queries.
 
-Measure build time, search time and allocations, retained index bytes, peak
-build memory, GC pressure, posting count and size, and wildcard ratio. Compare
+The baseline measures build time, search time and allocations, retained index
+bytes, peak build heap, and GC pressure. Extend it with posting count and size
+and wildcard ratio. Compare
 bitmap-only, candidate-only, and adaptive execution over candidate counts from
 1 through at least 16K. Benchmark bitmap-pool reuse under concurrent searches;
 keep it only where it improves end-to-end allocation or latency behavior.
