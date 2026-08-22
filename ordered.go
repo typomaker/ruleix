@@ -88,6 +88,8 @@ func (r *orderedRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 	// Ordered exact accounting is conservative and stable: key encodings,
 	// logical slots, aggregate postings, and wildcard payload.
 	exact := uint64(24) + bitmapBytes(r.wildcard)
+	items := r.wildcard.GetCardinality()
+	distinct := uint64(0)
 	var values []struct {
 		key  uint64
 		bits *roaring.Bitmap
@@ -95,6 +97,8 @@ func (r *orderedRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 	for _, block := range r.index.blocks {
 		exact += bitmapBytes(block.bits) + 8
 		for _, item := range block.items {
+			items += item.bits.GetCardinality()
+			distinct++
 			encoded, ok := canonicalScalar(nil, any(item.value))
 			if !ok {
 				continue
@@ -110,14 +114,15 @@ func (r *orderedRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 		}
 	}
 	if exact <= limit {
-		return r, nil
+		return &inspectionDetailsRule[T]{child: r, details: representationDetails(exact, items, distinct, 0, false)}, nil
 	}
 	if len(values) == 0 && r.index.buildStatistics().uniqueValues != 0 {
 		return nil, fmt.Errorf("ruleix: Lossy ordered comparison requires a supported scalar value type")
 	}
 	if len(values) == 0 {
 		if uint64(32)+bitmapBytes(r.wildcard) <= limit {
-			return &lossyOrderedRule[T, V]{nodeID: r.nodeID, get: r.get, dir: r.dir, inclusive: r.inclusive, wildcard: r.wildcard}, nil
+			compiled := &lossyOrderedRule[T, V]{nodeID: r.nodeID, get: r.get, dir: r.dir, inclusive: r.inclusive, wildcard: r.wildcard}
+			return &inspectionDetailsRule[T]{child: compiled, details: representationDetails(uint64(32)+bitmapBytes(r.wildcard), items, distinct, 0, true)}, nil
 		}
 		return nil, fmt.Errorf("ruleix: Lossy ordered comparison cannot fit the memory limit")
 	}
@@ -155,7 +160,13 @@ func (r *orderedRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 	if selected == nil {
 		return nil, fmt.Errorf("ruleix: Lossy ordered comparison cannot fit the memory limit")
 	}
-	return selected, nil
+	usage := uint64(32) + bitmapBytes(selected.wildcard) + uint64(len(selected.buckets))*8
+	for _, posting := range selected.buckets {
+		if posting != nil {
+			usage += bitmapBytes(posting)
+		}
+	}
+	return &inspectionDetailsRule[T]{child: selected, details: representationDetails(usage, items, distinct, uint64(len(selected.buckets)), true)}, nil
 }
 
 func (*orderedRule[T, V]) inspectionStrategy() string { return "ordered" }

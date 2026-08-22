@@ -217,6 +217,7 @@ func materializeBuild[C any, ID comparable](
 			modeName:     inspection.mode,
 			entries:      uint64(statistics.entries),
 			rules:        uint64(statistics.uniqueIDs),
+			detail:       inspection.details,
 		}})
 	}
 	return ix, statistics, nil

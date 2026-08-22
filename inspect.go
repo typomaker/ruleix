@@ -28,6 +28,12 @@ type Inspector interface {
 	Strategy() string
 	EntryCount() uint64
 	RuleCount() uint64
+	MemoryUsage() (uint64, bool)
+	MemoryLimit() (uint64, bool)
+	ItemCount() (uint64, bool)
+	DistinctValueCount() (uint64, bool)
+	Granularity() (uint64, bool)
+	EstimatedFalsePositiveRate() (float64, bool)
 	Reset()
 	inspectionState() *inspectorState
 }
@@ -38,6 +44,34 @@ type inspectorSnapshot interface {
 	strategy() string
 	entryCount() uint64
 	ruleCount() uint64
+	details() inspectionDetails
+}
+
+// inspectionDetails contains optional representation-specific build
+// statistics. Availability flags distinguish an unavailable measurement from
+// a meaningful zero value.
+type inspectionDetails struct {
+	MemoryUsageBytes                    uint64
+	MemoryUsageAvailable                bool
+	MemoryLimitBytes                    uint64
+	MemoryLimitAvailable                bool
+	Items                               uint64
+	ItemsAvailable                      bool
+	DistinctValues                      uint64
+	DistinctValuesAvailable             bool
+	GranularityValue                    uint64
+	GranularityAvailable                bool
+	EstimatedFalsePositiveRateValue     float64
+	EstimatedFalsePositiveRateAvailable bool
+}
+
+func representationDetails(memory, items, distinct, granularity uint64, hasGranularity bool) inspectionDetails {
+	return inspectionDetails{
+		MemoryUsageBytes: memory, MemoryUsageAvailable: true,
+		Items: items, ItemsAvailable: true,
+		DistinctValues: distinct, DistinctValuesAvailable: true,
+		GranularityValue: granularity, GranularityAvailable: hasGranularity,
+	}
 }
 
 type inspectorSnapshotBox struct{ snapshot inspectorSnapshot }
@@ -55,17 +89,19 @@ func (i *inspector) inspectionState() *inspectorState { return &i.state }
 
 type unboundInspectorSnapshot struct{}
 
-func (unboundInspectorSnapshot) bound() bool        { return false }
-func (unboundInspectorSnapshot) mode() RuleMode     { return "" }
-func (unboundInspectorSnapshot) strategy() string   { return "" }
-func (unboundInspectorSnapshot) entryCount() uint64 { return 0 }
-func (unboundInspectorSnapshot) ruleCount() uint64  { return 0 }
+func (unboundInspectorSnapshot) bound() bool                { return false }
+func (unboundInspectorSnapshot) mode() RuleMode             { return "" }
+func (unboundInspectorSnapshot) strategy() string           { return "" }
+func (unboundInspectorSnapshot) entryCount() uint64         { return 0 }
+func (unboundInspectorSnapshot) ruleCount() uint64          { return 0 }
+func (unboundInspectorSnapshot) details() inspectionDetails { return inspectionDetails{} }
 
 type exactInspectorSnapshot struct {
 	strategyName string
 	modeName     RuleMode
 	entries      uint64
 	rules        uint64
+	detail       inspectionDetails
 }
 
 func (exactInspectorSnapshot) bound() bool { return true }
@@ -75,9 +111,10 @@ func (s exactInspectorSnapshot) mode() RuleMode {
 	}
 	return s.modeName
 }
-func (s exactInspectorSnapshot) strategy() string   { return s.strategyName }
-func (s exactInspectorSnapshot) entryCount() uint64 { return s.entries }
-func (s exactInspectorSnapshot) ruleCount() uint64  { return s.rules }
+func (s exactInspectorSnapshot) strategy() string           { return s.strategyName }
+func (s exactInspectorSnapshot) entryCount() uint64         { return s.entries }
+func (s exactInspectorSnapshot) ruleCount() uint64          { return s.rules }
+func (s exactInspectorSnapshot) details() inspectionDetails { return s.detail }
 
 var unboundInspector = &inspectorSnapshotBox{snapshot: unboundInspectorSnapshot{}}
 
@@ -112,6 +149,42 @@ func (i *inspector) EntryCount() uint64 { return i.snapshot().entryCount() }
 // RuleCount reports the number of unique external rule IDs in the pinned
 // snapshot.
 func (i *inspector) RuleCount() uint64 { return i.snapshot().ruleCount() }
+
+// MemoryUsage reports deterministic accounted representation bytes.
+func (i *inspector) MemoryUsage() (uint64, bool) {
+	d := i.snapshot().details()
+	return d.MemoryUsageBytes, d.MemoryUsageAvailable
+}
+
+// MemoryLimit reports the configured representation byte limit.
+func (i *inspector) MemoryLimit() (uint64, bool) {
+	d := i.snapshot().details()
+	return d.MemoryLimitBytes, d.MemoryLimitAvailable
+}
+
+// ItemCount reports indexed wildcard and concrete posting items.
+func (i *inspector) ItemCount() (uint64, bool) {
+	d := i.snapshot().details()
+	return d.Items, d.ItemsAvailable
+}
+
+// DistinctValueCount reports indexed concrete values, excluding wildcards.
+func (i *inspector) DistinctValueCount() (uint64, bool) {
+	d := i.snapshot().details()
+	return d.DistinctValues, d.DistinctValuesAvailable
+}
+
+// Granularity reports the selected number of lossy buckets.
+func (i *inspector) Granularity() (uint64, bool) {
+	d := i.snapshot().details()
+	return d.GranularityValue, d.GranularityAvailable
+}
+
+// EstimatedFalsePositiveRate reports an estimate when one is meaningful.
+func (i *inspector) EstimatedFalsePositiveRate() (float64, bool) {
+	d := i.snapshot().details()
+	return d.EstimatedFalsePositiveRateValue, d.EstimatedFalsePositiveRateAvailable
+}
 
 // Reset releases the pinned snapshot. The next observation method pins the
 // latest successful build, or the unbound state if no build has succeeded.
@@ -169,6 +242,7 @@ type pendingInspection struct {
 	dst      *inspectorState
 	strategy string
 	mode     RuleMode
+	details  inspectionDetails
 }
 
 func stripInspectors[T any](
@@ -182,12 +256,17 @@ func stripInspectors[T any](
 			return nil, fmt.Errorf("ruleix: one Inspector cannot inspect multiple rules")
 		}
 		seen[typed.dst] = struct{}{}
+		strategy := inspectionStrategyOf(typed.child)
+		mode := inspectionModeOf(typed.child)
+		details := inspectionDetailsOf(typed.child)
 		child, err := stripInspectors(typed.child, seen, pending)
 		if err != nil {
 			return nil, err
 		}
-		*pending = append(*pending, pendingInspection{dst: typed.dst, strategy: inspectionStrategyOf(child), mode: inspectionModeOf(child)})
+		*pending = append(*pending, pendingInspection{dst: typed.dst, strategy: strategy, mode: mode, details: details})
 		return child, nil
+	case *inspectionDetailsRule[T]:
+		return stripInspectors(typed.child, seen, pending)
 	case *allRule[T]:
 		children := make([]Rule[T], len(typed.children))
 		for i, child := range typed.children {
@@ -205,6 +284,14 @@ func stripInspectors[T any](
 
 type inspectionStrategist interface{ inspectionStrategy() string }
 type inspectionModer interface{ inspectionMode() RuleMode }
+type inspectionDetailer interface{ inspectionDetails() inspectionDetails }
+
+func inspectionDetailsOf[T any](rule Rule[T]) inspectionDetails {
+	if details, ok := rule.(inspectionDetailer); ok {
+		return details.inspectionDetails()
+	}
+	return inspectionDetails{}
+}
 
 func inspectionModeOf[T any](rule Rule[T]) RuleMode {
 	if mode, ok := rule.(inspectionModer); ok {

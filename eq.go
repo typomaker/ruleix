@@ -11,8 +11,12 @@ func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 	// V1 accounting: wildcard payload, 16 bytes of strategy metadata, and for
 	// each occupied bucket an 8-byte key, 8-byte logical slot, and payload.
 	exact := uint64(16) + bitmapBytes(r.wildcard)
+	items := r.wildcard.GetCardinality()
+	distinct := uint64(0)
 	if r.values.offsets == nil {
 		for n := range int(r.values.count) {
+			items += equalitySetCardinality(&r.values.sets[n])
+			distinct++
 			encoded, ok := canonicalScalar(nil, any(r.values.keys[n]))
 			if !ok {
 				continue
@@ -21,6 +25,8 @@ func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 		}
 	} else {
 		for value, offset := range r.values.offsets {
+			items += equalitySetCardinality(&r.values.sets[offset])
+			distinct++
 			encoded, ok := canonicalScalar(nil, any(value))
 			if !ok {
 				continue
@@ -29,7 +35,7 @@ func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 		}
 	}
 	if exact <= limit {
-		return r, nil
+		return &inspectionDetailsRule[T]{child: r, details: representationDetails(exact, items, distinct, 0, false)}, nil
 	}
 	var selected *lossyEqualityRule[T, V]
 	for bits := uint(0); bits <= lossyMaxBucketBits; bits++ {
@@ -71,7 +77,21 @@ func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 	if selected == nil {
 		return nil, fmt.Errorf("ruleix: Lossy equality cannot fit the memory limit")
 	}
-	return selected, nil
+	usage := uint64(16) + bitmapBytes(selected.wildcard)
+	for _, posting := range selected.buckets {
+		usage += 16 + bitmapBytes(posting)
+	}
+	return &inspectionDetailsRule[T]{child: selected, details: representationDetails(usage, items, distinct, uint64(len(selected.buckets)), true)}, nil
+}
+
+func equalitySetCardinality(s *equalitySet) uint64 {
+	if s.bits != nil {
+		return s.bits.GetCardinality()
+	}
+	if s.small != nil {
+		return uint64(len(s.small))
+	}
+	return 1
 }
 
 func equalitySetBytes(s *equalitySet) uint64 {

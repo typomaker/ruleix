@@ -424,3 +424,19 @@ limit directly around `All`. Unsupported scalar types fail only when the exact
 representation exceeds the limit. `Inspect` reports the actual exact or lossy
 mode and compiled strategy. Time values remain deferred pending an explicit
 ordered-key range or wider key.
+
+## 2026-08-22: lossy representation inspection statistics
+
+`Inspector` now reports deterministic accounted memory usage and the configured
+limit, indexed item and distinct-value counts, and the selected bucket count
+for a `Lossy` rule. Optional measurements return an availability flag, so an
+unavailable value cannot be confused with a meaningful zero. The same pinned
+snapshot contains mode, strategy, counts, and representation statistics.
+
+Inspection describes the representation actually selected by the build,
+including exact representations retained when they fit the budget. Both
+`Inspect(Lossy(...))` and `Lossy(Inspect(...))` bind to the same compiled
+metadata. Temporary metadata decorators are removed with inspectors before
+index publication, so searches retain no diagnostic wrapper. No false-positive
+estimate is reported because the supported strategies do not have a meaningful
+workload-independent probability model.

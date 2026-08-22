@@ -75,6 +75,36 @@ func (r *lossyRule[T]) collectBuildStatistics(s []nodeBuildStatistics) {
 
 type lossyCompiler[T any] interface{ compileLossy(uint64) (Rule[T], error) }
 
+type inspectionDetailsRule[T any] struct {
+	child   Rule[T]
+	details inspectionDetails
+}
+
+func (*inspectionDetailsRule[T]) rule() {}
+func (r *inspectionDetailsRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
+	return &inspectionDetailsRule[T]{child: r.child.newState(ids, hints), details: r.details}
+}
+func (r *inspectionDetailsRule[T]) validate(v T) error    { return r.child.validate(v) }
+func (r *inspectionDetailsRule[T]) insert(v T, id uint32) { r.child.insert(v, id) }
+func (r *inspectionDetailsRule[T]) cardinality(v T, p *bitmapPool) uint64 {
+	return r.child.cardinality(v, p)
+}
+func (r *inspectionDetailsRule[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	r.child.search(v, dst, p)
+}
+func (r *inspectionDetailsRule[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	r.child.exclude(v, dst, p)
+}
+func (r *inspectionDetailsRule[T]) collectBuildStatistics(s []nodeBuildStatistics) {
+	r.child.collectBuildStatistics(s)
+}
+func (r *inspectionDetailsRule[T]) optimize(total uint64) Rule[T] {
+	return &inspectionDetailsRule[T]{child: optimizeRule(r.child, total), details: r.details}
+}
+func (r *inspectionDetailsRule[T]) inspectionStrategy() string           { return inspectionStrategyOf(r.child) }
+func (r *inspectionDetailsRule[T]) inspectionMode() RuleMode             { return inspectionModeOf(r.child) }
+func (r *inspectionDetailsRule[T]) inspectionDetails() inspectionDetails { return r.details }
+
 func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 	switch typed := rule.(type) {
 	case *lossyRule[T]:
@@ -90,11 +120,25 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 		if _, ok := typed.child.(*lossyRule[T]); ok {
 			return nil, fmt.Errorf("ruleix: nested Lossy policies are not supported")
 		}
-		compiler, ok := typed.child.(lossyCompiler[T])
+		child := typed.child
+		var inspected *inspectRule[T]
+		if value, ok := child.(*inspectRule[T]); ok {
+			inspected = value
+			child = value.child
+		}
+		compiler, ok := child.(lossyCompiler[T])
 		if !ok {
 			return nil, fmt.Errorf("ruleix: Lossy does not support this rule representation")
 		}
-		return compiler.compileLossy(typed.limit)
+		compiled, err := compiler.compileLossy(typed.limit)
+		if err != nil {
+			return nil, err
+		}
+		details := lossyinspectionDetails(compiled, typed.limit)
+		if inspected != nil {
+			return &inspectRule[T]{dst: inspected.dst, child: &inspectionDetailsRule[T]{child: compiled, details: details}}, nil
+		}
+		return &inspectionDetailsRule[T]{child: compiled, details: details}, nil
 	case *allRule[T]:
 		children := make([]Rule[T], len(typed.children))
 		for i, child := range typed.children {
@@ -114,6 +158,12 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 	default:
 		return rule, nil
 	}
+}
+
+func lossyinspectionDetails[T any](rule Rule[T], limit uint64) inspectionDetails {
+	d := inspectionDetailsOf(rule)
+	d.MemoryLimitBytes, d.MemoryLimitAvailable = limit, true
+	return d
 }
 
 const lossyMaxBucketBits = 16

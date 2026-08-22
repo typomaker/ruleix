@@ -22,6 +22,12 @@ type Inspector interface {
 	Strategy() string
 	EntryCount() uint64
 	RuleCount() uint64
+	MemoryUsage() (uint64, bool)
+	MemoryLimit() (uint64, bool)
+	ItemCount() (uint64, bool)
+	DistinctValueCount() (uint64, bool)
+	Granularity() (uint64, bool)
+	EstimatedFalsePositiveRate() (float64, bool)
 	Reset()
 	// unexported method seals implementations
 }
@@ -52,6 +58,7 @@ if err != nil {
 if customer.Bound() {
 	mode := customer.Mode()
 	strategy := customer.Strategy()
+	used, measured := customer.MemoryUsage()
 }
 ```
 
@@ -101,25 +108,27 @@ makes `Build` return an error.
 
 ## Statistics
 
-The first version exposes methods for the exact representation mode, selected
-strategy, number of input entries, and number of unique external rule IDs. The
-inspection model leaves room for:
+The interface exposes methods for the selected representation mode and
+strategy, input-entry and unique external-ID counts, plus optional
+representation statistics:
 
-- representation mode: exact or lossy;
-- retained memory and configured maximum memory;
-- cardinality and item count;
-- distinct-value count;
-- selected strategy and granularity;
-- estimated false-positive rate, when meaningful;
+- accounted representation memory and configured maximum memory;
+- indexed item and distinct-value counts;
+- selected bucket count as the current granularity;
+- estimated false-positive rate, when meaningful and available;
 - optimizer decisions and representation details;
 - bucket or prefix configuration;
 - optional performance counters in a future version.
 
-Fields whose values are unavailable should be distinguishable from meaningful
-zero values. Names and units should be stable and explicit: memory is measured
-in bytes, false-positive rate is a probability, and estimates should be marked
-as estimates. New methods must read the same pinned snapshot as the initial
-ones.
+Optional methods return `(value, available)`, distinguishing unavailable data
+from a meaningful zero. Memory is measured in bytes under the deterministic
+accounting model used to enforce `MemoryLimit`; it is not Go heap usage.
+`ItemCount` includes wildcard and concrete postings after external-ID
+deduplication within each posting. `DistinctValueCount` excludes the wildcard.
+`Granularity` is the number of selected lossy buckets and is unavailable for
+an exact representation. The current strategies do not publish a false-
+positive estimate because they lack a meaningful workload-independent model.
+All methods read the same pinned snapshot.
 
 Strategy names and fine-grained representation details may evolve as the
 planner changes. Decide which values are stable public contracts and which are

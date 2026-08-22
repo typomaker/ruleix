@@ -95,15 +95,9 @@ Keep this policy orthogonal to operators: the intended API is a decorator such
 as `Lossy(Include(...), MemoryLimit(20<<20))`, not lossy-specific parameters on
 every rule constructor.
 
-Develop the feature in stages:
-
-1. Add build statistics describing the selected exact or lossy representation,
-   retained memory, budget, item and distinct-value counts, strategy, and
-   granularity, exposed through the proposed `Inspect` API. Report an estimated
-   false-positive rate only where it can be computed meaningfully.
-2. Extend the policy to `All` only after defining how one budget is divided
-   among children and proving that composition preserves the no-false-negative
-   invariant.
+The next stage is to extend the policy to `All`, but only after defining how
+one budget is divided among children and proving that composition preserves the
+no-false-negative invariant.
 
 Require property tests comparing lossy and exact results across supported
 operators and value types, adversarial boundary tests for ordered encodings,

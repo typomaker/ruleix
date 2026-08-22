@@ -1,6 +1,7 @@
 package ruleix
 
 import (
+	"cmp"
 	"fmt"
 	"sync"
 	"testing"
@@ -105,6 +106,12 @@ func TestInspectMethodsAreSafeDuringRepeatedBuildsAndResets(t *testing.T) {
 				_ = inspector.Strategy()
 				_ = inspector.EntryCount()
 				_ = inspector.RuleCount()
+				_, _ = inspector.MemoryUsage()
+				_, _ = inspector.MemoryLimit()
+				_, _ = inspector.ItemCount()
+				_, _ = inspector.DistinctValueCount()
+				_, _ = inspector.Granularity()
+				_, _ = inspector.EstimatedFalsePositiveRate()
 			}
 		}
 	}()
@@ -121,4 +128,101 @@ func TestInspectMethodsAreSafeDuringRepeatedBuildsAndResets(t *testing.T) {
 	readers.Wait()
 	inspector.Reset()
 	require.Equal(t, uint64(10), inspector.RuleCount())
+}
+
+func TestInspectReportsLossyRepresentationStatistics(t *testing.T) {
+	get := func(v lossyConstraint) (string, bool) { return v.name, v.present }
+	constraints := make([]lossyConstraint, 2000)
+	ids := make([]int, len(constraints))
+	for i := range constraints {
+		constraints[i] = lossyConstraint{name: fmt.Sprintf("customer-%d", i), present: true}
+		ids[i] = i
+	}
+	constraints[0].present = false
+
+	var inspector Inspector
+	_, err := New[lossyConstraint, int](Inspect(
+		&inspector,
+		Lossy(Include(get), MemoryLimit(5000)),
+	)).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+
+	usage, ok := inspector.MemoryUsage()
+	require.True(t, ok)
+	require.LessOrEqual(t, usage, uint64(5000))
+	limit, ok := inspector.MemoryLimit()
+	require.True(t, ok)
+	require.Equal(t, uint64(5000), limit)
+	items, ok := inspector.ItemCount()
+	require.True(t, ok)
+	require.Equal(t, uint64(2000), items)
+	distinct, ok := inspector.DistinctValueCount()
+	require.True(t, ok)
+	require.Equal(t, uint64(1999), distinct)
+	granularity, ok := inspector.Granularity()
+	require.True(t, ok)
+	require.NotZero(t, granularity)
+	_, ok = inspector.EstimatedFalsePositiveRate()
+	require.False(t, ok)
+}
+
+func TestInspectReportsExactSelectionWithinLossyBudget(t *testing.T) {
+	get := func(v inspectConstraint) (string, bool) { return v.country, v.country != "" }
+	var inspector Inspector
+	_, err := New[inspectConstraint, string](Lossy(
+		Inspect(&inspector, Include(get)),
+		MemoryLimit(1000),
+	)).Build(Zip(
+		[]inspectConstraint{{country: "DE"}, {country: "US"}, {}},
+		[]string{"one", "two", "three"},
+	))
+	require.NoError(t, err)
+	require.Equal(t, RuleModeExact, inspector.Mode())
+	require.Equal(t, "equality-binary", inspector.Strategy())
+	usage, ok := inspector.MemoryUsage()
+	require.True(t, ok)
+	require.LessOrEqual(t, usage, uint64(1000))
+	limit, ok := inspector.MemoryLimit()
+	require.True(t, ok)
+	require.Equal(t, uint64(1000), limit)
+	items, ok := inspector.ItemCount()
+	require.True(t, ok)
+	require.Equal(t, uint64(3), items)
+	distinct, ok := inspector.DistinctValueCount()
+	require.True(t, ok)
+	require.Equal(t, uint64(2), distinct)
+	_, ok = inspector.Granularity()
+	require.False(t, ok)
+}
+
+func TestInspectReportsLossyOrderedStatistics(t *testing.T) {
+	get := func(v lossyConstraint) (int64, bool) { return v.minimum, v.present }
+	constraints := make([]lossyConstraint, 2000)
+	ids := make([]int, len(constraints))
+	for i := range constraints {
+		constraints[i] = lossyConstraint{minimum: int64(i), present: true}
+		ids[i] = i
+	}
+	constraints[0].present = false
+
+	var inspector Inspector
+	_, err := New[lossyConstraint, int](Inspect(
+		&inspector,
+		Lossy(GreaterOrEqual(get, cmp.Compare[int64]), MemoryLimit(5000)),
+	)).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	require.Equal(t, RuleModeLossy, inspector.Mode())
+	require.Equal(t, "lossy-ordered-buckets", inspector.Strategy())
+	usage, ok := inspector.MemoryUsage()
+	require.True(t, ok)
+	require.LessOrEqual(t, usage, uint64(5000))
+	items, ok := inspector.ItemCount()
+	require.True(t, ok)
+	require.Equal(t, uint64(2000), items)
+	distinct, ok := inspector.DistinctValueCount()
+	require.True(t, ok)
+	require.Equal(t, uint64(1999), distinct)
+	granularity, ok := inspector.Granularity()
+	require.True(t, ok)
+	require.NotZero(t, granularity)
 }
