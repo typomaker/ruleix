@@ -75,6 +75,14 @@ type ruleIDMatcher[T any] interface {
 	matchesID(T, uint32) bool
 }
 
+// sharedWildcardEquality exposes the two disjoint parts of an equality match
+// to All. Equal wildcard pointers are guaranteed immutable after Build and
+// arise naturally from bitmap interning.
+type sharedWildcardEquality[T any] interface {
+	sharedWildcard() *roaring.Bitmap
+	addConcreteMatches(T, *roaring.Bitmap)
+}
+
 type exclusionRule[T any] interface {
 	exclude(T, *roaring.Bitmap, *bitmapPool)
 	isExcluded(T, uint32) bool

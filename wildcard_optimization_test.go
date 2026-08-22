@@ -132,3 +132,31 @@ func TestBuildCollectsStatisticsBeforeWildcardOptimization(t *testing.T) {
 	require.Len(t, builder.hints.nodes, 1)
 	require.Equal(t, 2, builder.hints.uniqueIDs)
 }
+
+func TestAllSharesInternedPartialEqualityWildcards(t *testing.T) {
+	type constraint struct{ left, right *int }
+	schema := All(
+		Include(GetterFromPointer(func(value constraint) *int { return value.left })),
+		Include(GetterFromPointer(func(value constraint) *int { return value.right })),
+	)
+	one, two, three := 1, 2, 3
+	constraints := []constraint{
+		{}, {}, {}, {}, {}, {},
+		{left: &one, right: &one},
+		{left: &one, right: &two},
+		{left: &two, right: &one},
+		{left: &three, right: &three},
+	}
+	index, err := New[constraint, int](schema).Build(Zip(constraints, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}))
+	require.NoError(t, err)
+	root := index.root.(*allRule[constraint])
+	left := root.children[0].(*eqRule[constraint, int])
+	right := root.children[1].(*eqRule[constraint, int])
+	require.Same(t, left.wildcard, right.wildcard)
+
+	for _, search := range []func(constraint, *[]int) bool{index.Search, index.Local().Search} {
+		var matches []int
+		search(constraint{left: &one, right: &one}, &matches)
+		require.Equal(t, []int{0, 1, 2, 3, 4, 5, 6}, matches)
+	}
+}

@@ -202,19 +202,29 @@ func (r *allRule[T]) collectRankedInOrder(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) bool {
+	if pool.local == nil {
+		r.collectSharedWildcards(v, pool, rankedChildren)
+	}
 	for i := range rankedChildren {
+		if rankedChildren[i].bits != nil {
+			continue
+		}
 		bits := pool.get()
 		r.children[rankedChildren[i].childIdx].search(v, bits, pool)
 		card := bits.GetCardinality()
 		if card == 0 {
 			pool.put(bits)
-			for j := 0; j < i; j++ {
-				pool.put(rankedChildren[j].bits)
+			for j := range rankedChildren {
+				if rankedChildren[j].owned {
+					pool.put(rankedChildren[j].bits)
+					rankedChildren[j].owned = false
+				}
 			}
 			return false
 		}
 		rankedChildren[i].bits = bits
 		rankedChildren[i].card = card
+		rankedChildren[i].owned = true
 	}
 	for i := 1; i < len(rankedChildren); i++ {
 		for j := i; j > 0 && rankedChildren[j].card < rankedChildren[j-1].card; j-- {
@@ -224,9 +234,57 @@ func (r *allRule[T]) collectRankedInOrder(
 	return true
 }
 
+func (r *allRule[T]) collectSharedWildcards(
+	v T,
+	pool *bitmapPool,
+	rankedChildren []rankedBitmap,
+) {
+	for i := range rankedChildren {
+		if rankedChildren[i].bits != nil {
+			continue
+		}
+		first, ok := r.children[rankedChildren[i].childIdx].(sharedWildcardEquality[T])
+		if !ok || first.sharedWildcard().IsEmpty() {
+			continue
+		}
+		groupSize := 1
+		for j := i + 1; j < len(rankedChildren); j++ {
+			other, ok := r.children[rankedChildren[j].childIdx].(sharedWildcardEquality[T])
+			if ok && other.sharedWildcard() == first.sharedWildcard() {
+				groupSize++
+			}
+		}
+		if groupSize < 2 {
+			continue
+		}
+		bits := pool.get()
+		first.addConcreteMatches(v, bits)
+		for j := i + 1; j < len(rankedChildren); j++ {
+			other, ok := r.children[rankedChildren[j].childIdx].(sharedWildcardEquality[T])
+			if !ok || other.sharedWildcard() != first.sharedWildcard() {
+				continue
+			}
+			concrete := pool.get()
+			other.addConcreteMatches(v, concrete)
+			bits.And(concrete)
+			pool.put(concrete)
+		}
+		bits.Or(first.sharedWildcard())
+		card := bits.GetCardinality()
+		for j := i; j < len(rankedChildren); j++ {
+			other, ok := r.children[rankedChildren[j].childIdx].(sharedWildcardEquality[T])
+			if ok && other.sharedWildcard() == first.sharedWildcard() {
+				rankedChildren[j].bits = bits
+				rankedChildren[j].card = card
+			}
+		}
+		rankedChildren[i].owned = true
+	}
+}
+
 func (*allRule[T]) releaseRanked(pool *bitmapPool, rankedChildren []rankedBitmap) {
 	for _, child := range rankedChildren {
-		if child.bits != nil {
+		if child.bits != nil && child.owned {
 			pool.put(child.bits)
 		}
 	}

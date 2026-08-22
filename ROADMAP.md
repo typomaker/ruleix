@@ -70,21 +70,6 @@ immutability, and concurrent search safety; avoids eager materialization; exits
 early on empty results; improves selective and wildcard-heavy workloads; and
 does not materially regress large-result latency or allocations.
 
-### Shared wildcard evaluation in `All`
-
-When two or more positive child rules have the same wildcard posting bitmap,
-evaluate that shared wildcard only once. For concrete query values, preserve
-each child's value-specific match and use the identity
-`(W ∪ A) ∩ (W ∪ B) = W ∪ (A ∩ B)` instead of materializing `W` in
-every intermediate child result.
-
-Build-time bitmap interning already gives equal wildcard postings shared
-storage; this candidate targets the remaining repeated search work. Start with
-equality filters under one `All`, keep exclusions and the two `Between` bounds
-out of the initial fast path, and require benchmarks with large partial
-wildcards. Compare against the existing path for small bitmaps and warmed
-`Local` caches, where grouping overhead may outweigh the saved unions.
-
 ### Optional planner diagnostics
 
 After the execution strategy is stable, consider an opt-in `Explain` facility
@@ -270,13 +255,11 @@ only where their semantics match an existing or planned path:
 1. Extend cheap estimates and lazy, empty-aware `All` execution only where
    benchmarks show a benefit.
 2. Benchmark and add candidate scanning below a measured crossover threshold.
-3. Revisit shared wildcard evaluation in light of the planner: retain the
-   specialized identity only where it still wins.
-4. Add optional planner diagnostics, then optimize other logical operators when
+3. Add optional planner diagnostics, then optimize other logical operators when
    their semantics exist.
-5. Investigate generation-based updates only after rebuild benchmarks
+4. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
-6. Revisit the remaining bitmap operations only when the corresponding index
+5. Revisit the remaining bitmap operations only when the corresponding index
    lifecycle or planner use case exists.
 
 For every optimization, compare production-shaped build time, search time,

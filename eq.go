@@ -261,6 +261,15 @@ func (r *eqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
 		}
 	}
 }
+func (r *eqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
+func (r *eqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
+	value, ok := r.get(v)
+	if ok {
+		if set := r.values.get(value); set != nil {
+			set.addTo(dst)
+		}
+	}
+}
 func (*eqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
 func (r *eqRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {
@@ -358,6 +367,12 @@ func (r *unaryEqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitm
 		set.addTo(dst)
 	}
 }
+func (r *unaryEqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
+func (r *unaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
+	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
+		set.addTo(dst)
+	}
+}
 func (*unaryEqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
 func (*unaryEqRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
 func (r *unaryEqRule[T, V]) prepareSearch() {
@@ -431,6 +446,12 @@ func (r *binaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) 
 func (r *binaryEqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
 	dst.Or(r.wildcard)
 	if set := r.matchingSet(value); set != nil {
+		set.addTo(dst)
+	}
+}
+func (r *binaryEqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
+func (r *binaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
+	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
 		set.addTo(dst)
 	}
 }

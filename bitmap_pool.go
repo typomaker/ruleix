@@ -24,6 +24,7 @@ type rankedBitmap struct {
 	bits     *roaring.Bitmap
 	card     uint64
 	childIdx int
+	owned    bool
 }
 
 type rankedBitmapBuffer struct {

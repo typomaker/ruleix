@@ -17,6 +17,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `All` switches from direct candidate validation to bitmap intersection above
   four candidate IDs, based on dense and sparse planner benchmarks through 16K
   candidates.
+- `All` evaluates pointer-interned partial wildcard postings shared by two or
+  more equality children once during uncached index searches.
 - Completed roadmap work and concluded experiments now move to
   `ROADMAP_HISTORY.md`, keeping `ROADMAP.md` limited to active and deferred
   work.

@@ -309,6 +309,7 @@ func prepareRankedAllCandidates[C any](
 	root.children[rankedChildren[0].childIdx].search(value, bits, pool)
 	rankedChildren[0].bits = bits
 	rankedChildren[0].card = bits.GetCardinality()
+	rankedChildren[0].owned = true
 	return rankedChildren[0].card <= allCandidateScanLimit ||
 		materializeRankedAfterFirst(root, value, pool, rankedChildren)
 }
@@ -324,6 +325,7 @@ func materializeRankedAfterFirst[C any](
 		root.children[rankedChildren[i].childIdx].search(value, bits, pool)
 		rankedChildren[i].bits = bits
 		rankedChildren[i].card = bits.GetCardinality()
+		rankedChildren[i].owned = true
 		if bits.IsEmpty() {
 			return false
 		}

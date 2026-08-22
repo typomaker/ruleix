@@ -82,6 +82,30 @@ go test -run '^$' -bench '^BenchmarkAllExecutionThreshold/' \
   -benchmem -benchtime=200ms -count=5 .
 ```
 
+## 2026-08-22: shared equality wildcards in `All`
+
+Bitmap interning makes identical partial wildcard postings pointer-identical.
+For two or more equality children under the same `All`, `Index.Search` now uses
+`W union (A1 intersection ... intersection An)` and materializes the shared
+wildcard once. The optimization deliberately excludes exclusions, ordered
+rules, `Between` bounds, and `Local.Search`; warm locals retain their existing
+per-node cached equality results.
+
+`BenchmarkSharedWildcardAll` isolates 10K-rule postings with 25% and 75%
+partial wildcards and 2, 4, and 8 equality children. On Apple M1 Max, medians
+for repeated/shared wildcard evaluation were 3.86 us/421 ns with two children,
+5.53 us/599 ns with four, and 8.97 us/834 ns with eight at 25% wildcards. At
+75%, the corresponding medians were 1.60 us/217 ns, 2.51 us/270 ns, and
+4.28 us/370 ns. The specialized identity also reduced benchmark allocation
+traffic in every case.
+
+Reproduce the matrix with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkSharedWildcardAll/' \
+  -benchmem -benchtime=200ms -count=5 .
+```
+
 ## Ordered index aggregation
 
 Ordered indexes use block aggregates and binary search, reducing repeated
