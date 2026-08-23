@@ -47,24 +47,8 @@ func newLocalBitmapPool(nodes int) *bitmapPool {
 	return p
 }
 func (p *bitmapPool) resetLocal() {
-	p.releaseLocalMetrics()
 	clear(p.local)
 	p.observers = cacheObservers{}
-}
-func (p *bitmapPool) releaseLocalMetrics() {
-	for i := range p.local {
-		node := &p.local[i]
-		releaseCacheMetrics(node.equality)
-		releaseCacheMetrics(node.ordered)
-		releaseCacheMetrics(node.compareBy)
-		releaseCacheMetrics(node.between)
-		releaseCacheMetrics(node.exclusion)
-	}
-}
-func releaseCacheMetrics(raw any) {
-	if cache, ok := raw.(interface{ releaseMetrics() }); ok {
-		cache.releaseMetrics()
-	}
 }
 func (p *bitmapPool) get() *roaring.Bitmap {
 	bm := p.pool.Get().(*roaring.Bitmap)

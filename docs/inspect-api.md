@@ -46,8 +46,6 @@ func (InspectorSnapshot) Materialization() uint64
 func (InspectorSnapshot) CandidateCheck() uint64
 func (InspectorSnapshot) RangePruning() uint64
 func (InspectorSnapshot) EmptyResult() uint64
-func (InspectorSnapshot) CacheEntry() uint64
-func (InspectorSnapshot) CacheCapacity() uint64
 func (InspectorSnapshot) ResultCardinality() Histogram
 
 func Inspect[T any](dst *Inspector, rule Rule[T]) Rule[T]
@@ -100,9 +98,8 @@ check. This distinction preserves the selected execution strategy.
 `CacheExpansion` are monotonic counters suitable for exporting as Prometheus
 counters. `CacheExpansion` counts adaptive cache transitions from two to four
 bitmap entries across all `Local` lifetimes observed by the inspector.
-`CacheEntry` and `CacheCapacity` remain gauges: they report the aggregate live
-state of currently open observed `Local` contexts and return to zero after all
-of them are closed.
+Inspector exposes no gauges: every runtime scalar is a monotonic counter, while
+distributions use `Histogram`.
 
 `Inspector` is deliberately separate from `Rule`. A `Rule` is a
 declarative description consumed by the builder; an inspector is a handle to

@@ -122,12 +122,6 @@ func (s InspectorSnapshot) RangePruning() uint64 { return s.runtime.rangePruning
 // EmptyResult reports observed empty results.
 func (s InspectorSnapshot) EmptyResult() uint64 { return s.runtime.emptyResult }
 
-// CacheEntry reports the number of currently retained cache entries.
-func (s InspectorSnapshot) CacheEntry() uint64 { return s.runtime.cacheEntry }
-
-// CacheCapacity reports the current cache entry capacity.
-func (s InspectorSnapshot) CacheCapacity() uint64 { return s.runtime.cacheCapacity }
-
 // ResultCardinality reports the captured result-cardinality histogram.
 func (s InspectorSnapshot) ResultCardinality() Histogram {
 	return s.runtime.cardinality
@@ -185,14 +179,12 @@ type Histogram struct {
 type inspectorRuntime struct {
 	searches, materializations, candidateChecks, rangePrunings, emptyResults atomic.Uint64
 	cacheHits, cacheMisses, cacheAdmissions, cacheEvictions, cacheExpansions atomic.Uint64
-	cacheEntries, cacheCapacity                                              atomic.Uint64
 	cardinality                                                              [6]atomic.Uint64
 }
 
 type inspectorRuntimeSnapshot struct {
 	search, cacheHit, cacheMiss, cacheAdmission, cacheEviction, cacheExpansion uint64
 	materialization, candidateCheck, rangePruning, emptyResult                 uint64
-	cacheEntry, cacheCapacity                                                  uint64
 	cardinality                                                                Histogram
 }
 
@@ -243,8 +235,7 @@ func (i *inspector) Snapshot() InspectorSnapshot {
 		search:   i.state.runtime.searches.Load(),
 		cacheHit: i.state.runtime.cacheHits.Load(), cacheMiss: i.state.runtime.cacheMisses.Load(),
 		cacheAdmission: i.state.runtime.cacheAdmissions.Load(), cacheEviction: i.state.runtime.cacheEvictions.Load(),
-		cacheExpansion: i.state.runtime.cacheExpansions.Load(),
-		cacheEntry:     i.state.runtime.cacheEntries.Load(), cacheCapacity: i.state.runtime.cacheCapacity.Load(),
+		cacheExpansion:  i.state.runtime.cacheExpansions.Load(),
 		materialization: i.state.runtime.materializations.Load(),
 		candidateCheck:  i.state.runtime.candidateChecks.Load(), rangePruning: i.state.runtime.rangePrunings.Load(),
 		emptyResult: i.state.runtime.emptyResults.Load(),

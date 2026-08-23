@@ -329,8 +329,9 @@ return an availability flag. Call `Snapshot` once to capture one successful
 build generation and its observed runtime counters. An inspected rule also
 keeps monotonic runtime counters for bitmap searches, materializations, candidate checks and
 empty results, cache activity, and adaptive cache expansions, plus an
-allocation-free result-cardinality histogram. Live cache entries and capacity
-remain gauges. Candidate checks do not force bitmap materialization.
+allocation-free result-cardinality histogram. Inspector runtime scalars are
+monotonic counters; it exposes no gauges. Candidate checks do not force bitmap
+materialization.
 
 ## Development
 

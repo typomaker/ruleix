@@ -84,22 +84,6 @@ func (o *cacheObservers) expansion() {
 		o.items[i].cacheExpansions.Add(1)
 	}
 }
-func (o *cacheObservers) addEntries(n uint64) {
-	if o == nil {
-		return
-	}
-	for i := range int(o.n) {
-		o.items[i].cacheEntries.Add(n)
-	}
-}
-func (o *cacheObservers) addCapacity(n uint64) {
-	if o == nil {
-		return
-	}
-	for i := range int(o.n) {
-		o.items[i].cacheCapacity.Add(n)
-	}
-}
 
 type valueBitmapCache[V any] struct {
 	entries   [2]valueBitmapCacheEntry[V]
@@ -137,21 +121,7 @@ type valueBitmapCacheEntry[V any] struct {
 }
 
 func newValueBitmapCache[V any](pool *bitmapPool) *valueBitmapCache[V] {
-	c := &valueBitmapCache[V]{observers: pool.observers.clone()}
-	c.observers.addCapacity(2)
-	return c
-}
-
-func (c *valueBitmapCache[V]) releaseMetrics() {
-	entries := uint64(0)
-	for i := 0; i < c.capacity(); i++ {
-		if c.entry(i).initialized {
-			entries++
-		}
-	}
-	capacity := uint64(c.capacity())
-	c.observers.addEntries(^uint64(entries - 1))
-	c.observers.addCapacity(^uint64(capacity - 1))
+	return &valueBitmapCache[V]{observers: pool.observers.clone()}
 }
 
 func (c *valueBitmapCache[V]) lookup(value optionalValue[V], equal func(V, V) bool) (*roaring.Bitmap, bool) {
@@ -191,8 +161,6 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V]) *roaring.Bitmap {
 	entry := c.entry(index)
 	if entry.initialized {
 		c.observers.eviction()
-	} else {
-		c.observers.addEntries(1)
 	}
 	if entry.bits == nil {
 		entry.bits = roaring.New()
@@ -230,7 +198,6 @@ func (c *valueBitmapCache[V]) grow() {
 	c.overflow.used[c.next] = 1
 	c.overflow.used[1-c.next] = 2
 	c.next = 0
-	c.observers.addCapacity(2)
 	c.observers.expansion()
 }
 

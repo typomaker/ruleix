@@ -37,8 +37,6 @@ type snapshotAPI interface {
 	CandidateCheck() uint64
 	RangePruning() uint64
 	EmptyResult() uint64
-	CacheEntry() uint64
-	CacheCapacity() uint64
 	ResultCardinality() Histogram
 }
 
@@ -163,7 +161,7 @@ func TestInspectLifecycleTracksLatestSuccessfulBuild(t *testing.T) {
 	require.Equal(t, uint64(1), first.EntryCount(), "a captured snapshot remains on its build generation")
 }
 
-func TestInspectReportsLocalCacheMetricsAndCloseGauges(t *testing.T) {
+func TestInspectReportsCumulativeLocalCacheMetrics(t *testing.T) {
 	var inspector Inspector
 	index, err := New[inspectConstraint, string](Inspect(
 		&inspector,
@@ -184,14 +182,10 @@ func TestInspectReportsLocalCacheMetricsAndCloseGauges(t *testing.T) {
 	require.Equal(t, uint64(2), snapshot.CacheMiss())
 	require.Equal(t, uint64(1), snapshot.CacheAdmission())
 	require.Zero(t, snapshot.CacheEviction())
-	require.Equal(t, uint64(1), snapshot.CacheEntry())
-	require.Equal(t, uint64(2), snapshot.CacheCapacity())
 
 	local.Close()
 	snapshot = inspector.Snapshot()
 	require.Equal(t, uint64(1), snapshot.CacheAdmission(), "counters remain monotonic")
-	require.Zero(t, snapshot.CacheEntry())
-	require.Zero(t, snapshot.CacheCapacity())
 }
 
 func TestInspectReportsCumulativeAdaptiveCacheExpansions(t *testing.T) {
@@ -226,17 +220,14 @@ func TestInspectReportsCumulativeAdaptiveCacheExpansions(t *testing.T) {
 	warm(first)
 	snapshot := inspector.Snapshot()
 	require.Equal(t, uint64(1), snapshot.CacheExpansion())
-	require.Equal(t, uint64(4), snapshot.CacheCapacity())
 	first.Close()
 	snapshot = inspector.Snapshot()
 	require.Equal(t, uint64(1), snapshot.CacheExpansion(), "counter remains monotonic")
-	require.Zero(t, snapshot.CacheCapacity(), "gauge tracks only live cache capacity")
 
 	second := index.Local()
 	warm(second)
 	snapshot = inspector.Snapshot()
 	require.Equal(t, uint64(2), snapshot.CacheExpansion(), "expansions aggregate across Local lifetimes")
-	require.Equal(t, uint64(4), snapshot.CacheCapacity())
 	second.Close()
 }
 

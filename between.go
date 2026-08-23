@@ -48,21 +48,7 @@ type betweenCacheOverflow[V any] struct {
 }
 
 func newBetweenCache[V any](pool *bitmapPool) *betweenCache[V] {
-	c := &betweenCache[V]{observers: pool.observers.clone()}
-	c.observers.addCapacity(2)
-	return c
-}
-
-func (c *betweenCache[V]) releaseMetrics() {
-	entries := uint64(0)
-	for i := 0; i < c.capacity(); i++ {
-		if c.entry(i).initialized {
-			entries++
-		}
-	}
-	capacity := uint64(c.capacity())
-	c.observers.addEntries(^uint64(entries - 1))
-	c.observers.addCapacity(^uint64(capacity - 1))
+	return &betweenCache[V]{observers: pool.observers.clone()}
 }
 
 type betweenCacheSeen[V any] struct {
@@ -174,8 +160,6 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	cache.observers.admission()
 	if cached.initialized {
 		cache.observers.eviction()
-	} else {
-		cache.observers.addEntries(1)
 	}
 	if cached.bits == nil {
 		cached.bits = roaring.New()
@@ -256,7 +240,6 @@ func (c *betweenCache[V]) grow() {
 	c.overflow.used[c.next] = 1
 	c.overflow.used[1-c.next] = 2
 	c.next = 0
-	c.observers.addCapacity(2)
 	c.observers.expansion()
 }
 
