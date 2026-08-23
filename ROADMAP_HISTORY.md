@@ -710,3 +710,21 @@ to 96 B/op and six allocations. Reproduce with:
 go test -run '^$' -bench '^BenchmarkNestedAllEstimate$' \
   -benchmem -benchtime=200ms -count=5 .
 ```
+
+## 2026-08-23: inspected-rule execution metrics
+
+`Inspect` now accumulates monotonic counters from real execution paths for
+bitmap searches, materializations, direct candidate checks, and empty results.
+A fixed, allocation-free histogram groups observed result cardinalities into
+zero, one, 2-4, 5-16, 17-256, and above-256 buckets. An inspected top-level
+`All` records completed searches and their final cardinality while retaining
+the specialized append path; an inspected child records direct candidate
+checks without forcing materialization.
+
+The observation wrapper is present only for explicitly inspected rules.
+Planner capability checks unwrap it for shared wildcards and direct candidate
+membership, and build traversal unwraps it for bitmap interning, exclusions,
+and search preparation. Schemas without `Inspect` retain their previous
+compiled tree and hot path. Cache hit, miss, admission, eviction, entry, and
+capacity accounting remains a separate follow-up because it must be attached
+to each `Local` without adding shared mutable cache state to the index.

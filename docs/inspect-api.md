@@ -28,6 +28,11 @@ type Inspector interface {
 	DistinctValueCount() (uint64, bool)
 	Granularity() (uint64, bool)
 	EstimatedFalsePositiveRate() (float64, bool)
+	Searches() uint64
+	Materializations() uint64
+	CandidateChecks() uint64
+	EmptyResults() uint64
+	ResultCardinality() ResultCardinalityHistogram
 	Reset()
 	// unexported method seals implementations
 }
@@ -61,6 +66,16 @@ if customer.Bound() {
 	used, measured := customer.MemoryUsage()
 }
 ```
+
+Runtime counters are monotonic for the lifetime of the inspector; `Reset`
+only changes which build snapshot is pinned. `Searches` counts executions that
+materialize the inspected rule, except for an inspected top-level `All`, where
+it counts completed index searches even though the specialized executor can
+append the final result without materializing the composite. `CandidateChecks`
+counts direct internal-ID membership checks. `Materializations` and the
+cardinality histogram count only bitmap materializations, again except that a
+top-level `All` contributes its actual final cardinality to the histogram.
+This distinction preserves the selected execution strategy.
 
 `Inspector` is deliberately separate from `Rule`. A `Rule` is a
 declarative description consumed by the builder; an inspector is a handle to

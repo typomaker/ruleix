@@ -91,6 +91,12 @@ type exclusionRule[T any] interface {
 
 func collectExclusionRules[T any](rule Rule[T], dst []exclusionRule[T]) []exclusionRule[T] {
 	switch typed := rule.(type) {
+	case *inspectedRuntimeRule[T]:
+		if exclusion, ok := typed.child.(exclusionRule[T]); ok && exclusion.hasExclusions() {
+			dst = append(dst, &inspectedExclusionRule[T]{child: exclusion, metrics: typed.metrics})
+		} else {
+			dst = collectExclusionRules(typed.child, dst)
+		}
 	case *allRule[T]:
 		for _, child := range typed.children {
 			dst = collectExclusionRules(child, dst)
@@ -108,6 +114,11 @@ func collectExclusionRules[T any](rule Rule[T], dst []exclusionRule[T]) []exclus
 // their wildcard/concrete union in the positive tree only duplicates every ID.
 func removeExclusionRules[T any](rule Rule[T], universe *roaring.Bitmap) Rule[T] {
 	switch typed := rule.(type) {
+	case *inspectedRuntimeRule[T]:
+		if _, ok := typed.child.(exclusionRule[T]); ok {
+			return newMatchAllRule[T](universe)
+		}
+		return &inspectedRuntimeRule[T]{child: removeExclusionRules(typed.child, universe), metrics: typed.metrics}
 	case *allRule[T]:
 		children := make([]Rule[T], len(typed.children))
 		for i, child := range typed.children {
@@ -122,6 +133,10 @@ func removeExclusionRules[T any](rule Rule[T], universe *roaring.Bitmap) Rule[T]
 }
 
 func prepareRuleSearch[T any](rule Rule[T]) {
+	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
+		prepareRuleSearch(observed.child)
+		return
+	}
 	if preparer, ok := rule.(ruleSearchPreparer); ok {
 		preparer.prepareSearch()
 	}

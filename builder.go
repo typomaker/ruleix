@@ -130,7 +130,11 @@ func buildIndex[C any, ID comparable](
 		// Keep the specialized All search path even when removing exclusions
 		// leaves one positive child. It can test small candidate sets directly
 		// without materializing a separate exclusion bitmap.
-		if _, ok := ix.root.(*allRule[C]); !ok {
+		_, directAll := ix.root.(*allRule[C])
+		if observed, ok := ix.root.(*inspectedRuntimeRule[C]); ok {
+			_, directAll = observed.child.(*allRule[C])
+		}
+		if !directAll {
 			ix.root = &allRule[C]{children: []Rule[C]{ix.root}}
 		}
 	}
@@ -245,6 +249,14 @@ func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
 
 func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 	before := len(*dst)
+	if observed, ok := ix.root.(*inspectedRuntimeRule[C]); ok {
+		if root, ok := observed.child.(*allRule[C]); ok {
+			observed.metrics.searches.Add(1)
+			searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst)
+			observed.metrics.observeCardinality(uint64(len(*dst) - before))
+			return len(*dst) != before
+		}
+	}
 	if root, ok := ix.root.(*allRule[C]); ok {
 		searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst)
 		return len(*dst) != before

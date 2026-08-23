@@ -52,6 +52,10 @@ func internRuleBitmaps[T any](rule Rule[T]) {
 }
 
 func internRuleWith[T any](interner *bitmapInterner, rule Rule[T]) {
+	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
+		internRuleWith(interner, observed.child)
+		return
+	}
 	if all, ok := rule.(*allRule[T]); ok {
 		for _, child := range all.children {
 			internRuleWith(interner, child)

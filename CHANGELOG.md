@@ -17,6 +17,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   build counts for one marked rule without changing its search representation.
   Lossy rules additionally report accounted memory, budget, item and distinct-
   value counts, and selected bucket granularity with explicit availability.
+  Inspected rules also expose monotonic search, materialization, candidate-
+  check, and empty-result counters plus a fixed result-cardinality histogram,
+  without forcing candidate paths to materialize bitmaps.
 - `Lossy` and `MemoryLimit` add opt-in, memory-bounded grouped-hash equality and
   ordered-bucket representations for supported scalar equality and ordered
   rules, including one aggregate budget around `All`. Approximate results may

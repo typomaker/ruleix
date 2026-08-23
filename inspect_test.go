@@ -226,3 +226,45 @@ func TestInspectReportsLossyOrderedStatistics(t *testing.T) {
 	require.True(t, ok)
 	require.NotZero(t, granularity)
 }
+
+func TestInspectReportsRuntimeExecutionMetrics(t *testing.T) {
+	var inspector Inspector
+	index, err := New[inspectConstraint, string](Inspect(&inspector, All(
+		Include(func(v inspectConstraint) (string, bool) { return v.country, v.country != "" }),
+		Include(func(v inspectConstraint) (string, bool) { return v.country, true }),
+	))).Build(Zip(
+		[]inspectConstraint{{country: "DE"}, {country: "US"}, {}},
+		[]string{"one", "two", "three"},
+	))
+	require.NoError(t, err)
+
+	var matches []string
+	require.True(t, index.Search(inspectConstraint{country: "DE"}, &matches))
+	matches = matches[:0]
+	require.False(t, index.Search(inspectConstraint{country: "FR"}, &matches))
+
+	require.Equal(t, uint64(2), inspector.Searches())
+	require.Zero(t, inspector.Materializations())
+	require.Zero(t, inspector.CandidateChecks())
+	require.Equal(t, uint64(1), inspector.EmptyResults())
+	require.Equal(t, ResultCardinalityHistogram{Zero: 1, One: 1}, inspector.ResultCardinality())
+}
+
+func TestInspectCountsCandidateChecksWithoutForcingMaterialization(t *testing.T) {
+	type constraint struct{ selective, broad string }
+	var broad Inspector
+	index, err := New[constraint, int](All(
+		Include(func(v constraint) (string, bool) { return v.selective, true }),
+		Inspect(&broad, Include(func(v constraint) (string, bool) { return v.broad, true })),
+	)).Build(Zip(
+		[]constraint{{selective: "one", broad: "yes"}, {selective: "two", broad: "yes"}},
+		[]int{1, 2},
+	))
+	require.NoError(t, err)
+
+	var matches []int
+	require.True(t, index.Search(constraint{selective: "one", broad: "yes"}, &matches))
+	require.Equal(t, uint64(1), broad.CandidateChecks())
+	require.Zero(t, broad.Materializations())
+	require.Zero(t, broad.Searches())
+}

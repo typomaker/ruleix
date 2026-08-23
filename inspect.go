@@ -34,6 +34,11 @@ type Inspector interface {
 	DistinctValueCount() (uint64, bool)
 	Granularity() (uint64, bool)
 	EstimatedFalsePositiveRate() (float64, bool)
+	Searches() uint64
+	Materializations() uint64
+	CandidateChecks() uint64
+	EmptyResults() uint64
+	ResultCardinality() ResultCardinalityHistogram
 	Reset()
 	inspectionState() *inspectorState
 }
@@ -79,6 +84,19 @@ type inspectorSnapshotBox struct{ snapshot inspectorSnapshot }
 type inspectorState struct {
 	published atomic.Pointer[inspectorSnapshotBox]
 	pinned    atomic.Pointer[inspectorSnapshotBox]
+	runtime   inspectorRuntime
+}
+
+// ResultCardinalityHistogram groups observed materialized results into stable,
+// allocation-free buckets. Each bucket includes its lower bound and excludes
+// the next bucket's lower bound.
+type ResultCardinalityHistogram struct {
+	Zero, One, TwoToFour, FiveToSixteen, SeventeenTo256, Above256 uint64
+}
+
+type inspectorRuntime struct {
+	searches, materializations, candidateChecks, emptyResults atomic.Uint64
+	cardinality                                               [6]atomic.Uint64
 }
 
 type inspector struct{ state inspectorState }
@@ -186,6 +204,15 @@ func (i *inspector) EstimatedFalsePositiveRate() (float64, bool) {
 	return d.EstimatedFalsePositiveRateValue, d.EstimatedFalsePositiveRateAvailable
 }
 
+func (i *inspector) Searches() uint64         { return i.state.runtime.searches.Load() }
+func (i *inspector) Materializations() uint64 { return i.state.runtime.materializations.Load() }
+func (i *inspector) CandidateChecks() uint64  { return i.state.runtime.candidateChecks.Load() }
+func (i *inspector) EmptyResults() uint64     { return i.state.runtime.emptyResults.Load() }
+func (i *inspector) ResultCardinality() ResultCardinalityHistogram {
+	b := &i.state.runtime.cardinality
+	return ResultCardinalityHistogram{b[0].Load(), b[1].Load(), b[2].Load(), b[3].Load(), b[4].Load(), b[5].Load()}
+}
+
 // Reset releases the pinned snapshot. The next observation method pins the
 // latest successful build, or the unbound state if no build has succeeded.
 func (i *inspector) Reset() { i.state.pinned.Store(nil) }
@@ -245,6 +272,92 @@ type pendingInspection struct {
 	details  inspectionDetails
 }
 
+type inspectedRuntimeRule[T any] struct {
+	child   Rule[T]
+	metrics *inspectorRuntime
+}
+
+type inspectedExclusionRule[T any] struct {
+	child   exclusionRule[T]
+	metrics *inspectorRuntime
+}
+
+func (r *inspectedExclusionRule[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	r.metrics.searches.Add(1)
+	r.metrics.materializations.Add(1)
+	before := dst.GetCardinality()
+	r.child.exclude(v, dst, p)
+	r.metrics.observeCardinality(dst.GetCardinality() - before)
+}
+func (r *inspectedExclusionRule[T]) isExcluded(v T, id uint32) bool {
+	r.metrics.candidateChecks.Add(1)
+	return r.child.isExcluded(v, id)
+}
+func (r *inspectedExclusionRule[T]) hasExclusions() bool { return r.child.hasExclusions() }
+func (r *inspectedExclusionRule[T]) internBitmaps(interner *bitmapInterner) {
+	if child, ok := r.child.(bitmapInternable); ok {
+		child.internBitmaps(interner)
+	}
+}
+func (r *inspectedExclusionRule[T]) prepareSearch() {
+	if child, ok := r.child.(ruleSearchPreparer); ok {
+		child.prepareSearch()
+	}
+}
+
+func (*inspectedRuntimeRule[T]) rule() {}
+func (r *inspectedRuntimeRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
+	return &inspectedRuntimeRule[T]{child: r.child.newState(ids, hints), metrics: r.metrics}
+}
+func (r *inspectedRuntimeRule[T]) validate(v T) error    { return r.child.validate(v) }
+func (r *inspectedRuntimeRule[T]) insert(v T, id uint32) { r.child.insert(v, id) }
+func (r *inspectedRuntimeRule[T]) cardinality(v T, p *bitmapPool) uint64 {
+	return measuredCardinality[T](r, v, p)
+}
+func (r *inspectedRuntimeRule[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	r.metrics.searches.Add(1)
+	r.metrics.materializations.Add(1)
+	before := dst.GetCardinality()
+	r.child.search(v, dst, p)
+	n := dst.GetCardinality() - before
+	r.metrics.observeCardinality(n)
+}
+func (r *inspectedRuntimeRule[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	r.child.exclude(v, dst, p)
+}
+func (r *inspectedRuntimeRule[T]) collectBuildStatistics(s []nodeBuildStatistics) {
+	r.child.collectBuildStatistics(s)
+}
+func (r *inspectedRuntimeRule[T]) estimateCardinality(v T) uint64 {
+	if e, ok := r.child.(cardinalityEstimator[T]); ok {
+		return e.estimateCardinality(v)
+	}
+	return ^uint64(0)
+}
+func (r *inspectedRuntimeRule[T]) isCardinalityZero(v T) bool {
+	if c, ok := r.child.(cardinalityZeroChecker[T]); ok {
+		return c.isCardinalityZero(v)
+	}
+	return false
+}
+func (m *inspectorRuntime) observeCardinality(n uint64) {
+	i := 5
+	switch {
+	case n == 0:
+		i = 0
+		m.emptyResults.Add(1)
+	case n == 1:
+		i = 1
+	case n <= 4:
+		i = 2
+	case n <= 16:
+		i = 3
+	case n <= 256:
+		i = 4
+	}
+	m.cardinality[i].Add(1)
+}
+
 func stripInspectors[T any](
 	rule Rule[T],
 	seen map[*inspectorState]struct{},
@@ -264,7 +377,7 @@ func stripInspectors[T any](
 			return nil, err
 		}
 		*pending = append(*pending, pendingInspection{dst: typed.dst, strategy: strategy, mode: mode, details: details})
-		return child, nil
+		return &inspectedRuntimeRule[T]{child: child, metrics: &typed.dst.runtime}, nil
 	case *inspectionDetailsRule[T]:
 		return stripInspectors(typed.child, seen, pending)
 	case *allRule[T]:

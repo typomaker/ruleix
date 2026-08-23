@@ -342,7 +342,10 @@ child positions as diagnostics rather than stable application behavior.
 `Build`. For a `Lossy` rule it also exposes accounted memory usage and limit,
 item and distinct-value counts, and lossy bucket granularity. Optional metrics
 return an availability flag, and all observations stay pinned to one build
-generation until `Reset`.
+generation until `Reset`. An inspected rule additionally keeps monotonic
+runtime counters for bitmap searches, materializations, candidate checks and
+empty results, plus an allocation-free result-cardinality histogram. Candidate
+checks do not force bitmap materialization.
 
 ## Development
 

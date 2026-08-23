@@ -175,6 +175,10 @@ func (r *allRule[T]) searchRanked(
 }
 
 func matchesRuleID[T any](rule Rule[T], value T, id uint32, pool *bitmapPool) bool {
+	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
+		observed.metrics.candidateChecks.Add(1)
+		return matchesRuleID(observed.child, value, id, pool)
+	}
 	if matcher, ok := rule.(ruleIDMatcher[T]); ok {
 		return matcher.matchesID(value, id)
 	}
@@ -183,6 +187,14 @@ func matchesRuleID[T any](rule Rule[T], value T, id uint32, pool *bitmapPool) bo
 	matches := bits.Contains(id)
 	pool.put(bits)
 	return matches
+}
+
+func sharedWildcardOf[T any](rule Rule[T]) (sharedWildcardEquality[T], bool) {
+	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
+		return sharedWildcardOf(observed.child)
+	}
+	value, ok := rule.(sharedWildcardEquality[T])
+	return value, ok
 }
 
 func (r *allRule[T]) rankChildren(
@@ -269,13 +281,13 @@ func (r *allRule[T]) collectSharedWildcards(
 		if rankedChildren[i].bits != nil {
 			continue
 		}
-		first, ok := r.children[rankedChildren[i].childIdx].(sharedWildcardEquality[T])
+		first, ok := sharedWildcardOf(r.children[rankedChildren[i].childIdx])
 		if !ok || first.sharedWildcard().IsEmpty() {
 			continue
 		}
 		groupSize := 1
 		for j := i + 1; j < len(rankedChildren); j++ {
-			other, ok := r.children[rankedChildren[j].childIdx].(sharedWildcardEquality[T])
+			other, ok := sharedWildcardOf(r.children[rankedChildren[j].childIdx])
 			if ok && other.sharedWildcard() == first.sharedWildcard() {
 				groupSize++
 			}
@@ -286,7 +298,7 @@ func (r *allRule[T]) collectSharedWildcards(
 		bits := pool.get()
 		first.addConcreteMatches(v, bits)
 		for j := i + 1; j < len(rankedChildren); j++ {
-			other, ok := r.children[rankedChildren[j].childIdx].(sharedWildcardEquality[T])
+			other, ok := sharedWildcardOf(r.children[rankedChildren[j].childIdx])
 			if !ok || other.sharedWildcard() != first.sharedWildcard() {
 				continue
 			}
@@ -298,7 +310,7 @@ func (r *allRule[T]) collectSharedWildcards(
 		bits.Or(first.sharedWildcard())
 		card := bits.GetCardinality()
 		for j := i; j < len(rankedChildren); j++ {
-			other, ok := r.children[rankedChildren[j].childIdx].(sharedWildcardEquality[T])
+			other, ok := sharedWildcardOf(r.children[rankedChildren[j].childIdx])
 			if ok && other.sharedWildcard() == first.sharedWildcard() {
 				rankedChildren[j].bits = bits
 				rankedChildren[j].card = card
