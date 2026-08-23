@@ -78,17 +78,27 @@ select representations and prepare compact, immutable statistics that the
 planner can consume without rescanning postings or retaining expensive runtime
 instrumentation.
 
-Develop `Inspect` as the stable view of the representation selected during
-`Build`, including exact or lossy mode, strategy, accounted memory, budget,
-cardinality, and granularity where available. Develop `Index.Explain` as the
-opt-in view of query-specific planner decisions, estimates, actual
-cardinalities, and execution strategy. Neither diagnostic path may add work,
-wrappers, counters, or retained state to ordinary `Search`, `Visit`, or
-`Local` calls.
+Develop `Inspect` as the single stable view of one compiled rule. It should
+report build-time facts directly through `Inspector`: exact or lossy mode,
+strategy, entry and rule counts, accounted memory, budget, item and distinct
+value counts, granularity, and false-positive rate where available. Allow
+separate inspectors on children of a pooled `Lossy(All(...))` rather than
+returning arrays of internal child details.
 
-Before expanding either diagnostic API, separate stable user-facing facts from
-internal planner details and require a concrete troubleshooting or benchmark
-use case for every new field.
+An inspected rule should also accumulate metrics from real `Search`, `Visit`,
+and `Local` executions. Expose them directly through the root `Inspector`,
+without a nested metrics object or reset API. Counters are searches, cache
+hits, cache misses, cache admissions, cache evictions, materializations,
+candidate checks, and empty results. Gauges are cache entries and cache
+capacity. A histogram reports result cardinality. Counters remain monotonic
+for the inspector lifetime so callers can calculate interval deltas.
+
+Collect no per-query explanation. Remove `Index.Explain` and its plan types:
+callers need aggregate behavior they can act on, not a diagnostic search that
+performs extra work. Schemas without `Inspect` must retain the current hot
+path. Measure and document the overhead that explicitly inspected rules add;
+avoid timers, forced bitmap materialization, exact rechecks of lossy results,
+and other metrics whose collection changes the selected execution strategy.
 
 ### Rebuild scalability
 
@@ -145,12 +155,13 @@ when production-shaped benchmarks demonstrate a material benefit:
 1. Extend cheap estimates and lazy, empty-aware `All` execution where
    benchmarks show a benefit.
 2. Benchmark and add candidate scanning below a measured crossover threshold.
-3. Improve analyzer output, `Inspect`, and `Index.Explain` where they expose a
-   measured planner or representation decision without affecting hot paths.
+3. Consolidate diagnostics in `Inspect`: add build facts and per-rule runtime
+   counters, gauges, and result-cardinality histograms, then remove
+   query-specific `Index.Explain`.
 4. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-5. Add per-rule `Local` cache hit and miss accounting for benchmark and
-   diagnostic use without adding shared mutable state to the index.
+5. Benchmark inspected-rule metric overhead and tune its per-rule `Local`
+   cache accounting without adding mutable diagnostic state to the index.
 6. Tune the remaining `Local` admission, eviction, reset behavior, and retained
    memory for production-shaped repeated and high-churn searches.
 7. Investigate generation-based updates only after rebuild benchmarks
