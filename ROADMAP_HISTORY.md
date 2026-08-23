@@ -8,6 +8,31 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: pre-materialization `All` range experiment
+
+A planner candidate asked range-capable children for their minimum and maximum
+internal IDs before materializing the first bitmap. Intersecting these cheap
+bounds can prove an `All` result empty even earlier than the retained hybrid
+executor. Equality leaves, their unary and binary specializations, nested
+`All`, and immutable bitmap leaves participated in the prototype.
+
+The candidate was not retained. On Apple M1 Max, medians of five runs reduced
+the isolated four-child range-disjoint case from 237.6 ns, 56 B, and 4
+allocations to 44.3 ns with no allocation, and the eight-child case from 338.6
+ns to 59.1 ns. However, asking every child for bounds on the common overlapping
+path increased four-child latency from 569.9 ns to 598.0 ns (4.9%) and
+eight-child latency from 1096 ns to 1192 ns (8.8%), with allocation counts
+unchanged. The existing materialize-then-check hybrid therefore remains the
+better general policy. Reconsider preflight bounds only if build-time stored
+bounds or a query-shape gate can avoid work on overlapping searches.
+
+Reproduce the retained baseline with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllLeadingIntersection/' \
+  -benchmem -benchtime=200ms -count=5 .
+```
+
 ## 2026-08-24: empty-aware `All` range pruning
 
 The broad bitmap executor uses a hybrid plan. It materializes and intersects
