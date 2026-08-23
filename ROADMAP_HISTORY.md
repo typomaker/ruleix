@@ -10,13 +10,15 @@ evidence to avoid repeating the work. Release-facing changes still belong in
 
 ## 2026-08-24: empty-aware `All` range pruning
 
-The broad bitmap executor materializes ranked children one at a time and
-immediately intersects each with the accumulated result. Before every `And`, it
-stops when the next child's internal-ID range is disjoint from the current
-intersection. Comparing the minimum and maximum IDs is constant-time and
-allocation-free; it proves the complete `All` empty without scanning bitmap
-containers or materializing later children. Rechecking the accumulated range
-also catches late disjointness after earlier intersections narrow it.
+The broad bitmap executor uses a hybrid plan. It materializes and intersects
+the first three ranked children sequentially, stopping when the next child's
+internal-ID range is disjoint from the accumulated intersection, then
+materializes the remainder eagerly. Comparing the minimum and maximum IDs is
+constant-time and allocation-free; it proves the complete `All` empty without
+scanning bitmap containers or materializing later children. The third-child
+check catches late disjointness after the first intersection narrows the
+candidates, while the eager tail limits overhead on workloads that normally
+reach the final rule.
 General disjoint bitmaps with overlapping ranges remain on the existing
 `FastAnd` path because a speculative `Intersects` check measurably regressed
 overlapping workloads. An explicitly inspected `All` exposes the monotonic
@@ -31,11 +33,20 @@ allocations to 282.8 ns, 56 B, and 4 allocations. Overlapping four- and
 eight-child cases remained within 3% of the eager baseline and retained the
 same allocation counts.
 
+The later hybrid extension reduced a third-child range miss from a median
+494.6 ns, 200 B, and 13 allocations to 376.8 ns, 144 B, and 10 allocations.
+Against the original eager implementation, the representative top-level
+`BenchmarkAll` flat case improved from 2528 ns, 344 B, and 6 allocations to
+2476 ns, 232 B, and 2 allocations; the nested case improved from 3370 ns,
+808 B, and 10 allocations to 3284 ns, 696 B, and 6 allocations.
+
 Reproduce with:
 
 ```sh
 go test -run '^$' -bench '^BenchmarkAllLeadingIntersection/' \
   -benchmem -benchtime=200ms -count=5 .
+go test -run '^$' -bench '^BenchmarkAllLateRangePruning$' \
+  -benchmem -benchtime=300ms -count=5 .
 ```
 
 ## 2026-08-23: cache-aware `All` priority experiment

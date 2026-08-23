@@ -46,3 +46,30 @@ func BenchmarkAllLeadingIntersection(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkAllLateRangePruning measures the hybrid executor when the first
+// pair overlaps but the third ranked bitmap proves the result empty.
+func BenchmarkAllLateRangePruning(b *testing.B) {
+	rules := []Rule[int]{
+		newMatchAllRule[int](benchmarkBitmapRange(0, 1<<14)),
+		newMatchAllRule[int](benchmarkBitmapRange(1<<13, 1<<14)),
+		newMatchAllRule[int](benchmarkBitmapRange(1<<15, 1<<14)),
+		newMatchAllRule[int](benchmarkBitmapRange(0, 1<<16)),
+	}
+	rule := All(rules...)
+	pool := newBitmapPool()
+	dst := roaring.New()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		dst.Clear()
+		rule.search(0, dst, pool)
+		benchmarkAllEmptyResult = dst.GetCardinality()
+	}
+}
+
+func benchmarkBitmapRange(start, size uint64) *roaring.Bitmap {
+	bits := roaring.New()
+	bits.AddRange(start, start+size)
+	return bits
+}

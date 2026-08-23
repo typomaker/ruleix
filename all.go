@@ -8,6 +8,11 @@ import "github.com/RoaringBitmap/roaring/v2"
 // BenchmarkAllExecutionThreshold.
 const allCandidateScanLimit = 4
 
+// Range pruning pays for the first two intersections, where an empty result
+// avoids most remaining materializations. If they survive, collecting the rest
+// eagerly keeps the common overlap path compact and cache-friendly.
+const allSequentialIntersectionLimit = 3
+
 // Direct exclusion lookups include a getter and a map lookup per exclusion,
 // so they stop paying off sooner than ordinary posting-list membership tests.
 const allDirectExclusionScanLimit = 16
@@ -254,6 +259,9 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 			rankedChildren[i].card = card
 			rankedChildren[i].owned = true
 		}
+		if i >= allSequentialIntersectionLimit {
+			continue
+		}
 		if i == 0 {
 			continue
 		}
@@ -290,6 +298,12 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 	}
 	if len(rankedChildren) == 1 {
 		dst.Or(rankedChildren[0].bits)
+	}
+	for i := allSequentialIntersectionLimit; i < len(rankedChildren); i++ {
+		dst.And(rankedChildren[i].bits)
+		if dst.IsEmpty() {
+			return false
+		}
 	}
 	return true
 }

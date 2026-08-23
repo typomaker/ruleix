@@ -88,11 +88,12 @@ append the final result without materializing the composite. `CandidateCheck`
 counts direct internal-ID membership checks. `Materialization` and the
 cardinality histogram count only bitmap materializations, again except that a
 top-level `All` contributes its actual final cardinality to the histogram.
-`RangePruning` counts `All` executions that stop when the next ranked bitmap's
-range is disjoint from the accumulated intersection. The check runs after the
-first bitmap and before every subsequent `And`, so it can also detect ranges
-that become disjoint only after earlier children narrow the candidates. This
-distinction preserves the selected execution strategy.
+`RangePruning` counts `All` executions that stop when one of the first three
+ranked bitmaps has a range disjoint from the accumulated intersection. The
+executor checks the first pair and one additional child sequentially, then
+materializes the remainder eagerly. This catches early and late-enough empty
+results without charging every successful intersection for another range
+check. This distinction preserves the selected execution strategy.
 
 `Inspector` is deliberately separate from `Rule`. A `Rule` is a
 declarative description consumed by the builder; an inspector is a handle to
