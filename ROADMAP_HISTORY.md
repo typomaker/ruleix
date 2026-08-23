@@ -1124,6 +1124,18 @@ pre-`05f8065` performance because subsequent planner and cache changes remain,
 and restoring measured range cardinality is not a complete replacement for a
 lazy, equality-informed plan.
 
+As a control, `BenchmarkProductionShapeEqualityOnlySearch` removes both
+`Between` fields and both `CompareBy` fields while retaining the same 38,098
+constraints and all 14 `Include` fields, including platform name. Comparing
+the same current and rollback binaries over eight one-second runs gave 3.526 us
+versus 3.502 us for warm `Local.Search`, a difference of only -0.7%. This is
+within run-to-run variation and is substantially smaller than the -9.8% seen
+with the complete schema. Equality-only `Index.Search` measured 12.11 us versus
+11.72 us (-3.3%), but the sequential suites exhibited drift of comparable size
+and do not establish an index-search effect. The local control therefore
+isolates the reproducible regression to the presence of range/ordered branches,
+not to the general `All` or `Include` planning path.
+
 Reproduce each variant with:
 
 ```sh
@@ -1134,4 +1146,7 @@ go test -run '^$' \
 go test -run '^$' \
   -bench '^BenchmarkProductionShape(RetainedMemory|LocalRetainedMemory)$' \
   -benchmem -benchtime=3x -count=5 .
+
+go test -run '^$' -bench '^BenchmarkProductionShapeEqualityOnlySearch$' \
+  -benchmem -benchtime=1s -count=8 .
 ```

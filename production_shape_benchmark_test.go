@@ -97,6 +97,58 @@ func productionBenchmarkSchema() ruleix.Rule[productionBenchmarkConstraint] {
 	)
 }
 
+// productionBenchmarkEqualityOnlySchema is a control shape for separating the
+// cost of Include planning from ordered range planning on the same data set.
+func productionBenchmarkEqualityOnlySchema() ruleix.Rule[productionBenchmarkConstraint] {
+	return ruleix.All(
+		ruleix.Include(func(value productionBenchmarkConstraint) ([16]byte, bool) {
+			return benchmarkOptional(value.customerUUID)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (uint8, bool) {
+			return benchmarkOptional(value.customerSegment)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (bool, bool) {
+			return benchmarkOptional(value.customerFraud)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) ([16]byte, bool) {
+			return benchmarkOptional(value.storeUUID)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (int, bool) {
+			return benchmarkOptional(value.deliveryAreaID)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (int, bool) {
+			return benchmarkOptional(value.regionID)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) ([16]byte, bool) {
+			return benchmarkOptional(value.retailerUUID)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (uint8, bool) {
+			return benchmarkOptional(value.vertical)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (uint8, bool) {
+			return benchmarkOptional(value.slotType)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (int, bool) {
+			return benchmarkOptional(value.slotDayOfWeek)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (string, bool) {
+			if value.platform == nil {
+				return "", false
+			}
+			return value.platform.name, true
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (bool, bool) {
+			return benchmarkOptional(value.dbs)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) (uint8, bool) {
+			return benchmarkOptional(value.marketType)
+		}),
+		ruleix.Include(func(value productionBenchmarkConstraint) ([2]string, bool) {
+			return benchmarkOptional(value.abTest)
+		}),
+	)
+}
+
 func benchmarkOptional[V any](value *V) (V, bool) {
 	if value == nil {
 		var zero V
@@ -247,6 +299,41 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
 		productionBenchmarkSchema(),
+	).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	queries := [...]productionBenchmarkConstraint{
+		productionBenchmarkQuery(100),
+		productionBenchmarkQuery(101),
+	}
+	for _, local := range []bool{false, true} {
+		name := "Index"
+		if local {
+			name = "Local"
+		}
+		b.Run(name, func(b *testing.B) {
+			searcher := index.Local()
+			matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := range b.N {
+				query := queries[i%len(queries)]
+				matches = matches[:0]
+				if local {
+					searcher.Search(query, &matches)
+				} else {
+					index.Search(query, &matches)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkProductionShapeEqualityOnlySearch(b *testing.B) {
+	constraints, ids := productionBenchmarkData()
+	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+		productionBenchmarkEqualityOnlySchema(),
 	).Build(ruleix.Zip(constraints, ids))
 	if err != nil {
 		b.Fatal(err)
