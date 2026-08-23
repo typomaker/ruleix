@@ -728,3 +728,16 @@ and search preparation. Schemas without `Inspect` retain their previous
 compiled tree and hot path. Cache hit, miss, admission, eviction, entry, and
 capacity accounting remains a separate follow-up because it must be attached
 to each `Local` without adding shared mutable cache state to the index.
+
+## 2026-08-24: inspector follows the latest successful build
+
+`Inspector.Reset` and build-snapshot pinning were removed. Every build-fact
+method now reads the latest immutable snapshot atomically published by a
+successful `Build`; failed builds continue to leave that snapshot unchanged.
+This removes lifecycle state and an easy-to-miss refresh requirement from the
+inspection API. Runtime counters remain monotonic for the inspector lifetime.
+
+Individual method calls remain safe during concurrent publication. Callers
+that require several fields to come from exactly one build must serialize
+those reads with rebuilds externally; the method-oriented interface no longer
+retains old index generations for that purpose.

@@ -19,9 +19,8 @@ const (
 	RuleModeLossy RuleMode = "lossy"
 )
 
-// Inspector observes one rule's compiled representation. Its first observation
-// pins a coherent build snapshot until Reset. Inspect selects and assigns the
-// implementation when it decorates a rule.
+// Inspector observes one rule's latest successfully compiled representation.
+// Inspect selects and assigns the implementation when it decorates a rule.
 type Inspector interface {
 	Bound() bool
 	Mode() RuleMode
@@ -39,7 +38,6 @@ type Inspector interface {
 	CandidateChecks() uint64
 	EmptyResults() uint64
 	ResultCardinality() ResultCardinalityHistogram
-	Reset()
 	inspectionState() *inspectorState
 }
 
@@ -83,7 +81,6 @@ type inspectorSnapshotBox struct{ snapshot inspectorSnapshot }
 
 type inspectorState struct {
 	published atomic.Pointer[inspectorSnapshotBox]
-	pinned    atomic.Pointer[inspectorSnapshotBox]
 	runtime   inspectorRuntime
 }
 
@@ -137,35 +134,28 @@ func (s exactInspectorSnapshot) details() inspectionDetails { return s.detail }
 var unboundInspector = &inspectorSnapshotBox{snapshot: unboundInspectorSnapshot{}}
 
 func (i *inspector) snapshot() inspectorSnapshot {
-	for {
-		if snapshot := i.state.pinned.Load(); snapshot != nil {
-			return snapshot.snapshot
-		}
-		snapshot := i.state.published.Load()
-		if snapshot == nil {
-			snapshot = unboundInspector
-		}
-		if i.state.pinned.CompareAndSwap(nil, snapshot) {
-			return snapshot.snapshot
-		}
+	snapshot := i.state.published.Load()
+	if snapshot == nil {
+		snapshot = unboundInspector
 	}
+	return snapshot.snapshot
 }
 
-// Bound reports whether the pinned snapshot belongs to a successful build.
+// Bound reports whether a successful build has published a representation.
 func (i *inspector) Bound() bool { return i.snapshot().bound() }
 
-// Mode reports the representation mode from the pinned snapshot.
+// Mode reports the latest representation mode.
 func (i *inspector) Mode() RuleMode { return i.snapshot().mode() }
 
-// Strategy reports the compiled strategy from the pinned snapshot.
+// Strategy reports the latest compiled strategy.
 func (i *inspector) Strategy() string { return i.snapshot().strategy() }
 
 // EntryCount reports the number of input entries consumed by the build in the
-// pinned snapshot.
+// latest successful build.
 func (i *inspector) EntryCount() uint64 { return i.snapshot().entryCount() }
 
-// RuleCount reports the number of unique external rule IDs in the pinned
-// snapshot.
+// RuleCount reports the number of unique external rule IDs in the latest
+// successful build.
 func (i *inspector) RuleCount() uint64 { return i.snapshot().ruleCount() }
 
 // MemoryUsage reports deterministic accounted representation bytes.
@@ -212,10 +202,6 @@ func (i *inspector) ResultCardinality() ResultCardinalityHistogram {
 	b := &i.state.runtime.cardinality
 	return ResultCardinalityHistogram{b[0].Load(), b[1].Load(), b[2].Load(), b[3].Load(), b[4].Load(), b[5].Load()}
 }
-
-// Reset releases the pinned snapshot. The next observation method pins the
-// latest successful build, or the unbound state if no build has succeeded.
-func (i *inspector) Reset() { i.state.pinned.Store(nil) }
 
 // Inspect decorates rule with an observational handle. It does not change the
 // compiled search tree or matching semantics. Inspect panics for a nil

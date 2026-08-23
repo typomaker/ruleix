@@ -33,7 +33,6 @@ type Inspector interface {
 	CandidateChecks() uint64
 	EmptyResults() uint64
 	ResultCardinality() ResultCardinalityHistogram
-	Reset()
 	// unexported method seals implementations
 }
 
@@ -67,8 +66,7 @@ if customer.Bound() {
 }
 ```
 
-Runtime counters are monotonic for the lifetime of the inspector; `Reset`
-only changes which build snapshot is pinned. `Searches` counts executions that
+Runtime counters are monotonic for the lifetime of the inspector. `Searches` counts executions that
 materialize the inspected rule, except for an inspected top-level `All`, where
 it counts completed index searches even though the specialized executor can
 append the final result without materializing the composite. `CandidateChecks`
@@ -108,15 +106,14 @@ behavior with or without `Inspect`, and attaching an inspector must not force a
 specific strategy, disable optimization, or add work to the default search hot
 path.
 
-The first observation method pins one immutable snapshot. All later methods
-read that same generation even if another build succeeds. `Reset` releases the
-pinned snapshot, and the next method pins the latest successful build. Thus a
-caller can read several fields without mixing generations. Observing before
-the first successful build pins the unbound state (`Bound() == false`) until
-`Reset`.
+Each observation reads the latest immutable snapshot published by a successful
+build. Observing before the first successful build returns the unbound state
+(`Bound() == false`). Callers that need several fields from exactly one build
+must provide external serialization around the builder and those reads; the
+method-oriented API does not retain old generations.
 
 A failed build does not replace the latest successful state. Observation
-methods and `Reset` may run concurrently with searches and a later build (the
+methods may run concurrently with searches and a later build (the
 builder itself still requires external serialization). One `Inspector` may
 identify only one schema location per build. Reusing it at multiple locations
 makes `Build` return an error.
@@ -143,7 +140,7 @@ deduplication within each posting. `DistinctValueCount` excludes the wildcard.
 `Granularity` is the number of selected lossy buckets and is unavailable for
 an exact representation. The current strategies do not publish a false-
 positive estimate because they lack a meaningful workload-independent model.
-All methods read the same pinned snapshot.
+Each method reads one atomically published snapshot.
 
 Strategy names and fine-grained representation details may evolve as the
 planner changes. Decide which values are stable public contracts and which are

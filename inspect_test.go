@@ -45,7 +45,7 @@ func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
 	require.Equal(t, uint64(3), country.RuleCount())
 }
 
-func TestInspectLifecyclePinsUntilReset(t *testing.T) {
+func TestInspectLifecycleTracksLatestSuccessfulBuild(t *testing.T) {
 	var inspector Inspector
 	builder := New[inspectConstraint, string](Inspect(
 		&inspector,
@@ -55,8 +55,6 @@ func TestInspectLifecyclePinsUntilReset(t *testing.T) {
 
 	_, err := builder.Build(Zip([]inspectConstraint{{country: "DE"}}, []string{"one"}))
 	require.NoError(t, err)
-	require.False(t, inspector.Bound(), "the pre-build observation remains pinned")
-	inspector.Reset()
 	require.True(t, inspector.Bound())
 	require.Equal(t, uint64(1), inspector.EntryCount())
 
@@ -67,8 +65,6 @@ func TestInspectLifecyclePinsUntilReset(t *testing.T) {
 	constraints := []inspectConstraint{{country: "DE"}, {country: "US"}}
 	_, err = builder.Build(Zip(constraints, []string{"one", "two"}))
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), inspector.EntryCount(), "a successful build does not replace the pinned snapshot")
-	inspector.Reset()
 	require.Equal(t, uint64(2), inspector.EntryCount())
 }
 
@@ -84,7 +80,7 @@ func TestInspectRejectsOneInspectorOnMultipleRules(t *testing.T) {
 	require.False(t, inspector.Bound())
 }
 
-func TestInspectMethodsAreSafeDuringRepeatedBuildsAndResets(t *testing.T) {
+func TestInspectMethodsAreSafeDuringRepeatedBuilds(t *testing.T) {
 	var inspector Inspector
 	builder := New[inspectConstraint, string](Inspect(
 		&inspector,
@@ -122,11 +118,9 @@ func TestInspectMethodsAreSafeDuringRepeatedBuildsAndResets(t *testing.T) {
 			}
 		})
 		require.NoError(t, err)
-		inspector.Reset()
 	}
 	close(done)
 	readers.Wait()
-	inspector.Reset()
 	require.Equal(t, uint64(10), inspector.RuleCount())
 }
 
