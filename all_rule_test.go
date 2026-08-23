@@ -105,6 +105,23 @@ func TestAllStopsAfterEmptyIntersection(t *testing.T) {
 	require.Zero(t, unreached.matchIDCalls)
 }
 
+func TestAllBitmapPathStopsAfterDisjointLeadingPair(t *testing.T) {
+	first := &countingRule{ids: []uint32{0, 1, 2, 3, 4}}
+	disjoint := &countingRule{ids: []uint32{5, 6, 7, 8, 9}}
+	unreached := &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5}}
+	rule := All[int](first, disjoint, unreached)
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	rule.search(0, dst, pool)
+
+	require.True(t, dst.IsEmpty())
+	require.Equal(t, 1, first.searchCalls)
+	require.Equal(t, 1, disjoint.searchCalls)
+	require.Zero(t, unreached.searchCalls)
+}
+
 func TestAllChecksCheapEmptyChildBeforeMaterializing(t *testing.T) {
 	expensive := &countingRule{ids: []uint32{1}}
 	empty := &zeroCheckingRule{countingRule: &countingRule{}}

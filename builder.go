@@ -384,6 +384,9 @@ func materializeRankedAfterFirst[C any](
 		if bits.IsEmpty() {
 			return false
 		}
+		if i == 1 && bitmapRangesDisjoint(rankedChildren[0].bits, bits) {
+			return false
+		}
 	}
 	return true
 }

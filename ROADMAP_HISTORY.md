@@ -8,6 +8,30 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: empty-aware `All` range pruning
+
+The broad bitmap executor now stops after materializing its first two ranked
+children when their internal-ID ranges are disjoint. Comparing the minimum and
+maximum IDs is constant-time and allocation-free; it proves the complete `All`
+empty without scanning bitmap containers or materializing later children.
+General disjoint bitmaps with overlapping ranges remain on the existing
+`FastAnd` path because a speculative `Intersects` check measurably regressed
+overlapping workloads.
+
+On Apple M1 Max, medians of five runs improved a four-child range-disjoint
+query from 387.7 ns, 164 B, and 11 allocations per search to 205.0 ns, 56 B,
+and 4 allocations. The eight-child case improved from 724.7 ns, 276 B, and 19
+allocations to 282.8 ns, 56 B, and 4 allocations. Overlapping four- and
+eight-child cases remained within 3% of the eager baseline and retained the
+same allocation counts.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllLeadingIntersection/' \
+  -benchmem -benchtime=200ms -count=5 .
+```
+
 ## 2026-08-23: cache-aware `All` priority experiment
 
 A `Local`-only planner candidate combined estimated candidate cardinality with

@@ -263,6 +263,18 @@ func (r *allRule[T]) collectRankedInOrder(
 		rankedChildren[i].bits = bits
 		rankedChildren[i].card = card
 		rankedChildren[i].owned = true
+		// A disjoint ID range proves the complete All empty without scanning
+		// containers or materializing later children. Keep the check deliberately
+		// cheap; general bitmap intersection is paid for by the final FastAnd.
+		if i == 1 && bitmapRangesDisjoint(rankedChildren[0].bits, bits) {
+			for j := range rankedChildren {
+				if rankedChildren[j].owned {
+					pool.put(rankedChildren[j].bits)
+					rankedChildren[j].owned = false
+				}
+			}
+			return false
+		}
 	}
 	for i := 1; i < len(rankedChildren); i++ {
 		for j := i; j > 0 && rankedChildren[j].card < rankedChildren[j-1].card; j-- {
@@ -270,6 +282,10 @@ func (r *allRule[T]) collectRankedInOrder(
 		}
 	}
 	return true
+}
+
+func bitmapRangesDisjoint(first, second *roaring.Bitmap) bool {
+	return first.Maximum() < second.Minimum() || second.Maximum() < first.Minimum()
 }
 
 func (r *allRule[T]) collectSharedWildcards(
