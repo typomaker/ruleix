@@ -16,9 +16,9 @@ Optimize the existing feature set before expanding the public API. Prefer work
 that improves production-shaped build time, search latency, or retained memory
 and require benchmark evidence before adopting an optimization.
 
-New filters and combinators are deferred until a concrete use case cannot be
-expressed reasonably with the existing API. When that happens, validate the
-semantics and indexing cost before promoting the feature back into active work.
+Keep the roadmap focused on optimizing the existing API: execution planning,
+build-time analysis, diagnostics, memory-bounded indexes, and reusable local
+search state.
 
 ### Architectural guardrails
 
@@ -42,14 +42,12 @@ either posting alone.
 
 The initial estimate-based ordering, lazy empty-aware execution, and benchmark-
 selected bitmap-to-candidate threshold are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Introduce operator-specific cost
-classes only if measurements show a material benefit.
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Introduce representation-specific
+cost classes only if measurements show a material benefit.
 
-Planner ordering is operator-specific. For `All`, start with the most selective
-predicate. If `Any` or `Not` is added later, design their planning separately:
-`Any` may prefer cheap, broad predicates and can stop after covering the rule
-universe, while `Not` should avoid materializing a large complement when a
-small parent candidate set can be checked directly.
+For `All`, start with the most selective predicate. Refine the ordering only
+when cheap estimates can distinguish the cost of materializing a bitmap from
+checking the current candidate set.
 
 ### Planner and memory benchmark matrix
 
@@ -72,6 +70,25 @@ The first planner iteration is successful only if it preserves the public API,
 immutability, and concurrent search safety; avoids eager materialization; exits
 early on empty results; improves selective and wildcard-heavy workloads; and
 does not materially regress large-result latency or allocations.
+
+### Analyzer and planner diagnostics
+
+Keep build-time analysis separate from query execution. The analyzer should
+select representations and prepare compact, immutable statistics that the
+planner can consume without rescanning postings or retaining expensive runtime
+instrumentation.
+
+Develop `Inspect` as the stable view of the representation selected during
+`Build`, including exact or lossy mode, strategy, accounted memory, budget,
+cardinality, and granularity where available. Develop `Index.Explain` as the
+opt-in view of query-specific planner decisions, estimates, actual
+cardinalities, and execution strategy. Neither diagnostic path may add work,
+wrappers, counters, or retained state to ordinary `Search`, `Visit`, or
+`Local` calls.
+
+Before expanding either diagnostic API, separate stable user-facing facts from
+internal planner details and require a concrete troubleshooting or benchmark
+use case for every new field.
 
 ### Rebuild scalability
 
@@ -98,94 +115,43 @@ every rule constructor.
 The policy now supports one pooled budget around `All`; its deterministic
 allocation, redistribution behavior, composition invariant, initial cost and
 quality benchmark, and equality and ordered planning optimizations are recorded
-in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The next operator expansion
-should be driven by a concrete workload and benchmark evidence.
+in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Continue improving budget
+allocation and representation selection for the existing supported rules only
+when a concrete workload and benchmark evidence justify the change.
 
 Require production-shaped benchmarks for build time, peak and retained memory,
 search latency, allocations, and observed false-positive rate. The detailed
 design constraints and open decisions are recorded in
 [`docs/lossy-index.md`](docs/lossy-index.md).
 
-## Deferred feature candidates
+### `Local` cache efficiency
 
-### Not equal
+Keep `Local` as an explicitly per-goroutine, bounded cache of intermediate
+search results. Optimize admission, replacement, and reset behavior against
+repeated-value, alternating-value, and high-churn workloads while accounting
+for both hit-rate gains and retained bytes per live `Local`.
 
-Add `!=` support to `CompareBy` and consider a discoverable `NotEqual` filter.
-Although `Exclude` covers a single forbidden value, comparison-oriented schemas
-often expect the conventional set of stored comparison operators to be
-complete.
-
-### Set membership
-
-Add `In` and `NotIn` filters for constraints that allow or reject several
-values. Common examples include countries, sales channels, customer tiers, and
-statuses. Native membership filters could avoid duplicating a stored rule for
-each value while making its intent explicit.
-
-Before implementation, define:
-
-- wildcard and empty-set behavior;
-- the representation of stored and query values;
-- how repeated external IDs interact with multiple allowed or forbidden sets.
-
-### Interval overlap
-
-Add `Overlaps` for queries that need any intersection between two intervals:
-
-```text
-stored.from <= query.until AND query.from <= stored.until
-```
-
-This complements `Between`, which currently requires the stored interval to
-fully cover the query interval. Open bounds and inclusive versus exclusive
-endpoints need explicit semantics.
-
-### Logical OR
-
-Add an `Any` combinator for logical OR between child rules. This would express
-conditions such as `(country = DE OR tier = gold)` without expanding them into
-multiple stored rules with the same external ID.
-
-The design must preserve predictable wildcard, exclusion, deduplication, and
-cardinality behavior when `Any` is nested inside `All` or another `Any`.
-
-### Presence checks
-
-Consider `Exists` and `Missing` filters for rules that distinguish a present
-query field from an absent one. This requires separating presence semantics
-from the current use of `nil` as a stored wildcard.
-
-## Domain-specific ideas
-
-These are useful in some workloads but should remain outside the core unless
-demand and an efficient indexing strategy are clear:
-
-- string prefix, suffix, substring, glob, or regular-expression matching;
-- CIDR and IP address matching;
-- collection operators such as `ContainsAny` and `ContainsAll`;
-- arbitrary predicates that cannot be indexed ahead of time.
-
-## Roaring bitmap candidates
-
-Prior adopted and rejected experiments are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Evaluate the remaining operations
-only where their semantics match an existing or planned path:
-
-1. `Xor` if a symmetric-difference rule or planner operation is introduced.
-2. `AddOffset` if indexes need to merge independently built ID shards.
+Evaluate cache specialization by existing rule representation only when it
+reduces search latency or allocations without making one-off queries retain
+large bitmaps. Include cold, warm, cache-fill, churn, reset, and many-live-local
+cases in the production benchmark matrix. Do not move cached state into the
+shared immutable index or weaken concurrent search safety.
 
 ## Suggested evaluation order
 
 1. Extend cheap estimates and lazy, empty-aware `All` execution only where
    benchmarks show a benefit.
 2. Benchmark and add candidate scanning below a measured crossover threshold.
-3. Optimize other logical operators when their semantics exist.
-4. Investigate generation-based updates only after rebuild benchmarks
+3. Improve analyzer output, `Inspect`, and `Index.Explain` where they expose a
+   measured planner or representation decision without affecting hot paths.
+4. Improve `Lossy` allocation and representation selection for existing rules,
+   using memory and false-positive quality benchmarks.
+5. Tune `Local` admission, eviction, and retained memory for production-shaped
+   repeated and high-churn searches.
+6. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
-5. Revisit the remaining bitmap operations only when the corresponding index
-   lifecycle or planner use case exists.
 
 For every optimization, compare production-shaped build time, search time,
-allocations, and retained memory. Keep new feature candidates deferred unless
-real usage demonstrates that the existing filters cannot express them without
-unacceptable complexity or cost.
+allocations, and retained memory. For lossy representations also compare peak
+memory and observed false-positive rate; for `Local`, report retained bytes per
+live cache.
