@@ -46,6 +46,10 @@ func (r *estimatedZeroCheckingRule) isCardinalityZero(value int) bool {
 	return len(r.ids) == 0
 }
 
+type conservativeEstimateRule struct{ *countingRule }
+
+func (*conservativeEstimateRule) estimateCardinality(int) uint64 { return ^uint64(0) }
+
 func (*countingRule) rule()                                                   {}
 func (r *countingRule) newState(*nodeIDAllocator, *buildStatistics) Rule[int] { return r }
 func (*countingRule) validate(int) error                                      { return nil }
@@ -273,4 +277,27 @@ func TestAllCandidateScanLimit(t *testing.T) {
 			require.Equal(t, test.wantMatchCalls, second.matchIDCalls)
 		})
 	}
+}
+
+func TestAllSwitchesToCandidateScanAfterSmallMaterializedResult(t *testing.T) {
+	selective := &countingRule{ids: []uint32{2}}
+	second := &countingRule{ids: []uint32{1, 2, 3, 4, 5}}
+	third := &countingRule{ids: []uint32{2, 3, 4, 5, 6}}
+	rule := All[int](
+		&conservativeEstimateRule{countingRule: selective},
+		&conservativeEstimateRule{countingRule: second},
+		&conservativeEstimateRule{countingRule: third},
+	)
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	rule.search(0, dst, pool)
+
+	require.Equal(t, []uint32{2}, dst.ToArray())
+	require.Equal(t, 1, selective.searchCalls)
+	require.Zero(t, second.searchCalls)
+	require.Zero(t, third.searchCalls)
+	require.Equal(t, 1, second.matchIDCalls)
+	require.Equal(t, 1, third.matchIDCalls)
 }

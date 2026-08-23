@@ -8,6 +8,28 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: materialized `All` candidate fallback
+
+The bitmap executor now reuses each materialized child's actual cardinality.
+When a conservative or unavailable cheap estimate selected bitmap execution
+but the materialized result contains at most four IDs, `All` switches to direct
+ID validation for the other children. This extends the measured candidate-scan
+threshold to predicates whose selectivity cannot be known cheaply and avoids
+materializing the remaining bitmaps.
+
+On Apple M1 Max, medians of five isolated four-child runs improved from about
+770 ns, 408 B, and 28 allocations per search to 235 ns, 64 B, and 4 allocations
+for one materialized candidate. Four candidates improved from about 774 ns to
+452 ns with the same allocation reduction. Existing range-pruning, estimate-
+ranking, and candidate crossover matrices retained their prior behavior.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllMaterializedCandidateFallback/' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
 ## 2026-08-24: nested `All` cheap empty propagation
 
 A nested `All` now incorporates specialized child emptiness checks into its

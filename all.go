@@ -268,6 +268,26 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 			rankedChildren[i].card = card
 			rankedChildren[i].owned = true
 		}
+		// Conservative or unavailable estimates can put a genuinely small result
+		// on the bitmap path. Once a child has been materialized, reuse its measured
+		// cardinality and switch to direct validation instead of materializing every
+		// remaining child.
+		if rankedChildren[i].card <= allCandidateScanLimit {
+			dst.Clear()
+			rankedChildren[i].bits.Iterate(func(id uint32) bool {
+				for j, ranked := range rankedChildren {
+					if j == i {
+						continue
+					}
+					if !matchesRuleID(r.children[ranked.childIdx], v, id, pool) {
+						return true
+					}
+				}
+				dst.Add(id)
+				return true
+			})
+			return !dst.IsEmpty()
+		}
 		if i >= allSequentialIntersectionLimit {
 			continue
 		}

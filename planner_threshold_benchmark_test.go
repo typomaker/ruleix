@@ -11,6 +11,32 @@ const plannerBenchmarkUniverse = 1 << 20
 
 var plannerBenchmarkCardinality uint64
 
+type unknownEstimateMatchingRule[T any] struct{ child Rule[T] }
+
+func (*unknownEstimateMatchingRule[T]) rule() {}
+func (r *unknownEstimateMatchingRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
+	return &unknownEstimateMatchingRule[T]{child: r.child.newState(ids, hints)}
+}
+func (r *unknownEstimateMatchingRule[T]) validate(v T) error { return r.child.validate(v) }
+func (r *unknownEstimateMatchingRule[T]) insert(v T, id uint32) {
+	r.child.insert(v, id)
+}
+func (r *unknownEstimateMatchingRule[T]) cardinality(v T, pool *bitmapPool) uint64 {
+	return r.child.cardinality(v, pool)
+}
+func (r *unknownEstimateMatchingRule[T]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	r.child.search(v, dst, pool)
+}
+func (r *unknownEstimateMatchingRule[T]) matchesID(v T, id uint32) bool {
+	return r.child.(ruleIDMatcher[T]).matchesID(v, id)
+}
+func (r *unknownEstimateMatchingRule[T]) exclude(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	r.child.exclude(v, dst, pool)
+}
+func (r *unknownEstimateMatchingRule[T]) collectBuildStatistics(stats []nodeBuildStatistics) {
+	r.child.collectBuildStatistics(stats)
+}
+
 // BenchmarkAllExecutionThreshold isolates the work controlled by
 // allCandidateScanLimit. Candidate scans iterate the smallest posting and
 // validate IDs in the remaining postings; bitmap execution clones that posting
@@ -75,6 +101,34 @@ func BenchmarkNestedAllEstimate(b *testing.B) {
 			rule := &allRule[int]{children: []Rule[int]{
 				&matchAllRule[int]{bits: broad},
 				candidate,
+			}}
+			pool := newBitmapPool()
+			dst := roaring.New()
+			b.ReportAllocs()
+			for range b.N {
+				dst.Clear()
+				rule.search(0, dst, pool)
+			}
+			plannerBenchmarkCardinality = dst.GetCardinality()
+		})
+	}
+}
+
+// BenchmarkAllMaterializedCandidateFallback measures an All whose first child
+// cannot expose a cheap estimate but materializes only a few IDs. The remaining
+// broad children make avoiding their bitmap materialization visible.
+func BenchmarkAllMaterializedCandidateFallback(b *testing.B) {
+	broad := roaring.New()
+	broad.AddRange(0, 100_000)
+	for _, cardinality := range []uint64{1, allCandidateScanLimit} {
+		b.Run(fmt.Sprintf("Cardinality%d", cardinality), func(b *testing.B) {
+			selective := roaring.New()
+			selective.AddRange(0, cardinality)
+			rule := &allRule[int]{children: []Rule[int]{
+				&unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: selective}},
+				&unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: broad}},
+				&unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: broad}},
+				&unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: broad}},
 			}}
 			pool := newBitmapPool()
 			dst := roaring.New()
