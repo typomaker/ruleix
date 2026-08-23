@@ -10,10 +10,13 @@ evidence to avoid repeating the work. Release-facing changes still belong in
 
 ## 2026-08-24: empty-aware `All` range pruning
 
-The broad bitmap executor now stops after materializing its first two ranked
-children when their internal-ID ranges are disjoint. Comparing the minimum and
-maximum IDs is constant-time and allocation-free; it proves the complete `All`
-empty without scanning bitmap containers or materializing later children.
+The broad bitmap executor materializes ranked children one at a time and
+immediately intersects each with the accumulated result. Before every `And`, it
+stops when the next child's internal-ID range is disjoint from the current
+intersection. Comparing the minimum and maximum IDs is constant-time and
+allocation-free; it proves the complete `All` empty without scanning bitmap
+containers or materializing later children. Rechecking the accumulated range
+also catches late disjointness after earlier intersections narrow it.
 General disjoint bitmaps with overlapping ranges remain on the existing
 `FastAnd` path because a speculative `Intersects` check measurably regressed
 overlapping workloads. An explicitly inspected `All` exposes the monotonic

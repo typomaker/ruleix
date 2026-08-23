@@ -327,7 +327,15 @@ func searchAllMatches[C any, ID comparable](
 		return
 	}
 
-	if !prepareRankedAllCandidates(root, value, pool, rankedChildren, metrics) {
+	initiallyBroad := rankedChildren[0].card > allCandidateScanLimit
+	var candidates *roaring.Bitmap
+	if initiallyBroad {
+		candidates = pool.get()
+	}
+	if !prepareRankedAllCandidates(root, value, pool, rankedChildren, candidates, metrics) {
+		if candidates != nil {
+			pool.put(candidates)
+		}
 		root.releaseRanked(pool, rankedChildren)
 		if buffer != nil {
 			pool.putRanked(buffer)
@@ -337,8 +345,17 @@ func searchAllMatches[C any, ID comparable](
 	}
 
 	excluded := buildAllExclusions(exclusions, value, rankedChildren[0].card, pool)
-	if rankedChildren[0].card > allCandidateScanLimit {
-		result = appendBitmapAllMatches(rankedChildren, excluded, values, pool, result)
+	broad := rankedChildren[0].card > allCandidateScanLimit
+	if broad {
+		if candidates != nil {
+			if excluded != nil {
+				candidates.AndNot(excluded)
+			}
+			result = appendBitmapValues(candidates, values, result)
+			pool.put(candidates)
+		} else {
+			result = appendBitmapAllMatches(rankedChildren, excluded, values, pool, result)
+		}
 	} else {
 		result = appendScannedAllMatches(root, rankedChildren, exclusions, excluded, value, values, pool, result)
 	}
@@ -357,10 +374,11 @@ func prepareRankedAllCandidates[C any](
 	value C,
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
+	candidates *roaring.Bitmap,
 	metrics *inspectorRuntime,
 ) bool {
 	if rankedChildren[0].card > allCandidateScanLimit {
-		return root.collectRankedInOrderObserved(value, pool, rankedChildren, metrics)
+		return root.intersectRankedInOrderObserved(value, candidates, pool, rankedChildren, metrics)
 	}
 	bits := pool.get()
 	root.children[rankedChildren[0].childIdx].search(value, bits, pool)

@@ -70,6 +70,39 @@ func TestInspectReportsAllRangePruning(t *testing.T) {
 	require.Equal(t, uint64(1), snapshot.EmptyResult())
 }
 
+func TestInspectReportsLaterAllRangePruning(t *testing.T) {
+	type constraint struct{ first, second, third int }
+	constraints := make([]constraint, 17)
+	ids := make([]int, len(constraints))
+	for i := range constraints {
+		constraints[i] = constraint{
+			first:  boolInt(i < 5),
+			second: boolInt(i >= 3 && i < 9),
+			third:  boolInt(i >= 10),
+		}
+		ids[i] = i
+	}
+
+	var inspector Inspector
+	index, err := New[constraint, int](Inspect(&inspector, All(
+		Include(func(v constraint) (int, bool) { return v.first, true }),
+		Include(func(v constraint) (int, bool) { return v.second, true }),
+		Include(func(v constraint) (int, bool) { return v.third, true }),
+	))).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+
+	var matches []int
+	require.False(t, index.Search(constraint{first: 1, second: 1, third: 1}, &matches))
+	require.Equal(t, uint64(1), inspector.Snapshot().RangePruning())
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
 func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
 	var country Inspector
 	inspected := New[inspectConstraint, string](All(

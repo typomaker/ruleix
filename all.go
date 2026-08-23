@@ -152,15 +152,9 @@ func (r *allRule[T]) searchRanked(
 		return
 	}
 	if rankedChildren[0].card > allCandidateScanLimit {
-		if !r.collectRankedInOrderObserved(v, pool, rankedChildren, metrics) {
+		if !r.intersectRankedInOrderObserved(v, dst, pool, rankedChildren, metrics) {
+			r.releaseRanked(pool, rankedChildren)
 			return
-		}
-		dst.Or(rankedChildren[0].bits)
-		for _, child := range rankedChildren[1:] {
-			dst.And(child.bits)
-			if dst.IsEmpty() {
-				break
-			}
 		}
 		r.releaseRanked(pool, rankedChildren)
 		return
@@ -229,27 +223,9 @@ func (r *allRule[T]) rankChildren(
 	return true
 }
 
-func (r *allRule[T]) collectRanked(
+func (r *allRule[T]) intersectRankedInOrderObserved(
 	v T,
-	pool *bitmapPool,
-	rankedChildren []rankedBitmap,
-) bool {
-	if !r.rankChildren(v, pool, rankedChildren) {
-		return false
-	}
-	return r.collectRankedInOrder(v, pool, rankedChildren)
-}
-
-func (r *allRule[T]) collectRankedInOrder(
-	v T,
-	pool *bitmapPool,
-	rankedChildren []rankedBitmap,
-) bool {
-	return r.collectRankedInOrderObserved(v, pool, rankedChildren, nil)
-}
-
-func (r *allRule[T]) collectRankedInOrderObserved(
-	v T,
+	dst *roaring.Bitmap,
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 	metrics *inspectorRuntime,
@@ -258,14 +234,38 @@ func (r *allRule[T]) collectRankedInOrderObserved(
 		r.collectSharedWildcards(v, pool, rankedChildren)
 	}
 	for i := range rankedChildren {
-		if rankedChildren[i].bits != nil {
+		bits := rankedChildren[i].bits
+		if bits == nil {
+			bits = pool.get()
+			r.children[rankedChildren[i].childIdx].search(v, bits, pool)
+			card := bits.GetCardinality()
+			if card == 0 {
+				pool.put(bits)
+				dst.Clear()
+				for j := range rankedChildren {
+					if rankedChildren[j].owned {
+						pool.put(rankedChildren[j].bits)
+						rankedChildren[j].owned = false
+					}
+				}
+				return false
+			}
+			rankedChildren[i].bits = bits
+			rankedChildren[i].card = card
+			rankedChildren[i].owned = true
+		}
+		if i == 0 {
 			continue
 		}
-		bits := pool.get()
-		r.children[rankedChildren[i].childIdx].search(v, bits, pool)
-		card := bits.GetCardinality()
-		if card == 0 {
-			pool.put(bits)
+		// Compare each next posting list with the accumulated intersection. Its
+		// range can narrow after every And, making later pruning more effective.
+		current := dst
+		if i == 1 {
+			current = rankedChildren[0].bits
+		}
+		if bitmapRangesDisjoint(current, bits) {
+			observeRangePruning(metrics)
+			dst.Clear()
 			for j := range rankedChildren {
 				if rankedChildren[j].owned {
 					pool.put(rankedChildren[j].bits)
@@ -274,14 +274,11 @@ func (r *allRule[T]) collectRankedInOrderObserved(
 			}
 			return false
 		}
-		rankedChildren[i].bits = bits
-		rankedChildren[i].card = card
-		rankedChildren[i].owned = true
-		// A disjoint ID range proves the complete All empty without scanning
-		// containers or materializing later children. Keep the check deliberately
-		// cheap; general bitmap intersection is paid for by the final FastAnd.
-		if i == 1 && bitmapRangesDisjoint(rankedChildren[0].bits, bits) {
-			observeRangePruning(metrics)
+		if i == 1 {
+			dst.Or(current)
+		}
+		dst.And(bits)
+		if dst.IsEmpty() {
 			for j := range rankedChildren {
 				if rankedChildren[j].owned {
 					pool.put(rankedChildren[j].bits)
@@ -291,10 +288,8 @@ func (r *allRule[T]) collectRankedInOrderObserved(
 			return false
 		}
 	}
-	for i := 1; i < len(rankedChildren); i++ {
-		for j := i; j > 0 && rankedChildren[j].card < rankedChildren[j-1].card; j-- {
-			rankedChildren[j], rankedChildren[j-1] = rankedChildren[j-1], rankedChildren[j]
-		}
+	if len(rankedChildren) == 1 {
+		dst.Or(rankedChildren[0].bits)
 	}
 	return true
 }
