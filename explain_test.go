@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"testing"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,6 +27,31 @@ func TestExplainUsesOrderedEstimateForCandidateSelection(t *testing.T) {
 	require.NoError(t, err)
 
 	plan := ix.Explain(explainRangeConstraint{group: 1, threshold: 0})
+
+	require.Equal(t, SearchStrategyCandidateScan, plan.Strategy)
+	require.Equal(t, uint64(1), plan.CandidateCardinality)
+	require.True(t, plan.Children[1].EstimateAvailable)
+	require.Equal(t, uint64(1), plan.Children[1].EstimatedMatches)
+	require.Equal(t, 0, plan.Children[1].ExecutionOrder)
+}
+
+func TestExplainUsesLossyEqualityEstimateForCandidateSelection(t *testing.T) {
+	get := func(value int) (int, bool) { return value, true }
+	hash, ok := hashScalar(7)
+	require.True(t, ok)
+	selective := &lossyEqualityRule[int, int]{
+		get: get, wildcard: roaring.New(), buckets: map[uint64]*roaring.Bitmap{
+			hash: roaring.BitmapOf(3),
+		},
+	}
+	broad := &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5}}
+	ix := &Index[int, int]{
+		root:   &allRule[int]{children: []Rule[int]{broad, selective}},
+		values: []int{0, 1, 2, 3, 4, 5},
+		pool:   newBitmapPool(),
+	}
+
+	plan := ix.Explain(7)
 
 	require.Equal(t, SearchStrategyCandidateScan, plan.Strategy)
 	require.Equal(t, uint64(1), plan.CandidateCardinality)

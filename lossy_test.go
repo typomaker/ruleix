@@ -6,6 +6,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -173,6 +174,77 @@ func TestLossyOrderedNeverDropsExactMatches(t *testing.T) {
 		approximate.Search(query, &got)
 		requireSuperset(t, want, got)
 	}
+}
+
+var lossyPlannerBenchmarkCardinality uint64
+
+type unknownEstimateRule[T any] struct{ child Rule[T] }
+
+func (*unknownEstimateRule[T]) rule() {}
+func (r *unknownEstimateRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
+	return &unknownEstimateRule[T]{child: r.child.newState(ids, hints)}
+}
+func (r *unknownEstimateRule[T]) validate(v T) error { return r.child.validate(v) }
+func (r *unknownEstimateRule[T]) insert(v T, id uint32) {
+	r.child.insert(v, id)
+}
+func (r *unknownEstimateRule[T]) cardinality(v T, pool *bitmapPool) uint64 {
+	return r.child.cardinality(v, pool)
+}
+func (r *unknownEstimateRule[T]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	r.child.search(v, dst, pool)
+}
+func (r *unknownEstimateRule[T]) exclude(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	r.child.exclude(v, dst, pool)
+}
+func (r *unknownEstimateRule[T]) collectBuildStatistics(stats []nodeBuildStatistics) {
+	r.child.collectBuildStatistics(stats)
+}
+
+func BenchmarkLossyAllSelectivePlanning(b *testing.B) {
+	const entries = 100_000
+	query := lossyConstraint{name: "customer-7", present: true}
+	hash, ok := hashScalar(query.name)
+	if !ok {
+		b.Fatal("failed to hash benchmark query")
+	}
+	broad := roaring.New()
+	broad.AddRange(0, entries)
+	selective := &lossyEqualityRule[lossyConstraint, string]{
+		get:      func(v lossyConstraint) (string, bool) { return v.name, v.present },
+		wildcard: roaring.New(),
+		buckets:  map[uint64]*roaring.Bitmap{hash: roaring.BitmapOf(7)},
+	}
+	children := make([]Rule[lossyConstraint], 0, 8)
+	for range 7 {
+		children = append(children, &matchAllRule[lossyConstraint]{bits: broad})
+	}
+	children = append(children, selective)
+	root := &allRule[lossyConstraint]{children: children}
+	unknownChildren := append([]Rule[lossyConstraint](nil), children...)
+	unknownChildren[len(unknownChildren)-1] = &unknownEstimateRule[lossyConstraint]{child: selective}
+	unknownRoot := &allRule[lossyConstraint]{children: unknownChildren}
+
+	b.Run("Adaptive", func(b *testing.B) {
+		pool := newBitmapPool()
+		b.ReportAllocs()
+		for range b.N {
+			result := pool.get()
+			root.search(query, result, pool)
+			lossyPlannerBenchmarkCardinality = result.GetCardinality()
+			pool.put(result)
+		}
+	})
+	b.Run("UnknownEstimate", func(b *testing.B) {
+		pool := newBitmapPool()
+		b.ReportAllocs()
+		for range b.N {
+			result := pool.get()
+			unknownRoot.search(query, result, pool)
+			lossyPlannerBenchmarkCardinality = result.GetCardinality()
+			pool.put(result)
+		}
+	})
 }
 
 func TestLossyPolicyValidation(t *testing.T) {

@@ -461,8 +461,41 @@ func (r *lossyEqualityRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool
 		dst.Or(bits)
 	}
 }
-func (r *lossyEqualityRule[T, V]) cardinality(v T, p *bitmapPool) uint64 {
-	return measuredCardinality[T](r, v, p)
+func (r *lossyEqualityRule[T, V]) estimateCardinality(v T) uint64 {
+	n := r.wildcard.GetCardinality()
+	value, ok := r.get(v)
+	if !ok {
+		return n
+	}
+	hash, ok := hashScalar(any(value))
+	if !ok {
+		return n
+	}
+	if bits := r.buckets[hash>>r.shift]; bits != nil {
+		n += bits.GetCardinality()
+	}
+	return n
+}
+func (r *lossyEqualityRule[T, V]) isCardinalityZero(v T) bool {
+	return r.estimateCardinality(v) == 0
+}
+func (r *lossyEqualityRule[T, V]) matchesID(v T, id uint32) bool {
+	if r.wildcard.Contains(id) {
+		return true
+	}
+	value, ok := r.get(v)
+	if !ok {
+		return false
+	}
+	hash, ok := hashScalar(any(value))
+	if !ok {
+		return false
+	}
+	bits := r.buckets[hash>>r.shift]
+	return bits != nil && bits.Contains(id)
+}
+func (r *lossyEqualityRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
+	return r.estimateCardinality(v)
 }
 func (*lossyEqualityRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
 func (*lossyEqualityRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}

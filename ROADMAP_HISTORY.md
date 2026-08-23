@@ -565,3 +565,26 @@ go test -run '^$' -bench '^BenchmarkLossyScalePlanning/' \
 go test -run '^$' -bench '^BenchmarkLossyScaleSearch/' \
   -benchmem -benchtime=300ms -count=5 .
 ```
+
+## 2026-08-23: lossy leaf estimates in `All`
+
+Lossy equality leaves now expose their result cardinality directly from the
+selected immutable hash bucket. Their wildcard and concrete bucket
+postings are disjoint, so the estimate is exact without materializing a result
+bitmap. The same representations also validate a single internal ID directly.
+This lets the adaptive `All` planner put a selective lossy leaf first, reject
+known-empty queries early, and use candidate scanning at the existing measured
+four-ID threshold.
+
+`BenchmarkLossyAllSelectivePlanning` isolates a 100K-rule, eight-child `All`
+whose lossy equality leaf returns one candidate. On Apple M1 Max, medians of
+five runs improved from 1.186 us/op with the lossy estimate hidden to 602
+ns/op with adaptive planning. Allocation traffic fell from 504 B/op and 35
+allocations to 232 B/op and 13 allocations.
+
+Reproduce the comparison with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyAllSelectivePlanning/' \
+  -benchmem -benchtime=200ms -count=5 .
+```
