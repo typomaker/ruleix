@@ -95,6 +95,23 @@ func (r *allRule[T]) optimize(total uint64) Rule[T] {
 func (r *allRule[T]) cardinality(v T, pool *bitmapPool) uint64 {
 	return measuredCardinality[T](r, v, pool)
 }
+func (r *allRule[T]) estimateCardinality(v T) uint64 {
+	estimate := ^uint64(0)
+	for _, child := range r.children {
+		if estimator, ok := child.(cardinalityEstimator[T]); ok {
+			estimate = min(estimate, estimator.estimateCardinality(v))
+		}
+	}
+	return estimate
+}
+func (r *allRule[T]) isCardinalityZero(v T) bool {
+	for _, child := range r.children {
+		if checker, ok := child.(cardinalityZeroChecker[T]); ok && checker.isCardinalityZero(v) {
+			return true
+		}
+	}
+	return false
+}
 func (r *allRule[T]) matchesID(v T, id uint32) bool {
 	for _, child := range r.children {
 		matcher, ok := child.(ruleIDMatcher[T])

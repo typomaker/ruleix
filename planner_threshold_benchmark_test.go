@@ -56,6 +56,38 @@ func BenchmarkAllExecutionThreshold(b *testing.B) {
 	}
 }
 
+// BenchmarkNestedAllEstimate isolates the outer planner decision enabled by
+// propagating the cheapest known estimate through a nested All. The broad
+// sibling intentionally comes first in schema order.
+func BenchmarkNestedAllEstimate(b *testing.B) {
+	broad := roaring.New()
+	broad.AddRange(0, 100_000)
+	selective := roaring.BitmapOf(7)
+	nested := &allRule[int]{children: []Rule[int]{
+		&matchAllRule[int]{bits: broad},
+		&matchAllRule[int]{bits: selective},
+	}}
+	for name, candidate := range map[string]Rule[int]{
+		"Adaptive":        nested,
+		"UnknownEstimate": &unknownEstimateRule[int]{child: nested},
+	} {
+		b.Run(name, func(b *testing.B) {
+			rule := &allRule[int]{children: []Rule[int]{
+				&matchAllRule[int]{bits: broad},
+				candidate,
+			}}
+			pool := newBitmapPool()
+			dst := roaring.New()
+			b.ReportAllocs()
+			for range b.N {
+				dst.Clear()
+				rule.search(0, dst, pool)
+			}
+			plannerBenchmarkCardinality = dst.GetCardinality()
+		})
+	}
+}
+
 func plannerBenchmarkPostings(children int, cardinality uint64, sparse bool) []*roaring.Bitmap {
 	postings := make([]*roaring.Bitmap, children)
 	step := uint64(1)

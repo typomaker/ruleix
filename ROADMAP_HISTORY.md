@@ -641,3 +641,24 @@ Reproduce the comparison with:
 go test -run '^$' -bench '^BenchmarkLossyAllSelectiveOrderedPlanning/' \
   -benchmem -benchtime=200ms -count=5 .
 ```
+
+## 2026-08-23: nested `All` estimates and empty propagation
+
+A nested `All` now exposes the minimum cheap estimate available from its
+children. Because an intersection cannot be larger than any child result, this
+is a safe planner estimate even when other children have no cheap estimate.
+Nested groups also propagate a cheaply known empty child to their parent. The
+outer planner can therefore rank a selective nested group ahead of a broad
+sibling and stop before materializing anything when a descendant is known to
+be empty.
+
+`BenchmarkNestedAllEstimate` isolates a broad 100K-ID outer child followed by
+a nested group with one matching ID. On Apple M1 Max, medians of five runs
+improved from 431 ns/op with the nested estimate hidden to 393 ns/op with the
+estimate propagated. Allocation traffic fell from 144 B/op and 10 allocations
+to 96 B/op and six allocations. Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkNestedAllEstimate$' \
+  -benchmem -benchtime=200ms -count=5 .
+```

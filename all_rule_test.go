@@ -120,6 +120,30 @@ func TestAllChecksCheapEmptyChildBeforeMaterializing(t *testing.T) {
 	require.Zero(t, empty.searchCalls)
 }
 
+func TestNestedAllExposesCheapestEstimate(t *testing.T) {
+	broad := &countingRule{ids: []uint32{1, 2, 3, 4}}
+	selective := &countingRule{ids: []uint32{2}}
+	unknown := &unknownEstimateRule[int]{child: &countingRule{ids: []uint32{2, 3}}}
+	rule := All[int](unknown, All[int](broad, selective))
+
+	estimator := rule.(cardinalityEstimator[int])
+	require.Equal(t, uint64(1), estimator.estimateCardinality(0))
+}
+
+func TestNestedAllPropagatesCheapEmptyResult(t *testing.T) {
+	expensive := &countingRule{ids: []uint32{1}}
+	empty := &zeroCheckingRule{countingRule: &countingRule{}}
+	rule := All[int](expensive, All[int](&countingRule{ids: []uint32{1}}, empty))
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	rule.search(0, dst, pool)
+
+	require.True(t, dst.IsEmpty())
+	require.Zero(t, expensive.searchCalls)
+}
+
 func TestAllCandidateScanLimit(t *testing.T) {
 	for _, test := range []struct {
 		name             string
