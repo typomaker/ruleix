@@ -533,3 +533,18 @@ Reproduce the matrix with:
 go test -run '^$' -bench '^BenchmarkLossyAllOrderedPlanning/' \
   -benchmem -benchtime=200ms -count=3 .
 ```
+
+## 2026-08-23: lossy scalar and ordered-boundary properties
+
+Lossy/exact superset tests now cover equality over signed integers, unsigned
+integers, floating-point values, and strings, plus all four inclusive and
+exclusive ordered operators over signed integers, unsigned integers, and
+floating-point values. The generated cases include missing stored and query
+values, repeated postings, integer extrema, infinities, NaN, signed zero, and
+the smallest non-zero floating-point values.
+
+These tests exercise the compiled search representations, not only their
+canonical encodings, and verify that lossy searches never omit any exact
+result at adversarial ordered-domain boundaries. This completes the roadmap's
+property and boundary-test requirement; production-shaped memory and latency
+benchmark expansion remains active.

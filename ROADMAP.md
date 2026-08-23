@@ -101,9 +101,7 @@ quality benchmark, and equality and ordered planning optimizations are recorded
 in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The next operator expansion
 should be driven by a concrete workload and benchmark evidence.
 
-Require property tests comparing lossy and exact results across supported
-operators and value types, adversarial boundary tests for ordered encodings,
-and production-shaped benchmarks for build time, peak and retained memory,
+Require production-shaped benchmarks for build time, peak and retained memory,
 search latency, allocations, and observed false-positive rate. The detailed
 design constraints and open decisions are recorded in
 [`docs/lossy-index.md`](docs/lossy-index.md).

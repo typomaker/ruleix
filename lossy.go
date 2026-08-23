@@ -492,6 +492,14 @@ type lossyOrderedRule[T any, V any] struct {
 	buckets         []*roaring.Bitmap
 }
 
+func lossyOrderedBucket(key, min, width, count uint64) uint64 {
+	bucket := (key - min) / width
+	if bucket >= count {
+		return count - 1
+	}
+	return bucket
+}
+
 func (*lossyOrderedRule[T, V]) rule()                                                 {}
 func (r *lossyOrderedRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
 func (*lossyOrderedRule[T, V]) validate(T) error                                      { return nil }
@@ -512,7 +520,7 @@ func (r *lossyOrderedRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool)
 		}
 		last := uint64(len(r.buckets) - 1)
 		if key < r.max {
-			last = (key - r.min) / r.width
+			last = lossyOrderedBucket(key, r.min, r.width, uint64(len(r.buckets)))
 		}
 		for n := uint64(0); n <= last; n++ {
 			if b := r.buckets[n]; b != nil {
@@ -526,7 +534,7 @@ func (r *lossyOrderedRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool)
 	}
 	first := uint64(0)
 	if key > r.min {
-		first = (key - r.min) / r.width
+		first = lossyOrderedBucket(key, r.min, r.width, uint64(len(r.buckets)))
 	}
 	for n := first; n < uint64(len(r.buckets)); n++ {
 		if b := r.buckets[n]; b != nil {

@@ -3,10 +3,52 @@ package ruleix
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+type lossyScalarConstraint[V any] struct {
+	value   V
+	present bool
+}
+
+func verifyLossySuperset[T any, ID comparable](
+	t *testing.T,
+	exactRule, lossyRule Rule[T],
+	constraints []T,
+	ids []ID,
+	queries []T,
+	requireLossy bool,
+) {
+	t.Helper()
+	exact, err := New[T, ID](exactRule).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	var inspector Inspector
+	approximate, err := New[T, ID](Inspect(&inspector, lossyRule)).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	if requireLossy {
+		require.Equal(t, RuleModeLossy, inspector.Mode(), "property case must exercise a lossy representation")
+	}
+	for _, query := range queries {
+		var want, got []ID
+		exact.Search(query, &want)
+		approximate.Search(query, &got)
+		requireSupersetComparable(t, want, got)
+	}
+}
+
+func requireSupersetComparable[ID comparable](t *testing.T, exact, approximate []ID) {
+	t.Helper()
+	got := make(map[ID]bool, len(approximate))
+	for _, id := range approximate {
+		got[id] = true
+	}
+	for _, id := range exact {
+		require.True(t, got[id], "lossy result dropped id %v", id)
+	}
+}
 
 type lossyConstraint struct {
 	name    string
@@ -15,14 +57,76 @@ type lossyConstraint struct {
 }
 
 func requireSuperset(t *testing.T, exact, approximate []int) {
+	requireSupersetComparable(t, exact, approximate)
+}
+
+func TestLossyEqualityScalarProperties(t *testing.T) {
+	testLossyEqualityScalar(t, "int8", []int8{math.MinInt8, -1, 0, 1, math.MaxInt8})
+	testLossyEqualityScalar(t, "uint64", []uint64{0, 1, 1 << 32, math.MaxUint64 - 1, math.MaxUint64})
+	testLossyEqualityScalar(t, "float64", []float64{math.NaN(), math.Inf(-1), -math.MaxFloat64, math.Copysign(0, -1), 0, math.SmallestNonzeroFloat64, math.MaxFloat64, math.Inf(1)})
+	testLossyEqualityScalar(t, "string", []string{"", "a", "customer-17", "\x00", "世界"})
+}
+
+func testLossyEqualityScalar[V comparable](t *testing.T, name string, values []V) {
 	t.Helper()
-	got := make(map[int]bool, len(approximate))
-	for _, id := range approximate {
-		got[id] = true
-	}
-	for _, id := range exact {
-		require.True(t, got[id], "lossy result dropped id %d", id)
-	}
+	t.Run(name, func(t *testing.T) {
+		get := func(value lossyScalarConstraint[V]) (V, bool) { return value.value, value.present }
+		constraints := make([]lossyScalarConstraint[V], 0, len(values)*64)
+		ids := make([]int, 0, len(values)*64)
+		for repetition := 0; repetition < 64; repetition++ {
+			for _, value := range values {
+				constraints = append(constraints, lossyScalarConstraint[V]{value: value, present: repetition%19 != 0})
+				ids = append(ids, len(ids))
+			}
+		}
+		queries := make([]lossyScalarConstraint[V], 0, len(values)+1)
+		for _, value := range values {
+			queries = append(queries, lossyScalarConstraint[V]{value: value, present: true})
+		}
+		queries = append(queries, lossyScalarConstraint[V]{})
+		verifyLossySuperset(t, Include(get), Lossy(Include(get), MemoryLimit(2048)), constraints, ids, queries, false)
+	})
+}
+
+func TestLossyOrderedOperatorAndBoundaryProperties(t *testing.T) {
+	testLossyOrderedScalar(t, "int64", []int64{math.MinInt64, math.MinInt64 + 1, -1, 0, 1, math.MaxInt64 - 1, math.MaxInt64})
+	testLossyOrderedScalar(t, "uint64", []uint64{0, 1, 1 << 63, math.MaxUint64 - 1, math.MaxUint64})
+	testLossyOrderedScalar(t, "float64", []float64{math.NaN(), math.Inf(-1), -math.MaxFloat64, -math.SmallestNonzeroFloat64, math.Copysign(0, -1), 0, math.SmallestNonzeroFloat64, math.MaxFloat64, math.Inf(1)})
+}
+
+func testLossyOrderedScalar[V cmp.Ordered](t *testing.T, name string, values []V) {
+	t.Helper()
+	t.Run(name, func(t *testing.T) {
+		get := func(value lossyScalarConstraint[V]) (V, bool) { return value.value, value.present }
+		constraints := make([]lossyScalarConstraint[V], 0, len(values)*80)
+		ids := make([]int, 0, len(values)*80)
+		for repetition := 0; repetition < 80; repetition++ {
+			for _, value := range values {
+				constraints = append(constraints, lossyScalarConstraint[V]{value: value, present: repetition%23 != 0})
+				ids = append(ids, len(ids))
+			}
+		}
+		queries := make([]lossyScalarConstraint[V], 0, len(values)+1)
+		for _, value := range values {
+			queries = append(queries, lossyScalarConstraint[V]{value: value, present: true})
+		}
+		queries = append(queries, lossyScalarConstraint[V]{})
+
+		operators := []struct {
+			name  string
+			build func() Rule[lossyScalarConstraint[V]]
+		}{
+			{"greater", func() Rule[lossyScalarConstraint[V]] { return Greater(get, cmp.Compare[V]) }},
+			{"greater_or_equal", func() Rule[lossyScalarConstraint[V]] { return GreaterOrEqual(get, cmp.Compare[V]) }},
+			{"less", func() Rule[lossyScalarConstraint[V]] { return Less(get, cmp.Compare[V]) }},
+			{"less_or_equal", func() Rule[lossyScalarConstraint[V]] { return LessOrEqual(get, cmp.Compare[V]) }},
+		}
+		for _, operator := range operators {
+			t.Run(operator.name, func(t *testing.T) {
+				verifyLossySuperset(t, operator.build(), Lossy(operator.build(), MemoryLimit(1536)), constraints, ids, queries, true)
+			})
+		}
+	})
 }
 
 func TestLossyEqualityNeverDropsExactMatches(t *testing.T) {

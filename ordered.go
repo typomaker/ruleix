@@ -2,6 +2,7 @@ package ruleix
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
@@ -149,10 +150,16 @@ func (r *orderedRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 			count := uint64(1) << bits
 			span := maxKey - minKey
 			width := span/count + 1
-			used := span/width + 1
+			// A one-bucket representation of the complete uint64 domain has
+			// mathematical width 2^64, which cannot be stored in uint64.
+			// MaxUint64 plus a clamped bucket lookup represents that case.
+			if width == 0 {
+				width = math.MaxUint64
+			}
+			used := min(span/width+1, count)
 			candidate := &lossyOrderedRule[T, V]{nodeID: r.nodeID, get: r.get, dir: r.dir, inclusive: r.inclusive, wildcard: r.wildcard, min: minKey, max: maxKey, width: width, buckets: make([]*roaring.Bitmap, used)}
 			for _, value := range values {
-				n := (value.key - minKey) / width
+				n := lossyOrderedBucket(value.key, minKey, width, used)
 				if candidate.buckets[n] == nil {
 					candidate.buckets[n] = roaring.New()
 				}
