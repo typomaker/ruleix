@@ -260,6 +260,14 @@ parameter. `Inspect` must reveal the representation that planning actually
 selected, including an exact representation when it fits the budget.
 Diagnostics must not add work to the default search hot path.
 
+Grouped-hash equality reports a build-time collision estimate over concrete
+posting items. It is the fraction of ordered pairs belonging to different
+stored values that land in the same selected bucket; wildcard items are
+excluded because they are exact matches for every present query. The estimate
+describes the indexed distribution and does not require queries or runtime
+instrumentation. Ordered buckets do not expose one distribution-independent
+rate because their false-positive boundary depends on the query value.
+
 ## Validation and rollout
 
 Start with one equality shape and one ordered-range shape before broad operator

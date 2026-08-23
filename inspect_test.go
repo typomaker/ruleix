@@ -278,8 +278,10 @@ func TestInspectReportsLossyRepresentationStatistics(t *testing.T) {
 	granularity, ok := snapshot.Granularity()
 	require.True(t, ok)
 	require.NotZero(t, granularity)
-	_, ok = snapshot.FalsePositiveRate()
-	require.False(t, ok)
+	falsePositiveRate, ok := snapshot.FalsePositiveRate()
+	require.True(t, ok)
+	require.GreaterOrEqual(t, falsePositiveRate, 0.0)
+	require.LessOrEqual(t, falsePositiveRate, 1.0)
 }
 
 func TestInspectReportsExactSelectionWithinLossyBudget(t *testing.T) {

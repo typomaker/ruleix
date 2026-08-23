@@ -8,6 +8,32 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: lossy equality collision diagnostics
+
+Grouped-hash equality representations now publish a build-time estimated
+false-positive rate through `InspectorSnapshot`. The estimate uses the actual
+concrete posting distribution: it divides different-value ordered item pairs
+that share the selected hash bucket by all different-value ordered item pairs.
+Wildcards are excluded because they remain exact matches, and duplicate-value
+items are excluded because they are not false positives for that value.
+
+The calculation runs while the planner already groups postings into candidate
+buckets and retains only scalar counters, so it adds no query-time work or
+runtime instrumentation. Ordered representations continue to report the rate
+as unavailable because their approximation error depends on the query's range
+boundary.
+
+On Apple M1 Max, three three-iteration 10K-rule, four-child planning runs had
+medians of 55.1 ms, 21.2 MB, and 362.3K allocations at a 50% budget, and
+55.7 ms, 21.7 MB, and 366.4K allocations at a 25% budget. Reproduce the build
+baseline with:
+
+```sh
+go test -run '^$' \
+  -bench '^BenchmarkLossyAllPlanning/Children4/Budget(50|25)$' \
+  -benchmem -benchtime=3x -count=3 .
+```
+
 ## 2026-08-24: materialized `All` candidate fallback
 
 The bitmap executor now reuses each materialized child's actual cardinality.

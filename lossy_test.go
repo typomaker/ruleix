@@ -68,6 +68,24 @@ func TestLossyEqualityScalarProperties(t *testing.T) {
 	testLossyEqualityScalar(t, "string", []string{"", "a", "customer-17", "\x00", "世界"})
 }
 
+func TestLossyEqualityMinimumGranularityReportsCompleteCollisionRate(t *testing.T) {
+	get := func(value lossyConstraint) (string, bool) { return value.name, value.present }
+	rule := Include(get).newState(&nodeIDAllocator{}, &buildStatistics{}).(*eqRule[lossyConstraint, string])
+	for id, name := range []string{"alpha", "beta", "gamma"} {
+		rule.insert(lossyConstraint{name: name, present: true}, uint32(id))
+	}
+
+	planner := rule.newLossyAllPlanner()
+	exact, err := planner.compile(math.MaxUint64)
+	require.NoError(t, err)
+	_, compiled, err := minimumLossyAllLimit(planner, inspectionDetailsOf(exact).MemoryUsageBytes)
+	require.NoError(t, err)
+
+	details := inspectionDetailsOf(compiled)
+	require.True(t, details.EstimatedFalsePositiveRateAvailable)
+	require.Equal(t, 1.0, details.EstimatedFalsePositiveRateValue)
+}
+
 func testLossyEqualityScalar[V comparable](t *testing.T, name string, values []V) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
