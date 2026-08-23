@@ -104,7 +104,13 @@ func (r *allRule[T]) estimateCardinality(v T) uint64 {
 	estimate := ^uint64(0)
 	for _, child := range r.children {
 		if estimator, ok := child.(cardinalityEstimator[T]); ok {
-			estimate = min(estimate, estimator.estimateCardinality(v))
+			childEstimate := estimator.estimateCardinality(v)
+			if childEstimate == 0 {
+				return 0
+			}
+			estimate = min(estimate, childEstimate)
+		} else if checker, ok := child.(cardinalityZeroChecker[T]); ok && checker.isCardinalityZero(v) {
+			return 0
 		}
 	}
 	return estimate

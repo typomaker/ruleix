@@ -8,6 +8,25 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: nested `All` cheap empty propagation
+
+A nested `All` now incorporates specialized child emptiness checks into its
+cheap cardinality estimate. This lets an enclosing `All` stop before
+materializing any sibling when a descendant can prove an empty result but
+cannot cheaply estimate a non-empty cardinality. Estimator-backed children
+remain single-pass: their estimate is reused as the definitive empty check.
+
+On Apple M1 Max, medians of five isolated runs with a 1,024-ID sibling improved
+from 4.00 us, 6,547 B, and 11 allocations per search to 39.65 ns with no
+allocation.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkNestedAllCheapEmptyCheck$' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
 ## 2026-08-24: single-pass `All` estimate ranking
 
 `All` now reuses each child's cheap cardinality estimate for both its

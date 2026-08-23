@@ -18,6 +18,27 @@ type zeroCheckingRule struct{ *countingRule }
 
 func (r *zeroCheckingRule) isCardinalityZero(int) bool { return len(r.ids) == 0 }
 
+// checkerOnlyRule deliberately hides the wrapped rule's cardinality estimate.
+// It models a rule that can prove emptiness more cheaply than it can estimate
+// or materialize its complete result.
+type checkerOnlyRule struct{ child *countingRule }
+
+func (*checkerOnlyRule) rule() {}
+func (r *checkerOnlyRule) newState(*nodeIDAllocator, *buildStatistics) Rule[int] {
+	return r
+}
+func (*checkerOnlyRule) validate(int) error { return nil }
+func (*checkerOnlyRule) insert(int, uint32) {}
+func (r *checkerOnlyRule) cardinality(value int, pool *bitmapPool) uint64 {
+	return r.child.cardinality(value, pool)
+}
+func (r *checkerOnlyRule) isCardinalityZero(int) bool { return len(r.child.ids) == 0 }
+func (r *checkerOnlyRule) search(value int, dst *roaring.Bitmap, pool *bitmapPool) {
+	r.child.search(value, dst, pool)
+}
+func (*checkerOnlyRule) exclude(int, *roaring.Bitmap, *bitmapPool)    {}
+func (*checkerOnlyRule) collectBuildStatistics([]nodeBuildStatistics) {}
+
 type estimatedZeroCheckingRule struct{ *countingRule }
 
 func (r *estimatedZeroCheckingRule) isCardinalityZero(value int) bool {
@@ -190,7 +211,7 @@ func TestNestedAllExposesCheapestEstimate(t *testing.T) {
 
 func TestNestedAllPropagatesCheapEmptyResult(t *testing.T) {
 	expensive := &countingRule{ids: []uint32{1}}
-	empty := &zeroCheckingRule{countingRule: &countingRule{}}
+	empty := &checkerOnlyRule{child: &countingRule{}}
 	rule := All[int](expensive, All[int](&countingRule{ids: []uint32{1}}, empty))
 	pool := newBitmapPool()
 	dst := pool.get()
@@ -200,6 +221,26 @@ func TestNestedAllPropagatesCheapEmptyResult(t *testing.T) {
 
 	require.True(t, dst.IsEmpty())
 	require.Zero(t, expensive.searchCalls)
+}
+
+func BenchmarkNestedAllCheapEmptyCheck(b *testing.B) {
+	ids := make([]uint32, 1_024)
+	for i := range ids {
+		ids[i] = uint32(i)
+	}
+	rule := All[int](
+		&countingRule{ids: ids},
+		All[int](&countingRule{ids: ids}, &checkerOnlyRule{child: &countingRule{}}),
+	)
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	b.ReportAllocs()
+	for range b.N {
+		dst.Clear()
+		rule.search(0, dst, pool)
+	}
 }
 
 func TestAllCandidateScanLimit(t *testing.T) {

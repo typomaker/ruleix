@@ -56,6 +56,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   empty.
 - `All` reuses each cheap cardinality estimate for empty detection and child
   ranking instead of calculating it twice per search.
+- Nested `All` groups propagate specialized cheap empty checks through their
+  estimate, avoiding sibling materialization when a descendant proves that the
+  result is empty.
 - Small `All` candidate sets materialize only the most selective child and
   validate remaining predicates directly by internal rule ID.
 - `All` switches from direct candidate validation to bitmap intersection above
