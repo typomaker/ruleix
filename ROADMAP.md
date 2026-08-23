@@ -144,9 +144,9 @@ for both hit-rate gains and retained bytes per live `Local`.
 
 Evaluate cache specialization by existing rule representation only when it
 reduces search latency or allocations without making one-off queries retain
-large bitmaps. Include cold, warm, cache-fill, churn, reset, and many-live-local
-cases in the production benchmark matrix. Do not move cached state into the
-shared immutable index or weaken concurrent search safety.
+large bitmaps. Include cold, warm, cache-fill, churn, close/reuse, and many-
+live-local cases in the production benchmark matrix. Do not move cached state
+into the shared immutable index or weaken concurrent search safety.
 
 ## Prioritized roadmap
 
@@ -158,8 +158,8 @@ when production-shaped benchmarks demonstrate a material benefit:
 2. Benchmark and add candidate scanning below a measured crossover threshold.
 3. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-4. Tune the remaining `Local` admission, eviction, reset behavior, and retained
-   memory for production-shaped repeated and high-churn searches.
+4. Tune the remaining `Local` admission, eviction, close/reuse behavior, and
+   retained memory for production-shaped repeated and high-churn searches.
 5. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
 

@@ -262,6 +262,7 @@ store and different regions can reuse the store bitmap:
 
 ```go
 local := index.Local()
+defer local.Close()
 
 queries := []Constraint{
 	{StoreUUID: pointer("store-10"), RegionID: pointer(20)},
@@ -278,9 +279,9 @@ for _, query := range queries {
 Value-based caches can grow to four after repeated misses prove that a larger
 working set is being reused; one-off values never cause bitmap growth. This
 keeps memory bounded while covering repeated, alternating, and small cyclic
-workloads. The cached bitmaps remain allocated until the `Local` becomes unreachable. Call
-`local.Reset()` when a worker becomes idle to release cached results while
-keeping the same search context usable.
+workloads. Call `local.Close()` when the worker is done. It releases cached
+query values and returns the internal bitmap context to this index for reuse.
+A closed `Local` cannot be used again.
 
 A local search context is not safe for concurrent use. Create one inside each
 goroutine while sharing the immutable index:
@@ -289,6 +290,7 @@ goroutine while sharing the immutable index:
 for range workers {
 	go func() {
 		local := index.Local()
+		defer local.Close()
 		var matches []string
 		for query := range jobs {
 			matches = matches[:0]

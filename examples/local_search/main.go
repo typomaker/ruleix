@@ -35,6 +35,7 @@ func main() {
 	// Local belongs to this goroutine and retains two recent intermediate
 	// bitmaps per filter. The immutable index may still be shared globally.
 	local := index.Local()
+	defer local.Close()
 	var matches []string
 	for _, region := range []int{20, 30, 20} {
 		matches = matches[:0]

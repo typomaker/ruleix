@@ -794,7 +794,7 @@ go test -run '^$' -bench '^BenchmarkInspectRuntimeOverhead/' \
 
 Explicitly inspected rules now count `Local` cache hits, misses, admissions,
 and evictions. Live gauges aggregate retained bitmap entries and entry capacity
-across inspected caches; `Local.Reset` releases that cache's contribution while
+across inspected caches; `Local.Close` releases that cache's contribution while
 the event counters remain monotonic. Observation is scoped to the inspected
 subtree and leaves ordinary index searches without atomic counter traffic.
 
@@ -809,4 +809,26 @@ Reproduce with:
 go test -run '^$' \
   -bench '^BenchmarkInspectRuntimeOverhead/Local/(Leaf|InspectedLeaf)$' \
   -benchmem -benchtime=300ms -count=3 .
+```
+
+## 2026-08-24: reusable closed `Local` contexts
+
+`Local.Close` replaces the public reset lifecycle. Close clears query-derived
+caches and returns the internal bitmap context to a pool owned by the same
+immutable index; a closed handle cannot be used again. Only the internal
+context is pooled, preventing an old `*Local` alias from referring to a handle
+that has since been issued to another goroutine.
+
+`BenchmarkLocalLifecycleReuse` compares construction and cleanup with acquiring
+and closing the pooled context. On Apple M1 Max, medians of five runs improved
+from 70.48 ns, 256 B, and 2 allocations per lifecycle to 35.27 ns, 24 B, and 1
+allocation. The remaining allocation is the non-reusable public handle that
+prevents use-after-close aliases from reaching a context issued to another
+goroutine.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLocalLifecycleReuse$' \
+  -benchmem -benchtime=300ms -count=5 .
 ```

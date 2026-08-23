@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"sync"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
@@ -25,13 +26,15 @@ type Index[C any, ID comparable] struct {
 	pool       *bitmapPool
 	nodes      int
 	exclusions []exclusionRule[C]
+	locals     sync.Pool
 }
 
 // Local is a search context that keeps per-node cached results between calls.
 // It must not be used concurrently by multiple goroutines.
 type Local[C any, ID comparable] struct {
-	index *Index[C, ID]
-	pool  *bitmapPool
+	index  *Index[C, ID]
+	pool   *bitmapPool
+	closed bool
 }
 
 // New constructs a Builder from a strongly typed rule schema. New panics when
@@ -206,36 +209,58 @@ func (ix *Index[C, ID]) Search(value C, dst *[]ID) bool {
 //		local.Search(value, &matches)
 //	}
 //
-// The Index remains immutable and may be shared by all of those goroutines.
+// Call Close when the context is no longer needed so its internal resources
+// can be reused. The Index remains immutable and may be shared by all of those
+// goroutines.
 func (ix *Index[C, ID]) Local() *Local[C, ID] {
-	return &Local[C, ID]{index: ix, pool: newLocalBitmapPool(ix.nodes)}
+	pool, _ := ix.locals.Get().(*bitmapPool)
+	if pool == nil {
+		pool = newLocalBitmapPool(ix.nodes)
+	}
+	return &Local[C, ID]{index: ix, pool: pool}
 }
 
 // Search appends matching IDs to dst while reusing this Local's cached state
 // and reports whether this call found any matches. Existing elements in dst do
 // not affect the reported result. Search panics when dst is nil.
 func (local *Local[C, ID]) Search(value C, dst *[]ID) bool {
+	local.requireOpen()
 	if dst == nil {
 		panic("ruleix: nil search destination")
 	}
 	return local.index.search(value, dst, local.pool)
 }
 
-// Reset releases all per-node cached search results while keeping the Local
-// usable. Call it when a worker becomes idle or after an unusually broad query
-// to return the context to its small cold-memory footprint.
-func (local *Local[C, ID]) Reset() {
-	local.pool.releaseLocalMetrics()
-	local.pool = newLocalBitmapPool(local.index.nodes)
+// Close releases cached search results and returns the internal context to the
+// originating Index for reuse. A closed Local must not be used again. Repeated
+// calls to Close are safe.
+func (local *Local[C, ID]) Close() {
+	if local == nil || local.closed || local.index == nil {
+		return
+	}
+	local.requireOpen()
+	index := local.index
+	local.pool.resetLocal()
+	index.locals.Put(local.pool)
+	local.index = nil
+	local.pool = nil
+	local.closed = true
 }
 
 // Visit calls yield for matching IDs while reusing this Local's cached state.
 // A nil yield function is a no-op.
 func (local *Local[C, ID]) Visit(value C, yield func(ID) bool) {
+	local.requireOpen()
 	if yield == nil {
 		return
 	}
 	visitMatches(local.index.root, local.index.values, local.pool, local.index.exclusions, value, yield)
+}
+
+func (local *Local[C, ID]) requireOpen() {
+	if local == nil || local.index == nil || local.closed {
+		panic("ruleix: closed Local")
+	}
 }
 
 // Visit calls yield once for each unique matching ID in first-match order.

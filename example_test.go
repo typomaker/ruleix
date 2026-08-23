@@ -86,6 +86,7 @@ func ExampleIndex_Local() {
 
 	// Local caches intermediate bitmaps between calls. Keep it in one goroutine.
 	local := index.Local()
+	defer local.Close()
 	var matches []string
 	for _, region := range []int{20, 30} {
 		matches = matches[:0]

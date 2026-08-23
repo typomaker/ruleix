@@ -3,6 +3,7 @@ package ruleix
 
 import (
 	"cmp"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -46,7 +47,7 @@ func TestValueBitmapCacheClearsValueForNilEntry(t *testing.T) {
 	require.Nil(t, cache.entries[0].value)
 }
 
-func TestLocalResetReleasesNodeCachesAndRemainsUsable(t *testing.T) {
+func TestLocalCloseReleasesNodeCachesAndReturnsInternalContext(t *testing.T) {
 	type constraint struct{ value int }
 	get := func(value constraint) (int, bool) { return value.value, true }
 	index, err := New[constraint, int](Include(get)).Build(
@@ -57,12 +58,73 @@ func TestLocalResetReleasesNodeCachesAndRemainsUsable(t *testing.T) {
 	var matches []int
 	local.Search(constraint{value: 1}, &matches)
 	require.NotNil(t, local.pool.local[0].equality)
+	pool := local.pool
 
-	local.Reset()
-	require.Nil(t, local.pool.local[0].equality)
+	local.Close()
+	require.Nil(t, pool.local[0].equality)
+	require.PanicsWithValue(t, "ruleix: closed Local", func() { local.Search(constraint{}, &matches) })
+	require.NotPanics(t, local.Close)
+
+	reused := index.Local()
+	require.Nil(t, reused.pool.local[0].equality)
 	matches = matches[:0]
-	local.Search(constraint{value: 1}, &matches)
+	reused.Search(constraint{value: 1}, &matches)
 	require.Equal(t, []int{7}, matches)
+	reused.Close()
+}
+
+func TestLocalContextsCanBeAcquiredAndClosedConcurrently(t *testing.T) {
+	type constraint struct{ value int }
+	index, err := New[constraint, int](Include(func(v constraint) (int, bool) { return v.value, true })).Build(
+		Zip([]constraint{{value: 1}}, []int{1}),
+	)
+	require.NoError(t, err)
+	var workers sync.WaitGroup
+	for range 16 {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for range 100 {
+				local := index.Local()
+				var matches []int
+				local.Search(constraint{value: 1}, &matches)
+				if len(matches) != 1 || matches[0] != 1 {
+					t.Errorf("matches = %v, want [1]", matches)
+				}
+				local.Close()
+			}
+		}()
+	}
+	workers.Wait()
+}
+
+var benchmarkLocalLifecycle *bitmapPool
+
+func BenchmarkLocalLifecycleReuse(b *testing.B) {
+	type constraint struct{ value int }
+	index, err := New[constraint, int](Include(func(v constraint) (int, bool) { return v.value, true })).Build(
+		Zip([]constraint{{value: 1}}, []int{1}),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.Run("Fresh", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			pool := newLocalBitmapPool(index.nodes)
+			pool.resetLocal()
+			benchmarkLocalLifecycle = pool
+		}
+	})
+	b.Run("Reused", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			local := index.Local()
+			benchmarkLocalLifecycle = local.pool
+			local.Close()
+		}
+	})
 }
 
 func TestBetweenCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {

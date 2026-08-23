@@ -26,6 +26,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `Local.Close` replaces `Local.Reset`: closing returns the cleared internal
+  bitmap context to its originating index for reuse, and the closed handle
+  cannot be used again.
 - `Inspector` now exposes only `Snapshot`. Build facts and runtime metrics are
   read from the returned immutable `InspectorSnapshot`, keeping every field in
   one observation tied to the same build generation and counter sample.

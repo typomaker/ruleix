@@ -101,7 +101,7 @@ func TestInspectLifecycleTracksLatestSuccessfulBuild(t *testing.T) {
 	require.Equal(t, uint64(1), first.EntryCount(), "a captured snapshot remains on its build generation")
 }
 
-func TestInspectReportsLocalCacheMetricsAndResetGauges(t *testing.T) {
+func TestInspectReportsLocalCacheMetricsAndCloseGauges(t *testing.T) {
 	var inspector Inspector
 	index, err := New[inspectConstraint, string](Inspect(
 		&inspector,
@@ -125,7 +125,7 @@ func TestInspectReportsLocalCacheMetricsAndResetGauges(t *testing.T) {
 	require.Equal(t, uint64(1), snapshot.CacheEntry())
 	require.Equal(t, uint64(2), snapshot.CacheCapacity())
 
-	local.Reset()
+	local.Close()
 	snapshot = inspector.Snapshot()
 	require.Equal(t, uint64(1), snapshot.CacheAdmission(), "counters remain monotonic")
 	require.Zero(t, snapshot.CacheEntry())
