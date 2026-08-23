@@ -43,6 +43,7 @@ func (InspectorSnapshot) CacheAdmission() uint64
 func (InspectorSnapshot) CacheEviction() uint64
 func (InspectorSnapshot) Materialization() uint64
 func (InspectorSnapshot) CandidateCheck() uint64
+func (InspectorSnapshot) RangePruning() uint64
 func (InspectorSnapshot) EmptyResult() uint64
 func (InspectorSnapshot) CacheEntry() uint64
 func (InspectorSnapshot) CacheCapacity() uint64
@@ -87,7 +88,9 @@ append the final result without materializing the composite. `CandidateCheck`
 counts direct internal-ID membership checks. `Materialization` and the
 cardinality histogram count only bitmap materializations, again except that a
 top-level `All` contributes its actual final cardinality to the histogram.
-This distinction preserves the selected execution strategy.
+`RangePruning` counts `All` executions that stop after the first two ranked
+bitmap ranges prove the intersection empty. This distinction preserves the
+selected execution strategy.
 
 `Inspector` is deliberately separate from `Rule`. A `Rule` is a
 declarative description consumed by the builder; an inspector is a handle to

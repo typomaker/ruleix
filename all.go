@@ -122,15 +122,19 @@ func (r *allRule[T]) matchesID(v T, id uint32) bool {
 	return true
 }
 func (r *allRule[T]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	r.searchObserved(v, dst, pool, nil)
+}
+
+func (r *allRule[T]) searchObserved(v T, dst *roaring.Bitmap, pool *bitmapPool, metrics *inspectorRuntime) {
 	// Most All groups are small. Keeping their ranking storage on the stack
 	// avoids a service allocation without adding shared mutable state.
 	var inline [8]rankedBitmap
 	if len(r.children) <= len(inline) {
-		r.searchRanked(v, dst, pool, inline[:len(r.children)])
+		r.searchRanked(v, dst, pool, inline[:len(r.children)], metrics)
 		return
 	}
 	buffer := pool.getRanked(len(r.children))
-	r.searchRanked(v, dst, pool, buffer.items)
+	r.searchRanked(v, dst, pool, buffer.items, metrics)
 	pool.putRanked(buffer)
 }
 
@@ -139,6 +143,7 @@ func (r *allRule[T]) searchRanked(
 	dst *roaring.Bitmap,
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
+	metrics *inspectorRuntime,
 ) {
 	if !r.rankChildren(v, pool, rankedChildren) {
 		return
@@ -147,7 +152,7 @@ func (r *allRule[T]) searchRanked(
 		return
 	}
 	if rankedChildren[0].card > allCandidateScanLimit {
-		if !r.collectRankedInOrder(v, pool, rankedChildren) {
+		if !r.collectRankedInOrderObserved(v, pool, rankedChildren, metrics) {
 			return
 		}
 		dst.Or(rankedChildren[0].bits)
@@ -240,6 +245,15 @@ func (r *allRule[T]) collectRankedInOrder(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) bool {
+	return r.collectRankedInOrderObserved(v, pool, rankedChildren, nil)
+}
+
+func (r *allRule[T]) collectRankedInOrderObserved(
+	v T,
+	pool *bitmapPool,
+	rankedChildren []rankedBitmap,
+	metrics *inspectorRuntime,
+) bool {
 	if pool.local == nil {
 		r.collectSharedWildcards(v, pool, rankedChildren)
 	}
@@ -267,6 +281,7 @@ func (r *allRule[T]) collectRankedInOrder(
 		// containers or materializing later children. Keep the check deliberately
 		// cheap; general bitmap intersection is paid for by the final FastAnd.
 		if i == 1 && bitmapRangesDisjoint(rankedChildren[0].bits, bits) {
+			observeRangePruning(metrics)
 			for j := range rankedChildren {
 				if rankedChildren[j].owned {
 					pool.put(rankedChildren[j].bits)
@@ -282,6 +297,12 @@ func (r *allRule[T]) collectRankedInOrder(
 		}
 	}
 	return true
+}
+
+func observeRangePruning(metrics *inspectorRuntime) {
+	if metrics != nil {
+		metrics.rangePrunings.Add(1)
+	}
 }
 
 func bitmapRangesDisjoint(first, second *roaring.Bitmap) bool {

@@ -89,8 +89,8 @@ An inspected rule should also accumulate metrics from real `Search`, `Visit`,
 and `Local` executions. Expose them directly through `InspectorSnapshot`,
 without a nested metrics object or reset API. Counters are searches, cache
 hits, cache misses, cache admissions, cache evictions, materializations,
-candidate checks, and empty results. Gauges are cache entries and cache
-capacity. A histogram reports result cardinality. Counters remain monotonic
+candidate checks, `All` range prunings, and empty results. Gauges are cache
+entries and cache capacity. A histogram reports result cardinality. Counters remain monotonic
 for the inspector lifetime so callers can calculate interval deltas.
 
 Collect no per-query explanation. `Index.Explain` and its plan types were

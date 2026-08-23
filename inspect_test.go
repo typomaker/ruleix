@@ -34,6 +34,7 @@ type snapshotAPI interface {
 	CacheEviction() uint64
 	Materialization() uint64
 	CandidateCheck() uint64
+	RangePruning() uint64
 	EmptyResult() uint64
 	CacheEntry() uint64
 	CacheCapacity() uint64
@@ -41,6 +42,33 @@ type snapshotAPI interface {
 }
 
 var _ snapshotAPI = InspectorSnapshot{}
+
+func TestInspectReportsAllRangePruning(t *testing.T) {
+	type constraint struct{ left, right int }
+	constraints := make([]constraint, 12)
+	ids := make([]int, len(constraints))
+	for i := range constraints {
+		constraints[i] = constraint{left: 1, right: 0}
+		if i >= len(constraints)/2 {
+			constraints[i] = constraint{left: 0, right: 1}
+		}
+		ids[i] = i
+	}
+
+	var inspector Inspector
+	index, err := New[constraint, int](Inspect(&inspector, All(
+		Include(func(v constraint) (int, bool) { return v.left, true }),
+		Include(func(v constraint) (int, bool) { return v.right, true }),
+	))).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+
+	var matches []int
+	require.False(t, index.Search(constraint{left: 1, right: 1}, &matches))
+	snapshot := inspector.Snapshot()
+	require.Equal(t, uint64(1), snapshot.Search())
+	require.Equal(t, uint64(1), snapshot.RangePruning())
+	require.Equal(t, uint64(1), snapshot.EmptyResult())
+}
 
 func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
 	var country Inspector

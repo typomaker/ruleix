@@ -15,8 +15,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Lossy rules additionally report accounted memory, budget, item and distinct-
   value counts, and selected bucket granularity with explicit availability.
   Inspected rules also expose monotonic search, materialization, candidate-
-  check, and empty-result counters plus a fixed result-cardinality histogram,
-  without forcing candidate paths to materialize bitmaps.
+  check, `All` range-pruning, and empty-result counters plus a fixed result-
+  cardinality histogram, without forcing candidate paths to materialize
+  bitmaps.
   Inspected `Local` execution additionally reports cache hits, misses,
   admissions, evictions, and live entry and capacity gauges.
 - `Lossy` and `MemoryLimit` add opt-in, memory-bounded grouped-hash equality and

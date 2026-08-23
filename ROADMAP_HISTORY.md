@@ -16,7 +16,10 @@ maximum IDs is constant-time and allocation-free; it proves the complete `All`
 empty without scanning bitmap containers or materializing later children.
 General disjoint bitmaps with overlapping ranges remain on the existing
 `FastAnd` path because a speculative `Intersects` check measurably regressed
-overlapping workloads.
+overlapping workloads. An explicitly inspected `All` exposes the monotonic
+number of these early exits through `InspectorSnapshot.RangePruning`; schemas
+without `Inspect` retain the original rule size and do not execute metric
+updates.
 
 On Apple M1 Max, medians of five runs improved a four-child range-disjoint
 query from 387.7 ns, 164 B, and 11 allocations per search to 205.0 ns, 56 B,

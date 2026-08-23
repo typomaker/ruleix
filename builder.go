@@ -278,13 +278,13 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 	if observed, ok := ix.root.(*inspectedRuntimeRule[C]); ok {
 		if root, ok := observed.child.(*allRule[C]); ok {
 			observed.metrics.searches.Add(1)
-			searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst)
+			searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst, observed.metrics)
 			observed.metrics.observeCardinality(uint64(len(*dst) - before))
 			return len(*dst) != before
 		}
 	}
 	if root, ok := ix.root.(*allRule[C]); ok {
-		searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst)
+		searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst, nil)
 		return len(*dst) != before
 	}
 	bits := pool.get()
@@ -307,6 +307,7 @@ func searchAllMatches[C any, ID comparable](
 	exclusions []exclusionRule[C],
 	value C,
 	dst *[]ID,
+	metrics *inspectorRuntime,
 ) {
 	result := *dst
 	var inline [8]rankedBitmap
@@ -326,7 +327,7 @@ func searchAllMatches[C any, ID comparable](
 		return
 	}
 
-	if !prepareRankedAllCandidates(root, value, pool, rankedChildren) {
+	if !prepareRankedAllCandidates(root, value, pool, rankedChildren, metrics) {
 		root.releaseRanked(pool, rankedChildren)
 		if buffer != nil {
 			pool.putRanked(buffer)
@@ -356,9 +357,10 @@ func prepareRankedAllCandidates[C any](
 	value C,
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
+	metrics *inspectorRuntime,
 ) bool {
 	if rankedChildren[0].card > allCandidateScanLimit {
-		return root.collectRankedInOrder(value, pool, rankedChildren)
+		return root.collectRankedInOrderObserved(value, pool, rankedChildren, metrics)
 	}
 	bits := pool.get()
 	root.children[rankedChildren[0].childIdx].search(value, bits, pool)
@@ -366,7 +368,7 @@ func prepareRankedAllCandidates[C any](
 	rankedChildren[0].card = bits.GetCardinality()
 	rankedChildren[0].owned = true
 	return rankedChildren[0].card <= allCandidateScanLimit ||
-		materializeRankedAfterFirst(root, value, pool, rankedChildren)
+		materializeRankedAfterFirst(root, value, pool, rankedChildren, metrics)
 }
 
 func materializeRankedAfterFirst[C any](
@@ -374,6 +376,7 @@ func materializeRankedAfterFirst[C any](
 	value C,
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
+	metrics *inspectorRuntime,
 ) bool {
 	for i := 1; i < len(rankedChildren); i++ {
 		bits := pool.get()
@@ -385,6 +388,7 @@ func materializeRankedAfterFirst[C any](
 			return false
 		}
 		if i == 1 && bitmapRangesDisjoint(rankedChildren[0].bits, bits) {
+			observeRangePruning(metrics)
 			return false
 		}
 	}

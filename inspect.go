@@ -113,6 +113,9 @@ func (s InspectorSnapshot) Materialization() uint64 { return s.runtime.materiali
 // CandidateCheck reports observed direct internal-ID membership checks.
 func (s InspectorSnapshot) CandidateCheck() uint64 { return s.runtime.candidateCheck }
 
+// RangePruning reports observed early All exits proved by disjoint bitmap ID ranges.
+func (s InspectorSnapshot) RangePruning() uint64 { return s.runtime.rangePruning }
+
 // EmptyResult reports observed empty results.
 func (s InspectorSnapshot) EmptyResult() uint64 { return s.runtime.emptyResult }
 
@@ -177,15 +180,15 @@ type Histogram struct {
 }
 
 type inspectorRuntime struct {
-	searches, materializations, candidateChecks, emptyResults atomic.Uint64
-	cacheHits, cacheMisses, cacheAdmissions, cacheEvictions   atomic.Uint64
-	cacheEntries, cacheCapacity                               atomic.Uint64
-	cardinality                                               [6]atomic.Uint64
+	searches, materializations, candidateChecks, rangePrunings, emptyResults atomic.Uint64
+	cacheHits, cacheMisses, cacheAdmissions, cacheEvictions                  atomic.Uint64
+	cacheEntries, cacheCapacity                                              atomic.Uint64
+	cardinality                                                              [6]atomic.Uint64
 }
 
 type inspectorRuntimeSnapshot struct {
 	search, cacheHit, cacheMiss, cacheAdmission, cacheEviction uint64
-	materialization, candidateCheck, emptyResult               uint64
+	materialization, candidateCheck, rangePruning, emptyResult uint64
 	cacheEntry, cacheCapacity                                  uint64
 	cardinality                                                Histogram
 }
@@ -239,7 +242,8 @@ func (i *inspector) Snapshot() InspectorSnapshot {
 		cacheAdmission: i.state.runtime.cacheAdmissions.Load(), cacheEviction: i.state.runtime.cacheEvictions.Load(),
 		cacheEntry: i.state.runtime.cacheEntries.Load(), cacheCapacity: i.state.runtime.cacheCapacity.Load(),
 		materialization: i.state.runtime.materializations.Load(),
-		candidateCheck:  i.state.runtime.candidateChecks.Load(), emptyResult: i.state.runtime.emptyResults.Load(),
+		candidateCheck:  i.state.runtime.candidateChecks.Load(), rangePruning: i.state.runtime.rangePrunings.Load(),
+		emptyResult: i.state.runtime.emptyResults.Load(),
 		cardinality: Histogram{b[0].Load(), b[1].Load(), b[2].Load(), b[3].Load(), b[4].Load(), b[5].Load()},
 	}}
 }
@@ -353,7 +357,11 @@ func (r *inspectedRuntimeRule[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool
 	r.metrics.searches.Add(1)
 	r.metrics.materializations.Add(1)
 	before := dst.GetCardinality()
-	r.child.search(v, dst, p)
+	if all, ok := r.child.(*allRule[T]); ok {
+		all.searchObserved(v, dst, p, r.metrics)
+	} else {
+		r.child.search(v, dst, p)
+	}
 	n := dst.GetCardinality() - before
 	r.metrics.observeCardinality(n)
 }
