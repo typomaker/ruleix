@@ -8,6 +8,35 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: equality-first lazy range planning experiment
+
+Two `All` executor candidates deferred ordered and range estimates until after
+cheap equality estimates and searches. The first materialized cheap children
+in estimated-cardinality order before continuing with ranges. The second
+intersected all cheap postings with `FastAnd`, measured the actual candidate
+set, used direct ID validation below 256 candidates, and only otherwise
+estimated and sorted the deferred ranges.
+
+Neither candidate was retained. On the 38,098-rule production-shaped workload
+on Apple M1 Max, warm `Local.Search` regressed from a 6.097 us baseline to about
+23.0 us for the ordered candidate and 21.9 us for the staged `FastAnd`
+candidate. The staged version also increased allocation traffic from 4,665 B
+and four allocations to 13,501 B and 15 allocations per search. `Index.Search`
+regressed from 97.68 us to about 111.9 us.
+
+The equality postings in this distribution remain broad because most missing
+stored values are wildcards. A useful equality predicate, platform name, is
+nested in an `All` with the ordered platform version, so treating the nested
+node as one deferred unit hides that selectivity. The candidates therefore
+paid to materialize and intersect many broad equality bitmaps, did not become
+small enough for direct range validation, and still paid for range planning.
+
+Reconsider equality-first execution only together with partial planning of
+nested `All` nodes, or with a cheap way to predict the combined equality
+intersection before materializing every posting. Merely partitioning top-level
+children into equality and range phases is counterproductive for this
+production shape.
+
 ## 2026-08-24: post-intersection `All` candidate-scan experiment
 
 An executor candidate switched from bitmap materialization to direct ID
