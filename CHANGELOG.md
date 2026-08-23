@@ -20,7 +20,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   cardinality histogram, without forcing candidate paths to materialize
   bitmaps.
   Inspected `Local` execution additionally reports cache hits, misses,
-  admissions, evictions, and live entry and capacity gauges.
+  admissions, evictions, adaptive expansions, and live entry and capacity
+  gauges. Expansion counts are monotonic across `Local` lifetimes for direct
+  Prometheus counter export.
 - `Lossy` and `MemoryLimit` add opt-in, memory-bounded grouped-hash equality and
   ordered-bucket representations for supported scalar equality and ordered
   rules, including one aggregate budget around `All`. Approximate results may

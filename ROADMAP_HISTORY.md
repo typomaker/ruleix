@@ -8,6 +8,21 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: cumulative adaptive-cache inspection
+
+`InspectorSnapshot.CacheExpansion` now exposes a monotonic count of adaptive
+cache transitions from two to four bitmap entries. The counter aggregates all
+observed `Local` lifetimes and remains unchanged when a `Local` closes, making
+it directly exportable as a Prometheus counter. Existing hit, miss, admission,
+and eviction measurements were already monotonic counters. Live cache entries
+and capacity remain gauges so their names do not acquire ambiguous cumulative
+semantics; they return to zero when observed locals close.
+
+Expansion recording adds one atomic increment only on the rare growth path and
+does not change ordinary or steady-state inspected searches. Tests cover an
+adaptive `Between` cache across two sequential `Local` lifetimes and verify
+both cumulative expansion accounting and live-capacity cleanup.
+
 ## 2026-08-24: adaptive `Local` cache capacity for `Between`
 
 The specialized `Between` cache now follows the same measured two-to-four

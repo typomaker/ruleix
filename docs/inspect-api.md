@@ -41,6 +41,7 @@ func (InspectorSnapshot) CacheHit() uint64
 func (InspectorSnapshot) CacheMiss() uint64
 func (InspectorSnapshot) CacheAdmission() uint64
 func (InspectorSnapshot) CacheEviction() uint64
+func (InspectorSnapshot) CacheExpansion() uint64
 func (InspectorSnapshot) Materialization() uint64
 func (InspectorSnapshot) CandidateCheck() uint64
 func (InspectorSnapshot) RangePruning() uint64
@@ -94,6 +95,14 @@ executor checks the first pair and one additional child sequentially, then
 materializes the remainder eagerly. This catches early and late-enough empty
 results without charging every successful intersection for another range
 check. This distinction preserves the selected execution strategy.
+
+`CacheHit`, `CacheMiss`, `CacheAdmission`, `CacheEviction`, and
+`CacheExpansion` are monotonic counters suitable for exporting as Prometheus
+counters. `CacheExpansion` counts adaptive cache transitions from two to four
+bitmap entries across all `Local` lifetimes observed by the inspector.
+`CacheEntry` and `CacheCapacity` remain gauges: they report the aggregate live
+state of currently open observed `Local` contexts and return to zero after all
+of them are closed.
 
 `Inspector` is deliberately separate from `Rule`. A `Rule` is a
 declarative description consumed by the builder; an inspector is a handle to

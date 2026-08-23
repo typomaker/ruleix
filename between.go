@@ -257,6 +257,7 @@ func (c *betweenCache[V]) grow() {
 	c.overflow.used[1-c.next] = 2
 	c.next = 0
 	c.observers.addCapacity(2)
+	c.observers.expansion()
 }
 
 func (c *betweenCache[V]) leastRecentlyUsed() int {

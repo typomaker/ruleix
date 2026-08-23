@@ -107,6 +107,9 @@ func (s InspectorSnapshot) CacheAdmission() uint64 { return s.runtime.cacheAdmis
 // CacheEviction reports observed cache evictions.
 func (s InspectorSnapshot) CacheEviction() uint64 { return s.runtime.cacheEviction }
 
+// CacheExpansion reports observed adaptive cache capacity expansions.
+func (s InspectorSnapshot) CacheExpansion() uint64 { return s.runtime.cacheExpansion }
+
 // Materialization reports observed bitmap materializations.
 func (s InspectorSnapshot) Materialization() uint64 { return s.runtime.materialization }
 
@@ -181,16 +184,16 @@ type Histogram struct {
 
 type inspectorRuntime struct {
 	searches, materializations, candidateChecks, rangePrunings, emptyResults atomic.Uint64
-	cacheHits, cacheMisses, cacheAdmissions, cacheEvictions                  atomic.Uint64
+	cacheHits, cacheMisses, cacheAdmissions, cacheEvictions, cacheExpansions atomic.Uint64
 	cacheEntries, cacheCapacity                                              atomic.Uint64
 	cardinality                                                              [6]atomic.Uint64
 }
 
 type inspectorRuntimeSnapshot struct {
-	search, cacheHit, cacheMiss, cacheAdmission, cacheEviction uint64
-	materialization, candidateCheck, rangePruning, emptyResult uint64
-	cacheEntry, cacheCapacity                                  uint64
-	cardinality                                                Histogram
+	search, cacheHit, cacheMiss, cacheAdmission, cacheEviction, cacheExpansion uint64
+	materialization, candidateCheck, rangePruning, emptyResult                 uint64
+	cacheEntry, cacheCapacity                                                  uint64
+	cardinality                                                                Histogram
 }
 
 type inspector struct{ state inspectorState }
@@ -240,7 +243,8 @@ func (i *inspector) Snapshot() InspectorSnapshot {
 		search:   i.state.runtime.searches.Load(),
 		cacheHit: i.state.runtime.cacheHits.Load(), cacheMiss: i.state.runtime.cacheMisses.Load(),
 		cacheAdmission: i.state.runtime.cacheAdmissions.Load(), cacheEviction: i.state.runtime.cacheEvictions.Load(),
-		cacheEntry: i.state.runtime.cacheEntries.Load(), cacheCapacity: i.state.runtime.cacheCapacity.Load(),
+		cacheExpansion: i.state.runtime.cacheExpansions.Load(),
+		cacheEntry:     i.state.runtime.cacheEntries.Load(), cacheCapacity: i.state.runtime.cacheCapacity.Load(),
 		materialization: i.state.runtime.materializations.Load(),
 		candidateCheck:  i.state.runtime.candidateChecks.Load(), rangePruning: i.state.runtime.rangePrunings.Load(),
 		emptyResult: i.state.runtime.emptyResults.Load(),

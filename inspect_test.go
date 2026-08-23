@@ -32,6 +32,7 @@ type snapshotAPI interface {
 	CacheMiss() uint64
 	CacheAdmission() uint64
 	CacheEviction() uint64
+	CacheExpansion() uint64
 	Materialization() uint64
 	CandidateCheck() uint64
 	RangePruning() uint64
@@ -191,6 +192,52 @@ func TestInspectReportsLocalCacheMetricsAndCloseGauges(t *testing.T) {
 	require.Equal(t, uint64(1), snapshot.CacheAdmission(), "counters remain monotonic")
 	require.Zero(t, snapshot.CacheEntry())
 	require.Zero(t, snapshot.CacheCapacity())
+}
+
+func TestInspectReportsCumulativeAdaptiveCacheExpansions(t *testing.T) {
+	type interval struct{ from, until int }
+	var inspector Inspector
+	index, err := New[interval, int](Inspect(&inspector, Between(
+		func(v interval) (int, bool) { return v.from, true },
+		func(v interval) (int, bool) { return v.until, true },
+		cmp.Compare[int],
+	))).Build(Zip(
+		[]interval{{from: 0, until: 100}},
+		[]int{1},
+	))
+	require.NoError(t, err)
+	queries := [...]interval{
+		{from: 10, until: 20},
+		{from: 11, until: 21},
+		{from: 12, until: 22},
+		{from: 13, until: 23},
+	}
+	warm := func(local *Local[interval, int]) {
+		var dst []int
+		for range 6 {
+			for _, query := range queries {
+				dst = dst[:0]
+				local.Search(query, &dst)
+			}
+		}
+	}
+
+	first := index.Local()
+	warm(first)
+	snapshot := inspector.Snapshot()
+	require.Equal(t, uint64(1), snapshot.CacheExpansion())
+	require.Equal(t, uint64(4), snapshot.CacheCapacity())
+	first.Close()
+	snapshot = inspector.Snapshot()
+	require.Equal(t, uint64(1), snapshot.CacheExpansion(), "counter remains monotonic")
+	require.Zero(t, snapshot.CacheCapacity(), "gauge tracks only live cache capacity")
+
+	second := index.Local()
+	warm(second)
+	snapshot = inspector.Snapshot()
+	require.Equal(t, uint64(2), snapshot.CacheExpansion(), "expansions aggregate across Local lifetimes")
+	require.Equal(t, uint64(4), snapshot.CacheCapacity())
+	second.Close()
 }
 
 func TestInspectRejectsOneInspectorOnMultipleRules(t *testing.T) {

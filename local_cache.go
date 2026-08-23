@@ -76,6 +76,14 @@ func (o *cacheObservers) eviction() {
 		o.items[i].cacheEvictions.Add(1)
 	}
 }
+func (o *cacheObservers) expansion() {
+	if o == nil {
+		return
+	}
+	for i := range int(o.n) {
+		o.items[i].cacheExpansions.Add(1)
+	}
+}
 func (o *cacheObservers) addEntries(n uint64) {
 	if o == nil {
 		return
@@ -223,6 +231,7 @@ func (c *valueBitmapCache[V]) grow() {
 	c.overflow.used[1-c.next] = 2
 	c.next = 0
 	c.observers.addCapacity(2)
+	c.observers.expansion()
 }
 
 func (c *valueBitmapCache[V]) leastRecentlyUsed() int {
