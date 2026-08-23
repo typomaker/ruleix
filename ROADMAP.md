@@ -158,8 +158,9 @@ when production-shaped benchmarks demonstrate a material benefit:
 2. Benchmark and add candidate scanning below a measured crossover threshold.
 3. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-4. Benchmark inspected-rule metric overhead and tune its per-rule `Local`
-   cache accounting without adding mutable diagnostic state to the index.
+4. Add and tune per-rule `Local` cache accounting without adding mutable
+   diagnostic state to the index; inspected-rule metric overhead is recorded
+   in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
 5. Tune the remaining `Local` admission, eviction, reset behavior, and retained
    memory for production-shaped repeated and high-churn searches.
 6. Investigate generation-based updates only after rebuild benchmarks

@@ -765,3 +765,32 @@ executions instead of running an extra query that materializes every direct
 
 This completes the roadmap consolidation step while preserving the ordinary
 schema hot path: only explicitly inspected rules receive observation wrappers.
+
+## 2026-08-24: inspected-rule runtime overhead baseline
+
+`BenchmarkInspectRuntimeOverhead` compares equivalent 10K-rule schemas with
+and without `Inspect` for shared `Index` and warm `Local` searches. It covers a
+materialized equality leaf, the specialized top-level `All` path, and direct
+candidate checks against an inspected broad child. The benchmark verifies that
+each inspected shape records the execution path it actually takes.
+
+On Apple M1 Max, medians of five runs put an inspected equality leaf at 96.6 ns
+for `Index.Search`, versus 90.2 ns without metrics, and at 45.7 ns for warm
+`Local.Search`, versus 40.8 ns. An inspected top-level `All` measured 236.7 ns
+versus 233.7 ns for `Index.Search` and 183.3 ns versus 181.1 ns for warm
+`Local.Search`. Observation added no allocations or allocation bytes in any
+paired case. The fixed atomic-counter cost is most visible on the shortest
+leaf path; the production-representative composite path remained within about
+1-2% in these runs.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkInspectRuntimeOverhead/' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
+Cache hit, miss, admission, eviction, entry, and capacity accounting remains
+the next inspector step. Its implementation must preserve the zero-allocation
+warm `Local` leaf path measured here and keep schemas without `Inspect`
+unchanged.
