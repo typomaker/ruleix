@@ -54,6 +54,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `All` uses cheap leaf cardinality estimates to order execution and stops
   materializing small candidate paths when an intermediate intersection is
   empty.
+- `All` reuses each cheap cardinality estimate for empty detection and child
+  ranking instead of calculating it twice per search.
 - Small `All` candidate sets materialize only the most selective child and
   validate remaining predicates directly by internal rule ID.
 - `All` switches from direct candidate validation to bitmap intersection above

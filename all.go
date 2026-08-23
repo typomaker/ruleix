@@ -206,15 +206,18 @@ func (r *allRule[T]) rankChildren(
 	_ *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) bool {
-	for _, child := range r.children {
-		if checker, ok := child.(cardinalityZeroChecker[T]); ok && checker.isCardinalityZero(v) {
-			return false
-		}
-	}
 	for i, child := range r.children {
 		estimate := ^uint64(0)
 		if estimator, ok := child.(cardinalityEstimator[T]); ok {
 			estimate = estimator.estimateCardinality(v)
+			// Estimators report a conservative result size, so zero is also
+			// definitive. Reuse it instead of asking the common leaf types to
+			// calculate the same estimate again through isCardinalityZero.
+			if estimate == 0 {
+				return false
+			}
+		} else if checker, ok := child.(cardinalityZeroChecker[T]); ok && checker.isCardinalityZero(v) {
+			return false
 		}
 		rankedChildren[i] = rankedBitmap{card: estimate, childIdx: i}
 	}

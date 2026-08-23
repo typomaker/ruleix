@@ -8,6 +8,27 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: single-pass `All` estimate ranking
+
+`All` now reuses each child's cheap cardinality estimate for both its
+definitive empty check and execution ranking. Previously the common equality,
+ordered, `Between`, `CompareBy`, lossy, and nested-`All` implementations
+calculated the same estimate once through `isCardinalityZero` and again while
+building the ranked child list. Children that expose only a specialized cheap
+empty check still participate before any result bitmap is materialized.
+
+On Apple M1 Max, medians of five end-to-end executor runs with `CompareBy`
+children improved from 65.7 us to 63.5 us for two children, 144.8 us to
+128.4 us for four children, and 267.5 us to 257.1 us for eight children.
+Allocation counts and bytes were unchanged.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllEstimateRanking/' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
 ## 2026-08-24: pre-materialization `All` range experiment
 
 A planner candidate asked range-capable children for their minimum and maximum

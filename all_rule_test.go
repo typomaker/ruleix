@@ -18,6 +18,13 @@ type zeroCheckingRule struct{ *countingRule }
 
 func (r *zeroCheckingRule) isCardinalityZero(int) bool { return len(r.ids) == 0 }
 
+type estimatedZeroCheckingRule struct{ *countingRule }
+
+func (r *estimatedZeroCheckingRule) isCardinalityZero(value int) bool {
+	r.cardinalityCalls++
+	return len(r.ids) == 0
+}
+
 func (*countingRule) rule()                                                   {}
 func (r *countingRule) newState(*nodeIDAllocator, *buildStatistics) Rule[int] { return r }
 func (*countingRule) validate(int) error                                      { return nil }
@@ -82,7 +89,7 @@ func TestAllStopsMaterializingAfterEmptyChild(t *testing.T) {
 
 	require.True(t, dst.IsEmpty())
 	require.Zero(t, first.searchCalls)
-	require.Equal(t, 1, empty.searchCalls)
+	require.Zero(t, empty.searchCalls)
 	require.Zero(t, unreached.searchCalls)
 }
 
@@ -154,6 +161,21 @@ func TestAllChecksCheapEmptyChildBeforeMaterializing(t *testing.T) {
 	require.True(t, dst.IsEmpty())
 	require.Zero(t, expensive.searchCalls)
 	require.Zero(t, empty.searchCalls)
+}
+
+func TestAllReusesEstimateForEmptyCheck(t *testing.T) {
+	first := &estimatedZeroCheckingRule{countingRule: &countingRule{ids: []uint32{1}}}
+	second := &estimatedZeroCheckingRule{countingRule: &countingRule{ids: []uint32{1, 2}}}
+	rule := All[int](first, second)
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	rule.search(0, dst, pool)
+
+	require.Equal(t, []uint32{1}, dst.ToArray())
+	require.Equal(t, 1, first.cardinalityCalls)
+	require.Equal(t, 1, second.cardinalityCalls)
 }
 
 func TestNestedAllExposesCheapestEstimate(t *testing.T) {
