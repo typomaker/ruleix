@@ -8,6 +8,23 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: post-intersection `All` candidate-scan experiment
+
+An executor candidate switched from bitmap materialization to direct ID
+validation when the first three broad postings intersected to at most four
+IDs. This attempted to extend the existing measured candidate threshold to the
+accumulated intersection while preserving the earlier range-pruning window.
+
+The candidate was not retained. On Apple M1 Max, medians of five isolated
+four-child runs increased from 525.8 ns/search for the retained eager tail to
+531.6 ns/search (1.1%). Allocation count remained 16 per search, and allocation
+traffic fell only from 248 B to 240 B. Creating and copying a separate result
+bitmap outweighed avoiding the remaining broad posting materialization.
+
+Reconsider this transition only if candidates can be filtered in place or the
+remaining child representations are materially more expensive than immutable
+bitmap unions.
+
 ## 2026-08-24: cumulative adaptive-cache inspection
 
 `InspectorSnapshot.CacheExpansion` now exposes a monotonic count of adaptive
