@@ -588,3 +588,33 @@ Reproduce the comparison with:
 go test -run '^$' -bench '^BenchmarkLossyAllSelectivePlanning/' \
   -benchmem -benchtime=200ms -count=5 .
 ```
+
+## 2026-08-23: streaming input materialization before lossy selection
+
+`Build` now validates, assigns the stable internal ID, and inserts each
+constraint before asking the input iterator for its next value. It no longer
+retains a second slice containing every yielded constraint until posting-list
+materialization. This also makes `Build` compatible with iterators that reuse
+mutable backing storage between yields. Validation failures still stop input
+consumption at the failing entry, discard the partial state, and leave the last
+successful builder hints unpublished.
+
+The final exact-versus-lossy decision remains after complete input consumption.
+Selecting a hash granularity earlier would require repeated downgrades as
+postings grow; ordered representations also depend on the final value range.
+Keeping that decision at the end preserves deterministic representation
+selection, accounted retained memory, and the no-false-negatives guarantee,
+while streaming insertion removes the input-sized peak allocation that
+motivated early switching.
+
+`BenchmarkLossyStreamingBuild` uses 100K distinct 256-byte constraints and a
+1 MiB equality budget. On Apple M1 Max, five three-iteration runs reduced
+allocated bytes from about 203.6 MB/build to 48.0 MB/build (76%) and median
+build time from 126.9 ms to 120.0 ms (5%). Allocation count and retained
+accounted index bytes were materially unchanged because the removed cost was
+the temporary analyzed-entry slice. Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyStreamingBuild$' \
+  -benchmem -benchtime=3x -count=5 .
+```

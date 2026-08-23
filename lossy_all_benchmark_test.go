@@ -199,6 +199,38 @@ func BenchmarkLossyScalePlanning(b *testing.B) {
 	}
 }
 
+// BenchmarkLossyStreamingBuild isolates the cost of consuming large
+// constraints. Build must index each yielded value before the iterator resumes
+// instead of retaining a second full copy until planning begins.
+func BenchmarkLossyStreamingBuild(b *testing.B) {
+	type constraint struct {
+		value   uint64
+		padding [248]byte
+	}
+	const entries = 100_000
+	get := func(value constraint) (uint64, bool) { return value.value, true }
+	b.ReportAllocs()
+	b.ReportMetric(float64(entries), "entries/build")
+	b.ResetTimer()
+	for range b.N {
+		index, err := New[constraint, int](
+			Lossy(Include(get), MemoryLimit(1<<20)),
+		).Build(func(yield func(constraint, int) bool) {
+			for id := range entries {
+				if !yield(constraint{value: uint64(id)}, id) {
+					return
+				}
+			}
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(index.values) != entries {
+			b.Fatalf("built %d rules, want %d", len(index.values), entries)
+		}
+	}
+}
+
 // BenchmarkLossyScaleSearch measures latency, allocation traffic, candidate
 // amplification, and observed false positives over the same scale matrix.
 func BenchmarkLossyScaleSearch(b *testing.B) {

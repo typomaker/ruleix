@@ -108,7 +108,7 @@ func TestBuiltIndexSupportsConcurrentSearch(t *testing.T) {
 	wg.Wait()
 }
 
-func TestAnalyzeBuildAssignsStableIDsWithoutMaterializingPostings(t *testing.T) {
+func TestBuildConsumesInputOnceAndAssignsStableIDs(t *testing.T) {
 	schema := ruleix.Include(func(v int) (int, bool) { return v, true })
 	consumed := 0
 	entries := func(yield func(int, string) bool) {
@@ -125,9 +125,34 @@ func TestAnalyzeBuildAssignsStableIDsWithoutMaterializingPostings(t *testing.T) 
 
 	index, err := ruleix.New[int, string](schema).Build(entries)
 	require.NoError(t, err)
-	require.Equal(t, 3, consumed, "analysis must consume the input exactly once")
+	require.Equal(t, 3, consumed, "Build must consume the input exactly once")
 
 	var got []string
 	index.Search(30, &got)
-	require.Equal(t, []string{"first"}, got, "materialization must preserve analyzed ID assignments")
+	require.Equal(t, []string{"first"}, got, "Build must preserve assigned internal IDs")
+}
+
+func TestBuildDoesNotRetainConstraintsUntilInputIsConsumed(t *testing.T) {
+	type mutableConstraint struct{ value int }
+	get := func(v *mutableConstraint) (int, bool) { return v.value, true }
+	reused := &mutableConstraint{}
+	entries := func(yield func(*mutableConstraint, int) bool) {
+		for value := 1; value <= 3; value++ {
+			reused.value = value
+			if !yield(reused, value) {
+				return
+			}
+		}
+	}
+
+	index, err := ruleix.New[*mutableConstraint, int](
+		ruleix.Lossy(ruleix.Include(get), ruleix.MemoryLimit(1<<20)),
+	).Build(entries)
+	require.NoError(t, err)
+
+	for value := 1; value <= 3; value++ {
+		var got []int
+		index.Search(&mutableConstraint{value: value}, &got)
+		require.Equal(t, []int{value}, got)
+	}
 }

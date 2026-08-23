@@ -145,26 +145,19 @@ when production-shaped benchmarks demonstrate a material benefit:
 1. Extend cheap estimates and lazy, empty-aware `All` execution where
    benchmarks show a benefit.
 2. Benchmark and add candidate scanning below a measured crossover threshold.
-3. Verify that selecting a `Lossy` representation does not require consuming
-   and retaining the entire input iterator before the decision can be made.
-   Investigate switching during `Build` as soon as the growing exact
-   representation exceeds its memory limit, even when unread iterator entries
-   remain. Preserve validation, deterministic output, memory accounting, and
-   the no-false-negatives guarantee; compare build time, peak memory, retained
-   memory, and iterator consumption against the current build path.
-4. Improve analyzer output, `Inspect`, and `Index.Explain` where they expose a
+3. Improve analyzer output, `Inspect`, and `Index.Explain` where they expose a
    measured planner or representation decision without affecting hot paths.
-5. Improve `Lossy` allocation and representation selection for existing rules,
+4. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-6. Add per-rule `Local` cache hit and miss accounting for benchmark and
+5. Add per-rule `Local` cache hit and miss accounting for benchmark and
    diagnostic use without adding shared mutable state to the index. Evaluate
    dynamically increasing cache capacity for rules with a low measured cache
    hit rate, and retain the behavior only if repeated-value, alternating-value,
    and high-churn benchmarks show better latency or allocation behavior at an
    acceptable retained-memory cost.
-7. Tune the remaining `Local` admission, eviction, reset behavior, and retained
+6. Tune the remaining `Local` admission, eviction, reset behavior, and retained
    memory for production-shaped repeated and high-churn searches.
-8. Investigate generation-based updates only after rebuild benchmarks
+7. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
 
 For every optimization, compare production-shaped build time, search time,
