@@ -1,6 +1,10 @@
 package ruleix
 
-import "github.com/RoaringBitmap/roaring/v2"
+import (
+	"time"
+
+	"github.com/RoaringBitmap/roaring/v2"
+)
 
 type orderedItem[V any] struct {
 	value V
@@ -12,6 +16,15 @@ type orderedIndex[V any] struct {
 	blocks             []orderedBlock[V]
 	blockPrefix        []uint64
 	firstBlockCapacity int
+	routing            orderedRouting
+}
+
+// orderedRouting maps an observed-domain monotonic key directly to the
+// logical block that contains it. The parameters are learned from the values
+// already collected by Build; the input iterator is never replayed.
+type orderedRouting struct {
+	min, width uint64
+	blocks     []int
 }
 
 // orderedBlockSize is deliberately large enough to amortize wide scans while
@@ -45,6 +58,7 @@ func (i *orderedIndex[V]) buildStatistics() orderedBuildStatistics {
 	return statistics
 }
 func (i *orderedIndex[V]) prepareSearch() {
+	i.prepareRouting()
 	i.blockPrefix = make([]uint64, len(i.blocks)+1)
 	for blockIndex := range i.blocks {
 		block := &i.blocks[blockIndex]
@@ -61,6 +75,63 @@ func (i *orderedIndex[V]) prepareSearch() {
 			}
 		}
 	}
+}
+
+func (i *orderedIndex[V]) prepareRouting() {
+	if len(i.blocks) == 0 {
+		return
+	}
+	firstKey, ok := orderedRoutingKey(i.blocks[0].items[0].value)
+	if !ok {
+		return
+	}
+	lastBlock := &i.blocks[len(i.blocks)-1]
+	lastKey, ok := orderedRoutingKey(lastBlock.items[len(lastBlock.items)-1].value)
+	if !ok || lastKey < firstKey {
+		return
+	}
+
+	// Keep the proven physical block layout. The logical intervals are only a
+	// routing table, so enabling them does not duplicate or reshape postings.
+	count := uint64(len(i.blocks))
+	span := lastKey - firstKey
+	width := span/count + 1
+	if width == 0 {
+		return
+	}
+	used := min(span/width+1, count)
+	if used < 2 {
+		return
+	}
+
+	routes := make([]int, used)
+	block := 0
+	for bucket := range routes {
+		lower := firstKey + uint64(bucket)*width
+		for block < len(i.blocks)-1 {
+			last := i.blocks[block].items[len(i.blocks[block].items)-1]
+			key, supported := orderedRoutingKey(last.value)
+			if !supported || key >= lower {
+				break
+			}
+			block++
+		}
+		routes[bucket] = block
+	}
+	i.routing = orderedRouting{min: firstKey, width: width, blocks: routes}
+}
+
+func orderedRoutingKey[V any](value V) (uint64, bool) {
+	if key, ok := orderedScalarKey(any(value)); ok {
+		return key, true
+	}
+	if instant, ok := any(value).(time.Time); ok {
+		// Seconds cover the complete time.Time calendar range in int64. Values
+		// within one second deliberately share a routing interval and remain
+		// distinguished by the exact comparator in the boundary block.
+		return signedOrderedKey(instant.Unix(), 64), true
+	}
+	return 0, false
 }
 
 // estimateCardinality returns the exact number of IDs visited by walk without
@@ -162,6 +233,11 @@ func (i *orderedIndex[V]) searchBlock(block *orderedBlock[V], value V) int {
 }
 
 func (i *orderedIndex[V]) blockFor(value V) int {
+	if len(i.routing.blocks) != 0 {
+		if key, ok := orderedRoutingKey(value); ok {
+			return i.routedBlockFor(value, key)
+		}
+	}
 	lo, hi := 0, len(i.blocks)
 	for lo < hi {
 		mid := int(uint(lo+hi) >> 1)
@@ -176,6 +252,33 @@ func (i *orderedIndex[V]) blockFor(value V) int {
 		return len(i.blocks) - 1
 	}
 	return lo
+}
+
+func (i *orderedIndex[V]) routedBlockFor(value V, key uint64) int {
+	block := 0
+	if key > i.routing.min {
+		bucket := (key - i.routing.min) / i.routing.width
+		if bucket >= uint64(len(i.routing.blocks)) {
+			block = len(i.blocks) - 1
+		} else {
+			block = i.routing.blocks[bucket]
+		}
+	}
+	for block > 0 {
+		previous := i.blocks[block-1].items[len(i.blocks[block-1].items)-1]
+		if i.compare(previous.value, value) < 0 {
+			break
+		}
+		block--
+	}
+	for block < len(i.blocks)-1 {
+		last := i.blocks[block].items[len(i.blocks[block].items)-1]
+		if i.compare(last.value, value) >= 0 {
+			break
+		}
+		block++
+	}
+	return block
 }
 
 func (i *orderedIndex[V]) insertItem(item *orderedItem[V]) {

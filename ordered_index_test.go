@@ -3,11 +3,55 @@ package ruleix
 import (
 	"cmp"
 	"testing"
+	"time"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
+func TestOrderedIndexBuildsLogicalRoutingForNumbersAndTime(t *testing.T) {
+	t.Run("numbers", func(t *testing.T) {
+		index := newOrderedIndex(cmp.Compare[int])
+		for value := range 1_000 {
+			index.insert(value, uint32(value))
+		}
+		index.prepareSearch()
+		if len(index.routing.blocks) == 0 {
+			t.Fatal("numeric routing was not built")
+		}
+		for _, value := range []int{-1, 0, 127, 500, 999, 1_000} {
+			block := index.blockFor(value)
+			if block < 0 || block >= len(index.blocks) {
+				t.Fatalf("blockFor(%d) = %d", value, block)
+			}
+		}
+	})
+
+	t.Run("time", func(t *testing.T) {
+		index := newOrderedIndex(time.Time.Compare)
+		base := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+		for hour := range 24 * 30 {
+			index.insert(base.Add(time.Duration(hour)*time.Hour), uint32(hour))
+		}
+		index.prepareSearch()
+		if len(index.routing.blocks) == 0 {
+			t.Fatal("time routing was not built")
+		}
+		for _, hour := range []int{-1, 0, 12, 300, 719, 720} {
+			query := base.Add(time.Duration(hour) * time.Hour)
+			bits := index.exact(query)
+			if hour >= 0 && hour < 720 {
+				if bits == nil || !bits.Contains(uint32(hour)) {
+					t.Fatalf("exact hour %d = %v", hour, bits)
+				}
+			} else if bits != nil {
+				t.Fatalf("exact hour %d = %v, want nil", hour, bits)
+			}
+		}
+	})
+}
+
 var orderedIndexBenchmarkResult uint64
+var orderedIndexBlockBenchmarkResult int
 
 func TestOrderedIndexCardinalityEstimateMatchesWalk(t *testing.T) {
 	index := newOrderedIndex(cmp.Compare[int])
@@ -53,6 +97,28 @@ func BenchmarkOrderedIndexCardinalityEstimate(b *testing.B) {
 				cardinality += bits.GetCardinality()
 			})
 			orderedIndexBenchmarkResult = cardinality
+		}
+	})
+}
+
+func BenchmarkOrderedIndexTimeBlockLookup(b *testing.B) {
+	index := newOrderedIndex(time.Time.Compare)
+	base := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	for minute := range 10_000 {
+		index.insert(base.Add(time.Duration(minute)*time.Minute), uint32(minute))
+	}
+	index.prepareSearch()
+	query := base.Add(5_000 * time.Minute)
+
+	b.Run("LogicalRouting", func(b *testing.B) {
+		for range b.N {
+			orderedIndexBlockBenchmarkResult = index.blockFor(query)
+		}
+	})
+	index.routing = orderedRouting{}
+	b.Run("ComparatorBinarySearch", func(b *testing.B) {
+		for range b.N {
+			orderedIndexBlockBenchmarkResult = index.blockFor(query)
 		}
 	})
 }
@@ -103,6 +169,7 @@ func TestOrderedIndexFindsValuesAfterUnorderedInsertAndBlockSplits(t *testing.T)
 		index.insert(value, uint32(value))
 		index.insert(value, uint32(value))
 	}
+	index.prepareSearch()
 	for value := 0; value < values; value++ {
 		bits := index.exact(value)
 		if bits == nil || bits.GetCardinality() != 1 || !bits.Contains(uint32(value)) {

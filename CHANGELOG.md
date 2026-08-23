@@ -30,6 +30,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Exact ordered indexes learn observed-domain logical routing intervals for
+  numeric and `time.Time` values after the single streaming build pass. Search
+  uses the same key to select a boundary block while retaining exact comparison
+  semantics inside it.
 - `Local.Close` replaces `Local.Reset`: closing returns the cleared internal
   bitmap context to its originating index for reuse, and the closed handle
   cannot be used again.
