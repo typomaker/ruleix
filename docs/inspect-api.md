@@ -35,12 +35,18 @@ func (InspectorSnapshot) MemoryLimit() (uint64, bool)
 func (InspectorSnapshot) ItemCount() (uint64, bool)
 func (InspectorSnapshot) DistinctValueCount() (uint64, bool)
 func (InspectorSnapshot) Granularity() (uint64, bool)
-func (InspectorSnapshot) EstimatedFalsePositiveRate() (float64, bool)
-func (InspectorSnapshot) Searches() uint64
-func (InspectorSnapshot) Materializations() uint64
-func (InspectorSnapshot) CandidateChecks() uint64
-func (InspectorSnapshot) EmptyResults() uint64
-func (InspectorSnapshot) ResultCardinality() ResultCardinalityHistogram
+func (InspectorSnapshot) FalsePositiveRate() (float64, bool)
+func (InspectorSnapshot) Search() uint64
+func (InspectorSnapshot) CacheHit() uint64
+func (InspectorSnapshot) CacheMiss() uint64
+func (InspectorSnapshot) CacheAdmission() uint64
+func (InspectorSnapshot) CacheEviction() uint64
+func (InspectorSnapshot) Materialization() uint64
+func (InspectorSnapshot) CandidateCheck() uint64
+func (InspectorSnapshot) EmptyResult() uint64
+func (InspectorSnapshot) CacheEntry() uint64
+func (InspectorSnapshot) CacheCapacity() uint64
+func (InspectorSnapshot) ResultCardinality() Histogram
 
 func Inspect[T any](dst *Inspector, rule Rule[T]) Rule[T]
 ```
@@ -74,11 +80,11 @@ if snapshot.Bound() {
 ```
 
 Runtime counters in successive snapshots are monotonic for the lifetime of the
-inspector. `Searches` counts executions that
+inspector. `Search` counts executions that
 materialize the inspected rule, except for an inspected top-level `All`, where
 it counts completed index searches even though the specialized executor can
-append the final result without materializing the composite. `CandidateChecks`
-counts direct internal-ID membership checks. `Materializations` and the
+append the final result without materializing the composite. `CandidateCheck`
+counts direct internal-ID membership checks. `Materialization` and the
 cardinality histogram count only bitmap materializations, again except that a
 top-level `All` contributes its actual final cardinality to the histogram.
 This distinction preserves the selected execution strategy.

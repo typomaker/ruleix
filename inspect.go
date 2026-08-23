@@ -86,26 +86,44 @@ func (s InspectorSnapshot) Granularity() (uint64, bool) {
 	return d.GranularityValue, d.GranularityAvailable
 }
 
-// EstimatedFalsePositiveRate reports an estimate when one is meaningful.
-func (s InspectorSnapshot) EstimatedFalsePositiveRate() (float64, bool) {
+// FalsePositiveRate reports an estimate when one is meaningful.
+func (s InspectorSnapshot) FalsePositiveRate() (float64, bool) {
 	d := s.buildSnapshot().details()
 	return d.EstimatedFalsePositiveRateValue, d.EstimatedFalsePositiveRateAvailable
 }
 
-// Searches reports observed executions of the inspected rule.
-func (s InspectorSnapshot) Searches() uint64 { return s.runtime.searches }
+// Search reports observed executions of the inspected rule.
+func (s InspectorSnapshot) Search() uint64 { return s.runtime.search }
 
-// Materializations reports observed bitmap materializations.
-func (s InspectorSnapshot) Materializations() uint64 { return s.runtime.materializations }
+// CacheHit reports observed cache hits.
+func (s InspectorSnapshot) CacheHit() uint64 { return s.runtime.cacheHit }
 
-// CandidateChecks reports observed direct internal-ID membership checks.
-func (s InspectorSnapshot) CandidateChecks() uint64 { return s.runtime.candidateChecks }
+// CacheMiss reports observed cache misses.
+func (s InspectorSnapshot) CacheMiss() uint64 { return s.runtime.cacheMiss }
 
-// EmptyResults reports observed empty results.
-func (s InspectorSnapshot) EmptyResults() uint64 { return s.runtime.emptyResults }
+// CacheAdmission reports observed cache admissions.
+func (s InspectorSnapshot) CacheAdmission() uint64 { return s.runtime.cacheAdmission }
+
+// CacheEviction reports observed cache evictions.
+func (s InspectorSnapshot) CacheEviction() uint64 { return s.runtime.cacheEviction }
+
+// Materialization reports observed bitmap materializations.
+func (s InspectorSnapshot) Materialization() uint64 { return s.runtime.materialization }
+
+// CandidateCheck reports observed direct internal-ID membership checks.
+func (s InspectorSnapshot) CandidateCheck() uint64 { return s.runtime.candidateCheck }
+
+// EmptyResult reports observed empty results.
+func (s InspectorSnapshot) EmptyResult() uint64 { return s.runtime.emptyResult }
+
+// CacheEntry reports the number of currently retained cache entries.
+func (s InspectorSnapshot) CacheEntry() uint64 { return s.runtime.cacheEntry }
+
+// CacheCapacity reports the current cache entry capacity.
+func (s InspectorSnapshot) CacheCapacity() uint64 { return s.runtime.cacheCapacity }
 
 // ResultCardinality reports the captured result-cardinality histogram.
-func (s InspectorSnapshot) ResultCardinality() ResultCardinalityHistogram {
+func (s InspectorSnapshot) ResultCardinality() Histogram {
 	return s.runtime.cardinality
 }
 
@@ -152,10 +170,9 @@ type inspectorState struct {
 	runtime   inspectorRuntime
 }
 
-// ResultCardinalityHistogram groups observed materialized results into stable,
-// allocation-free buckets. Each bucket includes its lower bound and excludes
-// the next bucket's lower bound.
-type ResultCardinalityHistogram struct {
+// Histogram groups observed values into stable, allocation-free buckets. Each
+// bucket includes its lower bound and excludes the next bucket's lower bound.
+type Histogram struct {
 	Zero, One, TwoToFour, FiveToSixteen, SeventeenTo256, Above256 uint64
 }
 
@@ -165,8 +182,10 @@ type inspectorRuntime struct {
 }
 
 type inspectorRuntimeSnapshot struct {
-	searches, materializations, candidateChecks, emptyResults uint64
-	cardinality                                               ResultCardinalityHistogram
+	search, cacheHit, cacheMiss, cacheAdmission, cacheEviction uint64
+	materialization, candidateCheck, emptyResult               uint64
+	cacheEntry, cacheCapacity                                  uint64
+	cardinality                                                Histogram
 }
 
 type inspector struct{ state inspectorState }
@@ -213,9 +232,9 @@ func (i *inspector) Snapshot() InspectorSnapshot {
 	}
 	b := &i.state.runtime.cardinality
 	return InspectorSnapshot{build: snapshot.snapshot, runtime: inspectorRuntimeSnapshot{
-		searches: i.state.runtime.searches.Load(), materializations: i.state.runtime.materializations.Load(),
-		candidateChecks: i.state.runtime.candidateChecks.Load(), emptyResults: i.state.runtime.emptyResults.Load(),
-		cardinality: ResultCardinalityHistogram{b[0].Load(), b[1].Load(), b[2].Load(), b[3].Load(), b[4].Load(), b[5].Load()},
+		search: i.state.runtime.searches.Load(), materialization: i.state.runtime.materializations.Load(),
+		candidateCheck: i.state.runtime.candidateChecks.Load(), emptyResult: i.state.runtime.emptyResults.Load(),
+		cardinality: Histogram{b[0].Load(), b[1].Load(), b[2].Load(), b[3].Load(), b[4].Load(), b[5].Load()},
 	}}
 }
 

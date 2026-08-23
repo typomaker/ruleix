@@ -15,6 +15,33 @@ type inspectConstraint struct {
 	tier    string
 }
 
+type snapshotAPI interface {
+	Bound() bool
+	Mode() RuleMode
+	Strategy() string
+	EntryCount() uint64
+	RuleCount() uint64
+	MemoryUsage() (uint64, bool)
+	MemoryLimit() (uint64, bool)
+	ItemCount() (uint64, bool)
+	DistinctValueCount() (uint64, bool)
+	Granularity() (uint64, bool)
+	FalsePositiveRate() (float64, bool)
+	Search() uint64
+	CacheHit() uint64
+	CacheMiss() uint64
+	CacheAdmission() uint64
+	CacheEviction() uint64
+	Materialization() uint64
+	CandidateCheck() uint64
+	EmptyResult() uint64
+	CacheEntry() uint64
+	CacheCapacity() uint64
+	ResultCardinality() Histogram
+}
+
+var _ snapshotAPI = InspectorSnapshot{}
+
 func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
 	var country Inspector
 	inspected := New[inspectConstraint, string](All(
@@ -159,7 +186,7 @@ func TestInspectReportsLossyRepresentationStatistics(t *testing.T) {
 	granularity, ok := snapshot.Granularity()
 	require.True(t, ok)
 	require.NotZero(t, granularity)
-	_, ok = snapshot.EstimatedFalsePositiveRate()
+	_, ok = snapshot.FalsePositiveRate()
 	require.False(t, ok)
 }
 
@@ -244,12 +271,12 @@ func TestInspectReportsRuntimeExecutionMetrics(t *testing.T) {
 	require.False(t, index.Search(inspectConstraint{country: "FR"}, &matches))
 
 	snapshot := inspector.Snapshot()
-	require.Zero(t, beforeSearches.Searches(), "a captured snapshot does not change")
-	require.Equal(t, uint64(2), snapshot.Searches())
-	require.Zero(t, snapshot.Materializations())
-	require.Zero(t, snapshot.CandidateChecks())
-	require.Equal(t, uint64(1), snapshot.EmptyResults())
-	require.Equal(t, ResultCardinalityHistogram{Zero: 1, One: 1}, snapshot.ResultCardinality())
+	require.Zero(t, beforeSearches.Search(), "a captured snapshot does not change")
+	require.Equal(t, uint64(2), snapshot.Search())
+	require.Zero(t, snapshot.Materialization())
+	require.Zero(t, snapshot.CandidateCheck())
+	require.Equal(t, uint64(1), snapshot.EmptyResult())
+	require.Equal(t, Histogram{Zero: 1, One: 1}, snapshot.ResultCardinality())
 }
 
 func TestInspectCountsCandidateChecksWithoutForcingMaterialization(t *testing.T) {
@@ -267,7 +294,7 @@ func TestInspectCountsCandidateChecksWithoutForcingMaterialization(t *testing.T)
 	var matches []int
 	require.True(t, index.Search(constraint{selective: "one", broad: "yes"}, &matches))
 	snapshot := broad.Snapshot()
-	require.Equal(t, uint64(1), snapshot.CandidateChecks())
-	require.Zero(t, snapshot.Materializations())
-	require.Zero(t, snapshot.Searches())
+	require.Equal(t, uint64(1), snapshot.CandidateCheck())
+	require.Zero(t, snapshot.Materialization())
+	require.Zero(t, snapshot.Search())
 }
