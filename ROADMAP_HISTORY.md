@@ -1092,3 +1092,46 @@ Reproduce with:
 go test -run '^$' -bench '^BenchmarkLocalLifecycleReuse$' \
   -benchmem -benchtime=300ms -count=5 .
 ```
+
+## 2026-08-24: range-cardinality rollback experiment
+
+An isolated copy of `f50d22b` was benchmarked with the range-cardinality part
+of `05f8065` removed while retaining all later ordered lookup optimizations.
+`orderedRule`, `compareByRule`, and `betweenRule` no longer implemented the
+planner's `cardinalityEstimator`; their original measured-cardinality paths
+were restored, and `orderedIndex.blockPrefix` was removed.
+
+On Apple M1 Max with Go 1.26.0, medians of eight one-second runs were:
+
+| Production-shaped operation | `f50d22b` | Without range estimates | Delta |
+| --- | ---: | ---: | ---: |
+| `Index.Search` | 96.17 us | 93.12 us | -3.2% |
+| warm `Local.Search` | 5.870 us | 5.293 us | -9.8% |
+| parallel warm local search | 2.770 us/search | 2.489 us/search | -10.1% |
+| `Build` | 32.38 ms | 33.96 ms | +4.9% |
+
+Search allocation counts and bytes were effectively unchanged. Five retained
+memory runs were also indistinguishable: the index retained about 1.289 MB,
+warm local state retained 88,448 B, and adaptive local state retained about
+105,296 B in both versions. The build-time difference should be treated as
+inconclusive because the two suites were run sequentially; removing the prefix
+itself did not produce a measurable retained-memory improvement at this data
+shape.
+
+The experiment confirms that runtime range estimates still cost roughly 10%
+on the current warm-local production shape. It does not recover the full
+pre-`05f8065` performance because subsequent planner and cache changes remain,
+and restoring measured range cardinality is not a complete replacement for a
+lazy, equality-informed plan.
+
+Reproduce each variant with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkProductionShapeSearch|BenchmarkProductionShapeParallelLocalBatch100|BenchmarkProductionShapeBuild)$' \
+  -benchmem -benchtime=1s -count=8 .
+
+go test -run '^$' \
+  -bench '^BenchmarkProductionShape(RetainedMemory|LocalRetainedMemory)$' \
+  -benchmem -benchtime=3x -count=5 .
+```
