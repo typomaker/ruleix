@@ -19,26 +19,94 @@ const (
 	RuleModeLossy RuleMode = "lossy"
 )
 
-// Inspector observes one rule's latest successfully compiled representation.
-// Inspect selects and assigns the implementation when it decorates a rule.
+// Inspector captures immutable views of one rule's compiled representation and
+// accumulated runtime metrics. Inspect selects and assigns the implementation
+// when it decorates a rule.
 type Inspector interface {
-	Bound() bool
-	Mode() RuleMode
-	Strategy() string
-	EntryCount() uint64
-	RuleCount() uint64
-	MemoryUsage() (uint64, bool)
-	MemoryLimit() (uint64, bool)
-	ItemCount() (uint64, bool)
-	DistinctValueCount() (uint64, bool)
-	Granularity() (uint64, bool)
-	EstimatedFalsePositiveRate() (float64, bool)
-	Searches() uint64
-	Materializations() uint64
-	CandidateChecks() uint64
-	EmptyResults() uint64
-	ResultCardinality() ResultCardinalityHistogram
+	Snapshot() InspectorSnapshot
 	inspectionState() *inspectorState
+}
+
+// InspectorSnapshot is a coherent view of the build generation selected by
+// one Snapshot call and the runtime counters observed during that call.
+type InspectorSnapshot struct {
+	build   inspectorSnapshot
+	runtime inspectorRuntimeSnapshot
+}
+
+func (s InspectorSnapshot) buildSnapshot() inspectorSnapshot {
+	if s.build == nil {
+		return unboundInspector.snapshot
+	}
+	return s.build
+}
+
+// Bound reports whether the snapshot belongs to a successful build.
+func (s InspectorSnapshot) Bound() bool { return s.buildSnapshot().bound() }
+
+// Mode reports the compiled representation mode.
+func (s InspectorSnapshot) Mode() RuleMode { return s.buildSnapshot().mode() }
+
+// Strategy reports the compiled strategy.
+func (s InspectorSnapshot) Strategy() string { return s.buildSnapshot().strategy() }
+
+// EntryCount reports the number of input entries consumed by the build.
+func (s InspectorSnapshot) EntryCount() uint64 { return s.buildSnapshot().entryCount() }
+
+// RuleCount reports the number of unique external rule IDs in the build.
+func (s InspectorSnapshot) RuleCount() uint64 { return s.buildSnapshot().ruleCount() }
+
+// MemoryUsage reports deterministic accounted representation bytes.
+func (s InspectorSnapshot) MemoryUsage() (uint64, bool) {
+	d := s.buildSnapshot().details()
+	return d.MemoryUsageBytes, d.MemoryUsageAvailable
+}
+
+// MemoryLimit reports the configured representation byte limit.
+func (s InspectorSnapshot) MemoryLimit() (uint64, bool) {
+	d := s.buildSnapshot().details()
+	return d.MemoryLimitBytes, d.MemoryLimitAvailable
+}
+
+// ItemCount reports indexed wildcard and concrete posting items.
+func (s InspectorSnapshot) ItemCount() (uint64, bool) {
+	d := s.buildSnapshot().details()
+	return d.Items, d.ItemsAvailable
+}
+
+// DistinctValueCount reports indexed concrete values, excluding wildcards.
+func (s InspectorSnapshot) DistinctValueCount() (uint64, bool) {
+	d := s.buildSnapshot().details()
+	return d.DistinctValues, d.DistinctValuesAvailable
+}
+
+// Granularity reports the selected number of lossy buckets.
+func (s InspectorSnapshot) Granularity() (uint64, bool) {
+	d := s.buildSnapshot().details()
+	return d.GranularityValue, d.GranularityAvailable
+}
+
+// EstimatedFalsePositiveRate reports an estimate when one is meaningful.
+func (s InspectorSnapshot) EstimatedFalsePositiveRate() (float64, bool) {
+	d := s.buildSnapshot().details()
+	return d.EstimatedFalsePositiveRateValue, d.EstimatedFalsePositiveRateAvailable
+}
+
+// Searches reports observed executions of the inspected rule.
+func (s InspectorSnapshot) Searches() uint64 { return s.runtime.searches }
+
+// Materializations reports observed bitmap materializations.
+func (s InspectorSnapshot) Materializations() uint64 { return s.runtime.materializations }
+
+// CandidateChecks reports observed direct internal-ID membership checks.
+func (s InspectorSnapshot) CandidateChecks() uint64 { return s.runtime.candidateChecks }
+
+// EmptyResults reports observed empty results.
+func (s InspectorSnapshot) EmptyResults() uint64 { return s.runtime.emptyResults }
+
+// ResultCardinality reports the captured result-cardinality histogram.
+func (s InspectorSnapshot) ResultCardinality() ResultCardinalityHistogram {
+	return s.runtime.cardinality
 }
 
 type inspectorSnapshot interface {
@@ -96,6 +164,11 @@ type inspectorRuntime struct {
 	cardinality                                               [6]atomic.Uint64
 }
 
+type inspectorRuntimeSnapshot struct {
+	searches, materializations, candidateChecks, emptyResults uint64
+	cardinality                                               ResultCardinalityHistogram
+}
+
 type inspector struct{ state inspectorState }
 
 var _ Inspector = (*inspector)(nil)
@@ -133,74 +206,17 @@ func (s exactInspectorSnapshot) details() inspectionDetails { return s.detail }
 
 var unboundInspector = &inspectorSnapshotBox{snapshot: unboundInspectorSnapshot{}}
 
-func (i *inspector) snapshot() inspectorSnapshot {
+func (i *inspector) Snapshot() InspectorSnapshot {
 	snapshot := i.state.published.Load()
 	if snapshot == nil {
 		snapshot = unboundInspector
 	}
-	return snapshot.snapshot
-}
-
-// Bound reports whether a successful build has published a representation.
-func (i *inspector) Bound() bool { return i.snapshot().bound() }
-
-// Mode reports the latest representation mode.
-func (i *inspector) Mode() RuleMode { return i.snapshot().mode() }
-
-// Strategy reports the latest compiled strategy.
-func (i *inspector) Strategy() string { return i.snapshot().strategy() }
-
-// EntryCount reports the number of input entries consumed by the build in the
-// latest successful build.
-func (i *inspector) EntryCount() uint64 { return i.snapshot().entryCount() }
-
-// RuleCount reports the number of unique external rule IDs in the latest
-// successful build.
-func (i *inspector) RuleCount() uint64 { return i.snapshot().ruleCount() }
-
-// MemoryUsage reports deterministic accounted representation bytes.
-func (i *inspector) MemoryUsage() (uint64, bool) {
-	d := i.snapshot().details()
-	return d.MemoryUsageBytes, d.MemoryUsageAvailable
-}
-
-// MemoryLimit reports the configured representation byte limit.
-func (i *inspector) MemoryLimit() (uint64, bool) {
-	d := i.snapshot().details()
-	return d.MemoryLimitBytes, d.MemoryLimitAvailable
-}
-
-// ItemCount reports indexed wildcard and concrete posting items.
-func (i *inspector) ItemCount() (uint64, bool) {
-	d := i.snapshot().details()
-	return d.Items, d.ItemsAvailable
-}
-
-// DistinctValueCount reports indexed concrete values, excluding wildcards.
-func (i *inspector) DistinctValueCount() (uint64, bool) {
-	d := i.snapshot().details()
-	return d.DistinctValues, d.DistinctValuesAvailable
-}
-
-// Granularity reports the selected number of lossy buckets.
-func (i *inspector) Granularity() (uint64, bool) {
-	d := i.snapshot().details()
-	return d.GranularityValue, d.GranularityAvailable
-}
-
-// EstimatedFalsePositiveRate reports an estimate when one is meaningful.
-func (i *inspector) EstimatedFalsePositiveRate() (float64, bool) {
-	d := i.snapshot().details()
-	return d.EstimatedFalsePositiveRateValue, d.EstimatedFalsePositiveRateAvailable
-}
-
-func (i *inspector) Searches() uint64         { return i.state.runtime.searches.Load() }
-func (i *inspector) Materializations() uint64 { return i.state.runtime.materializations.Load() }
-func (i *inspector) CandidateChecks() uint64  { return i.state.runtime.candidateChecks.Load() }
-func (i *inspector) EmptyResults() uint64     { return i.state.runtime.emptyResults.Load() }
-func (i *inspector) ResultCardinality() ResultCardinalityHistogram {
 	b := &i.state.runtime.cardinality
-	return ResultCardinalityHistogram{b[0].Load(), b[1].Load(), b[2].Load(), b[3].Load(), b[4].Load(), b[5].Load()}
+	return InspectorSnapshot{build: snapshot.snapshot, runtime: inspectorRuntimeSnapshot{
+		searches: i.state.runtime.searches.Load(), materializations: i.state.runtime.materializations.Load(),
+		candidateChecks: i.state.runtime.candidateChecks.Load(), emptyResults: i.state.runtime.emptyResults.Load(),
+		cardinality: ResultCardinalityHistogram{b[0].Load(), b[1].Load(), b[2].Load(), b[3].Load(), b[4].Load(), b[5].Load()},
+	}}
 }
 
 // Inspect decorates rule with an observational handle. It does not change the

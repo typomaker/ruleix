@@ -30,7 +30,7 @@ func verifyLossySuperset[T any, ID comparable](
 	approximate, err := New[T, ID](Inspect(&inspector, lossyRule)).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	if requireLossy {
-		require.Equal(t, RuleModeLossy, inspector.Mode(), "property case must exercise a lossy representation")
+		require.Equal(t, RuleModeLossy, inspector.Snapshot().Mode(), "property case must exercise a lossy representation")
 	}
 	for _, query := range queries {
 		var want, got []ID
@@ -150,8 +150,8 @@ func TestLossyEqualityNeverDropsExactMatches(t *testing.T) {
 		approximate.Search(constraints[i], &got)
 		requireSuperset(t, want, got)
 	}
-	require.Equal(t, RuleModeLossy, inspector.Mode())
-	require.Equal(t, "lossy-grouped-hash", inspector.Strategy())
+	require.Equal(t, RuleModeLossy, inspector.Snapshot().Mode())
+	require.Equal(t, "lossy-grouped-hash", inspector.Snapshot().Strategy())
 }
 
 func TestLossyOrderedNeverDropsExactMatches(t *testing.T) {
@@ -357,14 +357,15 @@ func TestLossyAllNeverDropsExactMatches(t *testing.T) {
 		approximate.Search(query, &got)
 		requireSuperset(t, want, got)
 	}
-	usage, ok := inspector.MemoryUsage()
+	snapshot := inspector.Snapshot()
+	usage, ok := snapshot.MemoryUsage()
 	require.True(t, ok)
 	require.LessOrEqual(t, usage, uint64(16000))
-	actualLimit, ok := inspector.MemoryLimit()
+	actualLimit, ok := snapshot.MemoryLimit()
 	require.True(t, ok)
 	require.Equal(t, uint64(16000), actualLimit)
-	require.Equal(t, RuleModeLossy, inspector.Mode())
-	require.Equal(t, "all", inspector.Strategy())
+	require.Equal(t, RuleModeLossy, snapshot.Mode())
+	require.Equal(t, "all", snapshot.Strategy())
 }
 
 func TestLossyAllRetainsExactChildrenWhenCompositeFits(t *testing.T) {
@@ -375,8 +376,9 @@ func TestLossyAllRetainsExactChildrenWhenCompositeFits(t *testing.T) {
 		MemoryLimit(1<<20),
 	))).Build(Zip([]lossyConstraint{{name: "a"}, {name: "b"}}, []int{1, 2}))
 	require.NoError(t, err)
-	require.Equal(t, RuleModeExact, inspector.Mode())
-	usage, ok := inspector.MemoryUsage()
+	snapshot := inspector.Snapshot()
+	require.Equal(t, RuleModeExact, snapshot.Mode())
+	usage, ok := snapshot.MemoryUsage()
 	require.True(t, ok)
 	require.LessOrEqual(t, usage, uint64(1<<20))
 }
@@ -401,7 +403,7 @@ func TestLossyAllRedistributesBudgetForMinimumViableChildren(t *testing.T) {
 	var matches []int
 	index.Search(lossyConstraint{name: "customer-17"}, &matches)
 	require.Contains(t, matches, 17)
-	usage, ok := inspector.MemoryUsage()
+	usage, ok := inspector.Snapshot().MemoryUsage()
 	require.True(t, ok)
 	require.LessOrEqual(t, usage, uint64(12000))
 }

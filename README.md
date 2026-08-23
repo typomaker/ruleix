@@ -341,9 +341,9 @@ child positions as diagnostics rather than stable application behavior.
 `Inspect` can mark one rule and report the representation selected during
 `Build`. For a `Lossy` rule it also exposes accounted memory usage and limit,
 item and distinct-value counts, and lossy bucket granularity. Optional metrics
-return an availability flag, and every observation reads the latest successful
-build. An inspected rule additionally keeps monotonic
-runtime counters for bitmap searches, materializations, candidate checks and
+return an availability flag. Call `Snapshot` once to capture one successful
+build generation and its observed runtime counters. An inspected rule also
+keeps monotonic runtime counters for bitmap searches, materializations, candidate checks and
 empty results, plus an allocation-free result-cardinality histogram. Candidate
 checks do not force bitmap materialization.
 

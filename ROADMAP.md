@@ -79,14 +79,14 @@ planner can consume without rescanning postings or retaining expensive runtime
 instrumentation.
 
 Develop `Inspect` as the single stable view of one compiled rule. It should
-report build-time facts directly through `Inspector`: exact or lossy mode,
+report build-time facts through one `Inspector.Snapshot`: exact or lossy mode,
 strategy, entry and rule counts, accounted memory, budget, item and distinct
 value counts, granularity, and false-positive rate where available. Allow
 separate inspectors on children of a pooled `Lossy(All(...))` rather than
 returning arrays of internal child details.
 
 An inspected rule should also accumulate metrics from real `Search`, `Visit`,
-and `Local` executions. Expose them directly through the root `Inspector`,
+and `Local` executions. Expose them directly through `InspectorSnapshot`,
 without a nested metrics object or reset API. Counters are searches, cache
 hits, cache misses, cache admissions, cache evictions, materializations,
 candidate checks, and empty results. Gauges are cache entries and cache

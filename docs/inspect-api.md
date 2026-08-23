@@ -17,24 +17,30 @@ The initial API is:
 
 ```go
 type Inspector interface {
-	Bound() bool
-	Mode() RuleMode
-	Strategy() string
-	EntryCount() uint64
-	RuleCount() uint64
-	MemoryUsage() (uint64, bool)
-	MemoryLimit() (uint64, bool)
-	ItemCount() (uint64, bool)
-	DistinctValueCount() (uint64, bool)
-	Granularity() (uint64, bool)
-	EstimatedFalsePositiveRate() (float64, bool)
-	Searches() uint64
-	Materializations() uint64
-	CandidateChecks() uint64
-	EmptyResults() uint64
-	ResultCardinality() ResultCardinalityHistogram
+	Snapshot() InspectorSnapshot
 	// unexported method seals implementations
 }
+
+type InspectorSnapshot struct {
+	// unexported fields
+}
+
+func (InspectorSnapshot) Bound() bool
+func (InspectorSnapshot) Mode() RuleMode
+func (InspectorSnapshot) Strategy() string
+func (InspectorSnapshot) EntryCount() uint64
+func (InspectorSnapshot) RuleCount() uint64
+func (InspectorSnapshot) MemoryUsage() (uint64, bool)
+func (InspectorSnapshot) MemoryLimit() (uint64, bool)
+func (InspectorSnapshot) ItemCount() (uint64, bool)
+func (InspectorSnapshot) DistinctValueCount() (uint64, bool)
+func (InspectorSnapshot) Granularity() (uint64, bool)
+func (InspectorSnapshot) EstimatedFalsePositiveRate() (float64, bool)
+func (InspectorSnapshot) Searches() uint64
+func (InspectorSnapshot) Materializations() uint64
+func (InspectorSnapshot) CandidateChecks() uint64
+func (InspectorSnapshot) EmptyResults() uint64
+func (InspectorSnapshot) ResultCardinality() ResultCardinalityHistogram
 
 func Inspect[T any](dst *Inspector, rule Rule[T]) Rule[T]
 ```
@@ -59,14 +65,16 @@ if err != nil {
 	return err
 }
 
-if customer.Bound() {
-	mode := customer.Mode()
-	strategy := customer.Strategy()
-	used, measured := customer.MemoryUsage()
+snapshot := customer.Snapshot()
+if snapshot.Bound() {
+	mode := snapshot.Mode()
+	strategy := snapshot.Strategy()
+	used, measured := snapshot.MemoryUsage()
 }
 ```
 
-Runtime counters are monotonic for the lifetime of the inspector. `Searches` counts executions that
+Runtime counters in successive snapshots are monotonic for the lifetime of the
+inspector. `Searches` counts executions that
 materialize the inspected rule, except for an inspected top-level `All`, where
 it counts completed index searches even though the specialized executor can
 append the final result without materializing the composite. `CandidateChecks`
@@ -106,11 +114,11 @@ behavior with or without `Inspect`, and attaching an inspector must not force a
 specific strategy, disable optimization, or add work to the default search hot
 path.
 
-Each observation reads the latest immutable snapshot published by a successful
-build. Observing before the first successful build returns the unbound state
-(`Bound() == false`). Callers that need several fields from exactly one build
-must provide external serialization around the builder and those reads; the
-method-oriented API does not retain old generations.
+`Snapshot` reads the latest immutable build snapshot exactly once and copies
+the currently observed runtime counters into a returned value. All methods on
+that value therefore describe the same build generation and counter sample,
+even if another build succeeds or searches continue concurrently. A snapshot
+captured before the first successful build is unbound (`Bound() == false`).
 
 A failed build does not replace the latest successful state. Observation
 methods may run concurrently with searches and a later build (the
@@ -130,7 +138,7 @@ representation statistics:
 - estimated false-positive rate, when meaningful and available;
 - optimizer decisions and representation details;
 - bucket or prefix configuration;
-- optional performance counters in a future version.
+- monotonic runtime execution counters and result-cardinality histogram.
 
 Optional methods return `(value, available)`, distinguishing unavailable data
 from a meaningful zero. Memory is measured in bytes under the deterministic
@@ -140,7 +148,7 @@ deduplication within each posting. `DistinctValueCount` excludes the wildcard.
 `Granularity` is the number of selected lossy buckets and is unavailable for
 an exact representation. The current strategies do not publish a false-
 positive estimate because they lack a meaningful workload-independent model.
-Each method reads one atomically published snapshot.
+All methods on one `InspectorSnapshot` read its captured values.
 
 Strategy names and fine-grained representation details may evolve as the
 planner changes. Decide which values are stable public contracts and which are

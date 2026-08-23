@@ -741,3 +741,15 @@ Individual method calls remain safe during concurrent publication. Callers
 that require several fields to come from exactly one build must serialize
 those reads with rebuilds externally; the method-oriented interface no longer
 retains old index generations for that purpose.
+
+## 2026-08-24: explicit inspector snapshots
+
+`Inspector` now exposes only `Snapshot() InspectorSnapshot`. All build-fact
+and runtime-metric methods moved to the returned immutable value. `Snapshot`
+loads the latest published build generation once and copies the current atomic
+runtime counters, so every later method call on that value observes the same
+generation and counter sample even when rebuilds and searches continue.
+
+This restores coherent multi-field inspection without bringing back hidden
+pinning or a refresh lifecycle. A caller chooses the observation boundary
+explicitly by taking another snapshot.

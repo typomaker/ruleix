@@ -324,7 +324,7 @@ func lossyAllBenchmarkExactBytesForSchema(
 	if err != nil {
 		b.Fatal(err)
 	}
-	usage, ok := inspector.MemoryUsage()
+	usage, ok := inspector.Snapshot().MemoryUsage()
 	if !ok {
 		b.Fatal("exact memory usage is unavailable")
 	}
@@ -343,7 +343,7 @@ func lossyAllBenchmarkAccountedBytes(
 	if err != nil {
 		b.Fatal(err)
 	}
-	usage, ok := inspector.MemoryUsage()
+	usage, ok := inspector.Snapshot().MemoryUsage()
 	if !ok {
 		b.Fatal("accounted memory usage is unavailable")
 	}

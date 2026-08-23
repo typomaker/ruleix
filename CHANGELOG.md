@@ -12,9 +12,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `Index.Explain` provides opt-in planner estimates, actual child
   cardinalities, execution ordering, selected search strategy, and result
   cardinality without adding instrumentation to ordinary searches.
-- `Inspect` and the sealed `Inspector` interface expose direct methods over the
-  latest successfully compiled strategy and
-  build counts for one marked rule without changing its search representation.
+- `Inspect` and the sealed `Inspector` interface expose immutable snapshots of
+  the compiled strategy and build counts for one marked rule without changing
+  its search representation.
   Lossy rules additionally report accounted memory, budget, item and distinct-
   value counts, and selected bucket granularity with explicit availability.
   Inspected rules also expose monotonic search, materialization, candidate-
@@ -27,6 +27,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `Inspector` now exposes only `Snapshot`. Build facts and runtime metrics are
+  read from the returned immutable `InspectorSnapshot`, keeping every field in
+  one observation tied to the same build generation and counter sample.
 - Per-node `Local` caches for equality, exclusion, ordered, and `CompareBy`
   rules can adapt from two to four bitmap entries when a repeatedly reused
   working set would otherwise thrash the cache. High-churn one-off values still
