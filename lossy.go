@@ -539,44 +539,77 @@ func (*lossyOrderedRule[T, V]) validate(T) error                                
 func (*lossyOrderedRule[T, V]) insert(T, uint32)                                      {}
 func (r *lossyOrderedRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool) {
 	dst.Or(r.wildcard)
-	value, ok := r.get(v)
-	if !ok || len(r.buckets) == 0 {
-		return
-	}
-	key, ok := orderedScalarKey(any(value))
+	first, last, ok := r.matchingBucketRange(v)
 	if !ok {
 		return
 	}
-	if r.dir == greaterThan {
-		if key < r.min || (!r.inclusive && key == r.min) {
-			return
-		}
-		last := uint64(len(r.buckets) - 1)
-		if key < r.max {
-			last = lossyOrderedBucket(key, r.min, r.width, uint64(len(r.buckets)))
-		}
-		for n := uint64(0); n <= last; n++ {
-			if b := r.buckets[n]; b != nil {
-				dst.Or(b)
-			}
-		}
-		return
-	}
-	if key > r.max || (!r.inclusive && key == r.max) {
-		return
-	}
-	first := uint64(0)
-	if key > r.min {
-		first = lossyOrderedBucket(key, r.min, r.width, uint64(len(r.buckets)))
-	}
-	for n := first; n < uint64(len(r.buckets)); n++ {
+	for n := first; n <= last; n++ {
 		if b := r.buckets[n]; b != nil {
 			dst.Or(b)
 		}
 	}
 }
-func (r *lossyOrderedRule[T, V]) cardinality(v T, p *bitmapPool) uint64 {
-	return measuredCardinality[T](r, v, p)
+func (r *lossyOrderedRule[T, V]) matchingBucketRange(v T) (uint64, uint64, bool) {
+	value, ok := r.get(v)
+	if !ok || len(r.buckets) == 0 {
+		return 0, 0, false
+	}
+	key, ok := orderedScalarKey(any(value))
+	if !ok {
+		return 0, 0, false
+	}
+	last := uint64(len(r.buckets) - 1)
+	if r.dir == greaterThan {
+		if key < r.min || (!r.inclusive && key == r.min) {
+			return 0, 0, false
+		}
+		if key < r.max {
+			last = lossyOrderedBucket(key, r.min, r.width, uint64(len(r.buckets)))
+		}
+		return 0, last, true
+	}
+	if key > r.max || (!r.inclusive && key == r.max) {
+		return 0, 0, false
+	}
+	first := uint64(0)
+	if key > r.min {
+		first = lossyOrderedBucket(key, r.min, r.width, uint64(len(r.buckets)))
+	}
+	return first, last, true
+}
+func (r *lossyOrderedRule[T, V]) estimateCardinality(v T) uint64 {
+	n := r.wildcard.GetCardinality()
+	first, last, ok := r.matchingBucketRange(v)
+	if !ok {
+		return n
+	}
+	for bucket := first; bucket <= last; bucket++ {
+		if bits := r.buckets[bucket]; bits != nil {
+			n += bits.GetCardinality()
+		}
+	}
+	return n
+}
+func (r *lossyOrderedRule[T, V]) isCardinalityZero(v T) bool {
+	return r.estimateCardinality(v) == 0
+}
+func (r *lossyOrderedRule[T, V]) matchesID(v T, id uint32) bool {
+	if r.wildcard.Contains(id) {
+		return true
+	}
+	first, last, ok := r.matchingBucketRange(v)
+	if !ok {
+		return false
+	}
+	for bucket := first; bucket <= last; bucket++ {
+		if bits := r.buckets[bucket]; bits != nil && bits.Contains(id) {
+			return true
+		}
+	}
+	return false
+}
+func (r *lossyOrderedRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
+	return r.estimateCardinality(v)
 }
 func (*lossyOrderedRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
 func (*lossyOrderedRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}

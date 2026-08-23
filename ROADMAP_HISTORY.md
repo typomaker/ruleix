@@ -618,3 +618,26 @@ the temporary analyzed-entry slice. Reproduce with:
 go test -run '^$' -bench '^BenchmarkLossyStreamingBuild$' \
   -benchmem -benchtime=3x -count=5 .
 ```
+
+## 2026-08-23: lossy ordered estimates in `All`
+
+Lossy ordered leaves now compute their exact result cardinality by summing the
+selected immutable bucket cardinalities and the disjoint wildcard posting.
+They also detect empty results and validate a candidate ID directly against
+the same bucket range. This lets the adaptive `All` planner order selective
+lossy range predicates before broad children, exit before materialization when
+the range is empty, and use candidate scanning at the existing measured
+four-ID threshold.
+
+`BenchmarkLossyAllSelectiveOrderedPlanning` isolates a 100K-rule, eight-child
+`All` whose lossy ordered leaf returns one candidate. On Apple M1 Max, medians
+of five runs improved from 1.421 us/op with the estimate hidden to 402 ns/op
+with adaptive planning. Allocation traffic fell from 628 B/op and 46
+allocations to 64 B/op and four allocations.
+
+Reproduce the comparison with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyAllSelectiveOrderedPlanning/' \
+  -benchmem -benchtime=200ms -count=5 .
+```

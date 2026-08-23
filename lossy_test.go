@@ -247,6 +247,78 @@ func BenchmarkLossyAllSelectivePlanning(b *testing.B) {
 	})
 }
 
+func TestLossyOrderedEstimateAndIDMatchAgreeWithSearch(t *testing.T) {
+	wildcard := roaring.BitmapOf(8)
+	rule := &lossyOrderedRule[lossyConstraint, int64]{
+		get:       func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
+		dir:       greaterThan,
+		inclusive: true,
+		wildcard:  wildcard,
+		min:       orderedScalarKeyOrPanic(int64(0)),
+		max:       orderedScalarKeyOrPanic(int64(29)),
+		width:     10,
+		buckets:   []*roaring.Bitmap{roaring.BitmapOf(0, 1), roaring.BitmapOf(2, 3), roaring.BitmapOf(4, 5)},
+	}
+	for _, query := range []lossyConstraint{{minimum: -1, present: true}, {minimum: 0, present: true}, {minimum: 15, present: true}, {minimum: 40, present: true}, {}} {
+		bits := roaring.New()
+		rule.search(query, bits, newBitmapPool())
+		require.Equal(t, bits.GetCardinality(), rule.estimateCardinality(query))
+		for id := uint32(0); id < 10; id++ {
+			require.Equal(t, bits.Contains(id), rule.matchesID(query, id))
+		}
+	}
+}
+
+func orderedScalarKeyOrPanic[V any](value V) uint64 {
+	key, ok := orderedScalarKey(any(value))
+	if !ok {
+		panic("unsupported test scalar")
+	}
+	return key
+}
+
+func BenchmarkLossyAllSelectiveOrderedPlanning(b *testing.B) {
+	const entries = 100_000
+	query := lossyConstraint{minimum: entries - 1, present: true}
+	minKey := orderedScalarKeyOrPanic(int64(0))
+	maxKey := orderedScalarKeyOrPanic(int64(entries - 1))
+	broad := roaring.New()
+	broad.AddRange(0, entries)
+	selective := &lossyOrderedRule[lossyConstraint, int64]{
+		get:       func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
+		dir:       lessThan,
+		inclusive: true,
+		wildcard:  roaring.New(),
+		min:       minKey,
+		max:       maxKey,
+		width:     1,
+		buckets:   make([]*roaring.Bitmap, entries),
+	}
+	selective.buckets[entries-1] = roaring.BitmapOf(entries - 1)
+	children := make([]Rule[lossyConstraint], 0, 8)
+	for range 7 {
+		children = append(children, &matchAllRule[lossyConstraint]{bits: broad})
+	}
+	children = append(children, selective)
+	root := &allRule[lossyConstraint]{children: children}
+	unknownChildren := append([]Rule[lossyConstraint](nil), children...)
+	unknownChildren[len(unknownChildren)-1] = &unknownEstimateRule[lossyConstraint]{child: selective}
+	unknownRoot := &allRule[lossyConstraint]{children: unknownChildren}
+
+	for name, candidate := range map[string]*allRule[lossyConstraint]{"Adaptive": root, "UnknownEstimate": unknownRoot} {
+		b.Run(name, func(b *testing.B) {
+			pool := newBitmapPool()
+			b.ReportAllocs()
+			for range b.N {
+				result := pool.get()
+				candidate.search(query, result, pool)
+				lossyPlannerBenchmarkCardinality = result.GetCardinality()
+				pool.put(result)
+			}
+		})
+	}
+}
+
 func TestLossyPolicyValidation(t *testing.T) {
 	get := func(v lossyConstraint) (string, bool) { return v.name, true }
 	empty := Zip([]lossyConstraint{}, []int{})
