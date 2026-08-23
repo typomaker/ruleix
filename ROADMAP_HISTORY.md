@@ -8,6 +8,26 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-23: cache-aware `All` priority experiment
+
+A `Local`-only planner candidate combined estimated candidate cardinality with
+cache state. For candidate scanning with `N` children, it ranked a miss as
+`cardinality * N` and a hit as `cardinality * (N - 1)`, approximating one
+materialization plus validation of every candidate against the remaining
+children. Bitmap execution kept cardinality-only ordering because it
+materializes every child regardless of their initial order.
+
+The candidate was not retained. On Apple M1 Max, an ordered `All` workload with
+an uncached three-ID child measured a median 1.95 us/search, 344 B/search, and 6
+allocations/search. Preferring an already cached four-ID child remained about
+1.95 us/search with the same bytes and allocations. An equality variant made
+the cached four-ID source roughly 1-2% slower than the uncached three-ID source.
+The cache lookup and bitmap copy were not cheaper enough to offset validating
+the extra candidate, while checking cache state added work to every warm
+`Local` ranking. Keep result cardinality as the priority unless a future cache
+representation can lend an immutable bitmap without copying or measured
+per-rule materialization costs provide a stronger signal.
+
 ## 2026-08-23: adaptive `Local` value-cache capacity
 
 Equality, exclusion, ordered, and `CompareBy` caches now start with two bitmap
