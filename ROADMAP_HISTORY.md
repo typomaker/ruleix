@@ -753,3 +753,15 @@ generation and counter sample even when rebuilds and searches continue.
 This restores coherent multi-field inspection without bringing back hidden
 pinning or a refresh lifecycle. A caller chooses the observation boundary
 explicitly by taking another snapshot.
+
+## 2026-08-24: diagnostics consolidated in Inspect
+
+`Index.Explain` and its `SearchPlan`, `PlanChild`, and `SearchStrategy` types
+were removed after `Inspect` gained coherent build facts, monotonic per-rule
+runtime counters, gauges, and a result-cardinality histogram. Diagnostics now
+describe aggregate behavior observed on real `Search`, `Visit`, and `Local`
+executions instead of running an extra query that materializes every direct
+`All` child and can therefore change the work being measured.
+
+This completes the roadmap consolidation step while preserving the ordinary
+schema hot path: only explicitly inspected rules receive observation wrappers.

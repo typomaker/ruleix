@@ -9,9 +9,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- `Index.Explain` provides opt-in planner estimates, actual child
-  cardinalities, execution ordering, selected search strategy, and result
-  cardinality without adding instrumentation to ordinary searches.
 - `Inspect` and the sealed `Inspector` interface expose immutable snapshots of
   the compiled strategy and build counts for one marked rule without changing
   its search representation.
@@ -70,6 +67,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 
+- `Index.Explain`, `SearchPlan`, `PlanChild`, and `SearchStrategy`. Per-rule
+  build facts and aggregate runtime behavior are available through `Inspect`.
 - `Inspector.Reset` and build-snapshot pinning. Inspector build facts now
   follow the latest successful `Build` automatically.
 

@@ -177,11 +177,12 @@ representations without adding inspection methods to every rule type.
 
 ## Relationship to diagnostics
 
-`Inspect` observes the built state of a specifically marked rule. A future
-`Explain` facility may instead describe planning and execution of a whole tree
-or search. They can share internal metadata, but neither API should require the
-other. Static build statistics should remain off the search hot path; dynamic
-performance counters should be explicitly opt-in if they add runtime cost.
+`Inspect` observes the built state and aggregate runtime behavior of a
+specifically marked rule. It deliberately does not explain an individual
+query: collecting actual child cardinalities would perform extra work and can
+misrepresent the execution strategy being diagnosed. Static build statistics
+remain off the search hot path, and runtime counters are enabled only for
+explicitly inspected rules.
 
 ## Validation
 

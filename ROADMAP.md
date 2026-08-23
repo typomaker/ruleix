@@ -93,10 +93,11 @@ candidate checks, and empty results. Gauges are cache entries and cache
 capacity. A histogram reports result cardinality. Counters remain monotonic
 for the inspector lifetime so callers can calculate interval deltas.
 
-Collect no per-query explanation. Remove `Index.Explain` and its plan types:
-callers need aggregate behavior they can act on, not a diagnostic search that
-performs extra work. Schemas without `Inspect` must retain the current hot
-path. Measure and document the overhead that explicitly inspected rules add;
+Collect no per-query explanation. `Index.Explain` and its plan types were
+removed: callers need aggregate behavior they can act on, not a diagnostic
+search that performs extra work. Schemas without `Inspect` must retain the
+current hot path. Measure and document the overhead that explicitly inspected
+rules add;
 avoid timers, forced bitmap materialization, exact rechecks of lossy results,
 and other metrics whose collection changes the selected execution strategy.
 
@@ -155,16 +156,13 @@ when production-shaped benchmarks demonstrate a material benefit:
 1. Extend cheap estimates and lazy, empty-aware `All` execution where
    benchmarks show a benefit.
 2. Benchmark and add candidate scanning below a measured crossover threshold.
-3. Consolidate diagnostics in `Inspect`: add build facts and per-rule runtime
-   counters, gauges, and result-cardinality histograms, then remove
-   query-specific `Index.Explain`.
-4. Improve `Lossy` allocation and representation selection for existing rules,
+3. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-5. Benchmark inspected-rule metric overhead and tune its per-rule `Local`
+4. Benchmark inspected-rule metric overhead and tune its per-rule `Local`
    cache accounting without adding mutable diagnostic state to the index.
-6. Tune the remaining `Local` admission, eviction, reset behavior, and retained
+5. Tune the remaining `Local` admission, eviction, reset behavior, and retained
    memory for production-shaped repeated and high-churn searches.
-7. Investigate generation-based updates only after rebuild benchmarks
+6. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
 
 For every optimization, compare production-shaped build time, search time,
