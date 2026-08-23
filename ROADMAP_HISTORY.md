@@ -8,6 +8,31 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: adaptive `Local` cache capacity for `Between`
+
+The specialized `Between` cache now follows the same measured two-to-four
+entry policy as the other value caches. It grows its small admission-key filter
+first, then adds two bitmap entries only after repeated admitted evictions prove
+that a reusable working set exceeds the initial capacity. Unique interval churn
+therefore retains no materialized result bitmap.
+
+On Apple M1 Max, medians of five 10K-rule runs measured 66.36 ns/search for a
+three-interval cycle and 68.38 ns/search for a four-interval cycle, versus
+approximately 2.93 us and 2.92 us with uncached `Index.Search`. Both warm
+`Local` cases used 16 B and one allocation per search instead of 8,270 B and
+five allocations. Unique churn remained equivalent to uncached search at about
+2.97 us with the same bytes and allocations. In the production-shaped
+four-query retained-memory case, the larger working set increased one live
+`Local` from approximately 71.9 KB to 105.3 KB; cold and two-query warm locals
+remained unchanged at approximately 1.7 KB and 88.4 KB.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLocalBetweenReuse$' \
+  -benchmem -benchtime=200ms -count=5 .
+```
+
 ## 2026-08-24: late `All` candidate bitmap reuse
 
 When bitmap execution discovers a small materialized child after one or more

@@ -1270,6 +1270,8 @@ func BenchmarkLocalBetweenReuse(b *testing.B) {
 	}{
 		{"Repeat", func(int) (int, int) { return 5_000, 7_000 }},
 		{"Alternate", func(n int) (int, int) { return 5_000, 7_000 + (n & 1) }},
+		{"Cycle3", func(n int) (int, int) { return 5_000, 7_000 + n%3 }},
+		{"Cycle4", func(n int) (int, int) { return 5_000, 7_000 + n%4 }},
 		{"HotWithInterlopers", func(n int) (int, int) { return 5_000, 7_000 + [...]int{0, 1, 0, 2}[n&3] }},
 		{"Churn", func(n int) (int, int) { return n % 5_000, 7_000 }},
 	}

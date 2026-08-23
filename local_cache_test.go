@@ -192,6 +192,64 @@ func TestBetweenCacheClearsMissingBounds(t *testing.T) {
 	require.Nil(t, cache.entries[0].until)
 }
 
+func TestBetweenCacheGrowsForRepeatedWorkingSet(t *testing.T) {
+	type interval struct{ from, until *int }
+	pointer := func(value int) *int { return &value }
+	schema := Between(
+		GetterFromPointer(func(value interval) *int { return value.from }),
+		GetterFromPointer(func(value interval) *int { return value.until }),
+		cmp.Compare[int],
+	)
+	index, err := New[interval, int](schema).Build(Zip(
+		[]interval{{from: pointer(0), until: pointer(100)}},
+		[]int{1},
+	))
+	require.NoError(t, err)
+	local := index.Local()
+	queries := [...]interval{
+		{from: pointer(10), until: pointer(20)},
+		{from: pointer(11), until: pointer(21)},
+		{from: pointer(12), until: pointer(22)},
+		{from: pointer(13), until: pointer(23)},
+	}
+
+	var matches []int
+	for range 6 {
+		for _, query := range queries {
+			matches = matches[:0]
+			local.Search(query, &matches)
+			require.Equal(t, []int{1}, matches)
+		}
+	}
+
+	rule := index.root.(*betweenRule[interval, int])
+	cache := local.pool.local[rule.nodeID].between.(*betweenCache[int])
+	require.Equal(t, 4, cache.capacity())
+	for _, query := range queries {
+		found := false
+		for i := 0; i < cache.capacity(); i++ {
+			entry := cache.entry(i)
+			found = found || entry.initialized && entry.from == *query.from && entry.until == *query.until
+		}
+		require.True(t, found)
+	}
+}
+
+func TestBetweenCacheDoesNotRetainChurnBitmaps(t *testing.T) {
+	cache := &betweenCache[int]{}
+	for value := 0; value < 100; value++ {
+		from := optionalValue[int]{value: value, ok: true}
+		until := optionalValue[int]{value: value + 10, ok: true}
+		require.False(t, cache.admit(from, until, cmp.Compare[int]))
+	}
+
+	require.Nil(t, cache.overflow)
+	for _, entry := range cache.entries {
+		require.False(t, entry.initialized)
+		require.Nil(t, entry.bits)
+	}
+}
+
 func TestValueBitmapCacheAdmitsOnlyRepeatedValues(t *testing.T) {
 	cache := &valueBitmapCache[int]{}
 	one := optionalValue[int]{value: 1, ok: true}

@@ -34,8 +34,17 @@ func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
 type betweenCache[V any] struct {
 	entries   [2]betweenCacheEntry[V]
 	seen      *betweenCacheSeen[V]
+	overflow  *betweenCacheOverflow[V]
 	next      uint8
+	pressure  uint8
+	misses    uint8
 	observers *cacheObservers
+}
+
+type betweenCacheOverflow[V any] struct {
+	entries [2]betweenCacheEntry[V]
+	used    [4]uint64
+	clock   uint64
 }
 
 func newBetweenCache[V any](pool *bitmapPool) *betweenCache[V] {
@@ -46,18 +55,20 @@ func newBetweenCache[V any](pool *bitmapPool) *betweenCache[V] {
 
 func (c *betweenCache[V]) releaseMetrics() {
 	entries := uint64(0)
-	for i := range c.entries {
-		if c.entries[i].initialized {
+	for i := 0; i < c.capacity(); i++ {
+		if c.entry(i).initialized {
 			entries++
 		}
 	}
+	capacity := uint64(c.capacity())
 	c.observers.addEntries(^uint64(entries - 1))
-	c.observers.addCapacity(^uint64(1))
+	c.observers.addCapacity(^uint64(capacity - 1))
 }
 
 type betweenCacheSeen[V any] struct {
-	entries [2]betweenCacheKey[V]
-	next    uint8
+	entries  [2]betweenCacheKey[V]
+	overflow *[2]betweenCacheKey[V]
+	next     uint8
 }
 
 type betweenCacheKey[V any] struct {
@@ -123,12 +134,17 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		node.between = cache
 	}
 	hasFrom, hasUntil := from.ok, until.ok
-	for i := range cache.entries {
-		cached := &cache.entries[i]
+	for i := 0; i < cache.capacity(); i++ {
+		cached := cache.entry(i)
 		if cached.initialized && cached.hasFrom == hasFrom && cached.hasUntil == hasUntil &&
 			(!hasFrom || r.compare(cached.from, from.value) == 0) &&
 			(!hasUntil || r.compare(cached.until, until.value) == 0) {
-			cache.next = uint8(1 - i)
+			if cache.overflow == nil {
+				cache.next = uint8(1 - i)
+			} else {
+				cache.overflow.clock++
+				cache.overflow.used[i] = cache.overflow.clock
+			}
 			cache.observers.hit()
 			dst.Or(cached.bits)
 			return
@@ -140,14 +156,27 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		return
 	}
 
-	cached := &cache.entries[cache.next]
+	if cache.overflow == nil && cache.entries[cache.next].initialized {
+		cache.pressure++
+		if cache.pressure >= 2 {
+			cache.grow()
+		}
+	}
+	index := int(cache.next)
+	if cache.overflow != nil {
+		index = cache.leastRecentlyUsed()
+		cache.overflow.clock++
+		cache.overflow.used[index] = cache.overflow.clock
+	} else {
+		cache.next = (cache.next + 1) % uint8(len(cache.entries))
+	}
+	cached := cache.entry(index)
 	cache.observers.admission()
 	if cached.initialized {
 		cache.observers.eviction()
 	} else {
 		cache.observers.addEntries(1)
 	}
-	cache.next = (cache.next + 1) % uint8(len(cache.entries))
 	if cached.bits == nil {
 		cached.bits = roaring.New()
 	} else {
@@ -172,22 +201,28 @@ func (c *betweenCache[V]) admit(from, until optionalValue[V], compare Compare[V]
 	if c.seen == nil {
 		c.seen = &betweenCacheSeen[V]{}
 	}
-	for i := range c.seen.entries {
-		entry := &c.seen.entries[i]
+	seenCapacity := c.seenCapacity()
+	for i := 0; i < seenCapacity; i++ {
+		entry := c.seenEntry(i)
 		if entry.initialized && entry.hasFrom == from.ok && entry.hasUntil == until.ok &&
 			(!from.ok || compare(entry.from, from.value) == 0) &&
 			(!until.ok || compare(entry.until, until.value) == 0) {
 			entry.initialized = false
 			var zero V
 			entry.from, entry.until = zero, zero
-			if !c.seen.entries[0].initialized && !c.seen.entries[1].initialized {
+			if c.seenEmpty() {
 				c.seen = nil
 			}
 			return true
 		}
 	}
-	entry := &c.seen.entries[c.seen.next]
-	c.seen.next = (c.seen.next + 1) % uint8(len(c.seen.entries))
+	c.misses++
+	if c.misses >= 8 && c.seen.overflow == nil {
+		c.seen.overflow = &[2]betweenCacheKey[V]{}
+		seenCapacity = 4
+	}
+	entry := c.seenEntry(int(c.seen.next))
+	c.seen.next = (c.seen.next + 1) % uint8(seenCapacity)
 	entry.initialized = true
 	entry.hasFrom, entry.hasUntil = from.ok, until.ok
 	var zero V
@@ -199,6 +234,69 @@ func (c *betweenCache[V]) admit(from, until optionalValue[V], compare Compare[V]
 		entry.until = until.value
 	}
 	return false
+}
+
+func (c *betweenCache[V]) capacity() int {
+	if c.overflow != nil {
+		return 4
+	}
+	return 2
+}
+
+func (c *betweenCache[V]) entry(index int) *betweenCacheEntry[V] {
+	if index < len(c.entries) {
+		return &c.entries[index]
+	}
+	return &c.overflow.entries[index-len(c.entries)]
+}
+
+func (c *betweenCache[V]) grow() {
+	c.overflow = &betweenCacheOverflow[V]{clock: 2}
+	// next is the least recently used entry in the two-slot cache.
+	c.overflow.used[c.next] = 1
+	c.overflow.used[1-c.next] = 2
+	c.next = 0
+	c.observers.addCapacity(2)
+}
+
+func (c *betweenCache[V]) leastRecentlyUsed() int {
+	oldest := 0
+	for i := 1; i < c.capacity(); i++ {
+		entry := c.entry(i)
+		if !entry.initialized {
+			return i
+		}
+		if c.overflow.used[i] < c.overflow.used[oldest] {
+			oldest = i
+		}
+	}
+	return oldest
+}
+
+func (c *betweenCache[V]) seenCapacity() int {
+	if c.seen.overflow != nil {
+		return 4
+	}
+	return 2
+}
+
+func (c *betweenCache[V]) seenEntry(index int) *betweenCacheKey[V] {
+	if index < len(c.seen.entries) {
+		return &c.seen.entries[index]
+	}
+	return &c.seen.overflow[index-len(c.seen.entries)]
+}
+
+func (c *betweenCache[V]) seenEmpty() bool {
+	for i := 0; i < 2; i++ {
+		if c.seen.entries[i].initialized {
+			return false
+		}
+		if c.seen.overflow != nil && c.seen.overflow[i].initialized {
+			return false
+		}
+	}
+	return true
 }
 func (r *betweenRule[T, V]) matchesID(v T, id uint32) bool {
 	return r.from.matchesID(v, id) && r.until.matchesID(v, id)

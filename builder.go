@@ -195,9 +195,10 @@ func (ix *Index[C, ID]) Search(value C, dst *[]ID) bool {
 	return ix.search(value, dst, ix.pool)
 }
 
-// Local returns a search context that caches up to two recently repeated
-// intermediate bitmap results per filter node. A value is admitted after its
-// second recent use, so one-off queries do not retain their result bitmaps. It
+// Local returns a search context that initially caches up to two recently
+// repeated intermediate bitmap results per filter node and can adapt to four
+// for a repeatedly reused working set. A value is admitted after its second
+// recent use, so one-off queries do not retain their result bitmaps. It
 // can reduce repeated work when adjacent searches share constraint values, at
 // the cost of retaining admitted bitmaps for the lifetime of the Local.
 //

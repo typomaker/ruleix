@@ -34,7 +34,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `Inspector` now exposes only `Snapshot`. Build facts and runtime metrics are
   read from the returned immutable `InspectorSnapshot`, keeping every field in
   one observation tied to the same build generation and counter sample.
-- Per-node `Local` caches for equality, exclusion, ordered, and `CompareBy`
+- Per-node `Local` caches for equality, exclusion, ordered, `CompareBy`, and
+  `Between`
   rules can adapt from two to four bitmap entries when a repeatedly reused
   working set would otherwise thrash the cache. High-churn one-off values still
   retain no materialized bitmaps.
