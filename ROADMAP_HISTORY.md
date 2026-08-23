@@ -8,6 +8,26 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: late `All` candidate bitmap reuse
+
+When bitmap execution discovers a small materialized child after one or more
+broader children, direct candidate validation now checks those earlier
+children against their already materialized bitmaps. Previously it invoked
+their rule matchers again, repeating representation-specific lookup work. Later
+unmaterialized children remain lazy, and inspected rules retain their candidate-
+check accounting.
+
+On Apple M1 Max, medians of five isolated runs improved from 347.4 ns to
+335.7 ns per search (3.4%), with allocations unchanged at 120 B and eight
+allocations.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllLateMaterializedCandidateFallback$' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
 ## 2026-08-24: lossy equality collision diagnostics
 
 Grouped-hash equality representations now publish a build-time estimated

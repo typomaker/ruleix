@@ -279,6 +279,13 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 					if j == i {
 						continue
 					}
+					if ranked.bits != nil {
+						observeCandidateCheck(r.children[ranked.childIdx])
+						if !ranked.bits.Contains(id) {
+							return true
+						}
+						continue
+					}
 					if !matchesRuleID(r.children[ranked.childIdx], v, id, pool) {
 						return true
 					}
@@ -335,6 +342,12 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 		}
 	}
 	return true
+}
+
+func observeCandidateCheck[T any](rule Rule[T]) {
+	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
+		observed.metrics.candidateChecks.Add(1)
+	}
 }
 
 func observeRangePruning(metrics *inspectorRuntime) {

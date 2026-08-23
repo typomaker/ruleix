@@ -301,3 +301,26 @@ func TestAllSwitchesToCandidateScanAfterSmallMaterializedResult(t *testing.T) {
 	require.Equal(t, 1, second.matchIDCalls)
 	require.Equal(t, 1, third.matchIDCalls)
 }
+
+func TestAllReusesEarlierMaterializedResultsAfterCandidateSwitch(t *testing.T) {
+	first := &countingRule{ids: []uint32{1, 2, 3, 4, 5}}
+	selective := &countingRule{ids: []uint32{2}}
+	third := &countingRule{ids: []uint32{2, 3, 4, 5, 6}}
+	rule := All[int](
+		&conservativeEstimateRule{countingRule: first},
+		&conservativeEstimateRule{countingRule: selective},
+		&conservativeEstimateRule{countingRule: third},
+	)
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	rule.search(0, dst, pool)
+
+	require.Equal(t, []uint32{2}, dst.ToArray())
+	require.Equal(t, 1, first.searchCalls)
+	require.Zero(t, first.matchIDCalls)
+	require.Equal(t, 1, selective.searchCalls)
+	require.Zero(t, third.searchCalls)
+	require.Equal(t, 1, third.matchIDCalls)
+}

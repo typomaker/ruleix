@@ -63,6 +63,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `All` switches from bitmap execution to direct ID validation when a child's
   actual materialized result falls below the measured candidate threshold,
   covering predicates with conservative or unavailable cheap estimates.
+- Late `All` candidate fallback reuses already materialized child bitmaps for
+  ID validation instead of repeating their rule-specific lookup work.
 - Small `All` candidate sets materialize only the most selective child and
   validate remaining predicates directly by internal rule ID.
 - `All` switches from direct candidate validation to bitmap intersection above

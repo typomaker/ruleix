@@ -142,6 +142,29 @@ func BenchmarkAllMaterializedCandidateFallback(b *testing.B) {
 	}
 }
 
+// BenchmarkAllLateMaterializedCandidateFallback covers a small result found
+// after a broad child has already been materialized. The executor can validate
+// that earlier child from its bitmap instead of invoking its rule matcher.
+func BenchmarkAllLateMaterializedCandidateFallback(b *testing.B) {
+	broad := roaring.New()
+	broad.AddRange(0, 100_000)
+	selective := roaring.BitmapOf(7)
+	rule := &allRule[int]{children: []Rule[int]{
+		&unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: broad}},
+		&unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: selective}},
+		&unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: broad}},
+		&unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: broad}},
+	}}
+	pool := newBitmapPool()
+	dst := roaring.New()
+	b.ReportAllocs()
+	for range b.N {
+		dst.Clear()
+		rule.search(0, dst, pool)
+	}
+	plannerBenchmarkCardinality = dst.GetCardinality()
+}
+
 func plannerBenchmarkPostings(children int, cardinality uint64, sparse bool) []*roaring.Bitmap {
 	postings := make([]*roaring.Bitmap, children)
 	step := uint64(1)
