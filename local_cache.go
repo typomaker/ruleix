@@ -10,13 +10,97 @@ type localNodeCache struct {
 	exclusion any
 }
 
+type cacheObservers struct {
+	items [8]*inspectorRuntime
+	n     uint8
+}
+
+func (o *cacheObservers) push(metrics *inspectorRuntime) {
+	if int(o.n) == len(o.items) {
+		return
+	}
+	o.items[o.n] = metrics
+	o.n++
+}
+func (o *cacheObservers) pop() {
+	if o.n == 0 {
+		return
+	}
+	o.n--
+	o.items[o.n] = nil
+}
+func (o *cacheObservers) clone() *cacheObservers {
+	if o.n == 0 {
+		return nil
+	}
+	copy := *o
+	return &copy
+}
+func (o *cacheObservers) each(yield func(*inspectorRuntime)) {
+	if o == nil {
+		return
+	}
+	for i := range int(o.n) {
+		yield(o.items[i])
+	}
+}
+func (o *cacheObservers) hit() {
+	if o == nil {
+		return
+	}
+	for i := range int(o.n) {
+		o.items[i].cacheHits.Add(1)
+	}
+}
+func (o *cacheObservers) miss() {
+	if o == nil {
+		return
+	}
+	for i := range int(o.n) {
+		o.items[i].cacheMisses.Add(1)
+	}
+}
+func (o *cacheObservers) admission() {
+	if o == nil {
+		return
+	}
+	for i := range int(o.n) {
+		o.items[i].cacheAdmissions.Add(1)
+	}
+}
+func (o *cacheObservers) eviction() {
+	if o == nil {
+		return
+	}
+	for i := range int(o.n) {
+		o.items[i].cacheEvictions.Add(1)
+	}
+}
+func (o *cacheObservers) addEntries(n uint64) {
+	if o == nil {
+		return
+	}
+	for i := range int(o.n) {
+		o.items[i].cacheEntries.Add(n)
+	}
+}
+func (o *cacheObservers) addCapacity(n uint64) {
+	if o == nil {
+		return
+	}
+	for i := range int(o.n) {
+		o.items[i].cacheCapacity.Add(n)
+	}
+}
+
 type valueBitmapCache[V any] struct {
-	entries  [2]valueBitmapCacheEntry[V]
-	seen     *valueBitmapSeen[V]
-	overflow *valueBitmapCacheOverflow[V]
-	next     uint8
-	pressure uint8
-	misses   uint8
+	entries   [2]valueBitmapCacheEntry[V]
+	seen      *valueBitmapSeen[V]
+	overflow  *valueBitmapCacheOverflow[V]
+	next      uint8
+	pressure  uint8
+	misses    uint8
+	observers *cacheObservers
 }
 
 type valueBitmapCacheOverflow[V any] struct {
@@ -44,6 +128,24 @@ type valueBitmapCacheEntry[V any] struct {
 	bits        *roaring.Bitmap
 }
 
+func newValueBitmapCache[V any](pool *bitmapPool) *valueBitmapCache[V] {
+	c := &valueBitmapCache[V]{observers: pool.observers.clone()}
+	c.observers.addCapacity(2)
+	return c
+}
+
+func (c *valueBitmapCache[V]) releaseMetrics() {
+	entries := uint64(0)
+	for i := 0; i < c.capacity(); i++ {
+		if c.entry(i).initialized {
+			entries++
+		}
+	}
+	capacity := uint64(c.capacity())
+	c.observers.addEntries(^uint64(entries - 1))
+	c.observers.addCapacity(^uint64(capacity - 1))
+}
+
 func (c *valueBitmapCache[V]) lookup(value optionalValue[V], equal func(V, V) bool) (*roaring.Bitmap, bool) {
 	hasValue, capacity := value.ok, c.capacity()
 	for i := 0; i < capacity; i++ {
@@ -55,9 +157,11 @@ func (c *valueBitmapCache[V]) lookup(value optionalValue[V], equal func(V, V) bo
 				c.overflow.clock++
 				c.overflow.used[i] = c.overflow.clock
 			}
+			c.observers.hit()
 			return entry.bits, true
 		}
 	}
+	c.observers.miss()
 	return nil, false
 }
 
@@ -77,6 +181,11 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V]) *roaring.Bitmap {
 		c.next = (c.next + 1) % uint8(len(c.entries))
 	}
 	entry := c.entry(index)
+	if entry.initialized {
+		c.observers.eviction()
+	} else {
+		c.observers.addEntries(1)
+	}
 	if entry.bits == nil {
 		entry.bits = roaring.New()
 	} else {
@@ -113,6 +222,7 @@ func (c *valueBitmapCache[V]) grow() {
 	c.overflow.used[c.next] = 1
 	c.overflow.used[1-c.next] = 2
 	c.next = 0
+	c.observers.addCapacity(2)
 }
 
 func (c *valueBitmapCache[V]) leastRecentlyUsed() int {
@@ -149,6 +259,7 @@ func (c *valueBitmapCache[V]) admit(value optionalValue[V], equal func(V, V) boo
 			if c.seenEmpty() {
 				c.seen = nil
 			}
+			c.observers.admission()
 			return true
 		}
 	}

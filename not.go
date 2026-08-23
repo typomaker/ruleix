@@ -53,7 +53,7 @@ func (r *notRule[T, V]) exclude(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	node := &pool.local[int(r.nodeID)]
 	cache, _ := node.exclusion.(*valueBitmapCache[V])
 	if cache == nil {
-		cache = &valueBitmapCache[V]{}
+		cache = newValueBitmapCache[V](pool)
 		node.exclusion = cache
 	}
 	if bits, found := comparableValueCacheLookup(cache, value); found {

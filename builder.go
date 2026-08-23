@@ -225,6 +225,7 @@ func (local *Local[C, ID]) Search(value C, dst *[]ID) bool {
 // usable. Call it when a worker becomes idle or after an unusually broad query
 // to return the context to its small cold-memory footprint.
 func (local *Local[C, ID]) Reset() {
+	local.pool.releaseLocalMetrics()
 	local.pool = newLocalBitmapPool(local.index.nodes)
 }
 

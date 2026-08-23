@@ -178,6 +178,8 @@ type Histogram struct {
 
 type inspectorRuntime struct {
 	searches, materializations, candidateChecks, emptyResults atomic.Uint64
+	cacheHits, cacheMisses, cacheAdmissions, cacheEvictions   atomic.Uint64
+	cacheEntries, cacheCapacity                               atomic.Uint64
 	cardinality                                               [6]atomic.Uint64
 }
 
@@ -232,8 +234,12 @@ func (i *inspector) Snapshot() InspectorSnapshot {
 	}
 	b := &i.state.runtime.cardinality
 	return InspectorSnapshot{build: snapshot.snapshot, runtime: inspectorRuntimeSnapshot{
-		search: i.state.runtime.searches.Load(), materialization: i.state.runtime.materializations.Load(),
-		candidateCheck: i.state.runtime.candidateChecks.Load(), emptyResult: i.state.runtime.emptyResults.Load(),
+		search:   i.state.runtime.searches.Load(),
+		cacheHit: i.state.runtime.cacheHits.Load(), cacheMiss: i.state.runtime.cacheMisses.Load(),
+		cacheAdmission: i.state.runtime.cacheAdmissions.Load(), cacheEviction: i.state.runtime.cacheEvictions.Load(),
+		cacheEntry: i.state.runtime.cacheEntries.Load(), cacheCapacity: i.state.runtime.cacheCapacity.Load(),
+		materialization: i.state.runtime.materializations.Load(),
+		candidateCheck:  i.state.runtime.candidateChecks.Load(), emptyResult: i.state.runtime.emptyResults.Load(),
 		cardinality: Histogram{b[0].Load(), b[1].Load(), b[2].Load(), b[3].Load(), b[4].Load(), b[5].Load()},
 	}}
 }
@@ -304,6 +310,10 @@ type inspectedExclusionRule[T any] struct {
 }
 
 func (r *inspectedExclusionRule[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	if p.local != nil {
+		p.observers.push(r.metrics)
+		defer p.observers.pop()
+	}
 	r.metrics.searches.Add(1)
 	r.metrics.materializations.Add(1)
 	before := dst.GetCardinality()
@@ -336,6 +346,10 @@ func (r *inspectedRuntimeRule[T]) cardinality(v T, p *bitmapPool) uint64 {
 	return measuredCardinality[T](r, v, p)
 }
 func (r *inspectedRuntimeRule[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	if p.local != nil {
+		p.observers.push(r.metrics)
+		defer p.observers.pop()
+	}
 	r.metrics.searches.Add(1)
 	r.metrics.materializations.Add(1)
 	before := dst.GetCardinality()

@@ -145,7 +145,7 @@ func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool)
 	node := &pool.local[int(r.nodeID)]
 	cache, _ := node.compareBy.(*valueBitmapCache[V])
 	if cache == nil {
-		cache = &valueBitmapCache[V]{}
+		cache = newValueBitmapCache[V](pool)
 		node.compareBy = cache
 	}
 	if bits, found := comparedValueCacheLookup(cache, value, r.compare); found {

@@ -250,7 +250,7 @@ func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	node := &pool.local[int(r.nodeID)]
 	cache, _ := node.ordered.(*valueBitmapCache[V])
 	if cache == nil {
-		cache = &valueBitmapCache[V]{}
+		cache = newValueBitmapCache[V](pool)
 		node.ordered = cache
 	}
 	if bits, found := comparedValueCacheLookup(cache, value, r.compare); found {

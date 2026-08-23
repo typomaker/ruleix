@@ -32,9 +32,27 @@ type betweenRule[T any, V any] struct {
 func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
 
 type betweenCache[V any] struct {
-	entries [2]betweenCacheEntry[V]
-	seen    *betweenCacheSeen[V]
-	next    uint8
+	entries   [2]betweenCacheEntry[V]
+	seen      *betweenCacheSeen[V]
+	next      uint8
+	observers *cacheObservers
+}
+
+func newBetweenCache[V any](pool *bitmapPool) *betweenCache[V] {
+	c := &betweenCache[V]{observers: pool.observers.clone()}
+	c.observers.addCapacity(2)
+	return c
+}
+
+func (c *betweenCache[V]) releaseMetrics() {
+	entries := uint64(0)
+	for i := range c.entries {
+		if c.entries[i].initialized {
+			entries++
+		}
+	}
+	c.observers.addEntries(^uint64(entries - 1))
+	c.observers.addCapacity(^uint64(1))
 }
 
 type betweenCacheSeen[V any] struct {
@@ -101,7 +119,7 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	node := &pool.local[int(r.nodeID)]
 	cache, _ := node.between.(*betweenCache[V])
 	if cache == nil {
-		cache = &betweenCache[V]{}
+		cache = newBetweenCache[V](pool)
 		node.between = cache
 	}
 	hasFrom, hasUntil := from.ok, until.ok
@@ -111,16 +129,24 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 			(!hasFrom || r.compare(cached.from, from.value) == 0) &&
 			(!hasUntil || r.compare(cached.until, until.value) == 0) {
 			cache.next = uint8(1 - i)
+			cache.observers.hit()
 			dst.Or(cached.bits)
 			return
 		}
 	}
+	cache.observers.miss()
 	if !cache.admit(from, until, r.compare) {
 		r.searchUncached(v, dst, pool)
 		return
 	}
 
 	cached := &cache.entries[cache.next]
+	cache.observers.admission()
+	if cached.initialized {
+		cache.observers.eviction()
+	} else {
+		cache.observers.addEntries(1)
+	}
 	cache.next = (cache.next + 1) % uint8(len(cache.entries))
 	if cached.bits == nil {
 		cached.bits = roaring.New()

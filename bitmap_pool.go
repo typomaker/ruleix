@@ -10,6 +10,7 @@ type bitmapPool struct {
 	pool       sync.Pool
 	rankedPool sync.Pool
 	local      []localNodeCache
+	observers  cacheObservers
 }
 
 // maxPooledBitmapBytes bounds the live Roaring container memory represented by
@@ -44,6 +45,21 @@ func newLocalBitmapPool(nodes int) *bitmapPool {
 	p := newBitmapPool()
 	p.local = make([]localNodeCache, nodes)
 	return p
+}
+func (p *bitmapPool) releaseLocalMetrics() {
+	for i := range p.local {
+		node := &p.local[i]
+		releaseCacheMetrics(node.equality)
+		releaseCacheMetrics(node.ordered)
+		releaseCacheMetrics(node.compareBy)
+		releaseCacheMetrics(node.between)
+		releaseCacheMetrics(node.exclusion)
+	}
+}
+func releaseCacheMetrics(raw any) {
+	if cache, ok := raw.(interface{ releaseMetrics() }); ok {
+		cache.releaseMetrics()
+	}
 }
 func (p *bitmapPool) get() *roaring.Bitmap {
 	bm := p.pool.Get().(*roaring.Bitmap)

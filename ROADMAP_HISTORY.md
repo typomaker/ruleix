@@ -790,7 +790,23 @@ go test -run '^$' -bench '^BenchmarkInspectRuntimeOverhead/' \
   -benchmem -benchtime=300ms -count=5 .
 ```
 
-Cache hit, miss, admission, eviction, entry, and capacity accounting remains
-the next inspector step. Its implementation must preserve the zero-allocation
-warm `Local` leaf path measured here and keep schemas without `Inspect`
-unchanged.
+## 2026-08-24: inspected `Local` cache accounting
+
+Explicitly inspected rules now count `Local` cache hits, misses, admissions,
+and evictions. Live gauges aggregate retained bitmap entries and entry capacity
+across inspected caches; `Local.Reset` releases that cache's contribution while
+the event counters remain monotonic. Observation is scoped to the inspected
+subtree and leaves ordinary index searches without atomic counter traffic.
+
+The existing inspector overhead benchmark continues to report zero allocation
+bytes and zero allocations for both ordinary and inspected warm `Local`
+equality searches. On Apple M1 Max, medians of three runs were 41.05 ns/search
+without inspection and 50.68 ns/search with cache accounting.
+
+Reproduce with:
+
+```sh
+go test -run '^$' \
+  -bench '^BenchmarkInspectRuntimeOverhead/Local/(Leaf|InspectedLeaf)$' \
+  -benchmem -benchtime=300ms -count=3 .
+```

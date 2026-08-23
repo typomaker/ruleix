@@ -101,6 +101,37 @@ func TestInspectLifecycleTracksLatestSuccessfulBuild(t *testing.T) {
 	require.Equal(t, uint64(1), first.EntryCount(), "a captured snapshot remains on its build generation")
 }
 
+func TestInspectReportsLocalCacheMetricsAndResetGauges(t *testing.T) {
+	var inspector Inspector
+	index, err := New[inspectConstraint, string](Inspect(
+		&inspector,
+		Include(func(v inspectConstraint) (string, bool) { return v.country, true }),
+	)).Build(Zip(
+		[]inspectConstraint{{country: "DE"}, {country: "US"}, {country: "FR"}},
+		[]string{"one", "two", "three"},
+	))
+	require.NoError(t, err)
+	local := index.Local()
+	var dst []string
+	for range 3 {
+		dst = dst[:0]
+		local.Search(inspectConstraint{country: "DE"}, &dst)
+	}
+	snapshot := inspector.Snapshot()
+	require.Equal(t, uint64(1), snapshot.CacheHit())
+	require.Equal(t, uint64(2), snapshot.CacheMiss())
+	require.Equal(t, uint64(1), snapshot.CacheAdmission())
+	require.Zero(t, snapshot.CacheEviction())
+	require.Equal(t, uint64(1), snapshot.CacheEntry())
+	require.Equal(t, uint64(2), snapshot.CacheCapacity())
+
+	local.Reset()
+	snapshot = inspector.Snapshot()
+	require.Equal(t, uint64(1), snapshot.CacheAdmission(), "counters remain monotonic")
+	require.Zero(t, snapshot.CacheEntry())
+	require.Zero(t, snapshot.CacheCapacity())
+}
+
 func TestInspectRejectsOneInspectorOnMultipleRules(t *testing.T) {
 	var inspector Inspector
 	inspected := Inspect(&inspector, Include(func(v inspectConstraint) (string, bool) { return v.country, true }))
