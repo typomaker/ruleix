@@ -8,6 +8,34 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-23: adaptive `Local` value-cache capacity
+
+Equality, exclusion, ordered, and `CompareBy` caches now start with two bitmap
+entries and grow to four only after repeated misses demonstrate a reusable
+working set. The admission-key filter grows first; unique churn therefore
+retains four small keys but no materialized bitmap. Two subsequent admitted
+evictions trigger bitmap growth, avoiding expansion from a raw low hit rate.
+
+On Apple M1 Max, medians of five 10K-rule ordered runs improved a three-value
+cycle from 48.3 us and 40,543 B/search to 18.1 us and 1,195 B/search, and a
+four-value cycle from 48.4 us and 40,543 B/search to 18.1 us and 1,198 B/search.
+Both stayed at 3 allocations/search after warming instead of 14. Repeat,
+alternate, and hot-with-interlopers results remained near 18.2 us; unique churn
+remained near uncached search at 43.1 us with no retained bitmap. In the
+production-shaped live-cache benchmark, the four-query case retained about
+71.8 KB per `Local`; cold locals remained at 1,664 bytes.
+
+Reproduce with:
+
+```sh
+go test -run '^$' \
+  -bench '^BenchmarkLocalOrderedReuse/(Cycle3|Cycle4)/(Index|Local)$' \
+  -benchmem -benchtime=300ms -count=5 .
+go test -run '^$' \
+  -bench '^BenchmarkProductionShapeLocalRetainedMemory/(Cold|Warm|Adaptive)$' \
+  -benchtime=50x -count=5 .
+```
+
 ## 2026-08-22: production-shaped baseline
 
 The existing 38,098-rule benchmark is the initial reproducible baseline for the

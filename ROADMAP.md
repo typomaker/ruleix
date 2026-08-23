@@ -150,11 +150,7 @@ when production-shaped benchmarks demonstrate a material benefit:
 4. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
 5. Add per-rule `Local` cache hit and miss accounting for benchmark and
-   diagnostic use without adding shared mutable state to the index. Evaluate
-   dynamically increasing cache capacity for rules with a low measured cache
-   hit rate, and retain the behavior only if repeated-value, alternating-value,
-   and high-churn benchmarks show better latency or allocation behavior at an
-   acceptable retained-memory cost.
+   diagnostic use without adding shared mutable state to the index.
 6. Tune the remaining `Local` admission, eviction, reset behavior, and retained
    memory for production-shaped repeated and high-churn searches.
 7. Investigate generation-based updates only after rebuild benchmarks

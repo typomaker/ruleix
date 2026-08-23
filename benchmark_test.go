@@ -1134,6 +1134,8 @@ func BenchmarkLocalOrderedReuse(b *testing.B) {
 	}{
 		{"Repeat", func(int) int { return benchmarkEntries / 2 }},
 		{"Alternate", func(n int) int { return benchmarkEntries/2 + (n & 1) }},
+		{"Cycle3", func(n int) int { return benchmarkEntries/2 + n%3 }},
+		{"Cycle4", func(n int) int { return benchmarkEntries/2 + n%4 }},
 		{"HotWithInterlopers", func(n int) int { return benchmarkEntries/2 + [...]int{0, 1, 0, 2}[n&3] }},
 		{"Churn", func(n int) int { return n % benchmarkEntries }},
 	}

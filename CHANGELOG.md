@@ -24,6 +24,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Per-node `Local` caches for equality, exclusion, ordered, and `CompareBy`
+  rules can adapt from two to four bitmap entries when a repeatedly reused
+  working set would otherwise thrash the cache. High-churn one-off values still
+  retain no materialized bitmaps.
 - Aggregate `Lossy(All(...))` limits now form a pooled budget: minimum viable
   child representations are reserved first and unused share bytes are
   deterministically redistributed to improve other children.

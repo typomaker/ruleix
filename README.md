@@ -274,9 +274,11 @@ for _, query := range queries {
 }
 ```
 
-`Local` keeps up to two recent intermediate bitmaps per filter node. This makes
-memory use bounded while covering repeated and alternating values. The cached
-bitmaps remain allocated until the `Local` becomes unreachable. Call
+`Local` initially keeps up to two recent intermediate bitmaps per filter node.
+Value-based caches can grow to four after repeated misses prove that a larger
+working set is being reused; one-off values never cause bitmap growth. This
+keeps memory bounded while covering repeated, alternating, and small cyclic
+workloads. The cached bitmaps remain allocated until the `Local` becomes unreachable. Call
 `local.Reset()` when a worker becomes idle to release cached results while
 keeping the same search context usable.
 

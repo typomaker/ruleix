@@ -433,7 +433,7 @@ func benchmarkProductionRetainedMemory(
 // BenchmarkProductionShapeLocalRetainedMemory measures the incremental live
 // heap of one Local while keeping its shared Index and caller-owned result
 // storage in the baseline. Warm alternates the same two queries as the search
-// benchmark, filling both entries of each per-node cache.
+// benchmark, while Adaptive cycles four queries to exercise cache growth.
 func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
@@ -445,13 +445,15 @@ func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 	queries := [...]productionBenchmarkConstraint{
 		productionBenchmarkQuery(100),
 		productionBenchmarkQuery(101),
+		productionBenchmarkQuery(102),
+		productionBenchmarkQuery(103),
 	}
 
-	for _, warm := range []bool{false, true} {
-		name := "Cold"
-		if warm {
-			name = "Warm"
-		}
+	for _, mode := range []struct {
+		name    string
+		queries int
+	}{{"Cold", 0}, {"Warm", 2}, {"Adaptive", 4}} {
+		name := mode.name
 		b.Run(name, func(b *testing.B) {
 			locals := make([]*ruleix.Local[productionBenchmarkConstraint, productionBenchmarkID], b.N)
 			matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
@@ -462,9 +464,9 @@ func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 			b.ResetTimer()
 			for i := range b.N {
 				local := index.Local()
-				if warm {
-					for range 2 {
-						for _, query := range queries {
+				if mode.queries > 0 {
+					for range 6 {
+						for _, query := range queries[:mode.queries] {
 							matches = matches[:0]
 							local.Search(query, &matches)
 						}

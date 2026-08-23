@@ -141,6 +141,45 @@ func TestValueBitmapCacheAdmitsOnlyRepeatedValues(t *testing.T) {
 	require.False(t, comparableValueCacheAdmit(cache, one))
 }
 
+func TestValueBitmapCacheGrowsForRepeatedWorkingSet(t *testing.T) {
+	cache := &valueBitmapCache[int]{}
+	values := [...]optionalValue[int]{
+		{value: 1, ok: true}, {value: 2, ok: true},
+		{value: 3, ok: true}, {value: 4, ok: true},
+	}
+
+	for range 6 {
+		for _, value := range values {
+			if _, found := comparableValueCacheLookup(cache, value); found {
+				continue
+			}
+			if comparableValueCacheAdmit(cache, value) {
+				cache.replace(value)
+			}
+		}
+	}
+
+	require.NotNil(t, cache.overflow)
+	for _, value := range values {
+		_, found := comparableValueCacheLookup(cache, value)
+		require.True(t, found)
+	}
+}
+
+func TestValueBitmapCacheDoesNotRetainChurnBitmaps(t *testing.T) {
+	cache := &valueBitmapCache[int]{}
+	for value := 0; value < 100; value++ {
+		admitted := comparableValueCacheAdmit(cache, optionalValue[int]{value: value, ok: true})
+		require.False(t, admitted)
+	}
+
+	require.Nil(t, cache.overflow)
+	for _, entry := range cache.entries {
+		require.False(t, entry.initialized)
+		require.Nil(t, entry.bits)
+	}
+}
+
 func TestLocalAdmitsEqualityBitmapAfterSecondUse(t *testing.T) {
 	type constraint struct{ value int }
 	index, err := New[constraint, int](Include(func(value constraint) (int, bool) {

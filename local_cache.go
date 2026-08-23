@@ -11,14 +11,24 @@ type localNodeCache struct {
 }
 
 type valueBitmapCache[V any] struct {
+	entries  [2]valueBitmapCacheEntry[V]
+	seen     *valueBitmapSeen[V]
+	overflow *valueBitmapCacheOverflow[V]
+	next     uint8
+	pressure uint8
+	misses   uint8
+}
+
+type valueBitmapCacheOverflow[V any] struct {
 	entries [2]valueBitmapCacheEntry[V]
-	seen    *valueBitmapSeen[V]
-	next    uint8
+	used    [4]uint64
+	clock   uint64
 }
 
 type valueBitmapSeen[V any] struct {
-	entries [2]valueBitmapCacheKey[V]
-	next    uint8
+	entries  [2]valueBitmapCacheKey[V]
+	overflow *[2]valueBitmapCacheKey[V]
+	next     uint8
 }
 
 type valueBitmapCacheKey[V any] struct {
@@ -35,11 +45,16 @@ type valueBitmapCacheEntry[V any] struct {
 }
 
 func (c *valueBitmapCache[V]) lookup(value optionalValue[V], equal func(V, V) bool) (*roaring.Bitmap, bool) {
-	hasValue := value.ok
-	for i := range c.entries {
-		entry := &c.entries[i]
+	hasValue, capacity := value.ok, c.capacity()
+	for i := 0; i < capacity; i++ {
+		entry := c.entry(i)
 		if entry.initialized && entry.hasValue == hasValue && (!hasValue || equal(entry.value, value.value)) {
-			c.next = uint8(1 - i)
+			if c.overflow == nil {
+				c.next = uint8(1 - i)
+			} else {
+				c.overflow.clock++
+				c.overflow.used[i] = c.overflow.clock
+			}
 			return entry.bits, true
 		}
 	}
@@ -47,8 +62,21 @@ func (c *valueBitmapCache[V]) lookup(value optionalValue[V], equal func(V, V) bo
 }
 
 func (c *valueBitmapCache[V]) replace(value optionalValue[V]) *roaring.Bitmap {
-	entry := &c.entries[c.next]
-	c.next = (c.next + 1) % uint8(len(c.entries))
+	if c.overflow == nil && c.entries[c.next].initialized {
+		c.pressure++
+		if c.pressure >= 2 {
+			c.grow()
+		}
+	}
+	index := int(c.next)
+	if c.overflow != nil {
+		index = c.leastRecentlyUsed()
+		c.overflow.clock++
+		c.overflow.used[index] = c.overflow.clock
+	} else {
+		c.next = (c.next + 1) % uint8(len(c.entries))
+	}
+	entry := c.entry(index)
 	if entry.bits == nil {
 		entry.bits = roaring.New()
 	} else {
@@ -65,6 +93,42 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V]) *roaring.Bitmap {
 	return entry.bits
 }
 
+func (c *valueBitmapCache[V]) capacity() int {
+	if c.overflow != nil {
+		return 4
+	}
+	return 2
+}
+
+func (c *valueBitmapCache[V]) entry(index int) *valueBitmapCacheEntry[V] {
+	if index < len(c.entries) {
+		return &c.entries[index]
+	}
+	return &c.overflow.entries[index-len(c.entries)]
+}
+
+func (c *valueBitmapCache[V]) grow() {
+	c.overflow = &valueBitmapCacheOverflow[V]{clock: 2}
+	// next is the least recently used entry in the two-slot cache.
+	c.overflow.used[c.next] = 1
+	c.overflow.used[1-c.next] = 2
+	c.next = 0
+}
+
+func (c *valueBitmapCache[V]) leastRecentlyUsed() int {
+	oldest := 0
+	for i := 1; i < c.capacity(); i++ {
+		entry := c.entry(i)
+		if !entry.initialized {
+			return i
+		}
+		if c.overflow.used[i] < c.overflow.used[oldest] {
+			oldest = i
+		}
+	}
+	return oldest
+}
+
 // admit reports whether a missed value has been seen recently enough to merit
 // retaining its materialized bitmap. One-off values stay out of the cache,
 // avoiding retained memory and cache pollution on high-churn query streams.
@@ -72,20 +136,29 @@ func (c *valueBitmapCache[V]) admit(value optionalValue[V], equal func(V, V) boo
 	if c.seen == nil {
 		c.seen = &valueBitmapSeen[V]{}
 	}
-	for i := range c.seen.entries {
-		entry := &c.seen.entries[i]
+	seenCapacity := 2
+	if c.seen.overflow != nil {
+		seenCapacity = 4
+	}
+	for i := 0; i < seenCapacity; i++ {
+		entry := c.seenEntry(i)
 		if entry.initialized && entry.hasValue == value.ok && (!value.ok || equal(entry.value, value.value)) {
 			entry.initialized = false
 			var zero V
 			entry.value = zero
-			if !c.seen.entries[0].initialized && !c.seen.entries[1].initialized {
+			if c.seenEmpty() {
 				c.seen = nil
 			}
 			return true
 		}
 	}
-	entry := &c.seen.entries[c.seen.next]
-	c.seen.next = (c.seen.next + 1) % uint8(len(c.seen.entries))
+	c.misses++
+	if c.misses >= 8 && c.seen.overflow == nil {
+		c.seen.overflow = &[2]valueBitmapCacheKey[V]{}
+		seenCapacity = 4
+	}
+	entry := c.seenEntry(int(c.seen.next))
+	c.seen.next = (c.seen.next + 1) % uint8(seenCapacity)
 	entry.initialized = true
 	entry.hasValue = value.ok
 	var zero V
@@ -94,6 +167,25 @@ func (c *valueBitmapCache[V]) admit(value optionalValue[V], equal func(V, V) boo
 		entry.value = value.value
 	}
 	return false
+}
+
+func (c *valueBitmapCache[V]) seenEntry(index int) *valueBitmapCacheKey[V] {
+	if index < len(c.seen.entries) {
+		return &c.seen.entries[index]
+	}
+	return &c.seen.overflow[index-len(c.seen.entries)]
+}
+
+func (c *valueBitmapCache[V]) seenEmpty() bool {
+	for i := 0; i < 2; i++ {
+		if c.seen.entries[i].initialized {
+			return false
+		}
+		if c.seen.overflow != nil && c.seen.overflow[i].initialized {
+			return false
+		}
+	}
+	return true
 }
 
 func comparableValueCacheLookup[V comparable](c *valueBitmapCache[V], value optionalValue[V]) (*roaring.Bitmap, bool) {
