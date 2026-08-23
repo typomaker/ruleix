@@ -154,6 +154,119 @@ func BenchmarkLossyAllSearchQuality(b *testing.B) {
 	}
 }
 
+// BenchmarkLossyScalePlanning extends the lossy build and retained-accounting
+// baseline to the production scale points required by docs/lossy-index.md.
+// Run with a fixed iteration count when comparing the larger cases:
+//
+//	go test -run '^$' -bench '^BenchmarkLossyScalePlanning/' -benchmem -benchtime=1x -count=3 .
+func BenchmarkLossyScalePlanning(b *testing.B) {
+	for _, entries := range []int{10_000, 100_000, 1_000_000} {
+		constraints, ids := lossyAllBenchmarkData(entries)
+		for _, operator := range []struct {
+			name   string
+			schema Rule[lossyAllBenchmarkConstraint]
+		}{
+			{name: "Equality", schema: lossyAllBenchmarkSchema(4)},
+			{name: "Ordered", schema: lossyAllOrderedBenchmarkSchema(4)},
+		} {
+			exactBytes := lossyAllBenchmarkExactBytesForSchema(b, constraints, ids, operator.schema)
+			for _, percent := range []uint64{100, 50, 25} {
+				b.Run(fmt.Sprintf("Entries%d/%s/Budget%d", entries, operator.name, percent), func(b *testing.B) {
+					limit := exactBytes * percent / 100
+					schema := operator.schema
+					if percent != 100 {
+						schema = Lossy(schema, MemoryLimit(limit))
+					}
+					accountedBytes := exactBytes
+					if percent != 100 {
+						accountedBytes = lossyAllBenchmarkAccountedBytes(b, constraints, ids, schema)
+					}
+					builder := New[lossyAllBenchmarkConstraint, int](schema)
+					b.ReportAllocs()
+					b.ResetTimer()
+					for range b.N {
+						index, err := builder.Build(Zip(constraints, ids))
+						if err != nil {
+							b.Fatal(err)
+						}
+						lossyAllBenchmarkIndex = index
+					}
+					b.ReportMetric(float64(entries), "rules/op")
+					b.ReportMetric(float64(accountedBytes), "accounted-B/index")
+				})
+			}
+		}
+	}
+}
+
+// BenchmarkLossyScaleSearch measures latency, allocation traffic, candidate
+// amplification, and observed false positives over the same scale matrix.
+func BenchmarkLossyScaleSearch(b *testing.B) {
+	for _, entries := range []int{10_000, 100_000, 1_000_000} {
+		constraints, ids := lossyAllBenchmarkData(entries)
+		queries := constraints[:16]
+		for _, operator := range []struct {
+			name   string
+			schema Rule[lossyAllBenchmarkConstraint]
+		}{
+			{name: "Equality", schema: lossyAllBenchmarkSchema(4)},
+			{name: "Ordered", schema: lossyAllOrderedBenchmarkSchema(4)},
+		} {
+			exactBytes := lossyAllBenchmarkExactBytesForSchema(b, constraints, ids, operator.schema)
+			exactIndex, err := New[lossyAllBenchmarkConstraint, int](operator.schema).Build(Zip(constraints, ids))
+			if err != nil {
+				b.Fatal(err)
+			}
+			var exactMatches []int
+			var exactTotal uint64
+			for _, query := range queries {
+				exactMatches = exactMatches[:0]
+				exactIndex.Search(query, &exactMatches)
+				exactTotal += uint64(len(exactMatches))
+			}
+
+			for _, percent := range []uint64{100, 50, 25} {
+				b.Run(fmt.Sprintf("Entries%d/%s/Budget%d", entries, operator.name, percent), func(b *testing.B) {
+					schema := operator.schema
+					if percent != 100 {
+						schema = Lossy(schema, MemoryLimit(exactBytes*percent/100))
+					}
+					accountedBytes := exactBytes
+					if percent != 100 {
+						accountedBytes = lossyAllBenchmarkAccountedBytes(b, constraints, ids, schema)
+					}
+					index, err := New[lossyAllBenchmarkConstraint, int](schema).Build(Zip(constraints, ids))
+					if err != nil {
+						b.Fatal(err)
+					}
+					var matches []int
+					var totalMatches uint64
+					for _, query := range queries {
+						matches = matches[:0]
+						index.Search(query, &matches)
+						totalMatches += uint64(len(matches))
+					}
+					falsePositives := totalMatches - exactTotal
+					possibleFalsePositives := uint64(len(queries)*entries) - exactTotal
+
+					b.ReportAllocs()
+					b.ResetTimer()
+					for i := range b.N {
+						matches = matches[:0]
+						index.Search(queries[i%len(queries)], &matches)
+					}
+					b.ReportMetric(float64(totalMatches)/float64(len(queries)), "candidates/query")
+					b.ReportMetric(float64(accountedBytes), "accounted-B/index")
+					if possibleFalsePositives != 0 {
+						b.ReportMetric(float64(falsePositives)/float64(possibleFalsePositives), "false-positive-rate")
+					}
+					lossyAllBenchmarkIndex = index
+				})
+			}
+		}
+	}
+}
+
 func lossyAllBenchmarkExactBytes(
 	b testing.TB,
 	constraints []lossyAllBenchmarkConstraint,
@@ -182,6 +295,25 @@ func lossyAllBenchmarkExactBytesForSchema(
 	usage, ok := inspector.MemoryUsage()
 	if !ok {
 		b.Fatal("exact memory usage is unavailable")
+	}
+	return usage
+}
+
+func lossyAllBenchmarkAccountedBytes(
+	b testing.TB,
+	constraints []lossyAllBenchmarkConstraint,
+	ids []int,
+	schema Rule[lossyAllBenchmarkConstraint],
+) uint64 {
+	b.Helper()
+	var inspector Inspector
+	_, err := New[lossyAllBenchmarkConstraint, int](Inspect(&inspector, schema)).Build(Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	usage, ok := inspector.MemoryUsage()
+	if !ok {
+		b.Fatal("accounted memory usage is unavailable")
 	}
 	return usage
 }

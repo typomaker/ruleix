@@ -546,5 +546,22 @@ the smallest non-zero floating-point values.
 These tests exercise the compiled search representations, not only their
 canonical encodings, and verify that lossy searches never omit any exact
 result at adversarial ordered-domain boundaries. This completes the roadmap's
-property and boundary-test requirement; production-shaped memory and latency
-benchmark expansion remains active.
+property and boundary-test requirement.
+
+## 2026-08-23: lossy scale benchmark matrix
+
+The reproducible lossy baseline now covers 10K, 100K, and 1M rules for both
+four-child equality and ordered conjunctions. Exact, 50%, and 25% accounted-
+memory budgets report build time and allocations, accounted bytes, search
+latency and allocations, candidates per query, and observed false-positive
+rate relative to an exact index.
+
+Use a fixed iteration count for build comparisons so the 1M-rule cases remain
+practical:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyScalePlanning/' \
+  -benchmem -benchtime=1x -count=3 .
+go test -run '^$' -bench '^BenchmarkLossyScaleSearch/' \
+  -benchmem -benchtime=300ms -count=5 .
+```
