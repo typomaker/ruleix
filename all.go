@@ -115,6 +115,23 @@ func (r *allRule[T]) estimateCardinality(v T) uint64 {
 	}
 	return estimate
 }
+func (r *allRule[T]) estimateCheapCardinality(v T) uint64 {
+	estimate := ^uint64(0)
+	for _, child := range r.children {
+		if childEstimate, ok := cheapCardinality(child, v); ok {
+			if childEstimate == 0 {
+				return 0
+			}
+			estimate = min(estimate, childEstimate)
+		} else if cheapCardinalityIsZero(child, v) {
+			return 0
+		}
+	}
+	return estimate
+}
+func (r *allRule[T]) isCheapCardinalityZero(v T) bool {
+	return r.estimateCheapCardinality(v) == 0
+}
 func (r *allRule[T]) isCardinalityZero(v T) bool {
 	for _, child := range r.children {
 		if checker, ok := child.(cardinalityZeroChecker[T]); ok && checker.isCardinalityZero(v) {
@@ -212,20 +229,38 @@ func (r *allRule[T]) rankChildren(
 	_ *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) bool {
+	// Rank constant-time equality bounds first. If one is already small enough
+	// for direct ID validation, ordered cardinalities cannot improve the chosen
+	// execution mode and would only repeat their boundary and posting scans.
+	cheapBound := ^uint64(0)
 	for i, child := range r.children {
 		estimate := ^uint64(0)
-		if estimator, ok := child.(cardinalityEstimator[T]); ok {
-			estimate = estimator.estimateCardinality(v)
-			// Estimators report a conservative result size, so zero is also
-			// definitive. Reuse it instead of asking the common leaf types to
-			// calculate the same estimate again through isCardinalityZero.
+		if cheapEstimate, ok := cheapCardinality(child, v); ok {
+			estimate = cheapEstimate
 			if estimate == 0 {
 				return false
 			}
-		} else if checker, ok := child.(cardinalityZeroChecker[T]); ok && checker.isCardinalityZero(v) {
+			cheapBound = min(cheapBound, estimate)
+		} else if cheapCardinalityIsZero(child, v) {
 			return false
 		}
 		rankedChildren[i] = rankedBitmap{card: estimate, childIdx: i}
+	}
+	if cheapBound > allCandidateScanLimit {
+		for i, child := range r.children {
+			if _, ok := cheapCardinality(child, v); ok {
+				continue
+			}
+			if estimator, ok := child.(cardinalityEstimator[T]); ok {
+				estimate := estimator.estimateCardinality(v)
+				if estimate == 0 {
+					return false
+				}
+				rankedChildren[i].card = estimate
+			} else if checker, ok := child.(cardinalityZeroChecker[T]); ok && checker.isCardinalityZero(v) {
+				return false
+			}
+		}
 	}
 	// Filter groups are normally small; insertion sort avoids reflection and a
 	// closure allocation while preserving schema order for equal estimates.
@@ -235,6 +270,25 @@ func (r *allRule[T]) rankChildren(
 		}
 	}
 	return true
+}
+
+func cheapCardinality[T any](rule Rule[T], value T) (uint64, bool) {
+	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
+		return cheapCardinality(observed.child, value)
+	}
+	estimator, ok := rule.(cheapCardinalityEstimator[T])
+	if !ok {
+		return 0, false
+	}
+	return estimator.estimateCheapCardinality(value), true
+}
+
+func cheapCardinalityIsZero[T any](rule Rule[T], value T) bool {
+	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
+		return cheapCardinalityIsZero(observed.child, value)
+	}
+	checker, ok := rule.(cheapCardinalityZeroChecker[T])
+	return ok && checker.isCheapCardinalityZero(value)
 }
 
 func (r *allRule[T]) intersectRankedInOrderObserved(

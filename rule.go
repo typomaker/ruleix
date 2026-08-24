@@ -70,6 +70,21 @@ type cardinalityEstimator[T any] interface {
 	estimateCardinality(T) uint64
 }
 
+// cheapCardinalityEstimator is implemented by rules whose cardinality is a
+// constant-time lookup. All uses these estimates before ordered estimates so a
+// sufficiently small equality result can become the candidate set without a
+// boundary lookup or posting-cardinality scan.
+type cheapCardinalityEstimator[T any] interface {
+	estimateCheapCardinality(T) uint64
+}
+
+// cheapCardinalityZeroChecker marks emptiness checks that do not traverse
+// ordered postings. It lets nested All nodes preserve an exact empty result in
+// the equality-first pass.
+type cheapCardinalityZeroChecker[T any] interface {
+	isCheapCardinalityZero(T) bool
+}
+
 // ruleIDMatcher validates one internal ID without materializing a result.
 type ruleIDMatcher[T any] interface {
 	matchesID(T, uint32) bool
@@ -166,6 +181,7 @@ func (*matchAllRule[T]) validate(T) error                                      {
 func (*matchAllRule[T]) insert(T, uint32)                                      {}
 func (r *matchAllRule[T]) cardinality(T, *bitmapPool) uint64                   { return r.bits.GetCardinality() }
 func (r *matchAllRule[T]) estimateCardinality(T) uint64                        { return r.bits.GetCardinality() }
+func (r *matchAllRule[T]) estimateCheapCardinality(T) uint64                   { return r.bits.GetCardinality() }
 func (r *matchAllRule[T]) matchesID(_ T, id uint32) bool                       { return r.bits.Contains(id) }
 func (r *matchAllRule[T]) search(_ T, dst *roaring.Bitmap, _ *bitmapPool)      { dst.Or(r.bits) }
 func (*matchAllRule[T]) exclude(T, *roaring.Bitmap, *bitmapPool)               {}

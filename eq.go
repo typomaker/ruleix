@@ -371,6 +371,7 @@ func (r *eqRule[T, V]) estimateCardinality(v T) uint64 {
 	}
 	return n
 }
+func (r *eqRule[T, V]) estimateCheapCardinality(v T) uint64 { return r.estimateCardinality(v) }
 func (r *eqRule[T, V]) isCardinalityZero(v T) bool {
 	if !r.wildcard.IsEmpty() {
 		return false
@@ -501,6 +502,9 @@ func (r *unaryEqRule[T, V]) estimateCardinality(v T) uint64 {
 	}
 	return n
 }
+func (r *unaryEqRule[T, V]) estimateCheapCardinality(v T) uint64 {
+	return r.estimateCardinality(v)
+}
 func (r *unaryEqRule[T, V]) isCardinalityZero(v T) bool {
 	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
 }
@@ -588,6 +592,9 @@ func (r *binaryEqRule[T, V]) estimateCardinality(v T) uint64 {
 		n += set.cardinality()
 	}
 	return n
+}
+func (r *binaryEqRule[T, V]) estimateCheapCardinality(v T) uint64 {
+	return r.estimateCardinality(v)
 }
 func (r *binaryEqRule[T, V]) isCardinalityZero(v T) bool {
 	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil

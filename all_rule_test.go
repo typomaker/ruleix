@@ -33,6 +33,9 @@ func (r *checkerOnlyRule) cardinality(value int, pool *bitmapPool) uint64 {
 	return r.child.cardinality(value, pool)
 }
 func (r *checkerOnlyRule) isCardinalityZero(int) bool { return len(r.child.ids) == 0 }
+func (r *checkerOnlyRule) isCheapCardinalityZero(int) bool {
+	return len(r.child.ids) == 0
+}
 func (r *checkerOnlyRule) search(value int, dst *roaring.Bitmap, pool *bitmapPool) {
 	r.child.search(value, dst, pool)
 }
@@ -49,6 +52,36 @@ func (r *estimatedZeroCheckingRule) isCardinalityZero(value int) bool {
 type conservativeEstimateRule struct{ *countingRule }
 
 func (*conservativeEstimateRule) estimateCardinality(int) uint64 { return ^uint64(0) }
+func (*conservativeEstimateRule) estimateCheapCardinality(int) uint64 {
+	return ^uint64(0)
+}
+
+type costlyEstimateRule struct {
+	child         *countingRule
+	estimateCalls int
+}
+
+func (*costlyEstimateRule) rule() {}
+func (r *costlyEstimateRule) newState(*nodeIDAllocator, *buildStatistics) Rule[int] {
+	return r
+}
+func (*costlyEstimateRule) validate(int) error { return nil }
+func (*costlyEstimateRule) insert(int, uint32) {}
+func (r *costlyEstimateRule) cardinality(value int, pool *bitmapPool) uint64 {
+	return r.child.cardinality(value, pool)
+}
+func (r *costlyEstimateRule) estimateCardinality(int) uint64 {
+	r.estimateCalls++
+	return uint64(len(r.child.ids))
+}
+func (r *costlyEstimateRule) matchesID(value int, id uint32) bool {
+	return r.child.matchesID(value, id)
+}
+func (r *costlyEstimateRule) search(value int, dst *roaring.Bitmap, pool *bitmapPool) {
+	r.child.search(value, dst, pool)
+}
+func (*costlyEstimateRule) exclude(int, *roaring.Bitmap, *bitmapPool)    {}
+func (*costlyEstimateRule) collectBuildStatistics([]nodeBuildStatistics) {}
 
 func (*countingRule) rule()                                                   {}
 func (r *countingRule) newState(*nodeIDAllocator, *buildStatistics) Rule[int] { return r }
@@ -61,6 +94,9 @@ func (r *countingRule) cardinality(int, *bitmapPool) uint64 {
 func (r *countingRule) estimateCardinality(int) uint64 {
 	r.cardinalityCalls++
 	return uint64(len(r.ids))
+}
+func (r *countingRule) estimateCheapCardinality(value int) uint64 {
+	return r.estimateCardinality(value)
 }
 func (r *countingRule) matchesID(_ int, id uint32) bool {
 	r.matchIDCalls++
@@ -211,6 +247,38 @@ func TestNestedAllExposesCheapestEstimate(t *testing.T) {
 
 	estimator := rule.(cardinalityEstimator[int])
 	require.Equal(t, uint64(1), estimator.estimateCardinality(0))
+}
+
+func TestAllSkipsCostlyEstimateAfterSmallCheapBound(t *testing.T) {
+	selective := &countingRule{ids: []uint32{2}}
+	costly := &costlyEstimateRule{child: &countingRule{ids: []uint32{1, 2, 3, 4, 5}}}
+	rule := All[int](costly, selective)
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	rule.search(0, dst, pool)
+
+	require.Equal(t, []uint32{2}, dst.ToArray())
+	require.Zero(t, costly.estimateCalls)
+	require.Zero(t, costly.child.searchCalls)
+	require.Equal(t, 1, costly.child.matchIDCalls)
+}
+
+func TestNestedAllSkipsCostlyEstimateAfterSmallCheapBound(t *testing.T) {
+	selective := &countingRule{ids: []uint32{2}}
+	costly := &costlyEstimateRule{child: &countingRule{ids: []uint32{1, 2, 3, 4, 5}}}
+	rule := All[int](&countingRule{ids: []uint32{1, 2, 3, 4, 5}}, All[int](costly, selective))
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	rule.search(0, dst, pool)
+
+	require.Equal(t, []uint32{2}, dst.ToArray())
+	require.Zero(t, costly.estimateCalls)
+	require.Zero(t, costly.child.searchCalls)
+	require.Equal(t, 1, costly.child.matchIDCalls)
 }
 
 func TestNestedAllPropagatesCheapEmptyResult(t *testing.T) {

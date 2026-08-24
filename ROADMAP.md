@@ -192,9 +192,10 @@ into the shared immutable index or weaken concurrent search safety.
 Work through these steps in priority order, promoting an optimization only
 when production-shaped benchmarks demonstrate a material benefit:
 
-1. Implement bounded equality-first planning that skips range cardinality once
-   a candidate is small enough for ID checks, including selective predicates
-   hidden in nested `All` nodes.
+1. Extend the bounded equality-first planner beyond individually small bounds.
+   The first stage, including cheap bounds hidden in nested `All` nodes, is
+   recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md); retain its strict
+   candidate-scan threshold while investigating wider equality intersections.
 2. Reuse warm `Local` range cardinality and optimize the uncached ordered
    estimate only if bounded planning still leaves measurable overhead.
 3. Extend cheap estimates and lazy, empty-aware `All` execution for other

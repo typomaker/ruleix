@@ -476,6 +476,9 @@ func (r *lossyEqualityRule[T, V]) estimateCardinality(v T) uint64 {
 	}
 	return n
 }
+func (r *lossyEqualityRule[T, V]) estimateCheapCardinality(v T) uint64 {
+	return r.estimateCardinality(v)
+}
 func (r *lossyEqualityRule[T, V]) isCardinalityZero(v T) bool {
 	return r.estimateCardinality(v) == 0
 }

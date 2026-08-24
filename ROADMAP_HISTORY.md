@@ -1093,6 +1093,37 @@ go test -run '^$' -bench '^BenchmarkLocalLifecycleReuse$' \
   -benchmem -benchtime=300ms -count=5 .
 ```
 
+## 2026-08-24: bounded equality-first planning
+
+`All` now evaluates constant-time equality bounds before ordered cardinality
+estimates. Once a cheap bound is at or below the measured four-ID candidate
+scan threshold, the executor materializes that candidate and validates the
+remaining predicates by ID without performing ordered boundary-cardinality
+work. Nested `All` nodes expose their cheapest equality bound, including exact
+empty results, instead of remaining opaque to the outer planner. Inspected and
+lossy equality rules preserve the same behavior.
+
+Regression tests verify both flat and nested plans without relying on timing:
+the ordered-like estimator is never invoked, its bitmap is never materialized,
+and only candidate ID checks run. The full test suite and `git diff --check`
+pass with no public API changes.
+
+Wider cheap bounds deliberately retain the existing complete ranking path.
+Experiments that scanned 150 production-shape equality candidates against the
+remaining ordered rules, or materialized those ordered rules without ranking,
+were substantially slower and were discarded. The production query's cheap
+intersection therefore does not yet recover warm `Local` latency; extending
+bounded planning beyond the four-ID threshold remains active roadmap work.
+
+Reproduce the functional and threshold coverage with:
+
+```sh
+go test ./...
+go test -run '^$' \
+  -bench '^(BenchmarkNestedAllEstimate|BenchmarkAllMaterializedCandidateFallback)$' \
+  -benchmem -benchtime=500ms -count=5 .
+```
+
 ## 2026-08-24: range-cardinality rollback experiment
 
 An isolated copy of `f50d22b` was benchmarked with the range-cardinality part
