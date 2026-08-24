@@ -1518,3 +1518,39 @@ GOMAXPROCS=1 go test -run '^$' \
   -bench '^BenchmarkProductionShapeSearch/Local$' -benchtime=5s -count=1 \
   -cpuprofile=/tmp/ruleix-production-flat-local.cpu .
 ```
+
+## 2026-08-24: smaller exact ordered-index aggregate blocks
+
+The repeated production CPU profile attributed 57.7% cumulative `Index`
+search CPU to Roaring `Bitmap.Or`, 49.5% to the uncached `Between` range, and
+45.5% to `orderedIndex.walk`. Exact ordered indexes already aggregate complete
+blocks, so reducing the block size from 128 to 64 limits the number of
+individual posting lists visited at the two range boundaries.
+
+On Apple M1 Max with Go 1.26.0, five one-second production-shaped runs reduced
+median uncached `Index` search from 101.691 us to 92.738 us (8.8%). Allocation
+count remained 30/search and allocated bytes changed from 89,582 to 89,695.
+Warm `Local` search remained effectively unchanged at 2.585 us, 2,331 B, and
+two allocations. Three retained-memory runs measured about 1.315 MB/index
+versus 1.289 MB with 128-value blocks, a 2.0% increase. Build allocation rose
+from approximately 4.90 MB to 5.13 MB while build time remained near 35 ms.
+
+A 32-value variant was rejected: median uncached search regressed to 145.269
+us, retained memory rose to approximately 1.380 MB/index, and build allocation
+rose to 5.42 MB. At that granularity, the extra aggregate bitmaps and unions
+outweigh the smaller boundary fragments.
+
+Reproduce the search comparison with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+```
+
+Reproduce the build and retained-memory checks with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkProductionShapeBuild|BenchmarkProductionShapeRetainedMemory)$' \
+  -benchmem -benchtime=300ms -count=3 .
+```

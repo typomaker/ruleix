@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Exact ordered indexes use smaller aggregate blocks, reducing production-shaped
+  uncached range-search latency while preserving exact comparison semantics.
 - Exact nested `All` groups are flattened during index compilation, avoiding
   intermediate bitmap materialization while preserving inspected and lossy
   rule boundaries.

@@ -27,9 +27,10 @@ type orderedRouting struct {
 	blocks     []int
 }
 
-// orderedBlockSize is deliberately large enough to amortize wide scans while
-// keeping the two unaggregated boundary fragments small.
-const orderedBlockSize = 128
+// orderedBlockSize balances aggregate count against the unaggregated boundary
+// fragments. Production-shaped range searches are faster at 64 than at 128;
+// smaller blocks add enough aggregate unions and retained bitmaps to regress.
+const orderedBlockSize = 64
 
 type orderedBlock[V any] struct {
 	items []*orderedItem[V]
