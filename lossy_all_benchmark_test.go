@@ -154,6 +154,53 @@ func BenchmarkLossyAllSearchQuality(b *testing.B) {
 	}
 }
 
+// BenchmarkLossyAllSearchRuntime isolates the Index and Local search paths for
+// CPU and allocation profiles. On Apple M1 Max with Go 1.26.0, 10k entries,
+// four equality children, 256 rotating queries, and the command below,
+// Budget50 measured Index 687-711 ns/op, 89 B/op, 4 allocs/op and Local
+// 810-821 ns/op, 88 B/op, 5 allocs/op; Budget25 measured Index 563-612 ns/op,
+// 49 B/op, 1 alloc/op and Local 743-749 ns/op, 49 B/op, 2 allocs/op.
+//
+//	go test -run '^$' -bench '^BenchmarkLossyAllSearchRuntime/' -benchmem -benchtime=1s -count=3 .
+func BenchmarkLossyAllSearchRuntime(b *testing.B) {
+	constraints, ids := lossyAllBenchmarkData(lossyAllBenchmarkEntries)
+	const children = 4
+	exactBytes := lossyAllBenchmarkExactBytes(b, constraints, ids, children)
+	queries := constraints[:256]
+	for _, percent := range []uint64{50, 25} {
+		b.Run(fmt.Sprintf("Budget%d", percent), func(b *testing.B) {
+			index, err := New[lossyAllBenchmarkConstraint, int](
+				Lossy(lossyAllBenchmarkSchema(children), MemoryLimit(exactBytes*percent/100)),
+			).Build(Zip(constraints, ids))
+			if err != nil {
+				b.Fatal(err)
+			}
+			for _, local := range []bool{false, true} {
+				name := "Index"
+				if local {
+					name = "Local"
+				}
+				b.Run(name, func(b *testing.B) {
+					searcher := index.Local()
+					defer searcher.Close()
+					var matches []int
+					b.ReportAllocs()
+					b.ResetTimer()
+					for i := range b.N {
+						matches = matches[:0]
+						if local {
+							searcher.Search(queries[i%len(queries)], &matches)
+						} else {
+							index.Search(queries[i%len(queries)], &matches)
+						}
+					}
+				})
+			}
+			lossyAllBenchmarkIndex = index
+		})
+	}
+}
+
 // BenchmarkLossyScalePlanning extends the lossy build and retained-accounting
 // baseline to the production scale points required by docs/lossy-index.md.
 // Run with a fixed iteration count when comparing the larger cases:
