@@ -1659,3 +1659,16 @@ not remove Roaring's internal union allocation cost, and direct `Or` remains
 faster for this `CompareBy` distribution. Do not reconsider this contract
 without a different intersection primitive or a workload with substantially
 smaller operator ranges.
+
+## 2026-08-24: per-item ordered cardinality prefixes
+
+An ordered-index prototype stored a cardinality prefix for every item in every
+block. After the existing boundary binary search, uncached range estimates
+could then combine the boundary fragment and complete-block prefix in constant
+time instead of summing at most 64 posting cardinalities.
+
+The change was not retained. Against the bounded-aggregate production baseline
+of 43.426 us, five one-second `Index` runs measured a 44.408 us median (2.3%
+slower), with the same 73,396 B and 28 allocations per search. Warm `Local`
+remained near 2.62 us. The small bounded scan is cheaper than another retained
+array lookup on this workload, so its additional memory is not justified.
