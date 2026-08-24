@@ -20,11 +20,12 @@ type equalityLossyAllPlanner[T any, V comparable] struct {
 
 //nolint:gocognit // Planning evaluates representations in one allocation-aware pass.
 func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
-	// V1 accounting: wildcard payload, 16 bytes of strategy metadata, and for
+	// V1 exact accounting: wildcard payload, 16 bytes of strategy metadata, and for
 	// each occupied bucket an 8-byte key, 8-byte logical slot, and payload.
 	exact := uint64(16) + bitmapBytes(r.wildcard)
 	items := r.wildcard.GetCardinality()
 	distinct := uint64(0)
+	hasher := newScalarHasher[V]()
 	type hashedSet struct {
 		hash uint64
 		set  *equalitySet
@@ -32,7 +33,7 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	hashed := make([]hashedSet, 0, len(r.values.sets))
 	valid := true
 	addHash := func(value V, set *equalitySet) {
-		hash, ok := hashScalar(any(value))
+		hash, ok := hasher.hash(value)
 		if !ok {
 			valid = false
 			return
@@ -82,7 +83,7 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		allDifferentValuePairs := float64(concreteItems)*float64(concreteItems) - sameValuePairs
 		candidate := &lossyEqualityRule[T, V]{
 			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			shift: 64 - lossyMaxBucketBits, buckets: make(map[uint64]*roaring.Bitmap),
+			shift: 64 - lossyMaxBucketBits, hasher: hasher, buckets: make(map[uint64]*roaring.Bitmap),
 		}
 		for _, value := range hashed {
 			bucket := value.hash >> candidate.shift
@@ -94,7 +95,7 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 			value.set.addTo(posting)
 		}
 		for bucketBits := lossyMaxBucketBits; ; bucketBits-- {
-			usage := uint64(16) + bitmapBytes(candidate.wildcard)
+			usage := uint64(32) + bitmapBytes(candidate.wildcard)
 			var collidingDifferentValuePairs float64
 			for _, posting := range candidate.buckets {
 				usage += 16 + bitmapBytes(posting)
@@ -113,7 +114,7 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 			}
 			parent := &lossyEqualityRule[T, V]{
 				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-				shift: uint(64 - (bucketBits - 1)), buckets: make(map[uint64]*roaring.Bitmap, (len(candidate.buckets)+1)/2),
+				shift: uint(64 - (bucketBits - 1)), hasher: hasher, buckets: make(map[uint64]*roaring.Bitmap, (len(candidate.buckets)+1)/2),
 			}
 			for bucket, posting := range candidate.buckets {
 				parentBucket := bucket >> 1

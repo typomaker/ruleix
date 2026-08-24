@@ -2,6 +2,7 @@ package ruleix
 
 import (
 	"fmt"
+	"hash/maphash"
 	"math"
 	"math/bits"
 	"sort"
@@ -499,7 +500,29 @@ type lossyEqualityRule[T any, V comparable] struct {
 	get      Getter[T, V]
 	wildcard *roaring.Bitmap
 	shift    uint
+	hasher   scalarHasher[V]
 	buckets  map[uint64]*roaring.Bitmap
+}
+
+type scalarHasher[V comparable] struct {
+	stringSeed maphash.Seed
+	stringHash bool
+}
+
+func newScalarHasher[V comparable]() scalarHasher[V] {
+	var zero V
+	_, stringHash := any(zero).(string)
+	if !stringHash {
+		return scalarHasher[V]{}
+	}
+	return scalarHasher[V]{stringSeed: maphash.MakeSeed(), stringHash: true}
+}
+
+func (h scalarHasher[V]) hash(value V) (uint64, bool) {
+	if h.stringHash {
+		return maphash.String(h.stringSeed, any(value).(string)), true
+	}
+	return hashScalar(any(value))
 }
 
 func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bool) {
@@ -512,7 +535,7 @@ func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bo
 	if !ok {
 		return r.wildcard, true
 	}
-	hash, ok := hashScalar(any(value))
+	hash, ok := r.hasher.hash(value)
 	if !ok {
 		return r.wildcard, true
 	}
@@ -549,7 +572,7 @@ func (r *lossyEqualityRule[T, V]) addMatches(value optionalValue[V], dst *roarin
 	if !value.ok {
 		return
 	}
-	hash, ok := hashScalar(any(value.value))
+	hash, ok := r.hasher.hash(value.value)
 	if !ok {
 		return
 	}
@@ -563,7 +586,7 @@ func (r *lossyEqualityRule[T, V]) estimateCardinality(v T) uint64 {
 	if !ok {
 		return n
 	}
-	hash, ok := hashScalar(any(value))
+	hash, ok := r.hasher.hash(value)
 	if !ok {
 		return n
 	}
@@ -596,7 +619,7 @@ func (r *lossyEqualityRule[T, V]) matchesID(v T, id uint32) bool {
 	if !ok {
 		return false
 	}
-	hash, ok := hashScalar(any(value))
+	hash, ok := r.hasher.hash(value)
 	if !ok {
 		return false
 	}
