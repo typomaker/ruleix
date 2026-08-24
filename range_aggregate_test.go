@@ -104,6 +104,34 @@ func TestAllFiltersCandidatesThroughBetween(t *testing.T) {
 	require.Equal(t, want, got)
 }
 
+func TestAllFiltersCandidatesThroughOrderedRule(t *testing.T) {
+	type constraint struct {
+		group int
+		value int
+	}
+	constraints := make([]constraint, 2_000)
+	ids := make([]int, len(constraints))
+	for id := range constraints {
+		constraints[id] = constraint{group: id % 7, value: id}
+		ids[id] = id
+	}
+	index, err := ruleix.New[constraint, int](ruleix.All(
+		ruleix.Include(func(value constraint) (int, bool) { return value.group, true }),
+		ruleix.GreaterOrEqual(func(value constraint) (int, bool) { return value.value, true }, cmp.Compare[int]),
+	)).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := constraint{group: 3, value: 1_000}
+	var got []int
+	index.Search(query, &got)
+	for _, id := range got {
+		if id%7 != 3 || id > 1_000 {
+			t.Fatalf("unexpected match %d", id)
+		}
+	}
+}
+
 func TestBetweenMatchesScanningReferenceAcrossBlocks(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 	intervalSchema := ruleix.Between(ruleix.GetterFromPointer(func(v differentialInterval) *int { return &v.from }), ruleix.GetterFromPointer(func(v differentialInterval) *int { return &v.until }), cmp.Compare[int])

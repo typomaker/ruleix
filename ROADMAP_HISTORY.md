@@ -1672,3 +1672,21 @@ of 43.426 us, five one-second `Index` runs measured a 44.408 us median (2.3%
 slower), with the same 73,396 B and 28 allocations per search. Warm `Local`
 remained near 2.62 us. The small bounded scan is cheaper than another retained
 array lookup on this workload, so its additional memory is not justified.
+
+## 2026-08-24: candidate-aware standalone ordered rules
+
+Uncached `All` execution now narrows an existing candidate bitmap directly
+through `Greater`, `GreaterOrEqual`, `Less`, and `LessOrEqual`. The ordered rule
+passes its wildcard and exact block postings to `AndAny` instead of first
+materializing the complete range. Warm `Local` execution keeps its admitted
+bitmap-cache path.
+
+On Apple M1 Max with Go 1.26.0, five one-second runs of a 38,098-entry broad
+equality plus ordered-range benchmark reduced median search from 132.973 us,
+48,915 B, and 16 allocations to 53.123 us (60.1%), 39,879 B, and 11
+allocations. Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllOrderedCandidateFiltering$' \
+  -benchmem -benchtime=1s -count=5 .
+```

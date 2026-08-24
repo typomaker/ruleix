@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Uncached `All` execution filters existing candidates directly through
+  standalone ordered rules instead of materializing their complete ranges.
 - `CompareBy` uses a bounded second level of ordered range aggregates, reducing
   wide operator unions without changing per-search allocations.
 - Uncached `All` execution filters an existing candidate bitmap through

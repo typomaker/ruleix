@@ -320,6 +320,15 @@ func (r *orderedRule[T, V]) appendMatchingBitmaps(value optionalValue[V], dst []
 	}
 	return dst
 }
+func (r *orderedRule[T, V]) filterCandidates(v T, dst *roaring.Bitmap, _ *bitmapPool) {
+	var inline [16]*roaring.Bitmap
+	postings := r.appendMatchingBitmaps(getOptional(r.get, v), inline[:0])
+	if len(postings) == 0 {
+		dst.Clear()
+		return
+	}
+	dst.AndAny(postings...)
+}
 func (*orderedRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
 func (r *orderedRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {
