@@ -233,6 +233,8 @@ func BenchmarkLossyStreamingBuild(b *testing.B) {
 
 // BenchmarkLossyScaleSearch measures latency, allocation traffic, candidate
 // amplification, and observed false positives over the same scale matrix.
+//
+//nolint:gocognit // The benchmark matrix stays together to preserve comparability.
 func BenchmarkLossyScaleSearch(b *testing.B) {
 	for _, entries := range []int{10_000, 100_000, 1_000_000} {
 		constraints, ids := lossyAllBenchmarkData(entries)

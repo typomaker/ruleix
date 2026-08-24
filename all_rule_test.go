@@ -44,7 +44,7 @@ func (*checkerOnlyRule) collectBuildStatistics([]nodeBuildStatistics) {}
 
 type estimatedZeroCheckingRule struct{ *countingRule }
 
-func (r *estimatedZeroCheckingRule) isCardinalityZero(value int) bool {
+func (r *estimatedZeroCheckingRule) isCardinalityZero(_ int) bool {
 	r.cardinalityCalls++
 	return len(r.ids) == 0
 }

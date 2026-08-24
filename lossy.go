@@ -117,6 +117,7 @@ func (r *inspectionDetailsRule[T]) inspectionStrategy() string           { retur
 func (r *inspectionDetailsRule[T]) inspectionMode() RuleMode             { return inspectionModeOf(r.child) }
 func (r *inspectionDetailsRule[T]) inspectionDetails() inspectionDetails { return r.details }
 
+//nolint:gocognit // Recursive policy validation is clearest as one exhaustive type switch.
 func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 	switch typed := rule.(type) {
 	case *lossyRule[T]:
@@ -303,7 +304,11 @@ func collectLossyAllLeaves[T any](rule Rule[T], leaves *[]lossyAllLeaf[T]) error
 	}
 }
 
-func materializeLossyAll[T any](rule Rule[T], leaves []lossyAllLeaf[T], index *int) (Rule[T], inspectionDetails, error) {
+func materializeLossyAll[T any](
+	rule Rule[T],
+	leaves []lossyAllLeaf[T],
+	index *int,
+) (Rule[T], inspectionDetails, error) {
 	switch typed := rule.(type) {
 	case *allRule[T]:
 		children := make([]Rule[T], len(typed.children))
@@ -528,8 +533,8 @@ type lossyOrderedRule[T any, V any] struct {
 	buckets         []*roaring.Bitmap
 }
 
-func lossyOrderedBucket(key, min, width, count uint64) uint64 {
-	bucket := (key - min) / width
+func lossyOrderedBucket(key, minimum, width, count uint64) uint64 {
+	bucket := (key - minimum) / width
 	if bucket >= count {
 		return count - 1
 	}

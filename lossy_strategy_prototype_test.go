@@ -163,7 +163,7 @@ func BenchmarkLossyStrategyPrototypes(b *testing.B) {
 	equalityValues := make([]any, entries)
 	orderedValues := make([]any, entries)
 	for i := range entries {
-		equalityValues[i] = uint64(bits.RotateLeft64(uint64(i)*0x9e3779b97f4a7c15, 17))
+		equalityValues[i] = bits.RotateLeft64(uint64(i)*0x9e3779b97f4a7c15, 17)
 		orderedValues[i] = int64(i)
 	}
 	for _, bucketBits := range []uint{8, 12, 16} {
@@ -173,7 +173,7 @@ func BenchmarkLossyStrategyPrototypes(b *testing.B) {
 			candidates := prototype.search(equalityValues[entries/2]).GetCardinality()
 			b.ReportAllocs()
 			b.ResetTimer()
-			for b.Loop() {
+			for range b.N {
 				_ = prototype.search(equalityValues[entries/2]).GetCardinality()
 			}
 			b.ReportMetric(float64(accounted), "accounted-bytes")
@@ -185,7 +185,7 @@ func BenchmarkLossyStrategyPrototypes(b *testing.B) {
 			candidates := prototype.greaterOrEqual(int64(entries - 100)).GetCardinality()
 			b.ReportAllocs()
 			b.ResetTimer()
-			for b.Loop() {
+			for range b.N {
 				_ = prototype.greaterOrEqual(int64(entries - 100)).GetCardinality()
 			}
 			b.ReportMetric(float64(accounted), "accounted-bytes")

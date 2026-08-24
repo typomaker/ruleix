@@ -61,6 +61,7 @@ func requireSuperset(t *testing.T, exact, approximate []int) {
 	requireSupersetComparable(t, exact, approximate)
 }
 
+//nolint:lll // Boundary sets stay inline so their ordering is immediately visible.
 func TestLossyEqualityScalarProperties(t *testing.T) {
 	testLossyEqualityScalar(t, "int8", []int8{math.MinInt8, -1, 0, 1, math.MaxInt8})
 	testLossyEqualityScalar(t, "uint64", []uint64{0, 1, 1 << 32, math.MaxUint64 - 1, math.MaxUint64})
@@ -107,12 +108,14 @@ func testLossyEqualityScalar[V comparable](t *testing.T, name string, values []V
 	})
 }
 
+//nolint:lll // Boundary sets stay inline so their ordering is immediately visible.
 func TestLossyOrderedOperatorAndBoundaryProperties(t *testing.T) {
 	testLossyOrderedScalar(t, "int64", []int64{math.MinInt64, math.MinInt64 + 1, -1, 0, 1, math.MaxInt64 - 1, math.MaxInt64})
 	testLossyOrderedScalar(t, "uint64", []uint64{0, 1, 1 << 63, math.MaxUint64 - 1, math.MaxUint64})
 	testLossyOrderedScalar(t, "float64", []float64{math.NaN(), math.Inf(-1), -math.MaxFloat64, -math.SmallestNonzeroFloat64, math.Copysign(0, -1), 0, math.SmallestNonzeroFloat64, math.MaxFloat64, math.Inf(1)})
 }
 
+//nolint:lll // Full exact and lossy constructors are kept adjacent for comparison.
 func testLossyOrderedScalar[V cmp.Ordered](t *testing.T, name string, values []V) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
@@ -148,6 +151,7 @@ func testLossyOrderedScalar[V cmp.Ordered](t *testing.T, name string, values []V
 	})
 }
 
+//nolint:lll // Full exact and lossy constructors are kept adjacent for comparison.
 func TestLossyEqualityNeverDropsExactMatches(t *testing.T) {
 	get := func(v lossyConstraint) (string, bool) { return v.name, v.present }
 	constraints := make([]lossyConstraint, 2000)
@@ -172,6 +176,7 @@ func TestLossyEqualityNeverDropsExactMatches(t *testing.T) {
 	require.Equal(t, "lossy-grouped-hash", inspector.Snapshot().Strategy())
 }
 
+//nolint:lll // Full exact and lossy constructors are kept adjacent for comparison.
 func TestLossyOrderedNeverDropsExactMatches(t *testing.T) {
 	get := func(v lossyConstraint) (int64, bool) { return v.minimum, v.present }
 	constraints := make([]lossyConstraint, 2000)
@@ -265,6 +270,7 @@ func BenchmarkLossyAllSelectivePlanning(b *testing.B) {
 	})
 }
 
+//nolint:lll // The compact query matrix is easier to audit inline.
 func TestLossyOrderedEstimateAndIDMatchAgreeWithSearch(t *testing.T) {
 	wildcard := roaring.BitmapOf(8)
 	rule := &lossyOrderedRule[lossyConstraint, int64]{
@@ -351,6 +357,7 @@ func TestLossyPolicyValidation(t *testing.T) {
 	require.Contains(t, err.Error(), "nested Lossy")
 }
 
+//nolint:lll // Full exact and lossy constructors are kept adjacent for comparison.
 func TestLossyAllNeverDropsExactMatches(t *testing.T) {
 	name := func(v lossyConstraint) (string, bool) { return v.name, v.present }
 	minimum := func(v lossyConstraint) (int64, bool) { return v.minimum, v.present }
@@ -402,7 +409,7 @@ func TestLossyAllRetainsExactChildrenWhenCompositeFits(t *testing.T) {
 }
 
 func TestLossyAllRedistributesBudgetForMinimumViableChildren(t *testing.T) {
-	stable := func(v lossyConstraint) (string, bool) { return "stable", true }
+	stable := func(_ lossyConstraint) (string, bool) { return "stable", true }
 	unique := func(v lossyConstraint) (string, bool) { return v.name, true }
 	constraints := make([]lossyConstraint, 2000)
 	ids := make([]int, len(constraints))

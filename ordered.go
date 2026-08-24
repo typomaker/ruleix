@@ -97,6 +97,7 @@ type orderedLossyAllPlanner[T any, V any] struct {
 	err             error
 }
 
+//nolint:gocognit,lll // Planning keeps representation construction directly beside its accounting.
 func (r *orderedRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	// Ordered exact accounting is conservative and stable: key encodings,
 	// logical slots, aggregate postings, and wildcard payload.

@@ -18,6 +18,7 @@ type equalityLossyAllPlanner[T any, V comparable] struct {
 	err             error
 }
 
+//nolint:gocognit // Planning evaluates representations in one allocation-aware pass.
 func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	// V1 accounting: wildcard payload, 16 bytes of strategy metadata, and for
 	// each occupied bucket an 8-byte key, 8-byte logical slot, and payload.

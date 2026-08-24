@@ -349,6 +349,7 @@ func searchAllMatches[C any, ID comparable](
 
 	excluded := buildAllExclusions(exclusions, value, rankedChildren[0].card, pool)
 	broad := rankedChildren[0].card > allCandidateScanLimit
+	//nolint:nestif // Broad result assembly keeps ownership and exclusion handling together.
 	if broad {
 		if candidates != nil {
 			if excluded != nil {

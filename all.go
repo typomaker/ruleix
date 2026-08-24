@@ -248,6 +248,7 @@ func sharedWildcardOf[T any](rule Rule[T]) (sharedWildcardEquality[T], bool) {
 	return value, ok
 }
 
+//nolint:gocognit // Ranking intentionally keeps the hot-path decisions in one pass.
 func (r *allRule[T]) rankChildren(
 	v T,
 	pool *bitmapPool,
@@ -275,6 +276,7 @@ func (r *allRule[T]) rankChildren(
 		}
 		rankedChildren[i] = rankedBitmap{card: estimate, childIdx: i}
 	}
+	//nolint:nestif // Cache-aware ranking keeps the hot path allocation-free.
 	if cheapBound > allCandidateScanLimit {
 		for i, child := range r.children {
 			if _, ok := cheapCardinality(child, v); ok {
@@ -426,6 +428,7 @@ func cheapCardinalityIsZero[T any](rule Rule[T], value T) bool {
 	return ok && checker.isCheapCardinalityZero(value)
 }
 
+//nolint:gocognit // The observed path mirrors execution branches to record exact metrics.
 func (r *allRule[T]) intersectRankedInOrderObserved(
 	v T,
 	dst *roaring.Bitmap,
@@ -461,6 +464,7 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 		// on the bitmap path. Once a child has been materialized, reuse its measured
 		// cardinality and switch to direct validation instead of materializing every
 		// remaining child.
+		//nolint:nestif // Candidate fallback deliberately validates all remaining rule forms here.
 		if rankedChildren[i].card <= allCandidateScanLimit {
 			dst.Clear()
 			rankedChildren[i].bits.Iterate(func(id uint32) bool {

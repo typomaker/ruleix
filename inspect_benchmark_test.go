@@ -11,6 +11,8 @@ type inspectBenchmarkConstraint struct {
 // without explicitly enabled runtime observation. The leaf cases measure the
 // materialization wrapper directly; the All cases also cover candidate checks
 // and the specialized top-level append path.
+//
+//nolint:lll // Keeping each benchmark schema on one line makes the matrix easier to compare.
 func BenchmarkInspectRuntimeOverhead(b *testing.B) {
 	const rules = 10_000
 	constraints := make([]inspectBenchmarkConstraint, rules)

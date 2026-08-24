@@ -50,8 +50,8 @@ func (o *cacheObservers) clone() *cacheObservers {
 	if o.n == 0 {
 		return nil
 	}
-	copy := *o
-	return &copy
+	cloned := *o
+	return &cloned
 }
 func (o *cacheObservers) each(yield func(*inspectorRuntime)) {
 	if o == nil {
