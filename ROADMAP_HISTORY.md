@@ -1690,3 +1690,27 @@ allocations. Reproduce with:
 go test -run '^$' -bench '^BenchmarkAllOrderedCandidateFiltering$' \
   -benchmem -benchtime=1s -count=5 .
 ```
+
+## 2026-08-24: planner follow-up after range optimizations
+
+A fresh five-second single-CPU profile of the 38,098-entry production-shaped
+`Index` search measured 46.549 us, 73,311 B, and 28 allocations. The remaining
+search CPU is representation work after ranking: `Bitmap.Or` is 19.3%
+cumulative, platform-version `CompareBy` is 13.1%, candidate-aware `Between`
+is 15.5%, and `Bitmap.AndAny` is 14.1%. `All` ranking itself no longer appears
+as a material leaf cost.
+
+No additional planner heuristic was retained. Equality-first staging,
+post-intersection candidate scans, cache-aware ranking, and range-bound pruning
+prototypes are already rejected earlier in this history. The current profile
+does not justify repeating them: the next exact-search gains require cheaper
+rule representations or bitmap primitives, not another ordering pass.
+
+Reproduce with:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeSearch/Index$' -benchtime=5s -count=1 \
+  -cpuprofile=/tmp/ruleix-production-after-ordered.cpu .
+go tool pprof -top -cum /tmp/ruleix-production-after-ordered.cpu
+```
