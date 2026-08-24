@@ -1399,3 +1399,46 @@ go tool pprof -top -alloc_space /tmp/ruleix-production-local.mem
 
 The allocation profiler's rate of one intentionally increases benchmark
 latency; use that run only for allocation attribution, not timing comparison.
+
+## 2026-08-24: sequential intersection follow-up experiments
+
+Three small executor changes tested whether the production profile's hot
+copy-on-write intersection could be avoided without changing bitmap ownership.
+None was retained.
+
+Switching from bitmap intersection to direct rule validation after an
+accumulated result reached the existing four-candidate limit was effectively
+neutral: warm `Local` search measured a median 4.129 us versus the immediately
+preceding 4.076 us baseline, with the same 4,662 B and four allocations. The
+production intersection does not become that selective early enough for this
+branch to matter.
+
+Using a separate 256-ID limit for the accumulated result was decisively worse.
+Warm `Local` search rose to a median 182.959 us, 4,940 B, and ten allocations;
+`Index` search rose to 202.392 us despite allocation traffic falling to 32,120
+B and 20 allocations. Replacing bitmap operations with hundreds of scalar
+checks across the remaining production rules costs far more than the avoided
+container clones.
+
+Finally, the first `dst.Or(first); dst.And(second)` pair was replaced with the
+functional `roaring.And(first, second)`, followed by a copy-on-write transfer
+of the exact result into `dst`. Warm `Local` search regressed to a median 4.852
+us, 5,439 B, and 22 allocations; `Index` search measured 105.022 us, 92,695 B,
+and 50 allocations. Although functional `And` constructs only intersecting
+containers, the current `Rule.search` contract still requires moving that
+result into the caller-owned destination, so bitmap creation and ownership
+transfer outweigh the saved lazy clone.
+
+These results narrow the useful next experiment to ownership rather than
+another intersection heuristic: either let an internal search return an owned
+bitmap, or add an `AndTo(dst, first, second)` primitive that builds the exact
+intersection directly in reusable destination storage. Raising candidate
+limits or wrapping functional `And` around the existing destination contract
+should not be revisited for this workload.
+
+Reproduce the retained baseline used for these comparisons with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+```
