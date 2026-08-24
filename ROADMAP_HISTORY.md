@@ -1591,3 +1591,30 @@ GOMAXPROCS=1 go test -run '^$' \
   -bench '^BenchmarkProductionShapeSearch/Index$' -benchtime=5s -count=1 \
   -cpuprofile=/tmp/ruleix-production-candidate-index.cpu .
 ```
+
+## 2026-08-24: candidate-aware `CompareBy` experiment
+
+The candidate-filter contract retained for uncached `Between` was also tested
+on `CompareBy`. The prototype collected the wildcard, equality posting, and
+the four operator-specific ordered ranges, then narrowed the existing `All`
+candidate bitmap through one `AndAny` call.
+
+The change was not retained. Against the candidate-aware `Between` baseline of
+45.715 us, 73,396 B, and 28 allocations per production-shaped `Index` search,
+the 32-entry inline posting buffer measured a 45.407 us median, 73,573 B, and
+31 allocations. Raising the inline buffer to 128 did not remove the internal
+union allocations and regressed the median to 48.107 us with the same bytes
+and allocation count. Combining five operator families creates enough union
+inputs that `AndAny` does not improve on `CompareBy`'s existing direct union.
+
+Keep candidate filtering specialized to `Between`. A future `CompareBy`
+optimization should instead reduce the number of operator-range postings, for
+example with per-operator prefix/suffix aggregates, before reconsidering the
+candidate-filter contract.
+
+Reproduce the retained baseline with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+```
