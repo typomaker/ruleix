@@ -1339,3 +1339,63 @@ go test -run '^$' \
 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
   -benchmem -benchtime=3x -count=3 .
 ```
+
+## 2026-08-24: production search CPU and allocation profile
+
+The 38,098-rule production-shaped search benchmark was profiled separately for
+`Index` and a warm `Local`, so the very different execution paths do not blur
+each other's samples. On Apple M1 Max with Go 1.26.0, medians of five
+one-second runs were 100.861 us, 91,914 B, and 32 allocations per `Index`
+search, and 4.076 us, 4,662 B, and four allocations per warm `Local` search.
+
+Sequential five-second CPU profiles with `GOMAXPROCS=1` identify two distinct
+cost centers. In warm `Local` search,
+`allRule.intersectRankedInOrderObserved` accounted for 52.5% cumulative CPU and
+Roaring `Bitmap.And` for 48.9%. Its `arrayContainer.iandBitmap` implementation
+accounted for 33.1% cumulative CPU, including 14.9% flat in
+`bitmapContainer.bitValue`. `allRule.rankChildren` was only 7.3% cumulative,
+all of it attributed to reuse of the cached local plan, so planning is no
+longer the primary optimization target.
+
+An allocation profile of the same warm path attributes 95.7% of allocated
+space to Roaring `arrayContainer.clone`, reached from the copy-on-write
+`Bitmap.And` operation. This explains both the benchmark's approximately
+4.66 KB per search and a material part of the runtime allocation/GC samples.
+The highest-value follow-up is therefore to avoid or amortize the writable
+container clone for the first accumulated intersection, while preserving the
+immutability of cached postings. Reducing result conversion is secondary:
+`appendBitmapValues` accounted for only 3.1% cumulative CPU.
+
+Uncached `Index` search has a different bottleneck. Roaring `Bitmap.Or`
+accounted for 54.8% cumulative CPU while materializing ordered results;
+`betweenRule.searchBitmaps` accounted for 50.7%, and the time-valued
+`orderedIndex.walk` for 45.1%. Roaring `union2by2` alone used 28.1% flat CPU.
+For repeated production queries, using a warm `Local` avoids most of this work
+and was about 24.7 times faster in the median benchmark. If uncached `Index`
+latency must improve, range-result materialization and union strategy are the
+relevant targets, rather than child ranking.
+
+Reproduce the measurements and collect profiles with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeSearch/Index$' -benchtime=5s -count=1 \
+  -cpuprofile=/tmp/ruleix-production-index.cpu .
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeSearch/Local$' -benchtime=5s -count=1 \
+  -cpuprofile=/tmp/ruleix-production-local.cpu .
+
+go tool pprof -top -cum /tmp/ruleix-production-index.cpu
+go tool pprof -top -cum /tmp/ruleix-production-local.cpu
+
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeSearch/Local$' -benchtime=1s -count=1 \
+  -memprofile=/tmp/ruleix-production-local.mem -memprofilerate=1 .
+go tool pprof -top -alloc_space /tmp/ruleix-production-local.mem
+```
+
+The allocation profiler's rate of one intentionally increases benchmark
+latency; use that run only for allocation attribution, not timing comparison.
