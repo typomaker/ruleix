@@ -157,9 +157,9 @@ func BenchmarkLossyAllSearchQuality(b *testing.B) {
 // BenchmarkLossyAllSearchRuntime isolates the Index and Local search paths for
 // CPU and allocation profiles. On Apple M1 Max with Go 1.26.0, 10k entries,
 // four equality children, 256 rotating queries, and the command below,
-// Budget50 measured Index 687-711 ns/op, 89 B/op, 4 allocs/op and Local
-// 810-821 ns/op, 88 B/op, 5 allocs/op; Budget25 measured Index 563-612 ns/op,
-// 49 B/op, 1 alloc/op and Local 743-749 ns/op, 49 B/op, 2 allocs/op.
+// Budget50 measured Index 643-648 ns/op, 157 B/op, 3 allocs/op and Local
+// 755-758 ns/op, 159 B/op, 3 allocs/op; Budget25 measured Index 563-568 ns/op,
+// 61 B/op, 1 alloc/op and Local 589-591 ns/op, 59 B/op, 1 alloc/op.
 //
 //	go test -run '^$' -bench '^BenchmarkLossyAllSearchRuntime/' -benchmem -benchtime=1s -count=3 .
 func BenchmarkLossyAllSearchRuntime(b *testing.B) {

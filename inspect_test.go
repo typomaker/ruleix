@@ -42,7 +42,7 @@ var _ snapshotAPI = InspectorSnapshot{}
 
 func TestInspectReportsAllRangePruning(t *testing.T) {
 	type constraint struct{ left, right int }
-	constraints := make([]constraint, 12)
+	constraints := make([]constraint, 20)
 	ids := make([]int, len(constraints))
 	for i := range constraints {
 		constraints[i] = constraint{left: 1, right: 0}
@@ -68,13 +68,13 @@ func TestInspectReportsAllRangePruning(t *testing.T) {
 
 func TestInspectReportsLaterAllRangePruning(t *testing.T) {
 	type constraint struct{ first, second, third int }
-	constraints := make([]constraint, 17)
+	constraints := make([]constraint, 29)
 	ids := make([]int, len(constraints))
 	for i := range constraints {
 		constraints[i] = constraint{
-			first:  boolInt(i < 5),
-			second: boolInt(i >= 3 && i < 9),
-			third:  boolInt(i >= 10),
+			first:  boolInt(i < 9),
+			second: boolInt(i >= 5 && i < 14),
+			third:  boolInt(i >= 15),
 		}
 		ids[i] = i
 	}

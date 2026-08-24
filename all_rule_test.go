@@ -220,9 +220,9 @@ func TestAllStopsAfterEmptyIntersection(t *testing.T) {
 }
 
 func TestAllBitmapPathStopsAfterDisjointLeadingPair(t *testing.T) {
-	first := &countingRule{ids: []uint32{0, 1, 2, 3, 4}}
-	disjoint := &countingRule{ids: []uint32{5, 6, 7, 8, 9}}
-	unreached := &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5}}
+	first := &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8}}
+	disjoint := &countingRule{ids: []uint32{9, 10, 11, 12, 13, 14, 15, 16, 17}}
+	unreached := &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8}}
 	rule := All[int](first, disjoint, unreached)
 	pool := newBitmapPool()
 	dst := pool.get()
@@ -237,10 +237,10 @@ func TestAllBitmapPathStopsAfterDisjointLeadingPair(t *testing.T) {
 }
 
 func TestAllBitmapPathStopsAfterLaterDisjointRange(t *testing.T) {
-	first := &countingRule{ids: []uint32{0, 1, 2, 3, 4}}
-	second := &countingRule{ids: []uint32{3, 4, 5, 6, 7, 8}}
-	disjoint := &countingRule{ids: []uint32{10, 11, 12, 13, 14, 15, 16}}
-	unreached := &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5, 6, 7}}
+	first := &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8}}
+	second := &countingRule{ids: []uint32{4, 5, 6, 7, 8, 9, 10, 11, 12}}
+	disjoint := &countingRule{ids: []uint32{13, 14, 15, 16, 17, 18, 19, 20, 21}}
+	unreached := &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8}}
 	rule := All[int](first, second, disjoint, unreached)
 	pool := newBitmapPool()
 	dst := pool.get()
@@ -417,7 +417,7 @@ func TestAllSwitchesToCandidateScanAfterSmallMaterializedResult(t *testing.T) {
 }
 
 func TestAllReusesEarlierMaterializedResultsAfterCandidateSwitch(t *testing.T) {
-	first := &countingRule{ids: []uint32{1, 2, 3, 4, 5}}
+	first := &countingRule{ids: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9}}
 	selective := &countingRule{ids: []uint32{2}}
 	third := &countingRule{ids: []uint32{2, 3, 4, 5, 6}}
 	rule := All[int](

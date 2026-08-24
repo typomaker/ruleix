@@ -2,11 +2,11 @@ package ruleix
 
 import "github.com/RoaringBitmap/roaring/v2"
 
-// Scanning up to four candidate IDs avoids materializing every child result.
+// Scanning up to eight candidate IDs avoids materializing every child result.
 // Benchmarks across dense and sparse postings with 2, 4, and 8 children show
 // bitmap intersection winning above this shared limit; see
 // BenchmarkAllExecutionThreshold.
-const allCandidateScanLimit = 4
+const allCandidateScanLimit = 8
 
 // Range pruning pays for the first two intersections, where an empty result
 // avoids most remaining materializations. If they survive, collecting the rest
@@ -28,7 +28,10 @@ const allDirectExclusionScanLimit = 16
 //	)
 func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} }
 
-type allRule[T any] struct{ children []Rule[T] }
+type allRule[T any] struct {
+	children          []Rule[T]
+	planningProviders []planningBitmapProvider[T]
+}
 
 func (*allRule[T]) rule()                      {}
 func (*allRule[T]) inspectionStrategy() string { return "all" }
@@ -73,6 +76,16 @@ func (r *allRule[T]) collectBuildStatistics(stats []nodeBuildStatistics) {
 func (r *allRule[T]) prepareSearch() {
 	for _, child := range r.children {
 		prepareRuleSearch(child)
+	}
+	for i, child := range r.children {
+		provider := resolvePlanningBitmapProvider(child)
+		if provider == nil {
+			continue
+		}
+		if r.planningProviders == nil {
+			r.planningProviders = make([]planningBitmapProvider[T], len(r.children))
+		}
+		r.planningProviders[i] = provider
 	}
 }
 func (r *allRule[T]) optimize(total uint64) Rule[T] {
@@ -282,7 +295,7 @@ func (r *allRule[T]) rankChildren(
 	cheapBound := ^uint64(0)
 	for i, child := range r.children {
 		estimate := ^uint64(0)
-		if bits, ok := planningBitmap(child, v); ok {
+		if bits, ok := r.lookupPlanningBitmap(i, child, v); ok {
 			estimate = bits.GetCardinality()
 			rankedChildren[i].bits = bits
 			if estimate == 0 {
@@ -352,7 +365,13 @@ func (r *allRule[T]) reuseLocalPlan(
 	for rank, childIdx := range plan.order {
 		ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
 		child := r.children[childIdx]
-		if provider, ok := child.(cachedBitmapProvider[T]); ok {
+		if bits, found := r.lookupPlanningBitmap(childIdx, child, v); found {
+			ranked.bits = bits
+			ranked.card = bits.GetCardinality()
+			if ranked.card == 0 {
+				return false, true
+			}
+		} else if provider, ok := child.(cachedBitmapProvider[T]); ok {
 			if bits, found := provider.lookupCachedBitmap(v, pool); found {
 				ranked.bits = bits
 				ranked.card = bits.GetCardinality()
@@ -424,19 +443,38 @@ func cachedCardinality[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, 
 }
 
 func planningBitmap[T any](rule Rule[T], value T) (*roaring.Bitmap, bool) {
-	switch wrapped := rule.(type) {
-	case *inspectedRuntimeRule[T]:
-		return planningBitmap(wrapped.child, value)
-	case *inspectionDetailsRule[T]:
-		return planningBitmap(wrapped.child, value)
-	case *lossyRule[T]:
-		return planningBitmap(wrapped.child, value)
-	}
-	provider, ok := rule.(planningBitmapProvider[T])
-	if !ok {
+	provider := resolvePlanningBitmapProvider(rule)
+	if provider == nil {
 		return nil, false
 	}
 	return provider.lookupPlanningBitmap(value)
+}
+
+func resolvePlanningBitmapProvider[T any](rule Rule[T]) planningBitmapProvider[T] {
+	switch wrapped := rule.(type) {
+	case *inspectedRuntimeRule[T]:
+		return resolvePlanningBitmapProvider(wrapped.child)
+	case *inspectionDetailsRule[T]:
+		return resolvePlanningBitmapProvider(wrapped.child)
+	case *lossyRule[T]:
+		return resolvePlanningBitmapProvider(wrapped.child)
+	}
+	provider, ok := rule.(planningBitmapProvider[T])
+	if !ok {
+		return nil
+	}
+	return provider
+}
+
+func (r *allRule[T]) lookupPlanningBitmap(index int, child Rule[T], value T) (*roaring.Bitmap, bool) {
+	if len(r.planningProviders) == len(r.children) {
+		provider := r.planningProviders[index]
+		if provider == nil {
+			return nil, false
+		}
+		return provider.lookupPlanningBitmap(value)
+	}
+	return planningBitmap(child, value)
 }
 
 func estimateCardinalityForPlan[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, bool) {
