@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Inspected `Local` searches accumulate runtime metrics without atomic
+  operations and publish them when the context is closed. Snapshots therefore
+  exclude work buffered by still-open Local contexts.
+
 ## [0.7.1] - 2026-08-24
 
 ### Changed

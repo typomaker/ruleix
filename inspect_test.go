@@ -178,13 +178,19 @@ func TestInspectReportsCumulativeLocalCacheMetrics(t *testing.T) {
 		local.Search(inspectConstraint{country: "DE"}, &dst)
 	}
 	snapshot := inspector.Snapshot()
+	require.Zero(t, snapshot.Search(), "open Local metrics remain buffered")
+	require.Zero(t, snapshot.CacheHit(), "open Local metrics remain buffered")
+	require.Zero(t, snapshot.CacheMiss(), "open Local metrics remain buffered")
+	local.Close()
+	snapshot = inspector.Snapshot()
+	require.Equal(t, uint64(3), snapshot.Search())
+	require.Equal(t, uint64(3), snapshot.Materialization())
+	require.Equal(t, Histogram{One: 3}, snapshot.ResultCardinality())
 	require.Equal(t, uint64(1), snapshot.CacheHit())
 	require.Equal(t, uint64(2), snapshot.CacheMiss())
 	require.Equal(t, uint64(1), snapshot.CacheAdmission())
 	require.Zero(t, snapshot.CacheEviction())
 
-	local.Close()
-	snapshot = inspector.Snapshot()
 	require.Equal(t, uint64(1), snapshot.CacheAdmission(), "counters remain monotonic")
 }
 
@@ -219,7 +225,7 @@ func TestInspectReportsCumulativeAdaptiveCacheExpansions(t *testing.T) {
 	first := index.Local()
 	warm(first)
 	snapshot := inspector.Snapshot()
-	require.Equal(t, uint64(1), snapshot.CacheExpansion())
+	require.Zero(t, snapshot.CacheExpansion(), "open Local metrics remain buffered")
 	first.Close()
 	snapshot = inspector.Snapshot()
 	require.Equal(t, uint64(1), snapshot.CacheExpansion(), "counter remains monotonic")
@@ -227,8 +233,9 @@ func TestInspectReportsCumulativeAdaptiveCacheExpansions(t *testing.T) {
 	second := index.Local()
 	warm(second)
 	snapshot = inspector.Snapshot()
-	require.Equal(t, uint64(2), snapshot.CacheExpansion(), "expansions aggregate across Local lifetimes")
+	require.Equal(t, uint64(1), snapshot.CacheExpansion(), "open Local metrics remain buffered")
 	second.Close()
+	require.Equal(t, uint64(2), inspector.Snapshot().CacheExpansion(), "expansions aggregate across Local lifetimes")
 }
 
 func TestInspectRejectsOneInspectorOnMultipleRules(t *testing.T) {

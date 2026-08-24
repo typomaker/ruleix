@@ -12,6 +12,11 @@ type inspectBenchmarkConstraint struct {
 // materialization wrapper directly; the All cases also cover candidate checks
 // and the specialized top-level append path.
 //
+// Apple M1 Max, 2026-08-24, medians of five 300 ms runs: warm Local leaf
+// 41.70 ns/op plain and 49.91 ns/op inspected; warm Local All 173.2 ns/op plain
+// and 176.6 ns/op inspected. Reproduce with: go test -run '^$' -bench
+// '^BenchmarkInspectRuntimeOverhead/' -benchmem -benchtime=300ms -count=5 .
+//
 //nolint:lll // Keeping each benchmark schema on one line makes the matrix easier to compare.
 func BenchmarkInspectRuntimeOverhead(b *testing.B) {
 	const rules = 10_000
@@ -69,8 +74,10 @@ func benchmarkInspectSearch(
 	}
 	var dst []int
 	search := index.Search
+	var localSearch *Local[inspectBenchmarkConstraint, int]
 	if local {
-		search = index.Local().Search
+		localSearch = index.Local()
+		search = localSearch.Search
 	}
 	for range 2 {
 		dst = dst[:0]
@@ -83,6 +90,9 @@ func benchmarkInspectSearch(
 		search(query, &dst)
 	}
 	b.StopTimer()
+	if localSearch != nil {
+		localSearch.Close()
+	}
 	if len(dst) != 1 {
 		b.Fatalf("got %d matches, want 1", len(dst))
 	}

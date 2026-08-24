@@ -80,7 +80,10 @@ if snapshot.Bound() {
 ```
 
 Runtime counters in successive snapshots are monotonic for the lifetime of the
-inspector. `Search` counts executions that
+inspector. Searches through a `Local` accumulate counters without atomic
+operations and publish them when `Local.Close` is called. Consequently,
+snapshots do not include work buffered by Local contexts that are still open.
+`Search` counts executions that
 materialize the inspected rule, except for an inspected top-level `All`, where
 it counts completed index searches even though the specialized executor can
 append the final result without materializing the composite. `CandidateCheck`

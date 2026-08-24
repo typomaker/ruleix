@@ -8,6 +8,28 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: batch inspected `Local` runtime metrics
+
+Inspected `Local` searches now update context-owned ordinary counters and merge
+them into the Inspector's atomic lifetime totals on `Local.Close`. This removes
+atomic read-modify-write operations from the Local hot path while preserving
+exact monotonic totals after close. A snapshot intentionally excludes metrics
+buffered by Local contexts that remain open; shared `Index` searches retain
+their atomic updates and concurrent safety.
+
+On Apple M1 Max, medians of five 300 ms runs put a warm inspected equality leaf
+at 49.91 ns/search versus 41.70 ns without inspection, down from the preceding
+51.62 ns inspected baseline. A warm inspected top-level `All` measured 176.6 ns
+versus 173.2 ns without inspection. Paired allocation counts and bytes remained
+unchanged.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkInspectRuntimeOverhead/' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
 ## 2026-08-24: conclude `Local` cache-policy tuning
 
 The existing second-use admission, two-entry LRU, measured growth to four

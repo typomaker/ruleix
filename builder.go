@@ -280,9 +280,10 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 	before := len(*dst)
 	if observed, ok := ix.root.(*inspectedRuntimeRule[C]); ok {
 		if root, ok := observed.child.(*allRule[C]); ok {
-			observed.metrics.searches.Add(1)
+			metrics := pool.inspectorObserver(observed.metrics)
+			metrics.search()
 			searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst, observed.metrics)
-			observed.metrics.observeCardinality(uint64(len(*dst) - before))
+			metrics.observeCardinality(uint64(len(*dst) - before))
 			return len(*dst) != before
 		}
 	}
@@ -410,7 +411,7 @@ func materializeRankedAfterFirst[C any](
 			return false
 		}
 		if i == 1 && shouldPruneBitmapRanges(pool, metrics) && bitmapRangesDisjoint(rankedChildren[0].bits, bits) {
-			observeRangePruning(metrics)
+			observeRangePruning(metrics, pool)
 			return false
 		}
 	}
@@ -510,7 +511,7 @@ func appendScannedAllMatches[C any, ID comparable](
 	candidates := rankedChildren[0].bits.Iterator()
 	for candidates.HasNext() {
 		id := candidates.Next()
-		if excluded != nil && excluded.Contains(id) || excluded == nil && isExcluded(exclusions, value, id) {
+		if excluded != nil && excluded.Contains(id) || excluded == nil && isExcluded(exclusions, value, id, pool) {
 			continue
 		}
 		matches := true
@@ -553,8 +554,12 @@ func addExclusions[C any](rules []exclusionRule[C], value C, dst *roaring.Bitmap
 	}
 }
 
-func isExcluded[C any](rules []exclusionRule[C], value C, id uint32) bool {
+func isExcluded[C any](rules []exclusionRule[C], value C, id uint32, pool *bitmapPool) bool {
 	for _, rule := range rules {
+		if observed, ok := rule.(*inspectedExclusionRule[C]); ok {
+			pool.inspectorObserver(observed.metrics).candidateCheck()
+			rule = observed.child
+		}
 		if rule.isExcluded(value, id) {
 			return true
 		}

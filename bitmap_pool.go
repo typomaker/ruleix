@@ -12,6 +12,65 @@ type bitmapPool struct {
 	local      []localNodeCache
 	allPlans   map[any]*localAllPlan
 	observers  cacheObservers
+	inspectors localInspectorRuntimeChunk
+}
+
+type localInspectorRuntime struct {
+	shared *inspectorRuntime
+	values inspectorRuntimeValues
+}
+
+type localInspectorRuntimeChunk struct {
+	items [8]localInspectorRuntime
+	n     uint8
+	next  *localInspectorRuntimeChunk
+}
+
+func (p *bitmapPool) inspectorObserver(shared *inspectorRuntime) inspectorRuntimeObserver {
+	if p.local == nil {
+		return inspectorRuntimeObserver{shared: shared}
+	}
+	chunk := &p.inspectors
+	for {
+		for i := range int(chunk.n) {
+			if chunk.items[i].shared == shared {
+				return inspectorRuntimeObserver{shared: shared, local: &chunk.items[i].values}
+			}
+		}
+		if int(chunk.n) < len(chunk.items) {
+			i := chunk.n
+			chunk.n++
+			chunk.items[i].shared = shared
+			return inspectorRuntimeObserver{shared: shared, local: &chunk.items[i].values}
+		}
+		if chunk.next == nil {
+			chunk.next = &localInspectorRuntimeChunk{}
+		}
+		chunk = chunk.next
+	}
+}
+
+func (p *bitmapPool) flushInspectorMetrics() {
+	for chunk := &p.inspectors; chunk != nil; chunk = chunk.next {
+		for i := range int(chunk.n) {
+			entry := &chunk.items[i]
+			v, dst := &entry.values, entry.shared
+			dst.searches.Add(v.searches)
+			dst.materializations.Add(v.materializations)
+			dst.candidateChecks.Add(v.candidateChecks)
+			dst.rangePrunings.Add(v.rangePrunings)
+			dst.emptyResults.Add(v.emptyResults)
+			dst.cacheHits.Add(v.cacheHits)
+			dst.cacheMisses.Add(v.cacheMisses)
+			dst.cacheAdmissions.Add(v.cacheAdmissions)
+			dst.cacheEvictions.Add(v.cacheEvictions)
+			dst.cacheExpansions.Add(v.cacheExpansions)
+			for bucket := range v.cardinality {
+				dst.cardinality[bucket].Add(v.cardinality[bucket])
+			}
+			entry.values = inspectorRuntimeValues{}
+		}
+	}
 }
 
 // maxPooledBitmapBytes bounds the live Roaring container memory represented by
@@ -48,6 +107,7 @@ func newLocalBitmapPool(nodes int) *bitmapPool {
 	return p
 }
 func (p *bitmapPool) resetLocal() {
+	p.flushInspectorMetrics()
 	for i := range p.local {
 		p.local[i].reset(p)
 	}

@@ -231,7 +231,7 @@ func (r *allRule[T]) searchRanked(
 
 func matchesRuleID[T any](rule Rule[T], value T, id uint32, pool *bitmapPool) bool {
 	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
-		observed.metrics.candidateChecks.Add(1)
+		pool.inspectorObserver(observed.metrics).candidateCheck()
 		return matchesRuleID(observed.child, value, id, pool)
 	}
 	if matcher, ok := rule.(ruleIDMatcher[T]); ok {
@@ -488,7 +488,7 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 						continue
 					}
 					if ranked.bits != nil {
-						observeCandidateCheck(r.children[ranked.childIdx])
+						observeCandidateCheck(r.children[ranked.childIdx], pool)
 						if !ranked.bits.Contains(id) {
 							return true
 						}
@@ -516,7 +516,7 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 			current = rankedChildren[0].bits
 		}
 		if shouldPruneBitmapRanges(pool, metrics) && bitmapRangesDisjoint(current, bits) {
-			observeRangePruning(metrics)
+			observeRangePruning(metrics, pool)
 			dst.Clear()
 			for j := range rankedChildren {
 				if rankedChildren[j].owned {
@@ -564,15 +564,15 @@ func filterCandidatesThroughRule[T any](rule Rule[T], value T, dst *roaring.Bitm
 	return true
 }
 
-func observeCandidateCheck[T any](rule Rule[T]) {
+func observeCandidateCheck[T any](rule Rule[T], pool *bitmapPool) {
 	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
-		observed.metrics.candidateChecks.Add(1)
+		pool.inspectorObserver(observed.metrics).candidateCheck()
 	}
 }
 
-func observeRangePruning(metrics *inspectorRuntime) {
+func observeRangePruning(metrics *inspectorRuntime, pool *bitmapPool) {
 	if metrics != nil {
-		metrics.rangePrunings.Add(1)
+		pool.inspectorObserver(metrics).rangePruning()
 	}
 }
 

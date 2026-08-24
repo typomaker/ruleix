@@ -331,7 +331,9 @@ keeps monotonic runtime counters for bitmap searches, materializations, candidat
 empty results, cache activity, and adaptive cache expansions, plus an
 allocation-free result-cardinality histogram. Inspector runtime scalars are
 monotonic counters; it exposes no gauges. Candidate checks do not force bitmap
-materialization.
+materialization. A `Local` batches its inspection counters without atomics and
+publishes them on `Close`; snapshots exclude metrics from Local contexts that
+are still open.
 
 ## Development
 

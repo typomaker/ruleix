@@ -28,11 +28,11 @@ func (c *localNodeCache) reset(pool *bitmapPool) {
 }
 
 type cacheObservers struct {
-	items [8]*inspectorRuntime
+	items [8]inspectorRuntimeObserver
 	n     uint8
 }
 
-func (o *cacheObservers) push(metrics *inspectorRuntime) {
+func (o *cacheObservers) push(metrics inspectorRuntimeObserver) {
 	if int(o.n) == len(o.items) {
 		return
 	}
@@ -44,7 +44,7 @@ func (o *cacheObservers) pop() {
 		return
 	}
 	o.n--
-	o.items[o.n] = nil
+	o.items[o.n] = inspectorRuntimeObserver{}
 }
 func (o *cacheObservers) clone() *cacheObservers {
 	if o.n == 0 {
@@ -53,7 +53,7 @@ func (o *cacheObservers) clone() *cacheObservers {
 	cloned := *o
 	return &cloned
 }
-func (o *cacheObservers) each(yield func(*inspectorRuntime)) {
+func (o *cacheObservers) each(yield func(inspectorRuntimeObserver)) {
 	if o == nil {
 		return
 	}
@@ -66,7 +66,7 @@ func (o *cacheObservers) hit() {
 		return
 	}
 	for i := range int(o.n) {
-		o.items[i].cacheHits.Add(1)
+		o.items[i].cacheHit()
 	}
 }
 func (o *cacheObservers) miss() {
@@ -74,7 +74,7 @@ func (o *cacheObservers) miss() {
 		return
 	}
 	for i := range int(o.n) {
-		o.items[i].cacheMisses.Add(1)
+		o.items[i].cacheMiss()
 	}
 }
 func (o *cacheObservers) admission() {
@@ -82,7 +82,7 @@ func (o *cacheObservers) admission() {
 		return
 	}
 	for i := range int(o.n) {
-		o.items[i].cacheAdmissions.Add(1)
+		o.items[i].cacheAdmission()
 	}
 }
 func (o *cacheObservers) eviction() {
@@ -90,7 +90,7 @@ func (o *cacheObservers) eviction() {
 		return
 	}
 	for i := range int(o.n) {
-		o.items[i].cacheEvictions.Add(1)
+		o.items[i].cacheEviction()
 	}
 }
 func (o *cacheObservers) expansion() {
@@ -98,7 +98,7 @@ func (o *cacheObservers) expansion() {
 		return
 	}
 	for i := range int(o.n) {
-		o.items[i].cacheExpansions.Add(1)
+		o.items[i].cacheExpansion()
 	}
 }
 

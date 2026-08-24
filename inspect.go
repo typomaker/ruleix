@@ -188,6 +188,107 @@ type inspectorRuntimeSnapshot struct {
 	cardinality                                                                Histogram
 }
 
+type inspectorRuntimeValues struct {
+	searches, materializations, candidateChecks, rangePrunings, emptyResults uint64
+	cacheHits, cacheMisses, cacheAdmissions, cacheEvictions, cacheExpansions uint64
+	cardinality                                                              [6]uint64
+}
+
+type inspectorRuntimeObserver struct {
+	shared *inspectorRuntime
+	local  *inspectorRuntimeValues
+}
+
+func (o inspectorRuntimeObserver) search() {
+	if o.local != nil {
+		o.local.searches++
+		return
+	}
+	o.shared.searches.Add(1)
+}
+func (o inspectorRuntimeObserver) materialization() {
+	if o.local != nil {
+		o.local.materializations++
+		return
+	}
+	o.shared.materializations.Add(1)
+}
+func (o inspectorRuntimeObserver) candidateCheck() {
+	if o.local != nil {
+		o.local.candidateChecks++
+		return
+	}
+	o.shared.candidateChecks.Add(1)
+}
+func (o inspectorRuntimeObserver) rangePruning() {
+	if o.local != nil {
+		o.local.rangePrunings++
+		return
+	}
+	o.shared.rangePrunings.Add(1)
+}
+func (o inspectorRuntimeObserver) cacheHit() {
+	if o.local != nil {
+		o.local.cacheHits++
+		return
+	}
+	o.shared.cacheHits.Add(1)
+}
+func (o inspectorRuntimeObserver) cacheMiss() {
+	if o.local != nil {
+		o.local.cacheMisses++
+		return
+	}
+	o.shared.cacheMisses.Add(1)
+}
+func (o inspectorRuntimeObserver) cacheAdmission() {
+	if o.local != nil {
+		o.local.cacheAdmissions++
+		return
+	}
+	o.shared.cacheAdmissions.Add(1)
+}
+func (o inspectorRuntimeObserver) cacheEviction() {
+	if o.local != nil {
+		o.local.cacheEvictions++
+		return
+	}
+	o.shared.cacheEvictions.Add(1)
+}
+func (o inspectorRuntimeObserver) cacheExpansion() {
+	if o.local != nil {
+		o.local.cacheExpansions++
+		return
+	}
+	o.shared.cacheExpansions.Add(1)
+}
+
+func (o inspectorRuntimeObserver) observeCardinality(n uint64) {
+	i := 5
+	switch {
+	case n == 0:
+		i = 0
+		if o.local != nil {
+			o.local.emptyResults++
+		} else {
+			o.shared.emptyResults.Add(1)
+		}
+	case n == 1:
+		i = 1
+	case n <= 4:
+		i = 2
+	case n <= 16:
+		i = 3
+	case n <= 256:
+		i = 4
+	}
+	if o.local != nil {
+		o.local.cardinality[i]++
+	} else {
+		o.shared.cardinality[i].Add(1)
+	}
+}
+
 type inspector struct{ state inspectorState }
 
 var _ Inspector = (*inspector)(nil)
@@ -309,18 +410,18 @@ type inspectedExclusionRule[T any] struct {
 }
 
 func (r *inspectedExclusionRule[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	metrics := p.inspectorObserver(r.metrics)
 	if p.local != nil {
-		p.observers.push(r.metrics)
+		p.observers.push(metrics)
 		defer p.observers.pop()
 	}
-	r.metrics.searches.Add(1)
-	r.metrics.materializations.Add(1)
+	metrics.search()
+	metrics.materialization()
 	before := dst.GetCardinality()
 	r.child.exclude(v, dst, p)
-	r.metrics.observeCardinality(dst.GetCardinality() - before)
+	metrics.observeCardinality(dst.GetCardinality() - before)
 }
 func (r *inspectedExclusionRule[T]) isExcluded(v T, id uint32) bool {
-	r.metrics.candidateChecks.Add(1)
 	return r.child.isExcluded(v, id)
 }
 func (r *inspectedExclusionRule[T]) hasExclusions() bool { return r.child.hasExclusions() }
@@ -345,12 +446,13 @@ func (r *inspectedRuntimeRule[T]) cardinality(v T, p *bitmapPool) uint64 {
 	return measuredCardinality[T](r, v, p)
 }
 func (r *inspectedRuntimeRule[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	metrics := p.inspectorObserver(r.metrics)
 	if p.local != nil {
-		p.observers.push(r.metrics)
+		p.observers.push(metrics)
 		defer p.observers.pop()
 	}
-	r.metrics.searches.Add(1)
-	r.metrics.materializations.Add(1)
+	metrics.search()
+	metrics.materialization()
 	before := dst.GetCardinality()
 	if all, ok := r.child.(*allRule[T]); ok {
 		all.searchObserved(v, dst, p, r.metrics)
@@ -358,7 +460,7 @@ func (r *inspectedRuntimeRule[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool
 		r.child.search(v, dst, p)
 	}
 	n := dst.GetCardinality() - before
-	r.metrics.observeCardinality(n)
+	metrics.observeCardinality(n)
 }
 func (r *inspectedRuntimeRule[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
 	r.child.exclude(v, dst, p)
@@ -377,15 +479,16 @@ func (r *inspectedRuntimeRule[T]) lookupCachedBitmap(v T, p *bitmapPool) (*roari
 	if !ok || p.local == nil {
 		return nil, false
 	}
-	p.observers.push(r.metrics)
+	metrics := p.inspectorObserver(r.metrics)
+	p.observers.push(metrics)
 	bits, found := provider.lookupCachedBitmap(v, p)
 	p.observers.pop()
 	if !found {
 		return nil, false
 	}
-	r.metrics.searches.Add(1)
-	r.metrics.materializations.Add(1)
-	r.metrics.observeCardinality(bits.GetCardinality())
+	metrics.search()
+	metrics.materialization()
+	metrics.observeCardinality(bits.GetCardinality())
 	return bits, true
 }
 func (r *inspectedRuntimeRule[T]) isCardinalityZero(v T) bool {
@@ -394,24 +497,6 @@ func (r *inspectedRuntimeRule[T]) isCardinalityZero(v T) bool {
 	}
 	return false
 }
-func (m *inspectorRuntime) observeCardinality(n uint64) {
-	i := 5
-	switch {
-	case n == 0:
-		i = 0
-		m.emptyResults.Add(1)
-	case n == 1:
-		i = 1
-	case n <= 4:
-		i = 2
-	case n <= 16:
-		i = 3
-	case n <= 256:
-		i = 4
-	}
-	m.cardinality[i].Add(1)
-}
-
 func stripInspectors[T any](
 	rule Rule[T],
 	seen map[*inspectorState]struct{},
