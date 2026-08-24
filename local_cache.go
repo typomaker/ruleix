@@ -15,14 +15,14 @@ type localAllPlan struct {
 	firstCard uint64
 }
 
-type localCacheReleaser interface {
-	releaseBitmaps(*bitmapPool)
+type localCacheResetter interface {
+	reset(*bitmapPool)
 }
 
-func (c *localNodeCache) releaseBitmaps(pool *bitmapPool) {
+func (c *localNodeCache) reset(pool *bitmapPool) {
 	for _, cached := range [...]any{c.equality, c.ordered, c.compareBy, c.between, c.exclusion} {
-		if releaser, ok := cached.(localCacheReleaser); ok {
-			releaser.releaseBitmaps(pool)
+		if resetter, ok := cached.(localCacheResetter); ok {
+			resetter.reset(pool)
 		}
 	}
 }
@@ -206,14 +206,15 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V], pool *bitmapPool) 
 	return entry.bits
 }
 
-func (c *valueBitmapCache[V]) releaseBitmaps(pool *bitmapPool) {
+func (c *valueBitmapCache[V]) reset(pool *bitmapPool) {
 	for i := 0; i < c.capacity(); i++ {
 		entry := c.entry(i)
 		if entry.bits != nil {
 			pool.put(entry.bits)
-			entry.bits = nil
 		}
 	}
+	observers := c.observers
+	*c = valueBitmapCache[V]{observers: observers}
 }
 
 func (c *valueBitmapCache[V]) capacity() int {

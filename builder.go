@@ -233,10 +233,10 @@ func (local *Local[C, ID]) Search(value C, dst *[]ID) bool {
 }
 
 // Close releases cached search results and returns the internal context to the
-// originating Index for reuse. Learned All child orders contain no result
-// bitmaps and remain with that recyclable context to accelerate its next Local
-// lifetime. A closed Local must not be used again. Repeated calls to Close are
-// safe.
+// originating Index for reuse. Empty per-node cache structures and learned All
+// child orders remain with that recyclable context, while all admission and
+// replacement state is reset so its next Local lifetime starts cold. A closed
+// Local must not be used again. Repeated calls to Close are safe.
 func (local *Local[C, ID]) Close() {
 	if local == nil || local.closed || local.index == nil {
 		return

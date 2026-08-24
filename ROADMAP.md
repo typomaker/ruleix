@@ -49,7 +49,7 @@ For `All`, start with the most selective predicate. Refine the ordering only
 when cheap estimates can distinguish the cost of materializing a bitmap from
 checking the current candidate set.
 
-#### Highest priority: remove repeated range-cardinality work
+#### Deferred candidate: remove repeated range-cardinality work
 
 The production-shaped warm `Local.Search` regression is isolated to schemas
 that contain ordered branches. Commit `05f8065` made `orderedRule`, `CompareBy`,
@@ -192,14 +192,14 @@ into the shared immutable index or weaken concurrent search safety.
 Work through these steps in priority order, promoting an optimization only
 when production-shaped benchmarks demonstrate a material benefit:
 
-1. Optimize the uncached ordered estimate only if bounded planning and warm
-   cache reuse still leave measurable overhead.
+1. Tune the remaining `Local` admission, eviction, close/reuse behavior, and
+   retained memory for production-shaped repeated and high-churn searches.
 2. Extend cheap estimates and lazy, empty-aware `All` execution for other
    production shapes where benchmarks show a benefit.
 3. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-4. Tune the remaining `Local` admission, eviction, close/reuse behavior, and
-   retained memory for production-shaped repeated and high-churn searches.
+4. Optimize the uncached ordered estimate only if bounded planning and warm
+   cache reuse still leave measurable overhead.
 5. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
 

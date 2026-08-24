@@ -49,7 +49,7 @@ func TestValueBitmapCacheClearsValueForNilEntry(t *testing.T) {
 	require.Nil(t, cache.entries[0].value)
 }
 
-func TestLocalCloseReleasesNodeCachesAndReturnsInternalContext(t *testing.T) {
+func TestLocalCloseResetsNodeCachesAndReturnsInternalContext(t *testing.T) {
 	type constraint struct{ value int }
 	get := func(value constraint) (int, bool) { return value.value, true }
 	index, err := New[constraint, int](Include(get)).Build(
@@ -59,16 +59,17 @@ func TestLocalCloseReleasesNodeCachesAndReturnsInternalContext(t *testing.T) {
 	local := index.Local()
 	var matches []int
 	local.Search(constraint{value: 1}, &matches)
-	require.NotNil(t, local.pool.local[0].equality)
+	cache := local.pool.local[0].equality
+	require.NotNil(t, cache)
 	pool := local.pool
 
 	local.Close()
-	require.Nil(t, pool.local[0].equality)
+	require.Same(t, cache, pool.local[0].equality)
 	require.PanicsWithValue(t, "ruleix: closed Local", func() { local.Search(constraint{}, &matches) })
 	require.NotPanics(t, local.Close)
 
 	reused := index.Local()
-	require.Nil(t, reused.pool.local[0].equality)
+	require.Same(t, cache, reused.pool.local[0].equality)
 	matches = matches[:0]
 	reused.Search(constraint{value: 1}, &matches)
 	require.Equal(t, []int{7}, matches)
@@ -94,8 +95,10 @@ func TestResetLocalReturnsCachedBitmapsToScratchPool(t *testing.T) {
 	require.True(t, betweenBits.IsEmpty())
 	require.Nil(t, valueCache.entries[0].bits)
 	require.Nil(t, betweenCache.entries[0].bits)
-	require.Nil(t, pool.local[0].ordered)
-	require.Nil(t, pool.local[1].between)
+	require.Same(t, valueCache, pool.local[0].ordered)
+	require.Same(t, betweenCache, pool.local[1].between)
+	require.Equal(t, 2, valueCache.capacity())
+	require.Equal(t, 2, betweenCache.capacity())
 	require.Equal(t, []int{1, 0}, pool.allPlans["all"].order)
 }
 

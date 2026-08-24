@@ -49,9 +49,8 @@ func newLocalBitmapPool(nodes int) *bitmapPool {
 }
 func (p *bitmapPool) resetLocal() {
 	for i := range p.local {
-		p.local[i].releaseBitmaps(p)
+		p.local[i].reset(p)
 	}
-	clear(p.local)
 	p.observers = cacheObservers{}
 }
 func (p *bitmapPool) get() *roaring.Bitmap {

@@ -43,7 +43,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   and temporary materialization.
 - `Local.Close` returns admitted equality, ordered, `CompareBy`, `Between`, and
   exclusion cache bitmaps to the reusable context pool instead of leaving their
-  allocations for garbage collection.
+  allocations for garbage collection. Cleared per-node cache structures also
+  remain with the context, avoiding their reallocation in the next `Local`
+  lifetime while preserving cold admission and replacement state.
 - Exact ordered indexes learn observed-domain logical routing intervals for
   numeric and `time.Time` values after the single streaming build pass. Search
   uses the same key to select a boundary block while retaining exact comparison

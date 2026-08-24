@@ -8,6 +8,30 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: reuse cleared per-node `Local` cache structures
+
+`Local.Close` now keeps the small typed cache structures attached to its
+recyclable context after returning all owned bitmaps to the bounded scratch
+pool. Each structure resets its keys, admission history, replacement state,
+and adaptive overflow before reuse, so the next `Local` lifetime remains
+logically cold and starts with two entries. Learned bitmap-free `All` plans
+continue to survive context reuse independently.
+
+On Apple M1 Max, five 300 ms runs of the production-shaped short-lived
+`Local` benchmark remained effectively flat at a median 373.7 us per six-search
+lifecycle, while allocation traffic fell from approximately 307.7 KB and 130
+allocations to 306.7 KB and 120 allocations. The empty reused-context lifecycle
+improved from a median 38.6 ns to 33.8 ns, with its existing 24 B and one
+allocation unchanged.
+
+Reproduce with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkLocalLifecycleReuse|BenchmarkProductionShapeLocalClose)$' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
 ## 2026-08-24: equality-first lazy range planning experiment
 
 Two `All` executor candidates deferred ordered and range estimates until after

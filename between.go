@@ -214,14 +214,15 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	dst.Or(cached.bits)
 }
 
-func (c *betweenCache[V]) releaseBitmaps(pool *bitmapPool) {
+func (c *betweenCache[V]) reset(pool *bitmapPool) {
 	for i := 0; i < c.capacity(); i++ {
 		entry := c.entry(i)
 		if entry.bits != nil {
 			pool.put(entry.bits)
-			entry.bits = nil
 		}
 	}
+	observers := c.observers
+	*c = betweenCache[V]{observers: observers}
 }
 
 func (c *betweenCache[V]) admit(from, until optionalValue[V], compare Compare[V]) bool {
