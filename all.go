@@ -31,6 +31,9 @@ func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} 
 type allRule[T any] struct {
 	children          []Rule[T]
 	planningProviders []planningBitmapProvider[T]
+	// Tests may search an internal rule before prepareSearch. Runtime indexes
+	// set this flag and can distinguish an exact schema from an unprepared one.
+	planningPrepared bool
 }
 
 func (*allRule[T]) rule()                      {}
@@ -87,6 +90,7 @@ func (r *allRule[T]) prepareSearch() {
 		}
 		r.planningProviders[i] = provider
 	}
+	r.planningPrepared = true
 }
 func (r *allRule[T]) optimize(total uint64) Rule[T] {
 	if len(r.children) == 0 {
@@ -295,7 +299,13 @@ func (r *allRule[T]) rankChildren(
 	cheapBound := ^uint64(0)
 	for i, child := range r.children {
 		estimate := ^uint64(0)
-		if bits, ok := r.lookupPlanningBitmap(i, child, v); ok {
+		var planningBits *roaring.Bitmap
+		var planningFound bool
+		if len(r.planningProviders) != 0 || !r.planningPrepared {
+			planningBits, planningFound = r.lookupPlanningBitmap(i, child, v)
+		}
+		if planningFound {
+			bits := planningBits
 			estimate = bits.GetCardinality()
 			rankedChildren[i].bits = bits
 			if estimate == 0 {
@@ -353,6 +363,7 @@ func (r *allRule[T]) rankChildren(
 	return true
 }
 
+//nolint:nestif // The exact fast path keeps cached bitmap checks inline.
 func (r *allRule[T]) reuseLocalPlan(
 	v T,
 	pool *bitmapPool,
@@ -362,25 +373,23 @@ func (r *allRule[T]) reuseLocalPlan(
 	if plan == nil || len(plan.order) != len(r.children) {
 		return false, false
 	}
-	for rank, childIdx := range plan.order {
-		ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
-		child := r.children[childIdx]
-		if bits, found := r.lookupPlanningBitmap(childIdx, child, v); found {
-			ranked.bits = bits
-			ranked.card = bits.GetCardinality()
-			if ranked.card == 0 {
-				return false, true
-			}
-		} else if provider, ok := child.(cachedBitmapProvider[T]); ok {
-			if bits, found := provider.lookupCachedBitmap(v, pool); found {
-				ranked.bits = bits
-				ranked.card = bits.GetCardinality()
-				if ranked.card == 0 {
-					return false, true
+	if len(r.planningProviders) == 0 && r.planningPrepared {
+		for rank, childIdx := range plan.order {
+			ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
+			child := r.children[childIdx]
+			if provider, ok := child.(cachedBitmapProvider[T]); ok {
+				if bits, found := provider.lookupCachedBitmap(v, pool); found {
+					ranked.bits = bits
+					ranked.card = bits.GetCardinality()
+					if ranked.card == 0 {
+						return false, true
+					}
 				}
 			}
+			rankedChildren[rank] = ranked
 		}
-		rankedChildren[rank] = ranked
+	} else if !r.populatePlanningLocalPlan(v, pool, plan, rankedChildren) {
+		return false, true
 	}
 	firstCard := rankedChildren[0].card
 	if firstCard == ^uint64(0) {
@@ -398,6 +407,44 @@ func (r *allRule[T]) reuseLocalPlan(
 		return false, false
 	}
 	return true, true
+}
+
+func (r *allRule[T]) populatePlanningLocalPlan(
+	v T,
+	pool *bitmapPool,
+	plan *localAllPlan,
+	rankedChildren []rankedBitmap,
+) bool {
+	for rank, childIdx := range plan.order {
+		ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
+		bits, found := r.lookupPlanningBitmap(childIdx, r.children[childIdx], v)
+		if found {
+			ranked.bits = bits
+			ranked.card = bits.GetCardinality()
+		} else {
+			ranked = r.cachedLocalPlanChild(v, pool, childIdx)
+		}
+		if ranked.card == 0 {
+			return false
+		}
+		rankedChildren[rank] = ranked
+	}
+	return true
+}
+
+func (r *allRule[T]) cachedLocalPlanChild(v T, pool *bitmapPool, childIdx int) rankedBitmap {
+	ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
+	provider, ok := r.children[childIdx].(cachedBitmapProvider[T])
+	if !ok {
+		return ranked
+	}
+	bits, found := provider.lookupCachedBitmap(v, pool)
+	if !found {
+		return ranked
+	}
+	ranked.bits = bits
+	ranked.card = bits.GetCardinality()
+	return ranked
 }
 
 func localPlanCardinalityChanged(previous, current uint64) bool {
