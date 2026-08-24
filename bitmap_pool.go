@@ -55,8 +55,6 @@ func (p *bitmapPool) flushInspectorMetrics() {
 		for i := range int(chunk.n) {
 			entry := &chunk.items[i]
 			v, dst := &entry.values, entry.shared
-			dst.searches.Add(v.searches)
-			dst.materializations.Add(v.materializations)
 			dst.candidateChecks.Add(v.candidateChecks)
 			dst.rangePrunings.Add(v.rangePrunings)
 			dst.emptyResults.Add(v.emptyResults)

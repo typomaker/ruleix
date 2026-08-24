@@ -36,13 +36,11 @@ func (InspectorSnapshot) ItemCount() (uint64, bool)
 func (InspectorSnapshot) DistinctValueCount() (uint64, bool)
 func (InspectorSnapshot) Granularity() (uint64, bool)
 func (InspectorSnapshot) FalsePositiveRate() (float64, bool)
-func (InspectorSnapshot) Search() uint64
 func (InspectorSnapshot) CacheHit() uint64
 func (InspectorSnapshot) CacheMiss() uint64
 func (InspectorSnapshot) CacheAdmission() uint64
 func (InspectorSnapshot) CacheEviction() uint64
 func (InspectorSnapshot) CacheExpansion() uint64
-func (InspectorSnapshot) Materialization() uint64
 func (InspectorSnapshot) CandidateCheck() uint64
 func (InspectorSnapshot) RangePruning() uint64
 func (InspectorSnapshot) EmptyResult() uint64
@@ -83,13 +81,11 @@ Runtime counters in successive snapshots are monotonic for the lifetime of the
 inspector. Searches through a `Local` accumulate counters without atomic
 operations and publish them when `Local.Close` is called. Consequently,
 snapshots do not include work buffered by Local contexts that are still open.
-`Search` counts executions that
-materialize the inspected rule, except for an inspected top-level `All`, where
-it counts completed index searches even though the specialized executor can
-append the final result without materializing the composite. `CandidateCheck`
-counts direct internal-ID membership checks. `Materialization` and the
-cardinality histogram count only bitmap materializations, again except that a
-top-level `All` contributes its actual final cardinality to the histogram.
+`CandidateCheck` counts direct internal-ID membership checks. The cardinality
+histogram counts bitmap results, except that a top-level `All`
+contributes its actual final cardinality even when its specialized executor
+appends the result without materializing the composite. Candidate scans are
+currently capped at four IDs, keeping direct counter updates bounded.
 `RangePruning` counts `All` executions that stop when one of the first three
 ranked bitmaps has a range disjoint from the accumulated intersection. The
 executor checks the first pair and one additional child sequentially, then

@@ -8,6 +8,16 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: Inspector candidate-check batching experiment
+
+Candidate-check batching was prototyped for `All` but rejected. The planner caps
+candidate scans at four IDs; on Apple M1 Max the maximum-width inspected scan
+measured 348.1 ns/search with batching versus 342.6 ns with direct atomic
+updates (medians of seven 500 ms runs). Batch bookkeeping therefore cost more
+than the three avoided additions. The redundant `InspectorSnapshot.Search` and
+`Materialization` metrics were removed: both tracked the same bitmap-result
+observation and neither consistently represented a public search call.
+
 ## 2026-08-24: batch inspected `Local` runtime metrics
 
 Inspected `Local` searches now update context-owned ordinary counters and merge

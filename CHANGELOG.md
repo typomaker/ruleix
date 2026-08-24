@@ -13,6 +13,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   operations and publish them when the context is closed. Snapshots therefore
   exclude work buffered by still-open Local contexts.
 
+### Removed
+
+- `InspectorSnapshot.Search` and `InspectorSnapshot.Materialization`; both
+  represented the same bitmap-result observation in the current executor and
+  did not reliably correspond to public search calls.
+
 ## [0.7.1] - 2026-08-24
 
 ### Changed

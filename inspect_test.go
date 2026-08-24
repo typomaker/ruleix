@@ -27,13 +27,11 @@ type snapshotAPI interface {
 	DistinctValueCount() (uint64, bool)
 	Granularity() (uint64, bool)
 	FalsePositiveRate() (float64, bool)
-	Search() uint64
 	CacheHit() uint64
 	CacheMiss() uint64
 	CacheAdmission() uint64
 	CacheEviction() uint64
 	CacheExpansion() uint64
-	Materialization() uint64
 	CandidateCheck() uint64
 	RangePruning() uint64
 	EmptyResult() uint64
@@ -64,7 +62,6 @@ func TestInspectReportsAllRangePruning(t *testing.T) {
 	var matches []int
 	require.False(t, index.Search(constraint{left: 1, right: 1}, &matches))
 	snapshot := inspector.Snapshot()
-	require.Equal(t, uint64(1), snapshot.Search())
 	require.Equal(t, uint64(1), snapshot.RangePruning())
 	require.Equal(t, uint64(1), snapshot.EmptyResult())
 }
@@ -178,13 +175,10 @@ func TestInspectReportsCumulativeLocalCacheMetrics(t *testing.T) {
 		local.Search(inspectConstraint{country: "DE"}, &dst)
 	}
 	snapshot := inspector.Snapshot()
-	require.Zero(t, snapshot.Search(), "open Local metrics remain buffered")
 	require.Zero(t, snapshot.CacheHit(), "open Local metrics remain buffered")
 	require.Zero(t, snapshot.CacheMiss(), "open Local metrics remain buffered")
 	local.Close()
 	snapshot = inspector.Snapshot()
-	require.Equal(t, uint64(3), snapshot.Search())
-	require.Equal(t, uint64(3), snapshot.Materialization())
 	require.Equal(t, Histogram{One: 3}, snapshot.ResultCardinality())
 	require.Equal(t, uint64(1), snapshot.CacheHit())
 	require.Equal(t, uint64(2), snapshot.CacheMiss())
@@ -402,7 +396,7 @@ func TestInspectReportsRuntimeExecutionMetrics(t *testing.T) {
 		[]string{"one", "two", "three"},
 	))
 	require.NoError(t, err)
-	beforeSearches := inspector.Snapshot()
+	before := inspector.Snapshot()
 
 	var matches []string
 	require.True(t, index.Search(inspectConstraint{country: "DE"}, &matches))
@@ -410,30 +404,32 @@ func TestInspectReportsRuntimeExecutionMetrics(t *testing.T) {
 	require.False(t, index.Search(inspectConstraint{country: "FR"}, &matches))
 
 	snapshot := inspector.Snapshot()
-	require.Zero(t, beforeSearches.Search(), "a captured snapshot does not change")
-	require.Equal(t, uint64(2), snapshot.Search())
-	require.Zero(t, snapshot.Materialization())
+	require.Zero(t, before.EmptyResult(), "a captured snapshot does not change")
 	require.Zero(t, snapshot.CandidateCheck())
 	require.Equal(t, uint64(1), snapshot.EmptyResult())
 	require.Equal(t, Histogram{Zero: 1, One: 1}, snapshot.ResultCardinality())
 }
 
-func TestInspectCountsCandidateChecksWithoutForcingMaterialization(t *testing.T) {
+func TestInspectCountsCandidateChecksWithoutBitmapSearch(t *testing.T) {
 	type constraint struct{ selective, broad string }
 	var broad Inspector
 	index, err := New[constraint, int](All(
 		Include(func(v constraint) (string, bool) { return v.selective, true }),
 		Inspect(&broad, Include(func(v constraint) (string, bool) { return v.broad, true })),
 	)).Build(Zip(
-		[]constraint{{selective: "one", broad: "yes"}, {selective: "two", broad: "yes"}},
-		[]int{1, 2},
+		[]constraint{
+			{selective: "one", broad: "yes"},
+			{selective: "one", broad: "yes"},
+			{selective: "one", broad: "yes"},
+			{selective: "one", broad: "yes"},
+			{selective: "two", broad: "yes"},
+		},
+		[]int{1, 2, 3, 4, 5},
 	))
 	require.NoError(t, err)
 
 	var matches []int
 	require.True(t, index.Search(constraint{selective: "one", broad: "yes"}, &matches))
 	snapshot := broad.Snapshot()
-	require.Equal(t, uint64(1), snapshot.CandidateCheck())
-	require.Zero(t, snapshot.Materialization())
-	require.Zero(t, snapshot.Search())
+	require.Equal(t, uint64(4), snapshot.CandidateCheck())
 }

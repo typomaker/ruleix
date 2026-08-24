@@ -125,9 +125,9 @@ returning arrays of internal child details.
 
 An inspected rule should also accumulate metrics from real `Search`, `Visit`,
 and `Local` executions. Expose them directly through `InspectorSnapshot`,
-without a nested metrics object or reset API. Counters are searches, cache
-hits, cache misses, cache admissions, cache evictions, materializations,
-cache expansions, candidate checks, `All` range prunings, and empty results. A
+without a nested metrics object or reset API. Counters are cache hits, cache
+misses, cache admissions, cache evictions, cache expansions, candidate checks,
+`All` range prunings, and empty results. A
 histogram reports result cardinality. Inspector exposes no gauges. Counters
 remain monotonic for the inspector lifetime so callers can calculate interval
 deltas or export them directly to Prometheus.

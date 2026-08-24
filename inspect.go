@@ -92,9 +92,6 @@ func (s InspectorSnapshot) FalsePositiveRate() (float64, bool) {
 	return d.EstimatedFalsePositiveRateValue, d.EstimatedFalsePositiveRateAvailable
 }
 
-// Search reports observed executions of the inspected rule.
-func (s InspectorSnapshot) Search() uint64 { return s.runtime.search }
-
 // CacheHit reports observed cache hits.
 func (s InspectorSnapshot) CacheHit() uint64 { return s.runtime.cacheHit }
 
@@ -109,9 +106,6 @@ func (s InspectorSnapshot) CacheEviction() uint64 { return s.runtime.cacheEvicti
 
 // CacheExpansion reports observed adaptive cache capacity expansions.
 func (s InspectorSnapshot) CacheExpansion() uint64 { return s.runtime.cacheExpansion }
-
-// Materialization reports observed bitmap materializations.
-func (s InspectorSnapshot) Materialization() uint64 { return s.runtime.materialization }
 
 // CandidateCheck reports observed direct internal-ID membership checks.
 func (s InspectorSnapshot) CandidateCheck() uint64 { return s.runtime.candidateCheck }
@@ -177,19 +171,19 @@ type Histogram struct {
 }
 
 type inspectorRuntime struct {
-	searches, materializations, candidateChecks, rangePrunings, emptyResults atomic.Uint64
+	candidateChecks, rangePrunings, emptyResults                             atomic.Uint64
 	cacheHits, cacheMisses, cacheAdmissions, cacheEvictions, cacheExpansions atomic.Uint64
 	cardinality                                                              [6]atomic.Uint64
 }
 
 type inspectorRuntimeSnapshot struct {
-	search, cacheHit, cacheMiss, cacheAdmission, cacheEviction, cacheExpansion uint64
-	materialization, candidateCheck, rangePruning, emptyResult                 uint64
-	cardinality                                                                Histogram
+	cacheHit, cacheMiss, cacheAdmission, cacheEviction, cacheExpansion uint64
+	candidateCheck, rangePruning, emptyResult                          uint64
+	cardinality                                                        Histogram
 }
 
 type inspectorRuntimeValues struct {
-	searches, materializations, candidateChecks, rangePrunings, emptyResults uint64
+	candidateChecks, rangePrunings, emptyResults                             uint64
 	cacheHits, cacheMisses, cacheAdmissions, cacheEvictions, cacheExpansions uint64
 	cardinality                                                              [6]uint64
 }
@@ -199,20 +193,6 @@ type inspectorRuntimeObserver struct {
 	local  *inspectorRuntimeValues
 }
 
-func (o inspectorRuntimeObserver) search() {
-	if o.local != nil {
-		o.local.searches++
-		return
-	}
-	o.shared.searches.Add(1)
-}
-func (o inspectorRuntimeObserver) materialization() {
-	if o.local != nil {
-		o.local.materializations++
-		return
-	}
-	o.shared.materializations.Add(1)
-}
 func (o inspectorRuntimeObserver) candidateCheck() {
 	if o.local != nil {
 		o.local.candidateChecks++
@@ -333,12 +313,10 @@ func (i *inspector) Snapshot() InspectorSnapshot {
 	}
 	b := &i.state.runtime.cardinality
 	return InspectorSnapshot{build: snapshot.snapshot, runtime: inspectorRuntimeSnapshot{
-		search:   i.state.runtime.searches.Load(),
 		cacheHit: i.state.runtime.cacheHits.Load(), cacheMiss: i.state.runtime.cacheMisses.Load(),
 		cacheAdmission: i.state.runtime.cacheAdmissions.Load(), cacheEviction: i.state.runtime.cacheEvictions.Load(),
-		cacheExpansion:  i.state.runtime.cacheExpansions.Load(),
-		materialization: i.state.runtime.materializations.Load(),
-		candidateCheck:  i.state.runtime.candidateChecks.Load(), rangePruning: i.state.runtime.rangePrunings.Load(),
+		cacheExpansion: i.state.runtime.cacheExpansions.Load(),
+		candidateCheck: i.state.runtime.candidateChecks.Load(), rangePruning: i.state.runtime.rangePrunings.Load(),
 		emptyResult: i.state.runtime.emptyResults.Load(),
 		cardinality: Histogram{b[0].Load(), b[1].Load(), b[2].Load(), b[3].Load(), b[4].Load(), b[5].Load()},
 	}}
@@ -415,8 +393,6 @@ func (r *inspectedExclusionRule[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapP
 		p.observers.push(metrics)
 		defer p.observers.pop()
 	}
-	metrics.search()
-	metrics.materialization()
 	before := dst.GetCardinality()
 	r.child.exclude(v, dst, p)
 	metrics.observeCardinality(dst.GetCardinality() - before)
@@ -451,8 +427,6 @@ func (r *inspectedRuntimeRule[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool
 		p.observers.push(metrics)
 		defer p.observers.pop()
 	}
-	metrics.search()
-	metrics.materialization()
 	before := dst.GetCardinality()
 	if all, ok := r.child.(*allRule[T]); ok {
 		all.searchObserved(v, dst, p, r.metrics)
@@ -486,8 +460,6 @@ func (r *inspectedRuntimeRule[T]) lookupCachedBitmap(v T, p *bitmapPool) (*roari
 	if !found {
 		return nil, false
 	}
-	metrics.search()
-	metrics.materialization()
 	metrics.observeCardinality(bits.GetCardinality())
 	return bits, true
 }

@@ -281,7 +281,6 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 	if observed, ok := ix.root.(*inspectedRuntimeRule[C]); ok {
 		if root, ok := observed.child.(*allRule[C]); ok {
 			metrics := pool.inspectorObserver(observed.metrics)
-			metrics.search()
 			searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst, observed.metrics)
 			metrics.observeCardinality(uint64(len(*dst) - before))
 			return len(*dst) != before
