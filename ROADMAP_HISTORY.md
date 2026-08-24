@@ -1644,3 +1644,18 @@ go test -run '^$' \
   -bench '^(BenchmarkProductionShapeBuild|BenchmarkProductionShapeRetainedMemory)$' \
   -benchmem -benchtime=5x -count=5 .
 ```
+
+## 2026-08-24: candidate-aware `CompareBy` after range aggregation
+
+Candidate filtering was repeated after bounded range aggregates reduced the
+number of postings produced by each populated operator index. The prototype
+again collected wildcard, equality, and operator-range bitmaps and narrowed
+the existing `All` candidate through one `AndAny` call.
+
+The change was not retained. Against the aggregated baseline of 43.426 us,
+73,396 B, and 28 allocations, five one-second production-shaped runs measured
+a 46.270 us median, 73,573 B, and 31 allocations. The reduced input count did
+not remove Roaring's internal union allocation cost, and direct `Or` remains
+faster for this `CompareBy` distribution. Do not reconsider this contract
+without a different intersection primitive or a workload with substantially
+smaller operator ranges.
