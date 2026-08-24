@@ -1736,3 +1736,32 @@ Reproduce with:
 go test -run '^$' -bench '^BenchmarkLossyAllPlanning' \
   -benchmem -benchtime=500ms -count=3 .
 ```
+
+## 2026-08-24: rebuild scalability checkpoint
+
+Production-shaped full rebuilds remain approximately linear through one
+million rules. On Apple M1 Max with Go 1.26.0, three fixed-count runs measured
+median build times of 11.381 ms for 10K rules, 95.990 ms for 100K, and 1.081 s
+for 1M. Allocation traffic was 2.86 MB, 19.83 MB, and 216.35 MB respectively.
+With GC disabled around the measured build, incremental peak heap was 1.92 MB,
+9.71 MB, and 100.62 MB.
+
+Generation-based base/delta indexes were not introduced. Repeated 10K builds
+with small size changes showed that per-node hints reduce allocation traffic by
+about 6-7%, but do not provide a stable latency improvement; overlapping old
+and new indexes used roughly 4.6-4.8 MB of incremental live heap in the memory
+benchmark. A 1M rebuild is material, but no update frequency, publication SLA,
+or memory ceiling currently demonstrates that delta lookup, tombstone, and
+compaction complexity would pay for itself. Reconsider generations when a real
+deployment requires rebuild publication materially faster than roughly one
+second per million rules or cannot tolerate the measured temporary heap.
+
+Reproduce with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkProductionScaleBuild|BenchmarkProductionScaleBuildPeakMemory)$' \
+  -benchmem -benchtime=1x -count=3 .
+go test -run '^$' -bench '^BenchmarkRepeatedBuild' \
+  -benchmem -benchtime=3x -count=3 .
+```
