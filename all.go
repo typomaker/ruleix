@@ -87,6 +87,10 @@ func (r *allRule[T]) optimize(total uint64) Rule[T] {
 			universal = matchAll
 			continue
 		}
+		if nested, ok := optimized.(*allRule[T]); ok {
+			children = append(children, nested.children...)
+			continue
+		}
 		children = append(children, optimized)
 	}
 	if len(children) == 0 {

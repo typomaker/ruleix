@@ -1463,3 +1463,58 @@ An owned-result contract is therefore only promising together with either a
 reusable destination-aware intersection primitive such as
 `AndTo(dst, first, second)`, which Roaring v2.4.4 does not expose, or a bounded
 cache that amortizes the compound result across repeated `Local` queries.
+
+## 2026-08-24: compile-time flattening of exact nested `All`
+
+Exact nested `All` groups are now flattened into their parent during index
+optimization. Conjunction is associative, so the compiled executor can rank
+and intersect the leaf postings directly instead of materializing a compound
+bitmap and intersecting that temporary result again. Inspected nodes keep
+their wrapper and lossy nodes have distinct runtime types, preserving those
+execution and observation boundaries.
+
+On Apple M1 Max with Go 1.26.0, the initial five-run comparison improved warm
+production-shaped `Local` search from the preceding 4.076 us, 4,662 B, and
+four allocations to a median 2.510 us, 2,331 B, and two allocations: 38.4%
+lower latency and half the allocation traffic. A later five-run validation
+measured a 2.599 us median. Parallel warm local search measured a median 1.364
+us/search, 234,528 B, and 207 allocations per 100-search batch. `Index` search
+measured a median 101.536 us, 89,583 B, and 30 allocations, removing two
+allocations and about 2.3 KB while remaining close to its previous latency.
+
+A new five-second CPU profile attributes 55.0% cumulative CPU to the remaining
+root `All` intersection and 54.4% to Roaring `Bitmap.And`. Only one
+copy-on-write `arrayContainer.clone` remains, at 10.2% cumulative CPU, versus
+the two compound/root clones and approximately 4.66 KB per search before
+flattening. `allRule.rankChildren` accounts for 10.8% cumulative CPU.
+
+Two follow-ups were rejected. Returning an owned `FastAnd` result had already
+shown that allocation of a new result bitmap outweighs ownership transfer.
+A root-only reusable candidate buffer eliminated search allocations but
+regressed warm `Local` search to a median 10.433 us because repeated public
+`Bitmap.Contains` calls redo container lookup for every candidate and child.
+The remaining clone requires a container-level reusable `AndTo` primitive;
+vendoring or forking Roaring solely for that operation is not justified by the
+remaining approximately 2.3 KB and two allocations without an upstreamable
+API and broader workload evidence.
+
+Warm and adaptive retained memory measured 88,832 B and 105,680 B per local,
+384 B above the preceding nested-plan baseline because the flattened root plan
+stores one additional child slot. Build remained at a median 34.87 ms, 5.83
+MB, and about 24.7K allocations.
+
+Reproduce the retained measurements with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkProductionShapeSearch|BenchmarkProductionShapeEqualityOnlySearch|BenchmarkProductionShapeParallelLocalBatch100)$' \
+  -benchmem -benchtime=1s -count=5 .
+
+go test -run '^$' \
+  -bench '^(BenchmarkProductionShapeBuild|BenchmarkProductionShapeLocalRetainedMemory)$' \
+  -benchmem -benchtime=3x -count=3 .
+
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeSearch/Local$' -benchtime=5s -count=1 \
+  -cpuprofile=/tmp/ruleix-production-flat-local.cpu .
+```

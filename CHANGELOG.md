@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Exact nested `All` groups are flattened during index compilation, avoiding
+  intermediate bitmap materialization while preserving inspected and lossy
+  rule boundaries.
+
 ## [0.7.0] - 2026-08-24
 
 ### Added

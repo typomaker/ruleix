@@ -14,6 +14,21 @@ type countingRule struct {
 	matchIDCalls     int
 }
 
+func TestAllOptimizeFlattensNestedGroups(t *testing.T) {
+	first := &countingRule{ids: []uint32{1}}
+	second := &countingRule{ids: []uint32{1}}
+	third := &countingRule{ids: []uint32{1}}
+
+	optimized := (&allRule[int]{children: []Rule[int]{
+		first,
+		&allRule[int]{children: []Rule[int]{second, third}},
+	}}).optimize(1)
+
+	all, ok := optimized.(*allRule[int])
+	require.True(t, ok)
+	require.Equal(t, []Rule[int]{first, second, third}, all.children)
+}
+
 type zeroCheckingRule struct{ *countingRule }
 
 func (r *zeroCheckingRule) isCardinalityZero(int) bool { return len(r.ids) == 0 }
