@@ -22,6 +22,7 @@ type Builder[C any, ID comparable] struct {
 // It is immutable after Build and safe for concurrent calls to Search and Visit.
 type Index[C any, ID comparable] struct {
 	root            Rule[C]
+	rootMetrics     *inspectorRuntime
 	values          []ID
 	pool            *bitmapPool
 	nodes           int
@@ -141,6 +142,10 @@ func buildIndex[C any, ID comparable](
 		if !directAll {
 			ix.root = &allRule[C]{children: []Rule[C]{ix.root}}
 		}
+	}
+	if observed, ok := ix.root.(*inspectedRuntimeRule[C]); ok {
+		ix.rootMetrics = observed.metrics
+		ix.root = observed.child
 	}
 	interner := newBitmapInterner()
 	internRuleWith(interner, ix.root)
@@ -285,10 +290,10 @@ func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
 
 func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 	before := len(*dst)
-	if observed, ok := ix.root.(*inspectedRuntimeRule[C]); ok {
-		if root, ok := observed.child.(*allRule[C]); ok {
-			metrics := pool.inspectorObserver(observed.metrics)
-			searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst, observed.metrics)
+	if ix.rootMetrics != nil {
+		if root, ok := ix.root.(*allRule[C]); ok {
+			metrics := pool.inspectorObserver(ix.rootMetrics)
+			searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst, ix.rootMetrics)
 			metrics.observeCardinality(uint64(len(*dst) - before))
 			return len(*dst) != before
 		}
@@ -307,6 +312,9 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 		pool.put(excluded)
 	}
 	*dst = appendBitmapValues(bits, ix.values, *dst)
+	if ix.rootMetrics != nil {
+		pool.inspectorObserver(ix.rootMetrics).observeCardinality(uint64(len(*dst) - before))
+	}
 	return len(*dst) != before
 }
 
