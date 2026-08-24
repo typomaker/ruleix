@@ -1714,3 +1714,25 @@ GOMAXPROCS=1 go test -run '^$' \
   -cpuprofile=/tmp/ruleix-production-after-ordered.cpu .
 go tool pprof -top -cum /tmp/ruleix-production-after-ordered.cpu
 ```
+
+## 2026-08-24: hierarchical Lossy equality construction
+
+Lossy equality planning now builds the finest 16-bit hash-prefix bucket
+representation once, then derives each coarser level by merging adjacent
+buckets. Previously every one of the 17 candidate granularities iterated all
+distinct values and added their postings independently. Hash-prefix buckets
+are exactly nested, so the new construction preserves representation choice,
+memory accounting, and estimated false-positive rates.
+
+On Apple M1 Max with Go 1.26.0, three 500 ms runs reduced the two-child 50%
+budget median build from 25.906 ms and 158,604 allocations to 7.862 ms (69.7%)
+and 140,399 allocations. The eight-child 50% case improved from 113.217 ms and
+718,039 allocations to 33.413 ms (70.5%) and 645,387 allocations. Exact builds
+remain unchanged because they do not construct lossy candidates.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyAllPlanning' \
+  -benchmem -benchtime=500ms -count=3 .
+```

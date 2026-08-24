@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Lossy equality planning builds the finest hash-prefix representation once
+  and derives coarser levels by merging buckets, substantially reducing
+  memory-bounded build time and allocation traffic.
 - Uncached `All` execution filters existing candidates directly through
   standalone ordered rules instead of materializing their complete ranges.
 - `CompareBy` uses a bounded second level of ordered range aggregates, reducing

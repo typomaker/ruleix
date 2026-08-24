@@ -72,8 +72,7 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		return planner
 	}
 	planner.prepare = func() []Rule[T] {
-		representations := make([]Rule[T], 0, lossyMaxBucketBits+1)
-		bucketItems := make(map[uint64]uint64)
+		representations := make([]Rule[T], lossyMaxBucketBits+1)
 		var sameValuePairs float64
 		for _, value := range hashed {
 			count := equalitySetCardinality(value.set)
@@ -81,38 +80,51 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		}
 		concreteItems := items - r.wildcard.GetCardinality()
 		allDifferentValuePairs := float64(concreteItems)*float64(concreteItems) - sameValuePairs
-		for bits := uint(0); bits <= lossyMaxBucketBits; bits++ {
-			clear(bucketItems)
-			candidate := &lossyEqualityRule[T, V]{
-				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-				shift: 64 - bits, buckets: make(map[uint64]*roaring.Bitmap),
+		candidate := &lossyEqualityRule[T, V]{
+			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
+			shift: 64 - lossyMaxBucketBits, buckets: make(map[uint64]*roaring.Bitmap),
+		}
+		for _, value := range hashed {
+			bucket := value.hash >> candidate.shift
+			posting := candidate.buckets[bucket]
+			if posting == nil {
+				posting = roaring.New()
+				candidate.buckets[bucket] = posting
 			}
-			for _, value := range hashed {
-				bucket := value.hash >> candidate.shift
-				count := equalitySetCardinality(value.set)
-				bucketItems[bucket] += count
-				posting := candidate.buckets[bucket]
-				if posting == nil {
-					posting = roaring.New()
-					candidate.buckets[bucket] = posting
-				}
-				value.set.addTo(posting)
-			}
+			value.set.addTo(posting)
+		}
+		for bucketBits := lossyMaxBucketBits; ; bucketBits-- {
 			usage := uint64(16) + bitmapBytes(candidate.wildcard)
+			var collidingDifferentValuePairs float64
 			for _, posting := range candidate.buckets {
 				usage += 16 + bitmapBytes(posting)
+				count := float64(posting.GetCardinality())
+				collidingDifferentValuePairs += count * count
 			}
 			details := representationDetails(usage, items, distinct, uint64(len(candidate.buckets)), true)
 			if allDifferentValuePairs > 0 {
-				var collidingDifferentValuePairs float64
-				for _, count := range bucketItems {
-					collidingDifferentValuePairs += float64(count) * float64(count)
-				}
 				collidingDifferentValuePairs -= sameValuePairs
 				details.EstimatedFalsePositiveRateValue = collidingDifferentValuePairs / allDifferentValuePairs
 				details.EstimatedFalsePositiveRateAvailable = true
 			}
-			representations = append(representations, &inspectionDetailsRule[T]{child: candidate, details: details})
+			representations[bucketBits] = &inspectionDetailsRule[T]{child: candidate, details: details}
+			if bucketBits == 0 {
+				break
+			}
+			parent := &lossyEqualityRule[T, V]{
+				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
+				shift: uint(64 - (bucketBits - 1)), buckets: make(map[uint64]*roaring.Bitmap, (len(candidate.buckets)+1)/2),
+			}
+			for bucket, posting := range candidate.buckets {
+				parentBucket := bucket >> 1
+				parentPosting := parent.buckets[parentBucket]
+				if parentPosting == nil {
+					parentPosting = roaring.New()
+					parent.buckets[parentBucket] = parentPosting
+				}
+				parentPosting.Or(posting)
+			}
+			candidate = parent
 		}
 		return representations
 	}
