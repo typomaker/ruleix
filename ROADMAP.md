@@ -192,15 +192,13 @@ into the shared immutable index or weaken concurrent search safety.
 Work through these steps in priority order, promoting an optimization only
 when production-shaped benchmarks demonstrate a material benefit:
 
-1. Tune the remaining `Local` admission, eviction, close/reuse behavior, and
-   retained memory for production-shaped repeated and high-churn searches.
-2. Extend cheap estimates and lazy, empty-aware `All` execution for other
+1. Extend cheap estimates and lazy, empty-aware `All` execution for other
    production shapes where benchmarks show a benefit.
-3. Improve `Lossy` allocation and representation selection for existing rules,
+2. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-4. Optimize the uncached ordered estimate only if bounded planning and warm
+3. Optimize the uncached ordered estimate only if bounded planning and warm
    cache reuse still leave measurable overhead.
-5. Investigate generation-based updates only after rebuild benchmarks
+4. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
 
 For every optimization, compare production-shaped build time, search time,

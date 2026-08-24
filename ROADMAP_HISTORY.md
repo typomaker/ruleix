@@ -8,6 +8,34 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: conclude `Local` cache-policy tuning
+
+The existing second-use admission, two-entry LRU, measured growth to four
+entries, bitmap recycling, and cleared-structure reuse cover the roadmap's
+repeated-value, alternating-value, high-churn, close/reuse, and retained-memory
+cases. A final experiment embedded the initial two admission keys in each typed
+cache instead of allocating them on the first miss. It was not retained: the
+production-shaped short-lived lifecycle removed 10 allocations (120 to 110)
+and stayed near 373 us, but the larger always-live cache structures increased
+warm and four-query retained memory by about 592 B per `Local` (88,880 to
+89,472 B and 105,730 to 106,322 B). Ordered and `Between` repeated, alternating,
+three-/four-value, hot-with-interlopers, and churn latency remained effectively
+flat.
+
+On Apple M1 Max, the retained-memory comparison used three 150 ms runs. The
+earlier second-use admission, adaptive capacity, bitmap recycling, and
+structure-reuse entries in this history contain their longer benchmark runs.
+No further policy change is justified without a new production workload that
+shows a material miss-rate, latency, or retained-memory problem.
+
+Reproduce the final comparison with and without the inline-key candidate using:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkLocalOrderedReuse|BenchmarkLocalBetweenReuse|BenchmarkProductionShapeLocalRetainedMemory|BenchmarkProductionShapeLocalClose)$' \
+  -benchmem -benchtime=150ms -count=3 .
+```
+
 ## 2026-08-24: reuse cleared per-node `Local` cache structures
 
 `Local.Close` now keeps the small typed cache structures attached to its
