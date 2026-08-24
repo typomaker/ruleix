@@ -416,7 +416,7 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 		if i == 1 {
 			current = rankedChildren[0].bits
 		}
-		if bitmapRangesDisjoint(current, bits) {
+		if shouldPruneBitmapRanges(pool, metrics) && bitmapRangesDisjoint(current, bits) {
 			observeRangePruning(metrics)
 			dst.Clear()
 			for j := range rankedChildren {
@@ -463,6 +463,15 @@ func observeRangePruning(metrics *inspectorRuntime) {
 	if metrics != nil {
 		metrics.rangePrunings.Add(1)
 	}
+}
+
+func shouldPruneBitmapRanges(pool *bitmapPool, metrics *inspectorRuntime) bool {
+	// Local searches can reuse materialized child bitmaps, so probing their
+	// extrema on every hot-path search costs more than the materialization that
+	// range pruning can avoid. Keep the heuristic for uncached Index searches
+	// and inspected searches, where the documented observation must remain
+	// complete.
+	return pool.local == nil || metrics != nil
 }
 
 func bitmapRangesDisjoint(first, second *roaring.Bitmap) bool {

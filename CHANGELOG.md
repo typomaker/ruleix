@@ -30,6 +30,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Warm uninspected `Local` searches skip repeated bitmap-extrema probes during
+  `All` range pruning because their child bitmaps are already cached.
 - Warm `Local` searches reuse cached ordered, `CompareBy`, and `Between`
   bitmaps during `All` planning instead of repeating ordered cardinality scans
   and temporary materialization.
