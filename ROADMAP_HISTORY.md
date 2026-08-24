@@ -8,6 +8,24 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: delayed shared-Index Inspector batching experiment
+
+An exact delayed-publication prototype gave inspected `Index.Search` calls
+exclusive metric accumulators from a `sync.Pool`, published each accumulator
+after 256 observations, and used a finalizer to preserve partial batches when
+the runtime discarded idle pool entries. It removed per-event atomic additions
+but added context acquisition and observer bookkeeping to every inspected
+search.
+
+The prototype was rejected after seven 500 ms runs on Apple M1 Max. The median
+maximum-width four-ID candidate scan was 347.6 ns/search with delayed batching,
+versus the existing 335.8 ns direct-atomic baseline; its paired plain case was
+315.5 ns/search. A top-level inspected `All` measured 237.5 ns/search versus
+222.1 ns plain. Exact shared-Index batching therefore needs a cheaper source of
+exclusive per-execution storage before it can outperform direct atomics.
+`Local` remains the effective batching boundary because it already owns such
+storage and can publish its exact tail at `Close` without acquisition overhead.
+
 ## 2026-08-24: Inspector candidate-check batching experiment
 
 Candidate-check batching was prototyped for `All` but rejected. The planner caps
