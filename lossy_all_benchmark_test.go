@@ -157,13 +157,16 @@ func BenchmarkLossyAllSearchQuality(b *testing.B) {
 // BenchmarkLossyAllSearchRuntime isolates the Index and Local search paths for
 // CPU and allocation profiles. On Apple M1 Max with Go 1.26.0, 10k entries,
 // four equality children, either one repeated or 256 rotating queries, and the
-// command below, Budget50 measured IndexRepeated 516-535 ns/op, 160 B/op,
-// 4 allocs/op; LocalRepeated 395-409 ns/op, 112 B/op, 1 alloc/op;
-// IndexRotating 634-648 ns/op, 157 B/op, 3 allocs/op; and LocalRotating
-// 732-748 ns/op, 159 B/op, 3 allocs/op. Budget25 measured IndexRepeated
-// 450-460 ns/op, 48 B/op, 2 allocs/op; LocalRepeated 423-430 ns/op, 48 B/op,
-// 2 allocs/op; IndexRotating 560-575 ns/op, 61 B/op, 1 alloc/op; and
-// LocalRotating 575-598 ns/op, 59 B/op, 1 alloc/op.
+// command below, Exact measured IndexRepeated 557-561 ns/op, 144 B/op,
+// 3 allocs/op; LocalRepeated 400-403 ns/op, 112 B/op, 1 alloc/op;
+// IndexRotating 570-572 ns/op, 144 B/op, 3 allocs/op; and LocalRotating
+// 601-627 ns/op, 144 B/op, 3 allocs/op. Budget50 measured IndexRepeated
+// 513-515 ns/op, 160 B/op, 4 allocs/op; LocalRepeated 389-393 ns/op, 112 B/op,
+// 1 alloc/op; IndexRotating 619-624 ns/op, 157 B/op, 3 allocs/op; and
+// LocalRotating 722-725 ns/op, 159 B/op, 3 allocs/op. Budget25 measured
+// IndexRepeated 438-440 ns/op, 48 B/op, 2 allocs/op; LocalRepeated
+// 414-417 ns/op, 48 B/op, 2 allocs/op; IndexRotating 554-556 ns/op, 61 B/op,
+// 1 alloc/op; and LocalRotating 571-575 ns/op, 59 B/op, 1 alloc/op.
 //
 //	go test -run '^$' -bench '^BenchmarkLossyAllSearchRuntime/' -benchmem -benchtime=1s -count=3 .
 func BenchmarkLossyAllSearchRuntime(b *testing.B) {
@@ -171,11 +174,13 @@ func BenchmarkLossyAllSearchRuntime(b *testing.B) {
 	const children = 4
 	exactBytes := lossyAllBenchmarkExactBytes(b, constraints, ids, children)
 	queries := constraints[:256]
-	for _, percent := range []uint64{50, 25} {
+	for _, percent := range []uint64{100, 50, 25} {
 		b.Run(fmt.Sprintf("Budget%d", percent), func(b *testing.B) {
-			index, err := New[lossyAllBenchmarkConstraint, int](
-				Lossy(lossyAllBenchmarkSchema(children), MemoryLimit(exactBytes*percent/100)),
-			).Build(Zip(constraints, ids))
+			schema := lossyAllBenchmarkSchema(children)
+			if percent != 100 {
+				schema = Lossy(schema, MemoryLimit(exactBytes*percent/100))
+			}
+			index, err := New[lossyAllBenchmarkConstraint, int](schema).Build(Zip(constraints, ids))
 			if err != nil {
 				b.Fatal(err)
 			}
