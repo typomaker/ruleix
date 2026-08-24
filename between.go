@@ -103,6 +103,51 @@ func (r *betweenRule[T, V]) estimateCardinality(v T) uint64 {
 	}
 	return until
 }
+func (r *betweenRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
+	if pool.local == nil {
+		return 0, false
+	}
+	cache, _ := pool.local[int(r.nodeID)].between.(*betweenCache[V])
+	if cache == nil {
+		return 0, false
+	}
+	from, until := getOptional(r.from.get, v), getOptional(r.until.get, v)
+	for i := 0; i < cache.capacity(); i++ {
+		entry := cache.entry(i)
+		if entry.initialized && entry.hasFrom == from.ok && entry.hasUntil == until.ok &&
+			(!from.ok || r.compare(entry.from, from.value) == 0) &&
+			(!until.ok || r.compare(entry.until, until.value) == 0) {
+			return entry.bits.GetCardinality(), true
+		}
+	}
+	return 0, false
+}
+func (r *betweenRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
+	if pool.local == nil {
+		return nil, false
+	}
+	cache, _ := pool.local[int(r.nodeID)].between.(*betweenCache[V])
+	if cache == nil {
+		return nil, false
+	}
+	from, until := getOptional(r.from.get, v), getOptional(r.until.get, v)
+	for i := 0; i < cache.capacity(); i++ {
+		entry := cache.entry(i)
+		if entry.initialized && entry.hasFrom == from.ok && entry.hasUntil == until.ok &&
+			(!from.ok || r.compare(entry.from, from.value) == 0) &&
+			(!until.ok || r.compare(entry.until, until.value) == 0) {
+			if cache.overflow == nil {
+				cache.next = uint8(1 - i)
+			} else {
+				cache.overflow.clock++
+				cache.overflow.used[i] = cache.overflow.clock
+			}
+			cache.observers.hit()
+			return entry.bits, true
+		}
+	}
+	return nil, false
+}
 func (r *betweenRule[T, V]) isCardinalityZero(v T) bool {
 	return r.from.isCardinalityZero(v) || r.until.isCardinalityZero(v)
 }
@@ -119,24 +164,12 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		cache = newBetweenCache[V](pool)
 		node.between = cache
 	}
-	hasFrom, hasUntil := from.ok, until.ok
-	for i := 0; i < cache.capacity(); i++ {
-		cached := cache.entry(i)
-		if cached.initialized && cached.hasFrom == hasFrom && cached.hasUntil == hasUntil &&
-			(!hasFrom || r.compare(cached.from, from.value) == 0) &&
-			(!hasUntil || r.compare(cached.until, until.value) == 0) {
-			if cache.overflow == nil {
-				cache.next = uint8(1 - i)
-			} else {
-				cache.overflow.clock++
-				cache.overflow.used[i] = cache.overflow.clock
-			}
-			cache.observers.hit()
-			dst.Or(cached.bits)
-			return
-		}
+	if bits, found := r.lookupCachedBitmap(v, pool); found {
+		dst.Or(bits)
+		return
 	}
 	cache.observers.miss()
+	hasFrom, hasUntil := from.ok, until.ok
 	if !cache.admit(from, until, r.compare) {
 		r.searchUncached(v, dst, pool)
 		return

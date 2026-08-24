@@ -372,6 +372,22 @@ func (r *inspectedRuntimeRule[T]) estimateCardinality(v T) uint64 {
 	}
 	return ^uint64(0)
 }
+func (r *inspectedRuntimeRule[T]) lookupCachedBitmap(v T, p *bitmapPool) (*roaring.Bitmap, bool) {
+	provider, ok := r.child.(cachedBitmapProvider[T])
+	if !ok || p.local == nil {
+		return nil, false
+	}
+	p.observers.push(r.metrics)
+	bits, found := provider.lookupCachedBitmap(v, p)
+	p.observers.pop()
+	if !found {
+		return nil, false
+	}
+	r.metrics.searches.Add(1)
+	r.metrics.materializations.Add(1)
+	r.metrics.observeCardinality(bits.GetCardinality())
+	return bits, true
+}
 func (r *inspectedRuntimeRule[T]) isCardinalityZero(v T) bool {
 	if c, ok := r.child.(cardinalityZeroChecker[T]); ok {
 		return c.isCardinalityZero(v)

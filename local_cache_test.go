@@ -98,6 +98,37 @@ func TestLocalContextsCanBeAcquiredAndClosedConcurrently(t *testing.T) {
 	workers.Wait()
 }
 
+func TestAllUsesWarmOrderedLocalBitmapsDuringPlanning(t *testing.T) {
+	type constraint struct{ minimum, maximum int }
+	schema := All(
+		GreaterOrEqual(func(value constraint) (int, bool) { return value.minimum, true }, cmp.Compare[int]),
+		LessOrEqual(func(value constraint) (int, bool) { return value.maximum, true }, cmp.Compare[int]),
+	)
+	constraints := make([]constraint, 16)
+	ids := make([]int, len(constraints))
+	for id := range constraints {
+		constraints[id] = constraint{minimum: id, maximum: id + 16}
+		ids[id] = id
+	}
+	index, err := New[constraint, int](schema).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	local := index.Local()
+	query := constraint{minimum: 12, maximum: 20}
+	var matches []int
+	for range 2 {
+		matches = matches[:0]
+		local.Search(query, &matches)
+	}
+
+	root := index.root.(*allRule[constraint])
+	ranked := make([]rankedBitmap, len(root.children))
+	require.True(t, root.rankChildren(query, local.pool, ranked))
+	for _, child := range ranked {
+		require.NotNil(t, child.bits)
+		require.False(t, child.owned)
+	}
+}
+
 var benchmarkLocalLifecycle *bitmapPool
 
 func BenchmarkLocalLifecycleReuse(b *testing.B) {

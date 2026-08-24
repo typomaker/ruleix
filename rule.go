@@ -70,6 +70,19 @@ type cardinalityEstimator[T any] interface {
 	estimateCardinality(T) uint64
 }
 
+// cachedCardinalityEstimator exposes a result that has already been
+// materialized by this Local. The lookup must be observational: planning must
+// not create a cache, affect admission, or update replacement state.
+type cachedCardinalityEstimator[T any] interface {
+	estimateCachedCardinality(T, *bitmapPool) (uint64, bool)
+}
+
+// cachedBitmapProvider lets All consume an immutable bitmap already owned by a
+// Local cache instead of copying it through a temporary child result.
+type cachedBitmapProvider[T any] interface {
+	lookupCachedBitmap(T, *bitmapPool) (*roaring.Bitmap, bool)
+}
+
 // cheapCardinalityEstimator is implemented by rules whose cardinality is a
 // constant-time lookup. All uses these estimates before ordered estimates so a
 // sufficiently small equality result can become the candidate set without a

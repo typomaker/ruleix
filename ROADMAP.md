@@ -73,9 +73,9 @@ followed `05f8065`:
    expose the cheap platform-name bound and stop before estimating the ordered
    version branch. Use bounded estimates or an equivalent partial plan rather
    than treating the nested group as one opaque estimator.
-3. Make the remaining range-estimate path cache-aware. On a warm `Local` hit,
-   reuse the cached bitmap cardinality or a cardinality stored with the cache
-   entry. Do not repeat an ordered boundary search for the same query value.
+3. The warm `Local` range-estimate path now reuses cached ordered bitmaps and
+   their cardinalities; the implementation and production evidence are
+   recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
 4. If uncached range estimates remain material, benchmark per-item boundary
    prefixes or a conservative block-level estimate so the fallback needs a
    binary search and constant-time arithmetic rather than scanning up to one
@@ -196,8 +196,8 @@ when production-shaped benchmarks demonstrate a material benefit:
    The first stage, including cheap bounds hidden in nested `All` nodes, is
    recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md); retain its strict
    candidate-scan threshold while investigating wider equality intersections.
-2. Reuse warm `Local` range cardinality and optimize the uncached ordered
-   estimate only if bounded planning still leaves measurable overhead.
+2. Optimize the uncached ordered estimate only if bounded planning and warm
+   cache reuse still leave measurable overhead.
 3. Extend cheap estimates and lazy, empty-aware `All` execution for other
    production shapes where benchmarks show a benefit.
 4. Improve `Lossy` allocation and representation selection for existing rules,

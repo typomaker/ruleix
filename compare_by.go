@@ -133,6 +133,34 @@ func (r *compareByRule[T, V]) estimateCardinality(v T) uint64 {
 	}
 	return n
 }
+func (r *compareByRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
+	if pool.local == nil {
+		return 0, false
+	}
+	cache, _ := pool.local[int(r.nodeID)].compareBy.(*valueBitmapCache[V])
+	if cache == nil {
+		return 0, false
+	}
+	bits, found := comparedValueCachePeek(cache, getOptional(r.value, v), r.compare)
+	if !found {
+		return 0, false
+	}
+	return bits.GetCardinality(), true
+}
+func (r *compareByRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
+	if pool.local == nil {
+		return nil, false
+	}
+	cache, _ := pool.local[int(r.nodeID)].compareBy.(*valueBitmapCache[V])
+	if cache == nil {
+		return nil, false
+	}
+	value := getOptional(r.value, v)
+	if _, found := comparedValueCachePeek(cache, value, r.compare); !found {
+		return nil, false
+	}
+	return comparedValueCacheLookup(cache, value, r.compare)
+}
 func (r *compareByRule[T, V]) isCardinalityZero(v T) bool {
 	return r.estimateCardinality(v) == 0
 }

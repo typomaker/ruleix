@@ -143,6 +143,17 @@ func (c *valueBitmapCache[V]) lookup(value optionalValue[V], equal func(V, V) bo
 	return nil, false
 }
 
+func (c *valueBitmapCache[V]) peek(value optionalValue[V], equal func(V, V) bool) (*roaring.Bitmap, bool) {
+	hasValue, capacity := value.ok, c.capacity()
+	for i := 0; i < capacity; i++ {
+		entry := c.entry(i)
+		if entry.initialized && entry.hasValue == hasValue && (!hasValue || equal(entry.value, value.value)) {
+			return entry.bits, true
+		}
+	}
+	return nil, false
+}
+
 func (c *valueBitmapCache[V]) replace(value optionalValue[V]) *roaring.Bitmap {
 	if c.overflow == nil && c.entries[c.next].initialized {
 		c.pressure++
@@ -289,6 +300,14 @@ func comparedValueCacheLookup[V any](
 	compare Compare[V],
 ) (*roaring.Bitmap, bool) {
 	return c.lookup(value, func(a, b V) bool { return compare(a, b) == 0 })
+}
+
+func comparedValueCachePeek[V any](
+	c *valueBitmapCache[V],
+	value optionalValue[V],
+	compare Compare[V],
+) (*roaring.Bitmap, bool) {
+	return c.peek(value, func(a, b V) bool { return compare(a, b) == 0 })
 }
 
 func comparedValueCacheAdmit[V any](

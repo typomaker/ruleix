@@ -1181,3 +1181,46 @@ go test -run '^$' \
 go test -run '^$' -bench '^BenchmarkProductionShapeEqualityOnlySearch$' \
   -benchmem -benchtime=1s -count=8 .
 ```
+
+## 2026-08-24: cache-aware warm `Local` ordered planning
+
+`All` now consults already-admitted per-node `Local` caches before performing
+fresh cardinality estimates for `orderedRule`, `CompareBy`, and `Between`.
+Planning uses a read-only lookup for cardinality and, for a direct child,
+reuses the cached immutable bitmap itself. This avoids both the repeated
+ordered boundary/cardinality scan and a second temporary materialization. Cache
+misses do not create entries, affect admission, or count twice; successful
+reuse preserves hit accounting and replacement state. Nested `All` estimates
+recursively consume cached child cardinalities without treating the nested
+group as an exact materialized result.
+
+On Apple M1 Max with Go 1.26.0, medians of five one-second production-shaped
+runs improved warm `Local.Search` from the previously recorded 5.870 us to
+5.346 us (-8.9%). Parallel warm local search improved from 2.770 us/search to
+2.383 us/search (-14.0%). The full-schema result retained 4 allocations and
+about 4.66 KB per search. Equality-only warm local search remained at 3.875 us,
+2 allocations, and 2.33 KB. Ordered and `CompareBy` unique churn remained
+equivalent to `Index.Search`, while repeated `Between` retained its existing
+16 B and one allocation per search. Warm and adaptive local retained memory
+were unchanged at 88,448 B and 105,296 B per local.
+
+A five-second CPU profile measured `allRule.rankChildren` at 7.0% cumulative
+CPU, down from 13.7% in the preceding profile, and no
+`orderedIndex.estimateCardinality` specialization remained in the hot list.
+The Roaring copy-on-write intersection remains the primary application-level
+search cost.
+
+Reproduce with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkProductionShapeSearch|BenchmarkProductionShapeEqualityOnlySearch|BenchmarkProductionShapeParallelLocalBatch100)$' \
+  -benchmem -benchtime=1s -count=5 .
+
+go test -run '^$' \
+  -bench '^(BenchmarkLocalOrderedReuse|BenchmarkLocalCompareByReuse|BenchmarkLocalBetweenReuse)/(Repeat|Alternate|Churn)/(Index|Local)$' \
+  -benchmem -benchtime=500ms -count=3 .
+
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchmem -benchtime=3x -count=3 .
+```

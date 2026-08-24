@@ -30,6 +30,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Warm `Local` searches reuse cached ordered, `CompareBy`, and `Between`
+  bitmaps during `All` planning instead of repeating ordered cardinality scans
+  and temporary materialization.
 - Exact ordered indexes learn observed-domain logical routing intervals for
   numeric and `time.Time` values after the single streaming build pass. Search
   uses the same key to select a boundary block while retaining exact comparison

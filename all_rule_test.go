@@ -61,6 +61,18 @@ type costlyEstimateRule struct {
 	estimateCalls int
 }
 
+type cachedEstimateRule struct {
+	*costlyEstimateRule
+	bits *roaring.Bitmap
+}
+
+func (r *cachedEstimateRule) estimateCachedCardinality(int, *bitmapPool) (uint64, bool) {
+	return r.bits.GetCardinality(), true
+}
+func (r *cachedEstimateRule) lookupCachedBitmap(int, *bitmapPool) (*roaring.Bitmap, bool) {
+	return r.bits, true
+}
+
 func (*costlyEstimateRule) rule() {}
 func (r *costlyEstimateRule) newState(*nodeIDAllocator, *buildStatistics) Rule[int] {
 	return r
@@ -113,6 +125,25 @@ func (r *countingRule) search(_ int, dst *roaring.Bitmap, _ *bitmapPool) {
 }
 func (*countingRule) exclude(int, *roaring.Bitmap, *bitmapPool)    {}
 func (*countingRule) collectBuildStatistics([]nodeBuildStatistics) {}
+
+func TestAllReusesCachedBitmapWithoutEstimatingOrMaterializingChild(t *testing.T) {
+	cachedChild := &countingRule{ids: []uint32{1, 2, 3, 4, 5, 6, 7, 8}}
+	cached := &cachedEstimateRule{
+		costlyEstimateRule: &costlyEstimateRule{child: cachedChild},
+		bits:               roaring.BitmapOf(1, 2, 3, 4, 5, 6, 7, 8),
+	}
+	other := &countingRule{ids: []uint32{7, 8, 9, 10, 11, 12, 13, 14}}
+	rule := &allRule[int]{children: []Rule[int]{cached, other}}
+	pool := newBitmapPool()
+	pool.local = make([]localNodeCache, 1)
+	dst := roaring.New()
+
+	rule.search(0, dst, pool)
+
+	require.Equal(t, []uint32{7, 8}, dst.ToArray())
+	require.Zero(t, cached.estimateCalls)
+	require.Zero(t, cachedChild.searchCalls)
+}
 
 func TestAllEstimatesAndMaterializesEachChildOnce(t *testing.T) {
 	first := &countingRule{ids: []uint32{1, 2, 3}}

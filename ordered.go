@@ -237,6 +237,34 @@ func (r *orderedRule[T, V]) estimateCardinality(v T) uint64 {
 	}
 	return n + r.index.estimateCardinality(value, r.dir == lessThan, r.inclusive)
 }
+func (r *orderedRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
+	if pool.local == nil {
+		return 0, false
+	}
+	cache, _ := pool.local[int(r.nodeID)].ordered.(*valueBitmapCache[V])
+	if cache == nil {
+		return 0, false
+	}
+	bits, found := comparedValueCachePeek(cache, getOptional(r.get, v), r.compare)
+	if !found {
+		return 0, false
+	}
+	return bits.GetCardinality(), true
+}
+func (r *orderedRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
+	if pool.local == nil {
+		return nil, false
+	}
+	cache, _ := pool.local[int(r.nodeID)].ordered.(*valueBitmapCache[V])
+	if cache == nil {
+		return nil, false
+	}
+	value := getOptional(r.get, v)
+	if _, found := comparedValueCachePeek(cache, value, r.compare); !found {
+		return nil, false
+	}
+	return comparedValueCacheLookup(cache, value, r.compare)
+}
 func (r *orderedRule[T, V]) isCardinalityZero(v T) bool {
 	return r.estimateCardinality(v) == 0
 }

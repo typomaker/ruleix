@@ -115,6 +115,30 @@ func (r *allRule[T]) estimateCardinality(v T) uint64 {
 	}
 	return estimate
 }
+func (r *allRule[T]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
+	if pool.local == nil {
+		return 0, false
+	}
+	estimate := ^uint64(0)
+	usedCache := false
+	for _, child := range r.children {
+		childEstimate, cached := cachedCardinality(child, v, pool)
+		if !cached {
+			estimator, ok := child.(cardinalityEstimator[T])
+			if !ok {
+				continue
+			}
+			childEstimate = estimator.estimateCardinality(v)
+		} else {
+			usedCache = true
+		}
+		if childEstimate == 0 {
+			return 0, usedCache
+		}
+		estimate = min(estimate, childEstimate)
+	}
+	return estimate, usedCache
+}
 func (r *allRule[T]) estimateCheapCardinality(v T) uint64 {
 	estimate := ^uint64(0)
 	for _, child := range r.children {
@@ -226,7 +250,7 @@ func sharedWildcardOf[T any](rule Rule[T]) (sharedWildcardEquality[T], bool) {
 
 func (r *allRule[T]) rankChildren(
 	v T,
-	_ *bitmapPool,
+	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) bool {
 	// Rank constant-time equality bounds first. If one is already small enough
@@ -251,8 +275,17 @@ func (r *allRule[T]) rankChildren(
 			if _, ok := cheapCardinality(child, v); ok {
 				continue
 			}
-			if estimator, ok := child.(cardinalityEstimator[T]); ok {
-				estimate := estimator.estimateCardinality(v)
+			if provider, ok := child.(cachedBitmapProvider[T]); ok {
+				if bits, found := provider.lookupCachedBitmap(v, pool); found {
+					rankedChildren[i].bits = bits
+					rankedChildren[i].card = bits.GetCardinality()
+					if rankedChildren[i].card == 0 {
+						return false
+					}
+					continue
+				}
+			}
+			if estimate, ok := estimateCardinalityForPlan(child, v, pool); ok {
 				if estimate == 0 {
 					return false
 				}
@@ -270,6 +303,28 @@ func (r *allRule[T]) rankChildren(
 		}
 	}
 	return true
+}
+
+func cachedCardinality[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, bool) {
+	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
+		return cachedCardinality(observed.child, value, pool)
+	}
+	estimator, ok := rule.(cachedCardinalityEstimator[T])
+	if !ok {
+		return 0, false
+	}
+	return estimator.estimateCachedCardinality(value, pool)
+}
+
+func estimateCardinalityForPlan[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, bool) {
+	if estimate, ok := cachedCardinality(rule, value, pool); ok {
+		return estimate, true
+	}
+	estimator, ok := rule.(cardinalityEstimator[T])
+	if !ok {
+		return 0, false
+	}
+	return estimator.estimateCardinality(value), true
 }
 
 func cheapCardinality[T any](rule Rule[T], value T) (uint64, bool) {
