@@ -2,6 +2,7 @@ package ruleix
 
 import (
 	"cmp"
+	"hash/fnv"
 	"math"
 	"testing"
 
@@ -40,6 +41,29 @@ func TestCanonicalScalarIsStableAndTypeSeparated(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, byte(0xaa), encoded[0])
 	_, ok = canonicalScalar(nil, struct{}{})
+	require.False(t, ok)
+}
+
+func TestHashScalarMatchesCanonicalFNV(t *testing.T) {
+	t.Parallel()
+
+	values := []any{
+		false, true, "", "ruleix", int(-1), int8(-1), int16(-1), int32(-1), int64(-1),
+		uint(1), uint8(1), uint16(1), uint32(1), uint64(1), uintptr(1),
+		float32(math.NaN()), float32(math.Copysign(0, -1)), math.NaN(), math.Copysign(0, -1),
+	}
+	for _, value := range values {
+		encoded, ok := canonicalScalar(nil, value)
+		require.True(t, ok)
+		legacy := fnv.New64a()
+		_, err := legacy.Write(encoded)
+		require.NoError(t, err)
+		actual, ok := hashScalar(value)
+		require.True(t, ok)
+		require.Equal(t, legacy.Sum64(), actual, "%T(%v)", value, value)
+	}
+
+	_, ok := hashScalar(struct{}{})
 	require.False(t, ok)
 }
 

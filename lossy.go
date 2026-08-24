@@ -2,7 +2,6 @@ package ruleix
 
 import (
 	"fmt"
-	"hash/fnv"
 	"math"
 	"math/bits"
 	"sort"
@@ -431,13 +430,68 @@ func bitmapBytes(bits *roaring.Bitmap) uint64 {
 }
 
 func hashScalar(value any) (uint64, bool) {
-	encoded, ok := canonicalScalar(nil, value)
-	if !ok {
+	switch value := value.(type) {
+	case bool:
+		encoded := byte(0)
+		if value {
+			encoded = 1
+		}
+		return fnvHashByte(fnvHashByte(fnvOffset64, canonicalBool), encoded), true
+	case string:
+		hash := fnvHashUint64(fnvHashByte(fnvOffset64, canonicalString), uint64(len(value)))
+		for index := range len(value) {
+			hash = fnvHashByte(hash, value[index])
+		}
+		return hash, true
+	case int:
+		return fnvHashTaggedUint64(canonicalInt, uint64(int64(value))), true
+	case int8:
+		return fnvHashTaggedUint64(canonicalInt8, uint64(value)), true
+	case int16:
+		return fnvHashTaggedUint64(canonicalInt16, uint64(value)), true
+	case int32:
+		return fnvHashTaggedUint64(canonicalInt32, uint64(value)), true
+	case int64:
+		return fnvHashTaggedUint64(canonicalInt64, uint64(value)), true
+	case uint:
+		return fnvHashTaggedUint64(canonicalUint, uint64(value)), true
+	case uint8:
+		return fnvHashTaggedUint64(canonicalUint8, uint64(value)), true
+	case uint16:
+		return fnvHashTaggedUint64(canonicalUint16, uint64(value)), true
+	case uint32:
+		return fnvHashTaggedUint64(canonicalUint32, uint64(value)), true
+	case uint64:
+		return fnvHashTaggedUint64(canonicalUint64, value), true
+	case uintptr:
+		return fnvHashTaggedUint64(canonicalUintptr, uint64(value)), true
+	case float32:
+		return fnvHashTaggedUint64(canonicalFloat32, uint64(canonicalFloat32Bits(value))), true
+	case float64:
+		return fnvHashTaggedUint64(canonicalFloat64, canonicalFloat64Bits(value)), true
+	default:
 		return 0, false
 	}
-	h := fnv.New64a()
-	_, _ = h.Write(encoded)
-	return h.Sum64(), true
+}
+
+const (
+	fnvOffset64 = 14695981039346656037
+	fnvPrime64  = 1099511628211
+)
+
+func fnvHashByte(hash uint64, value byte) uint64 {
+	return (hash ^ uint64(value)) * fnvPrime64
+}
+
+func fnvHashUint64(hash, value uint64) uint64 {
+	for shift := 56; shift >= 0; shift -= 8 {
+		hash = fnvHashByte(hash, byte(value>>shift))
+	}
+	return hash
+}
+
+func fnvHashTaggedUint64(tag byte, value uint64) uint64 {
+	return fnvHashUint64(fnvHashByte(fnvOffset64, tag), value)
 }
 
 type lossyEqualityRule[T any, V comparable] struct {
