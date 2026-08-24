@@ -1442,3 +1442,24 @@ Reproduce the retained baseline used for these comparisons with:
 go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
   -benchmem -benchtime=1s -count=5 .
 ```
+
+## 2026-08-24: owned nested intersection experiment
+
+A follow-up prototype let nested `All` return an owned bitmap directly to its
+parent. The nested group materialized its ranked children, used `FastAnd`, and
+transferred the result without copying it through the caller-provided `dst`.
+This tested the ownership half of the preceding profile's recommendation while
+leaving the public search API unchanged.
+
+The change was not retained. Against a three-run baseline of approximately
+4.11 us, 4,662 B, and four allocations, five one-second warm `Local` runs
+measured a median 4.482 us, 4,808 B, and eight allocations. `Index` remained
+near 102.35 us but increased from 32 to 36 allocations. Avoiding the
+destination transfer was not sufficient: `FastAnd` still created a new result
+bitmap for each nested group, and its four incremental allocations outweighed
+the saved copy-on-write work.
+
+An owned-result contract is therefore only promising together with either a
+reusable destination-aware intersection primitive such as
+`AndTo(dst, first, second)`, which Roaring v2.4.4 does not expose, or a bounded
+cache that amortizes the compound result across repeated `Local` queries.
