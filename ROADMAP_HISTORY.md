@@ -94,6 +94,36 @@ go test -run '^$' -bench '^BenchmarkLocalBetweenReuse$' \
   -benchmem -benchtime=200ms -count=5 .
 ```
 
+## 2026-08-24: `Local.Close` cache-bitmap recycling
+
+The production benchmark suite now includes a short-lived `Local` lifecycle:
+acquire a context, run six searches over a two-query working set to admit and
+reuse its caches, then call `Close`. Previously `Close` returned the context to
+the index but cleared its node-cache references without returning the admitted
+bitmaps to the context's scratch pool. The next `Local` therefore reused the
+context and node array while allocating new cache bitmaps.
+
+`resetLocal` now releases cache-owned bitmaps from equality, ordered,
+`CompareBy`, `Between`, and exclusion entries through the bounded bitmap pool
+before clearing node state. Cache admission obtains replacement bitmaps from
+the same pool. The next `Local` remains logically cold, while its cache entries
+can reuse released bitmap objects and top-level storage.
+
+On Apple M1 Max with Go 1.26.0, medians of five one-second runs of
+`BenchmarkProductionShapeLocalClose` changed from 388.8 us, 308.8 KB, and 174
+allocations per lifecycle to 373.6 us, 307.7 KB, and 130 allocations. This is a
+3.9% latency improvement and a 25.3% allocation-count reduction. Retained bytes
+fall only slightly because Roaring `Clear` releases container references; the
+optimization primarily reuses bitmap objects and top-level buffers rather than
+the materialized container payload.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalClose$' \
+  -benchmem -benchtime=1s -count=5 .
+```
+
 ## 2026-08-24: late `All` candidate bitmap reuse
 
 When bitmap execution discovers a small materialized child after one or more

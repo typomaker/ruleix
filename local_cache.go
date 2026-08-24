@@ -10,6 +10,18 @@ type localNodeCache struct {
 	exclusion any
 }
 
+type localCacheReleaser interface {
+	releaseBitmaps(*bitmapPool)
+}
+
+func (c *localNodeCache) releaseBitmaps(pool *bitmapPool) {
+	for _, cached := range [...]any{c.equality, c.ordered, c.compareBy, c.between, c.exclusion} {
+		if releaser, ok := cached.(localCacheReleaser); ok {
+			releaser.releaseBitmaps(pool)
+		}
+	}
+}
+
 type cacheObservers struct {
 	items [8]*inspectorRuntime
 	n     uint8
@@ -154,7 +166,7 @@ func (c *valueBitmapCache[V]) peek(value optionalValue[V], equal func(V, V) bool
 	return nil, false
 }
 
-func (c *valueBitmapCache[V]) replace(value optionalValue[V]) *roaring.Bitmap {
+func (c *valueBitmapCache[V]) replace(value optionalValue[V], pool *bitmapPool) *roaring.Bitmap {
 	if c.overflow == nil && c.entries[c.next].initialized {
 		c.pressure++
 		if c.pressure >= 2 {
@@ -174,7 +186,7 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V]) *roaring.Bitmap {
 		c.observers.eviction()
 	}
 	if entry.bits == nil {
-		entry.bits = roaring.New()
+		entry.bits = pool.get()
 	} else {
 		entry.bits.Clear()
 	}
@@ -187,6 +199,16 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V]) *roaring.Bitmap {
 		entry.value = value.value
 	}
 	return entry.bits
+}
+
+func (c *valueBitmapCache[V]) releaseBitmaps(pool *bitmapPool) {
+	for i := 0; i < c.capacity(); i++ {
+		entry := c.entry(i)
+		if entry.bits != nil {
+			pool.put(entry.bits)
+			entry.bits = nil
+		}
+	}
 }
 
 func (c *valueBitmapCache[V]) capacity() int {

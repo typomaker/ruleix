@@ -330,6 +330,39 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 	}
 }
 
+// BenchmarkProductionShapeLocalClose measures a complete short-lived Local
+// lifecycle: acquire a context, warm its two-value working set, and return the
+// context to the Index. This keeps cache teardown and subsequent resource reuse
+// visible instead of amortizing them across a long-lived Local.
+func BenchmarkProductionShapeLocalClose(b *testing.B) {
+	constraints, ids := productionBenchmarkData()
+	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+		productionBenchmarkSchema(),
+	).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	queries := [...]productionBenchmarkConstraint{
+		productionBenchmarkQuery(100),
+		productionBenchmarkQuery(101),
+	}
+	matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
+
+	b.ReportAllocs()
+	b.ReportMetric(float64(len(queries)*3), "searches/op")
+	b.ResetTimer()
+	for range b.N {
+		local := index.Local()
+		for range 3 {
+			for _, query := range queries {
+				matches = matches[:0]
+				local.Search(query, &matches)
+			}
+		}
+		local.Close()
+	}
+}
+
 func BenchmarkProductionShapeEqualityOnlySearch(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](

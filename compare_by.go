@@ -184,7 +184,7 @@ func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool)
 		r.each(v, dst.Or)
 		return
 	}
-	bits := cache.replace(value)
+	bits := cache.replace(value, pool)
 	r.each(v, bits.Or)
 	dst.Or(bits)
 }

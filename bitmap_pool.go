@@ -47,6 +47,9 @@ func newLocalBitmapPool(nodes int) *bitmapPool {
 	return p
 }
 func (p *bitmapPool) resetLocal() {
+	for i := range p.local {
+		p.local[i].releaseBitmaps(p)
+	}
 	clear(p.local)
 	p.observers = cacheObservers{}
 }

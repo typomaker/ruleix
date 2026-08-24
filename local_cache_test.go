@@ -13,14 +13,15 @@ func TestValueBitmapCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	cache := &valueBitmapCache[int]{}
 	a, b, c := 1, 2, 3
 
-	cache.replace(optionalValue[int]{value: a, ok: true}).Add(1)
-	cache.replace(optionalValue[int]{value: b, ok: true}).Add(2)
+	pool := newBitmapPool()
+	cache.replace(optionalValue[int]{value: a, ok: true}, pool).Add(1)
+	cache.replace(optionalValue[int]{value: b, ok: true}, pool).Add(2)
 
 	bits, found := comparableValueCacheLookup(cache, optionalValue[int]{value: a, ok: true})
 	require.True(t, found)
 	require.True(t, bits.Contains(1))
 
-	cache.replace(optionalValue[int]{value: c, ok: true}).Add(3)
+	cache.replace(optionalValue[int]{value: c, ok: true}, pool).Add(3)
 
 	_, found = comparableValueCacheLookup(cache, optionalValue[int]{value: b, ok: true})
 	require.False(t, found)
@@ -38,9 +39,10 @@ func TestValueBitmapCacheClearsValueForNilEntry(t *testing.T) {
 	first := &value{id: 1}
 	second := &value{id: 2}
 
-	cache.replace(optionalValue[*value]{value: first, ok: true})
-	cache.replace(optionalValue[*value]{value: second, ok: true})
-	cache.replace(optionalValue[*value]{})
+	pool := newBitmapPool()
+	cache.replace(optionalValue[*value]{value: first, ok: true}, pool)
+	cache.replace(optionalValue[*value]{value: second, ok: true}, pool)
+	cache.replace(optionalValue[*value]{}, pool)
 
 	require.True(t, cache.entries[0].initialized)
 	require.False(t, cache.entries[0].hasValue)
@@ -71,6 +73,28 @@ func TestLocalCloseReleasesNodeCachesAndReturnsInternalContext(t *testing.T) {
 	reused.Search(constraint{value: 1}, &matches)
 	require.Equal(t, []int{7}, matches)
 	reused.Close()
+}
+
+func TestResetLocalReturnsCachedBitmapsToScratchPool(t *testing.T) {
+	pool := newLocalBitmapPool(2)
+	valueCache := newValueBitmapCache[int](pool)
+	valueBits := valueCache.replace(optionalValue[int]{value: 1, ok: true}, pool)
+	valueBits.AddRange(0, 100)
+	betweenCache := newBetweenCache[int](pool)
+	betweenBits := pool.get()
+	betweenBits.AddRange(100, 200)
+	betweenCache.entries[0] = betweenCacheEntry[int]{initialized: true, bits: betweenBits}
+	pool.local[0].ordered = valueCache
+	pool.local[1].between = betweenCache
+
+	pool.resetLocal()
+
+	require.True(t, valueBits.IsEmpty())
+	require.True(t, betweenBits.IsEmpty())
+	require.Nil(t, valueCache.entries[0].bits)
+	require.Nil(t, betweenCache.entries[0].bits)
+	require.Nil(t, pool.local[0].ordered)
+	require.Nil(t, pool.local[1].between)
 }
 
 func TestLocalContextsCanBeAcquiredAndClosedConcurrently(t *testing.T) {
@@ -294,6 +318,7 @@ func TestValueBitmapCacheAdmitsOnlyRepeatedValues(t *testing.T) {
 
 func TestValueBitmapCacheGrowsForRepeatedWorkingSet(t *testing.T) {
 	cache := &valueBitmapCache[int]{}
+	pool := newBitmapPool()
 	values := [...]optionalValue[int]{
 		{value: 1, ok: true}, {value: 2, ok: true},
 		{value: 3, ok: true}, {value: 4, ok: true},
@@ -305,7 +330,7 @@ func TestValueBitmapCacheGrowsForRepeatedWorkingSet(t *testing.T) {
 				continue
 			}
 			if comparableValueCacheAdmit(cache, value) {
-				cache.replace(value)
+				cache.replace(value, pool)
 			}
 		}
 	}

@@ -290,7 +290,7 @@ func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		return
 	}
 
-	bits := cache.replace(value)
+	bits := cache.replace(value, pool)
 	r.addMatches(value, bits)
 	dst.Or(bits)
 }
