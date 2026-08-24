@@ -412,7 +412,7 @@ func materializeRankedAfterFirst[C any](
 		if bits.IsEmpty() {
 			return false
 		}
-		if i == 1 && shouldPruneBitmapRanges(pool, metrics) && bitmapRangesDisjoint(rankedChildren[0].bits, bits) {
+		if i == 1 && shouldPruneBitmapRanges(pool) && bitmapRangesDisjoint(rankedChildren[0].bits, bits) {
 			observeRangePruning(metrics, pool)
 			return false
 		}

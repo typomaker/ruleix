@@ -92,6 +92,26 @@ func TestInspectReportsLaterAllRangePruning(t *testing.T) {
 	require.Equal(t, uint64(1), inspector.Snapshot().RangePruning())
 }
 
+func TestInspectDoesNotEnableLocalRangePruning(t *testing.T) {
+	type constraint struct{ first, second int }
+	var inspector Inspector
+	index, err := New[constraint, int](Inspect(&inspector, All(
+		Include(func(v constraint) (int, bool) { return v.first, true }),
+		Include(func(v constraint) (int, bool) { return v.second, true }),
+	))).Build(Zip(
+		[]constraint{{first: 1, second: 10}, {first: 1, second: 11}, {first: 2, second: 20}, {first: 2, second: 21}, {first: 3, second: 30}},
+		[]int{1, 2, 3, 4, 5},
+	))
+	require.NoError(t, err)
+
+	local := index.Local()
+	var dst []int
+	require.False(t, local.Search(constraint{first: 1, second: 20}, &dst))
+	local.Close()
+
+	require.Zero(t, inspector.Snapshot().RangePruning(), "inspection must report the Local strategy without enabling range pruning")
+}
+
 func boolInt(value bool) int {
 	if value {
 		return 1
