@@ -10,6 +10,7 @@ type bitmapPool struct {
 	pool       sync.Pool
 	rankedPool sync.Pool
 	local      []localNodeCache
+	allPlans   map[any]*localAllPlan
 	observers  cacheObservers
 }
 
@@ -51,6 +52,7 @@ func (p *bitmapPool) resetLocal() {
 		p.local[i].releaseBitmaps(p)
 	}
 	clear(p.local)
+	p.allPlans = nil
 	p.observers = cacheObservers{}
 }
 func (p *bitmapPool) get() *roaring.Bitmap {

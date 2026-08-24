@@ -10,6 +10,12 @@ type localNodeCache struct {
 	exclusion any
 }
 
+type localAllPlan struct {
+	order     []int
+	firstCard uint64
+	uses      uint8
+}
+
 type localCacheReleaser interface {
 	releaseBitmaps(*bitmapPool)
 }

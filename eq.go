@@ -372,6 +372,9 @@ func (r *eqRule[T, V]) estimateCardinality(v T) uint64 {
 	return n
 }
 func (r *eqRule[T, V]) estimateCheapCardinality(v T) uint64 { return r.estimateCardinality(v) }
+func (r *eqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
+	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
+}
 func (r *eqRule[T, V]) isCardinalityZero(v T) bool {
 	if !r.wildcard.IsEmpty() {
 		return false
@@ -505,6 +508,9 @@ func (r *unaryEqRule[T, V]) estimateCardinality(v T) uint64 {
 func (r *unaryEqRule[T, V]) estimateCheapCardinality(v T) uint64 {
 	return r.estimateCardinality(v)
 }
+func (r *unaryEqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
+	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
+}
 func (r *unaryEqRule[T, V]) isCardinalityZero(v T) bool {
 	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
 }
@@ -596,6 +602,9 @@ func (r *binaryEqRule[T, V]) estimateCardinality(v T) uint64 {
 func (r *binaryEqRule[T, V]) estimateCheapCardinality(v T) uint64 {
 	return r.estimateCardinality(v)
 }
+func (r *binaryEqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
+	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
+}
 func (r *binaryEqRule[T, V]) isCardinalityZero(v T) bool {
 	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
 }
@@ -660,4 +669,19 @@ func equalityCache[V comparable](pool *bitmapPool, id nodeID) *valueBitmapCache[
 		node.equality = cache
 	}
 	return cache
+}
+
+func lookupEqualityCachedBitmap[V comparable](
+	pool *bitmapPool,
+	id nodeID,
+	value optionalValue[V],
+) (*roaring.Bitmap, bool) {
+	if pool.local == nil {
+		return nil, false
+	}
+	cache, _ := pool.local[int(id)].equality.(*valueBitmapCache[V])
+	if cache == nil {
+		return nil, false
+	}
+	return comparableValueCacheLookup(cache, value)
 }

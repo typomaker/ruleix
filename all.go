@@ -17,6 +17,10 @@ const allSequentialIntersectionLimit = 3
 // so they stop paying off sooner than ordinary posting-list membership tests.
 const allDirectExclusionScanLimit = 16
 
+// A Local periodically refreshes its learned All order so a workload phase
+// change cannot leave it stuck on a stale plan indefinitely.
+const allLocalPlanRefreshInterval = 64
+
 // All combines rules with logical AND: a stored constraint matches only when
 // every child rule matches. All may be nested.
 //
@@ -253,6 +257,11 @@ func (r *allRule[T]) rankChildren(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) bool {
+	if pool.local != nil {
+		if result, reused := r.reuseLocalPlan(v, pool, rankedChildren); reused {
+			return result
+		}
+	}
 	// Rank constant-time equality bounds first. If one is already small enough
 	// for direct ID validation, ordered cardinalities cannot improve the chosen
 	// execution mode and would only repeat their boundary and posting scans.
@@ -302,7 +311,72 @@ func (r *allRule[T]) rankChildren(
 			rankedChildren[j], rankedChildren[j-1] = rankedChildren[j-1], rankedChildren[j]
 		}
 	}
+	if pool.local != nil {
+		r.rememberLocalPlan(pool, rankedChildren)
+	}
 	return true
+}
+
+func (r *allRule[T]) reuseLocalPlan(
+	v T,
+	pool *bitmapPool,
+	rankedChildren []rankedBitmap,
+) (result, reused bool) {
+	plan := pool.allPlans[r]
+	if plan == nil || len(plan.order) != len(r.children) || plan.uses >= allLocalPlanRefreshInterval-1 {
+		return false, false
+	}
+	for rank, childIdx := range plan.order {
+		ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
+		child := r.children[childIdx]
+		if provider, ok := child.(cachedBitmapProvider[T]); ok {
+			if bits, found := provider.lookupCachedBitmap(v, pool); found {
+				ranked.bits = bits
+				ranked.card = bits.GetCardinality()
+				if ranked.card == 0 {
+					return false, true
+				}
+			}
+		}
+		rankedChildren[rank] = ranked
+	}
+	firstCard := rankedChildren[0].card
+	if firstCard == ^uint64(0) {
+		estimate, ok := estimateCardinalityForPlan(r.children[rankedChildren[0].childIdx], v, pool)
+		if !ok || estimate == 0 {
+			return estimate != 0, ok
+		}
+		firstCard = estimate
+		rankedChildren[0].card = estimate
+	}
+	if localPlanCardinalityChanged(plan.firstCard, firstCard) {
+		return false, false
+	}
+	plan.uses++
+	return true, true
+}
+
+func localPlanCardinalityChanged(previous, current uint64) bool {
+	if (previous <= allCandidateScanLimit) != (current <= allCandidateScanLimit) {
+		return true
+	}
+	return current > previous*2 || previous > current*2
+}
+
+func (r *allRule[T]) rememberLocalPlan(pool *bitmapPool, rankedChildren []rankedBitmap) {
+	if pool.allPlans == nil {
+		pool.allPlans = make(map[any]*localAllPlan)
+	}
+	plan := pool.allPlans[r]
+	if plan == nil {
+		plan = &localAllPlan{order: make([]int, len(rankedChildren))}
+		pool.allPlans[r] = plan
+	}
+	for i, ranked := range rankedChildren {
+		plan.order[i] = ranked.childIdx
+	}
+	plan.firstCard = rankedChildren[0].card
+	plan.uses = 0
 }
 
 func cachedCardinality[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, bool) {

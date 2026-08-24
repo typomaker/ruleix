@@ -86,6 +86,7 @@ func TestResetLocalReturnsCachedBitmapsToScratchPool(t *testing.T) {
 	betweenCache.entries[0] = betweenCacheEntry[int]{initialized: true, bits: betweenBits}
 	pool.local[0].ordered = valueCache
 	pool.local[1].between = betweenCache
+	pool.allPlans = map[any]*localAllPlan{"all": {order: []int{1, 0}}}
 
 	pool.resetLocal()
 
@@ -95,6 +96,32 @@ func TestResetLocalReturnsCachedBitmapsToScratchPool(t *testing.T) {
 	require.Nil(t, betweenCache.entries[0].bits)
 	require.Nil(t, pool.local[0].ordered)
 	require.Nil(t, pool.local[1].between)
+	require.Nil(t, pool.allPlans)
+}
+
+func TestEqualityExposesOnlyWarmLocalBitmap(t *testing.T) {
+	type constraint struct{ value int }
+	index, err := New[constraint, int](Include(func(value constraint) (int, bool) {
+		return value.value, true
+	})).Build(Zip(
+		[]constraint{{value: 1}, {value: 2}, {value: 3}},
+		[]int{1, 2, 3},
+	))
+	require.NoError(t, err)
+	local := index.Local()
+	rule := index.root.(*eqRule[constraint, int])
+	query := constraint{value: 2}
+
+	_, found := rule.lookupCachedBitmap(query, local.pool)
+	require.False(t, found)
+	var matches []int
+	for range 2 {
+		matches = matches[:0]
+		local.Search(query, &matches)
+	}
+	bits, found := rule.lookupCachedBitmap(query, local.pool)
+	require.True(t, found)
+	require.Equal(t, uint64(1), bits.GetCardinality())
 }
 
 func TestLocalContextsCanBeAcquiredAndClosedConcurrently(t *testing.T) {
@@ -145,8 +172,13 @@ func TestAllUsesWarmOrderedLocalBitmapsDuringPlanning(t *testing.T) {
 	}
 
 	root := index.root.(*allRule[constraint])
+	plan := local.pool.allPlans[root]
+	require.NotNil(t, plan)
+	require.Len(t, plan.order, len(root.children))
+	plan.uses = allLocalPlanRefreshInterval - 1
 	ranked := make([]rankedBitmap, len(root.children))
 	require.True(t, root.rankChildren(query, local.pool, ranked))
+	require.Zero(t, plan.uses)
 	for _, child := range ranked {
 		require.NotNil(t, child.bits)
 		require.False(t, child.owned)
