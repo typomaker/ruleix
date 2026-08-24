@@ -254,6 +254,32 @@ func TestLossyAllLocalPlanReusesPlanningBucket(t *testing.T) {
 	require.Equal(t, [2]int{2, 2}, getterCalls)
 }
 
+func TestLossyEqualityLocalCachesRepeatedValue(t *testing.T) {
+	value := "customer-7"
+	hash, ok := hashScalar(any(value))
+	require.True(t, ok)
+	rule := &lossyEqualityRule[lossyConstraint, string]{
+		nodeID:   0,
+		get:      func(v lossyConstraint) (string, bool) { return v.name, v.present },
+		wildcard: roaring.New(),
+		shift:    56,
+		buckets:  map[uint64]*roaring.Bitmap{hash >> 56: roaring.BitmapOf(7)},
+	}
+	pool := newLocalBitmapPool(1)
+	query := lossyConstraint{name: value, present: true}
+
+	for range 2 {
+		result := pool.get()
+		rule.search(query, result, pool)
+		require.Equal(t, []uint32{7}, result.ToArray())
+		pool.put(result)
+	}
+
+	cached, found := rule.lookupCachedBitmap(query, pool)
+	require.True(t, found)
+	require.Equal(t, []uint32{7}, cached.ToArray())
+}
+
 type unknownEstimateRule[T any] struct{ child Rule[T] }
 
 func (*unknownEstimateRule[T]) rule() {}

@@ -527,13 +527,29 @@ func (*lossyEqualityRule[T, V]) rule()                                          
 func (r *lossyEqualityRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
 func (*lossyEqualityRule[T, V]) validate(T) error                                      { return nil }
 func (*lossyEqualityRule[T, V]) insert(T, uint32)                                      {}
-func (r *lossyEqualityRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool) {
+func (r *lossyEqualityRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	value := getOptional(r.get, v)
+	if pool.local != nil {
+		cache := equalityCache[V](pool, r.nodeID)
+		if bits, found := comparableValueCacheLookup(cache, value); found {
+			dst.Or(bits)
+			return
+		}
+		if comparableValueCacheAdmit(cache, value) {
+			bits := cache.replace(value, pool)
+			r.addMatches(value, bits)
+			dst.Or(bits)
+			return
+		}
+	}
+	r.addMatches(value, dst)
+}
+func (r *lossyEqualityRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
 	dst.Or(r.wildcard)
-	value, ok := r.get(v)
-	if !ok {
+	if !value.ok {
 		return
 	}
-	hash, ok := hashScalar(any(value))
+	hash, ok := hashScalar(any(value.value))
 	if !ok {
 		return
 	}
@@ -558,6 +574,16 @@ func (r *lossyEqualityRule[T, V]) estimateCardinality(v T) uint64 {
 }
 func (r *lossyEqualityRule[T, V]) estimateCheapCardinality(v T) uint64 {
 	return r.estimateCardinality(v)
+}
+func (r *lossyEqualityRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
+	bits, found := r.lookupCachedBitmap(v, pool)
+	if !found {
+		return 0, false
+	}
+	return bits.GetCardinality(), true
+}
+func (r *lossyEqualityRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
+	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
 }
 func (r *lossyEqualityRule[T, V]) isCardinalityZero(v T) bool {
 	return r.estimateCardinality(v) == 0

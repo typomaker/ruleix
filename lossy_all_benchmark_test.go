@@ -156,10 +156,14 @@ func BenchmarkLossyAllSearchQuality(b *testing.B) {
 
 // BenchmarkLossyAllSearchRuntime isolates the Index and Local search paths for
 // CPU and allocation profiles. On Apple M1 Max with Go 1.26.0, 10k entries,
-// four equality children, 256 rotating queries, and the command below,
-// Budget50 measured Index 643-648 ns/op, 157 B/op, 3 allocs/op and Local
-// 755-758 ns/op, 159 B/op, 3 allocs/op; Budget25 measured Index 563-568 ns/op,
-// 61 B/op, 1 alloc/op and Local 589-591 ns/op, 59 B/op, 1 alloc/op.
+// four equality children, either one repeated or 256 rotating queries, and the
+// command below, Budget50 measured IndexRepeated 516-535 ns/op, 160 B/op,
+// 4 allocs/op; LocalRepeated 395-409 ns/op, 112 B/op, 1 alloc/op;
+// IndexRotating 634-648 ns/op, 157 B/op, 3 allocs/op; and LocalRotating
+// 732-748 ns/op, 159 B/op, 3 allocs/op. Budget25 measured IndexRepeated
+// 450-460 ns/op, 48 B/op, 2 allocs/op; LocalRepeated 423-430 ns/op, 48 B/op,
+// 2 allocs/op; IndexRotating 560-575 ns/op, 61 B/op, 1 alloc/op; and
+// LocalRotating 575-598 ns/op, 59 B/op, 1 alloc/op.
 //
 //	go test -run '^$' -bench '^BenchmarkLossyAllSearchRuntime/' -benchmem -benchtime=1s -count=3 .
 func BenchmarkLossyAllSearchRuntime(b *testing.B) {
@@ -175,12 +179,17 @@ func BenchmarkLossyAllSearchRuntime(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			for _, local := range []bool{false, true} {
-				name := "Index"
-				if local {
-					name = "Local"
-				}
-				b.Run(name, func(b *testing.B) {
+			for _, test := range []struct {
+				name     string
+				local    bool
+				rotating bool
+			}{
+				{name: "IndexRepeated"},
+				{name: "LocalRepeated", local: true},
+				{name: "IndexRotating", rotating: true},
+				{name: "LocalRotating", local: true, rotating: true},
+			} {
+				b.Run(test.name, func(b *testing.B) {
 					searcher := index.Local()
 					defer searcher.Close()
 					var matches []int
@@ -188,10 +197,14 @@ func BenchmarkLossyAllSearchRuntime(b *testing.B) {
 					b.ResetTimer()
 					for i := range b.N {
 						matches = matches[:0]
-						if local {
-							searcher.Search(queries[i%len(queries)], &matches)
+						query := queries[0]
+						if test.rotating {
+							query = queries[i%len(queries)]
+						}
+						if test.local {
+							searcher.Search(query, &matches)
 						} else {
-							index.Search(queries[i%len(queries)], &matches)
+							index.Search(query, &matches)
 						}
 					}
 				})
