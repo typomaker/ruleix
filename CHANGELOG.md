@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Uncached `All` execution filters an existing candidate bitmap through
+  `Between` bounds, avoiding materialization of the complete range result.
 - Exact ordered indexes use smaller aggregate blocks, reducing production-shaped
   uncached range-search latency while preserving exact comparison semantics.
 - Exact nested `All` groups are flattened during index compilation, avoiding

@@ -445,6 +445,17 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 	}
 	for i := range rankedChildren {
 		bits := rankedChildren[i].bits
+		if i > 0 {
+			if i == 1 {
+				dst.Or(rankedChildren[0].bits)
+			}
+			if filtered := filterCandidatesThroughRule(r.children[rankedChildren[i].childIdx], v, dst, pool); filtered {
+				if dst.IsEmpty() {
+					return false
+				}
+				continue
+			}
+		}
 		if bits == nil {
 			bits = pool.get()
 			r.children[rankedChildren[i].childIdx].search(v, bits, pool)
@@ -515,9 +526,6 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 			}
 			return false
 		}
-		if i == 1 {
-			dst.Or(current)
-		}
 		dst.And(bits)
 		if dst.IsEmpty() {
 			for j := range rankedChildren {
@@ -533,11 +541,26 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 		dst.Or(rankedChildren[0].bits)
 	}
 	for i := allSequentialIntersectionLimit; i < len(rankedChildren); i++ {
+		if rankedChildren[i].bits == nil {
+			continue
+		}
 		dst.And(rankedChildren[i].bits)
 		if dst.IsEmpty() {
 			return false
 		}
 	}
+	return true
+}
+
+func filterCandidatesThroughRule[T any](rule Rule[T], value T, dst *roaring.Bitmap, pool *bitmapPool) bool {
+	if pool.local != nil {
+		return false
+	}
+	filter, ok := rule.(candidateFilter[T])
+	if !ok {
+		return false
+	}
+	filter.filterCandidates(value, dst, pool)
 	return true
 }
 

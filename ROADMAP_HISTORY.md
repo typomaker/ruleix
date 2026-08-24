@@ -1554,3 +1554,40 @@ go test -run '^$' \
   -bench '^(BenchmarkProductionShapeBuild|BenchmarkProductionShapeRetainedMemory)$' \
   -benchmem -benchtime=300ms -count=3 .
 ```
+
+## 2026-08-24: candidate-aware uncached `Between`
+
+Uncached `All` execution can now pass its accumulated bitmap directly to a
+following `Between` child. The range rule narrows that bitmap with Roaring
+`AndAny` for each bound instead of first materializing both complete ordered
+range unions and intersecting their result. The optimization only removes IDs
+from the caller-owned candidate set and uses the existing exact block postings.
+Warm `Local` execution deliberately retains its materialized-cache path.
+
+On Apple M1 Max with Go 1.26.0, five one-second production-shaped runs reduced
+median `Index` search from the 64-value-block baseline of 92.738 us to 45.715
+us (50.7%). Allocated bytes fell from 89,695 to 73,396 per search and
+allocations fell from 30 to 28. Median warm `Local` search was 2.602 us with
+the unchanged 2,331 B and two allocations.
+
+The new five-second `Index` CPU profile attributes 21.9% cumulative CPU to
+`betweenRule.filterCandidates` and 20.4% to `Bitmap.AndAny`; the previous full
+range materialization attributed 57.7% to `Bitmap.Or`, 49.5% to
+`betweenRule.searchBitmaps`, and 45.5% to `orderedIndex.walk`. Remaining
+`Bitmap.Or` work is 16.7% cumulative, led by `CompareBy` ordered unions rather
+than the `Between` range.
+
+A first prototype also applied filtering to warm `Local` searches and was
+rejected: it bypassed admitted range-cache entries and regressed median search
+to about 19.4 us, 21,506 B, and 12 allocations. Restricting the optimization
+to uncached `Index` searches restores the cache-backed local path.
+
+Reproduce the measurements and CPU profile with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeSearch/Index$' -benchtime=5s -count=1 \
+  -cpuprofile=/tmp/ruleix-production-candidate-index.cpu .
+```

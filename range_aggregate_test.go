@@ -67,6 +67,43 @@ type differentialInterval struct {
 	until int
 }
 
+type categorizedInterval struct {
+	category int
+	from     int
+	until    int
+}
+
+func TestAllFiltersCandidatesThroughBetween(t *testing.T) {
+	schema := ruleix.All(
+		ruleix.Include(func(v categorizedInterval) (int, bool) { return v.category, true }),
+		ruleix.Between(
+			func(v categorizedInterval) (int, bool) { return v.from, true },
+			func(v categorizedInterval) (int, bool) { return v.until, true },
+			cmp.Compare[int],
+		),
+	)
+	stored := make([]categorizedInterval, 1_000)
+	ids := make([]int, len(stored))
+	for id := range stored {
+		stored[id] = categorizedInterval{category: id % 10, from: id - 20, until: id + 20}
+		ids[id] = id
+	}
+	ix := buildZip(t, schema, stored, ids)
+	query := categorizedInterval{category: 3, from: 490, until: 510}
+	var want []int
+	for id, interval := range stored {
+		if interval.category == query.category && interval.from <= query.from && query.until <= interval.until {
+			want = append(want, id)
+		}
+	}
+
+	require.Equal(t, want, search(ix, query))
+	local := ix.Local()
+	var got []int
+	local.Search(query, &got)
+	require.Equal(t, want, got)
+}
+
 func TestBetweenMatchesScanningReferenceAcrossBlocks(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 	intervalSchema := ruleix.Between(ruleix.GetterFromPointer(func(v differentialInterval) *int { return &v.from }), ruleix.GetterFromPointer(func(v differentialInterval) *int { return &v.until }), cmp.Compare[int])

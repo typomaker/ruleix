@@ -330,6 +330,33 @@ func (r *betweenRule[T, V]) matchesID(v T, id uint32) bool {
 	return r.from.matchesID(v, id) && r.until.matchesID(v, id)
 }
 
+func (r *betweenRule[T, V]) filterCandidates(v T, dst *roaring.Bitmap, _ *bitmapPool) {
+	fromValue := getOptional(r.from.get, v)
+	untilValue := getOptional(r.until.get, v)
+	first, second := r.from, r.until
+	firstValue, secondValue := fromValue, untilValue
+	if r.until.estimateCardinality(v) < r.from.estimateCardinality(v) {
+		first, second = r.until, r.from
+		firstValue, secondValue = untilValue, fromValue
+	}
+
+	var inline [16]*roaring.Bitmap
+	for _, side := range []struct {
+		rule  *orderedRule[T, V]
+		value optionalValue[V]
+	}{{first, firstValue}, {second, secondValue}} {
+		postings := side.rule.appendMatchingBitmaps(side.value, inline[:0])
+		if len(postings) == 0 {
+			dst.Clear()
+			return
+		}
+		dst.AndAny(postings...)
+		if dst.IsEmpty() {
+			return
+		}
+	}
+}
+
 func (r *betweenRule[T, V]) searchUncached(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	r.searchBitmaps(v, dst, pool)
 }

@@ -103,6 +103,12 @@ type ruleIDMatcher[T any] interface {
 	matchesID(T, uint32) bool
 }
 
+// candidateFilter narrows an existing candidate bitmap without materializing
+// the rule's complete result. Implementations must only remove IDs from dst.
+type candidateFilter[T any] interface {
+	filterCandidates(T, *roaring.Bitmap, *bitmapPool)
+}
+
 // sharedWildcardEquality exposes the two disjoint parts of an equality match
 // to All. Equal wildcard pointers are guaranteed immutable after Build and
 // arise naturally from bitmap interning.
