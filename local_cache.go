@@ -13,7 +13,6 @@ type localNodeCache struct {
 type localAllPlan struct {
 	order     []int
 	firstCard uint64
-	uses      uint8
 }
 
 type localCacheReleaser interface {

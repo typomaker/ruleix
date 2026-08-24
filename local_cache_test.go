@@ -124,6 +124,14 @@ func TestEqualityExposesOnlyWarmLocalBitmap(t *testing.T) {
 	require.Equal(t, uint64(1), bits.GetCardinality())
 }
 
+func TestLocalAllPlanRefreshSignals(t *testing.T) {
+	require.False(t, localPlanCardinalityChanged(100, 60))
+	require.True(t, localPlanCardinalityChanged(100, 49))
+	require.True(t, localPlanCardinalityChanged(allCandidateScanLimit, allCandidateScanLimit+1))
+	require.True(t, cachedChildMoreSelective(100, []rankedBitmap{{card: 50}, {card: ^uint64(0)}}))
+	require.False(t, cachedChildMoreSelective(100, []rankedBitmap{{card: 51}}))
+}
+
 func TestLocalContextsCanBeAcquiredAndClosedConcurrently(t *testing.T) {
 	type constraint struct{ value int }
 	index, err := New[constraint, int](Include(func(v constraint) (int, bool) { return v.value, true })).Build(
@@ -175,10 +183,8 @@ func TestAllUsesWarmOrderedLocalBitmapsDuringPlanning(t *testing.T) {
 	plan := local.pool.allPlans[root]
 	require.NotNil(t, plan)
 	require.Len(t, plan.order, len(root.children))
-	plan.uses = allLocalPlanRefreshInterval - 1
 	ranked := make([]rankedBitmap, len(root.children))
 	require.True(t, root.rankChildren(query, local.pool, ranked))
-	require.Zero(t, plan.uses)
 	for _, child := range ranked {
 		require.NotNil(t, child.bits)
 		require.False(t, child.owned)

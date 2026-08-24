@@ -17,10 +17,6 @@ const allSequentialIntersectionLimit = 3
 // so they stop paying off sooner than ordinary posting-list membership tests.
 const allDirectExclusionScanLimit = 16
 
-// A Local periodically refreshes its learned All order so a workload phase
-// change cannot leave it stuck on a stale plan indefinitely.
-const allLocalPlanRefreshInterval = 16
-
 // All combines rules with logical AND: a stored constraint matches only when
 // every child rule matches. All may be nested.
 //
@@ -323,7 +319,7 @@ func (r *allRule[T]) reuseLocalPlan(
 	rankedChildren []rankedBitmap,
 ) (result, reused bool) {
 	plan := pool.allPlans[r]
-	if plan == nil || len(plan.order) != len(r.children) || plan.uses >= allLocalPlanRefreshInterval-1 {
+	if plan == nil || len(plan.order) != len(r.children) {
 		return false, false
 	}
 	for rank, childIdx := range plan.order {
@@ -352,7 +348,9 @@ func (r *allRule[T]) reuseLocalPlan(
 	if localPlanCardinalityChanged(plan.firstCard, firstCard) {
 		return false, false
 	}
-	plan.uses++
+	if cachedChildMoreSelective(firstCard, rankedChildren[1:]) {
+		return false, false
+	}
 	return true, true
 }
 
@@ -361,6 +359,15 @@ func localPlanCardinalityChanged(previous, current uint64) bool {
 		return true
 	}
 	return current > previous*2 || previous > current*2
+}
+
+func cachedChildMoreSelective(first uint64, children []rankedBitmap) bool {
+	for _, child := range children {
+		if child.card != ^uint64(0) && child.card <= first/2 {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *allRule[T]) rememberLocalPlan(pool *bitmapPool, rankedChildren []rankedBitmap) {
@@ -376,7 +383,6 @@ func (r *allRule[T]) rememberLocalPlan(pool *bitmapPool, rankedChildren []ranked
 		plan.order[i] = ranked.childIdx
 	}
 	plan.firstCard = rankedChildren[0].card
-	plan.uses = 0
 }
 
 func cachedCardinality[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, bool) {

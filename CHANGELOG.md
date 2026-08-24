@@ -33,10 +33,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Warm uninspected `Local` searches skip repeated bitmap-extrema probes during
   `All` range pruning because their child bitmaps are already cached.
 - `Local` learns an `All` child order from real queries and reuses that plan
-  between bounded periodic or cardinality-triggered refreshes. Plans refresh
-  every 16 searches and survive `Local.Close` with the recyclable context;
-  they contain no result bitmaps. Warm equality bitmaps participate directly
-  in the learned plan instead of being copied through temporary child results.
+  until the selected first child changes cardinality class or another cached
+  child becomes at least twice as selective. Plans survive `Local.Close` with
+  the recyclable context and contain no result bitmaps. Warm equality bitmaps
+  participate directly in the learned plan instead of being copied through
+  temporary child results.
 - Warm `Local` searches reuse cached ordered, `CompareBy`, and `Between`
   bitmaps during `All` planning instead of repeating ordered cardinality scans
   and temporary materialization.
