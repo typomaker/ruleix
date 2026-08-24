@@ -69,10 +69,17 @@ func TestLocalCloseResetsNodeCachesAndReturnsInternalContext(t *testing.T) {
 	require.NotPanics(t, local.Close)
 
 	reused := index.Local()
-	require.Same(t, cache, reused.pool.local[0].equality)
 	matches = matches[:0]
 	reused.Search(constraint{value: 1}, &matches)
 	require.Equal(t, []int{7}, matches)
+	if reused.pool == pool {
+		require.Same(t, cache, reused.pool.local[0].equality)
+	} else {
+		// sync.Pool may discard or return a different context at any time,
+		// especially under the race detector. A newly selected context must
+		// still create a valid cold cache on first use.
+		require.NotNil(t, reused.pool.local[0].equality)
+	}
 	reused.Close()
 }
 
