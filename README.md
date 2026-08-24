@@ -326,14 +326,14 @@ once. Its first matching insertion determines result order.
 `Build`. For a `Lossy` rule it also exposes accounted memory usage and limit,
 item and distinct-value counts, and lossy bucket granularity. Optional metrics
 return an availability flag. Call `Snapshot` once to capture one successful
-build generation and its observed runtime counters. An inspected rule also
-keeps monotonic runtime counters for candidate checks, empty results, cache
-activity, and adaptive cache expansions, plus an
-allocation-free result-cardinality histogram. Inspector runtime scalars are
-monotonic counters; it exposes no gauges. Candidate checks do not force bitmap
-materialization. A `Local` batches its inspection counters without atomics and
-publishes them on `Close`; snapshots exclude metrics from Local contexts that
-are still open.
+build generation and its observed runtime counters. Runtime counters are
+low-priority samples: shared `Index` searches and 63 of every 64 `Local`
+contexts execute the plain tree without instrumentation. The selected Local
+accumulates candidate checks, empty results, cache activity, adaptive cache
+expansions, and an allocation-free result-cardinality histogram without
+atomics, then publishes them on `Close`. Snapshots are monotonic but do not
+represent total workload activity and exclude selected Local contexts that are
+still open.
 
 ## Development
 

@@ -9,9 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-- Inspected `Local` searches accumulate runtime metrics without atomic
-  operations and publish them when the context is closed. Snapshots therefore
-  exclude work buffered by still-open Local contexts.
+- Inspector runtime counters are delayed, best-effort samples collected by one
+  of every 64 `Local` contexts and published when that context closes. Shared
+  `Index` searches and ordinary Local contexts now execute the same plain tree
+  whether or not a schema contains `Inspect`.
 
 ### Removed
 

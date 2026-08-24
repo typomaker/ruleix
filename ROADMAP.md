@@ -123,20 +123,20 @@ value counts, granularity, and false-positive rate where available. Allow
 separate inspectors on children of a pooled `Lossy(All(...))` rather than
 returning arrays of internal child details.
 
-An inspected rule should also accumulate metrics from real `Search`, `Visit`,
-and `Local` executions. Expose them directly through `InspectorSnapshot`,
-without a nested metrics object or reset API. Counters are cache hits, cache
+An inspected rule should also accumulate low-priority metrics from sampled
+`Local` executions without changing ordinary `Search`, `Visit`, or `Local`
+hot paths. Expose them directly through `InspectorSnapshot`, without a nested
+metrics object or reset API. Counters are cache hits, cache
 misses, cache admissions, cache evictions, cache expansions, candidate checks,
 `All` range prunings, and empty results. A
 histogram reports result cardinality. Inspector exposes no gauges. Counters
-remain monotonic for the inspector lifetime so callers can calculate interval
-deltas or export them directly to Prometheus.
+remain monotonic sample totals for the inspector lifetime so callers can
+calculate interval deltas without treating them as complete workload totals.
 
 Collect no per-query explanation. `Index.Explain` and its plan types were
 removed: callers need aggregate behavior they can act on, not a diagnostic
 search that performs extra work. Schemas without `Inspect` must retain the
-current hot path. Measure and document the overhead that explicitly inspected
-rules add;
+current hot path. Measure and document sampled-context overhead separately;
 avoid timers, forced bitmap materialization, exact rechecks of lossy results,
 and other metrics whose collection changes the selected execution strategy.
 

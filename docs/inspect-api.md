@@ -77,10 +77,15 @@ if snapshot.Bound() {
 }
 ```
 
-Runtime counters in successive snapshots are monotonic for the lifetime of the
-inspector. Searches through a `Local` accumulate counters without atomic
-operations and publish them when `Local.Close` is called. Consequently,
-snapshots do not include work buffered by Local contexts that are still open.
+Runtime counters are low-priority, best-effort telemetry. `Index.Search` and
+`Index.Visit` never collect them, keeping the shared search path identical with
+and without inspection. One of every 64 `Local` contexts is selected when it
+is created; all searches through a selected context accumulate counters
+without atomic operations and publish them when `Local.Close` is called.
+Unselected contexts execute the plain compiled tree. Consequently, snapshots
+contain a delayed sample rather than workload totals and exclude metrics from
+selected Local contexts that are still open. Successive snapshots remain
+monotonic for the lifetime of the inspector.
 `CandidateCheck` counts direct internal-ID membership checks. The cardinality
 histogram counts bitmap results, except that a top-level `All`
 contributes its actual final cardinality even when its specialized executor
@@ -94,9 +99,10 @@ results without charging every successful intersection for another range
 check. This distinction preserves the selected execution strategy.
 
 `CacheHit`, `CacheMiss`, `CacheAdmission`, `CacheEviction`, and
-`CacheExpansion` are monotonic counters suitable for exporting as Prometheus
-counters. `CacheExpansion` counts adaptive cache transitions from two to four
-bitmap entries across all `Local` lifetimes observed by the inspector.
+`CacheExpansion` count events in selected Local contexts. They are monotonic
+sample counters, not estimates of total workload activity. `CacheExpansion`
+counts adaptive cache transitions from two to four bitmap entries in that
+sample.
 Inspector exposes no gauges: every runtime scalar is a monotonic counter, while
 distributions use `Histogram`.
 
@@ -126,10 +132,11 @@ for that particular decorated rule. The binding must happen after planning so
 statistics describe what was actually materialized rather than what the source
 rule requested or what the analyzer initially estimated.
 
-Binding is observational only. The compiled rule must have the same search
-behavior with or without `Inspect`, and attaching an inspector must not force a
-specific strategy, disable optimization, or add work to the default search hot
-path.
+Binding is observational only. The plain compiled rule must have the same
+search behavior and hot path with or without `Inspect`; attaching an inspector
+must not force a specific strategy, disable optimization, or add work to
+ordinary Index searches or unselected Local contexts. A separately compiled
+observed tree is used only by selected Local contexts.
 
 `Snapshot` reads the latest immutable build snapshot exactly once and copies
 the currently observed runtime counters into a returned value. All methods on

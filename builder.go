@@ -5,6 +5,7 @@ import (
 	"iter"
 	"math"
 	"sync"
+	"sync/atomic"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
@@ -21,22 +22,27 @@ type Builder[C any, ID comparable] struct {
 // Index maps query values to the unique IDs of all matching stored constraints.
 // It is immutable after Build and safe for concurrent calls to Search and Visit.
 type Index[C any, ID comparable] struct {
-	root            Rule[C]
-	rootMetrics     *inspectorRuntime
-	values          []ID
-	pool            *bitmapPool
-	nodes           int
-	exclusions      []exclusionRule[C]
-	locals          sync.Pool
-	localInspectors [][]*inspectorRuntime
+	root               Rule[C]
+	observedRoot       Rule[C]
+	rootMetrics        *inspectorRuntime
+	values             []ID
+	pool               *bitmapPool
+	nodes              int
+	exclusions         []exclusionRule[C]
+	observedExclusions []exclusionRule[C]
+	locals             sync.Pool
+	observedLocals     sync.Pool
+	localTelemetry     atomic.Uint64
+	localInspectors    [][]*inspectorRuntime
 }
 
 // Local is a search context that keeps per-node cached results between calls.
 // It must not be used concurrently by multiple goroutines.
 type Local[C any, ID comparable] struct {
-	index  *Index[C, ID]
-	pool   *bitmapPool
-	closed bool
+	index    *Index[C, ID]
+	pool     *bitmapPool
+	closed   bool
+	observed bool
 }
 
 // New constructs a Builder from a strongly typed rule schema. New panics when
@@ -147,9 +153,15 @@ func buildIndex[C any, ID comparable](
 		ix.rootMetrics = observed.metrics
 		ix.root = observed.child
 	}
+	ix.observedRoot, ix.observedExclusions = ix.root, ix.exclusions
+	if len(inspections) != 0 {
+		ix.root = removeRuntimeInspectors(ix.root)
+		ix.exclusions = removeRuntimeExclusionInspectors(ix.exclusions)
+	}
+	ix.pool.observeRuntime = false
 	interner := newBitmapInterner()
-	internRuleWith(interner, ix.root)
-	for _, exclusion := range ix.exclusions {
+	internRuleWith(interner, ix.observedRoot)
+	for _, exclusion := range ix.observedExclusions {
 		if rule, ok := exclusion.(bitmapInternable); ok {
 			// Exclude nodes are no longer reachable from the positive tree.
 			// Their value postings remain immutable and independently internable.
@@ -159,6 +171,7 @@ func buildIndex[C any, ID comparable](
 			preparer.prepareSearch()
 		}
 	}
+	prepareRuleSearch(ix.observedRoot)
 	prepareRuleSearch(ix.root)
 	ix.nodes = int(ids.next)
 	for _, inspection := range inspections {
@@ -226,11 +239,23 @@ func (ix *Index[C, ID]) Search(value C, dst *[]ID) bool {
 // can be reused. The Index remains immutable and may be shared by all of those
 // goroutines.
 func (ix *Index[C, ID]) Local() *Local[C, ID] {
-	pool, _ := ix.locals.Get().(*bitmapPool)
-	if pool == nil {
-		pool = newLocalBitmapPool(ix.nodes, ix.localInspectors)
+	observed := (ix.rootMetrics != nil || ix.localInspectors != nil) && ix.localTelemetry.Add(1)%64 == 0
+	pools := &ix.locals
+	if observed {
+		pools = &ix.observedLocals
 	}
-	return &Local[C, ID]{index: ix, pool: pool}
+	pool, _ := pools.Get().(*bitmapPool)
+	if pool == nil {
+		if observed {
+			pool = newLocalBitmapPool(ix.nodes, ix.localInspectors)
+		} else {
+			pool = newLocalBitmapPool(ix.nodes)
+		}
+	}
+	if observed {
+		pool.bindRootInspector(ix.rootMetrics)
+	}
+	return &Local[C, ID]{index: ix, pool: pool, observed: observed}
 }
 
 // Search appends matching IDs to dst while reusing this Local's cached state
@@ -256,7 +281,11 @@ func (local *Local[C, ID]) Close() {
 	local.requireOpen()
 	index := local.index
 	local.pool.resetLocal()
-	index.locals.Put(local.pool)
+	if local.observed {
+		index.observedLocals.Put(local.pool)
+	} else {
+		index.locals.Put(local.pool)
+	}
 	local.index = nil
 	local.pool = nil
 	local.closed = true
@@ -269,7 +298,11 @@ func (local *Local[C, ID]) Visit(value C, yield func(ID) bool) {
 	if yield == nil {
 		return
 	}
-	visitMatches(local.index.root, local.index.values, local.pool, local.index.exclusions, value, yield)
+	root, exclusions := local.index.root, local.index.exclusions
+	if local.observed {
+		root, exclusions = local.index.observedRoot, local.index.observedExclusions
+	}
+	visitMatches(root, local.index.values, local.pool, exclusions, value, yield)
 }
 
 func (local *Local[C, ID]) requireOpen() {
@@ -290,30 +323,34 @@ func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
 
 func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 	before := len(*dst)
-	if ix.rootMetrics != nil {
-		if root, ok := ix.root.(*allRule[C]); ok {
-			metrics := pool.inspectorObserver(ix.rootMetrics)
-			searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst, ix.rootMetrics)
+	root, exclusions := ix.root, ix.exclusions
+	if pool.observeRuntime {
+		root, exclusions = ix.observedRoot, ix.observedExclusions
+	}
+	if pool.observeRuntime && ix.rootMetrics != nil {
+		if root, ok := root.(*allRule[C]); ok {
+			metrics := pool.rootInspectorObserver(ix.rootMetrics)
+			searchAllMatches(root, ix.values, pool, exclusions, value, dst, ix.rootMetrics)
 			metrics.observeCardinality(uint64(len(*dst) - before))
 			return len(*dst) != before
 		}
 	}
-	if root, ok := ix.root.(*allRule[C]); ok {
-		searchAllMatches(root, ix.values, pool, ix.exclusions, value, dst, nil)
+	if all, ok := root.(*allRule[C]); ok {
+		searchAllMatches(all, ix.values, pool, exclusions, value, dst, nil)
 		return len(*dst) != before
 	}
 	bits := pool.get()
 	defer pool.put(bits)
-	ix.root.search(value, bits, pool)
-	if len(ix.exclusions) != 0 {
+	root.search(value, bits, pool)
+	if len(exclusions) != 0 {
 		excluded := pool.get()
-		addExclusions(ix.exclusions, value, excluded, pool)
+		addExclusions(exclusions, value, excluded, pool)
 		bits.AndNot(excluded)
 		pool.put(excluded)
 	}
 	*dst = appendBitmapValues(bits, ix.values, *dst)
-	if ix.rootMetrics != nil {
-		pool.inspectorObserver(ix.rootMetrics).observeCardinality(uint64(len(*dst) - before))
+	if pool.observeRuntime && ix.rootMetrics != nil {
+		pool.rootInspectorObserver(ix.rootMetrics).observeCardinality(uint64(len(*dst) - before))
 	}
 	return len(*dst) != before
 }

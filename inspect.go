@@ -518,6 +518,33 @@ func collectInspectedNodeIDs[T any](rule Rule[T], dst []nodeID) []nodeID {
 	}
 }
 
+func removeRuntimeInspectors[T any](rule Rule[T]) Rule[T] {
+	switch typed := rule.(type) {
+	case *inspectedRuntimeRule[T]:
+		return removeRuntimeInspectors(typed.child)
+	case *allRule[T]:
+		children := make([]Rule[T], len(typed.children))
+		for i, child := range typed.children {
+			children[i] = removeRuntimeInspectors(child)
+		}
+		return &allRule[T]{children: children}
+	default:
+		return rule
+	}
+}
+
+func removeRuntimeExclusionInspectors[T any](rules []exclusionRule[T]) []exclusionRule[T] {
+	plain := make([]exclusionRule[T], len(rules))
+	for i, rule := range rules {
+		if observed, ok := rule.(*inspectedExclusionRule[T]); ok {
+			plain[i] = observed.child
+		} else {
+			plain[i] = rule
+		}
+	}
+	return plain
+}
+
 type inspectionStrategist interface{ inspectionStrategy() string }
 type inspectionModer interface{ inspectionMode() RuleMode }
 type inspectionDetailer interface{ inspectionDetails() inspectionDetails }

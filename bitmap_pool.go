@@ -7,13 +7,16 @@ import (
 )
 
 type bitmapPool struct {
-	pool          sync.Pool
-	rankedPool    sync.Pool
-	local         []localNodeCache
-	allPlans      map[any]*localAllPlan
-	observers     cacheObservers // test-only fallback for caches without a compiled node ID
-	inspectors    localInspectorRuntimeChunk
-	nodeObservers []cacheObservers
+	pool           sync.Pool
+	rankedPool     sync.Pool
+	local          []localNodeCache
+	allPlans       map[any]*localAllPlan
+	observers      cacheObservers // test-only fallback for caches without a compiled node ID
+	inspectors     localInspectorRuntimeChunk
+	nodeObservers  []cacheObservers
+	rootRuntime    *inspectorRuntime
+	rootObserver   inspectorRuntimeObserver
+	observeRuntime bool
 }
 
 type localInspectorRuntime struct {
@@ -92,7 +95,7 @@ type rankedBitmapBuffer struct {
 }
 
 func newBitmapPool() *bitmapPool {
-	p := &bitmapPool{}
+	p := &bitmapPool{observeRuntime: true}
 	p.pool.New = func() interface{} { return roaring.New() }
 	p.rankedPool.New = func() interface{} {
 		return &rankedBitmapBuffer{items: make([]rankedBitmap, 0, 16)}
@@ -102,12 +105,14 @@ func newBitmapPool() *bitmapPool {
 
 func newLocalBitmapPool(nodes int, configured ...[][]*inspectorRuntime) *bitmapPool {
 	p := newBitmapPool()
+	p.observeRuntime = false
 	p.local = make([]localNodeCache, nodes)
 	var inspectors [][]*inspectorRuntime
 	if len(configured) != 0 {
 		inspectors = configured[0]
 	}
 	if inspectors != nil {
+		p.observeRuntime = true
 		p.nodeObservers = make([]cacheObservers, nodes)
 		for id, runtimes := range inspectors {
 			for _, runtime := range runtimes {
@@ -124,6 +129,22 @@ func (p *bitmapPool) observersFor(id nodeID) *cacheObservers {
 	}
 	observers := p.nodeObservers[id]
 	return &observers
+}
+
+func (p *bitmapPool) bindRootInspector(runtime *inspectorRuntime) {
+	if runtime == nil || p.rootRuntime == runtime {
+		return
+	}
+	p.rootRuntime = runtime
+	p.observeRuntime = true
+	p.rootObserver = p.inspectorObserver(runtime)
+}
+
+func (p *bitmapPool) rootInspectorObserver(runtime *inspectorRuntime) inspectorRuntimeObserver {
+	if p.local != nil && p.rootRuntime == runtime {
+		return p.rootObserver
+	}
+	return p.inspectorObserver(runtime)
 }
 func (p *bitmapPool) resetLocal() {
 	p.flushInspectorMetrics()

@@ -8,6 +8,25 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-24: move Inspector telemetry off ordinary search paths
+
+Inspector now keeps a plain compiled tree for shared `Index` execution and for
+63 of every 64 `Local` contexts. The selected Local uses a separately prepared
+observed tree, accumulates ordinary counters, and publishes them on `Close`.
+Runtime snapshots are therefore delayed best-effort samples; build facts remain
+exact. Static node-to-inspector bindings replace the dynamic observer stack,
+and inspection no longer enables Local range pruning.
+
+On Apple M1 Max, medians of five 300 ms runs showed no material inspected/plain
+difference: Index leaf 91.79 versus 92.79 ns/op, Index `All` 192.7 versus 193.4
+ns/op, warm Local leaf 40.77 versus 40.56 ns/op, and warm Local `All` 111.0
+versus 110.9 ns/op. Allocation counts and bytes were identical. Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkInspectRuntimeOverhead/' \
+  -benchmem -benchtime=300ms -count=5 .
+```
+
 ## 2026-08-24: delayed shared-Index Inspector batching experiment
 
 An exact delayed-publication prototype gave inspected `Index.Search` calls

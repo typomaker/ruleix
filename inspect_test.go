@@ -60,7 +60,7 @@ func TestInspectReportsAllRangePruning(t *testing.T) {
 	require.NoError(t, err)
 
 	var matches []int
-	require.False(t, index.Search(constraint{left: 1, right: 1}, &matches))
+	require.False(t, index.search(constraint{left: 1, right: 1}, &matches, newBitmapPool()))
 	snapshot := inspector.Snapshot()
 	require.Equal(t, uint64(1), snapshot.RangePruning())
 	require.Equal(t, uint64(1), snapshot.EmptyResult())
@@ -88,7 +88,7 @@ func TestInspectReportsLaterAllRangePruning(t *testing.T) {
 	require.NoError(t, err)
 
 	var matches []int
-	require.False(t, index.Search(constraint{first: 1, second: 1, third: 1}, &matches))
+	require.False(t, index.search(constraint{first: 1, second: 1, third: 1}, &matches, newBitmapPool()))
 	require.Equal(t, uint64(1), inspector.Snapshot().RangePruning())
 }
 
@@ -104,6 +104,7 @@ func TestInspectDoesNotEnableLocalRangePruning(t *testing.T) {
 	))
 	require.NoError(t, err)
 
+	index.localTelemetry.Store(63)
 	local := index.Local()
 	var dst []int
 	require.False(t, local.Search(constraint{first: 1, second: 20}, &dst))
@@ -188,6 +189,7 @@ func TestInspectReportsCumulativeLocalCacheMetrics(t *testing.T) {
 		[]string{"one", "two", "three"},
 	))
 	require.NoError(t, err)
+	index.localTelemetry.Store(63)
 	local := index.Local()
 	var dst []string
 	for range 3 {
@@ -206,6 +208,32 @@ func TestInspectReportsCumulativeLocalCacheMetrics(t *testing.T) {
 	require.Zero(t, snapshot.CacheEviction())
 
 	require.Equal(t, uint64(1), snapshot.CacheAdmission(), "counters remain monotonic")
+}
+
+func TestInspectSamplesTelemetryWithoutInstrumentingOrdinarySearches(t *testing.T) {
+	var inspector Inspector
+	index, err := New[inspectConstraint, string](Inspect(
+		&inspector,
+		Include(func(v inspectConstraint) (string, bool) { return v.country, true }),
+	)).Build(Zip([]inspectConstraint{{country: "DE"}}, []string{"one"}))
+	require.NoError(t, err)
+
+	var dst []string
+	require.True(t, index.Search(inspectConstraint{country: "DE"}, &dst))
+	ordinary := index.Local()
+	dst = dst[:0]
+	require.True(t, ordinary.Search(inspectConstraint{country: "DE"}, &dst))
+	ordinary.Close()
+	require.Equal(t, Histogram{}, inspector.Snapshot().ResultCardinality())
+
+	for range 62 {
+		index.Local().Close()
+	}
+	selected := index.Local()
+	dst = dst[:0]
+	require.True(t, selected.Search(inspectConstraint{country: "DE"}, &dst))
+	selected.Close()
+	require.Equal(t, Histogram{One: 1}, inspector.Snapshot().ResultCardinality())
 }
 
 func TestInspectReportsCumulativeAdaptiveCacheExpansions(t *testing.T) {
@@ -236,6 +264,7 @@ func TestInspectReportsCumulativeAdaptiveCacheExpansions(t *testing.T) {
 		}
 	}
 
+	index.localTelemetry.Store(63)
 	first := index.Local()
 	warm(first)
 	snapshot := inspector.Snapshot()
@@ -244,6 +273,7 @@ func TestInspectReportsCumulativeAdaptiveCacheExpansions(t *testing.T) {
 	snapshot = inspector.Snapshot()
 	require.Equal(t, uint64(1), snapshot.CacheExpansion(), "counter remains monotonic")
 
+	index.localTelemetry.Store(63)
 	second := index.Local()
 	warm(second)
 	snapshot = inspector.Snapshot()
@@ -419,9 +449,10 @@ func TestInspectReportsRuntimeExecutionMetrics(t *testing.T) {
 	before := inspector.Snapshot()
 
 	var matches []string
-	require.True(t, index.Search(inspectConstraint{country: "DE"}, &matches))
+	observed := newBitmapPool()
+	require.True(t, index.search(inspectConstraint{country: "DE"}, &matches, observed))
 	matches = matches[:0]
-	require.False(t, index.Search(inspectConstraint{country: "FR"}, &matches))
+	require.False(t, index.search(inspectConstraint{country: "FR"}, &matches, observed))
 
 	snapshot := inspector.Snapshot()
 	require.Zero(t, before.EmptyResult(), "a captured snapshot does not change")
@@ -449,7 +480,7 @@ func TestInspectCountsCandidateChecksWithoutBitmapSearch(t *testing.T) {
 	require.NoError(t, err)
 
 	var matches []int
-	require.True(t, index.Search(constraint{selective: "one", broad: "yes"}, &matches))
+	require.True(t, index.search(constraint{selective: "one", broad: "yes"}, &matches, newBitmapPool()))
 	snapshot := broad.Snapshot()
 	require.Equal(t, uint64(4), snapshot.CandidateCheck())
 }
