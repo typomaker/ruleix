@@ -19,7 +19,7 @@ const allDirectExclusionScanLimit = 16
 
 // A Local periodically refreshes its learned All order so a workload phase
 // change cannot leave it stuck on a stale plan indefinitely.
-const allLocalPlanRefreshInterval = 64
+const allLocalPlanRefreshInterval = 16
 
 // All combines rules with logical AND: a stored constraint matches only when
 // every child rule matches. All may be nested.

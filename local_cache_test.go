@@ -96,7 +96,7 @@ func TestResetLocalReturnsCachedBitmapsToScratchPool(t *testing.T) {
 	require.Nil(t, betweenCache.entries[0].bits)
 	require.Nil(t, pool.local[0].ordered)
 	require.Nil(t, pool.local[1].between)
-	require.Nil(t, pool.allPlans)
+	require.Equal(t, []int{1, 0}, pool.allPlans["all"].order)
 }
 
 func TestEqualityExposesOnlyWarmLocalBitmap(t *testing.T) {
@@ -183,6 +183,9 @@ func TestAllUsesWarmOrderedLocalBitmapsDuringPlanning(t *testing.T) {
 		require.NotNil(t, child.bits)
 		require.False(t, child.owned)
 	}
+	pool := local.pool
+	local.Close()
+	require.Same(t, plan, pool.allPlans[root])
 }
 
 var benchmarkLocalLifecycle *bitmapPool
