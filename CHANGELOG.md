@@ -7,6 +7,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-24
+
 ### Changed
 
 - Lossy equality planning builds the finest hash-prefix representation once
@@ -310,7 +312,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/typomaker/ruleix/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/typomaker/ruleix/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/typomaker/ruleix/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/typomaker/ruleix/compare/v0.5.0...v0.5.1
