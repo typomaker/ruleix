@@ -157,16 +157,16 @@ func BenchmarkLossyAllSearchQuality(b *testing.B) {
 // BenchmarkLossyAllSearchRuntime isolates the Index and Local search paths for
 // CPU and allocation profiles. On Apple M1 Max with Go 1.26.0, 10k entries,
 // four equality children, either one repeated or 256 rotating queries, and the
-// command below, Exact measured IndexRepeated 559-568 ns/op, 144 B/op,
-// 3 allocs/op; LocalRepeated 403-405 ns/op, 112 B/op, 1 alloc/op;
-// IndexRotating 569-572 ns/op, 144 B/op, 3 allocs/op; and LocalRotating
-// 605-635 ns/op, 144 B/op, 3 allocs/op. Budget50 measured IndexRepeated
-// 305-309 ns/op, 112 B/op, 1 alloc/op; LocalRepeated 319-323 ns/op, 112 B/op,
-// 1 alloc/op; IndexRotating 434-436 ns/op, 112 B/op, 1 alloc/op; and
-// LocalRotating 539-545 ns/op, 112 B/op, 1 alloc/op. Budget25 measured
-// IndexRepeated 334-336 ns/op, 112 B/op, 1 alloc/op; LocalRepeated
-// 354-368 ns/op, 112 B/op, 1 alloc/op; IndexRotating 499-502 ns/op, 110 B/op,
-// 1 alloc/op; and LocalRotating 536-549 ns/op, 110 B/op, 1 alloc/op.
+// command below, Exact measured IndexRepeated 502-506 ns/op, 32 B/op,
+// 2 allocs/op; LocalRepeated 355-361 ns/op, 0 B/op, 0 allocs/op;
+// IndexRotating 514-520 ns/op, 32 B/op, 2 allocs/op; and LocalRotating
+// 542-550 ns/op, 32 B/op, 2 allocs/op. Budget50 measured IndexRepeated
+// 241-242 ns/op, 0 B/op, 0 allocs/op; LocalRepeated 247-255 ns/op, 0 B/op,
+// 0 allocs/op; IndexRotating 369-374 ns/op, 0 B/op, 0 allocs/op; and
+// LocalRotating 477-481 ns/op, 0 B/op, 0 allocs/op. Budget25 measured
+// IndexRepeated 289-291 ns/op, 0 B/op, 0 allocs/op; LocalRepeated
+// 319-322 ns/op, 0 B/op, 0 allocs/op; IndexRotating 440-444 ns/op, 4 B/op,
+// 0 allocs/op; and LocalRotating 515-519 ns/op, 5 B/op, 0 allocs/op.
 //
 //	go test -run '^$' -bench '^BenchmarkLossyAllSearchRuntime/' -benchmem -benchtime=1s -count=3 .
 func BenchmarkLossyAllSearchRuntime(b *testing.B) {

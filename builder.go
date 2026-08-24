@@ -510,11 +510,9 @@ func appendScannedAllMatches[C any, ID comparable](
 	pool *bitmapPool,
 	result []ID,
 ) []ID {
-	candidates := rankedChildren[0].bits.Iterator()
-	for candidates.HasNext() {
-		id := candidates.Next()
+	rankedChildren[0].bits.Iterate(func(id uint32) bool {
 		if excluded != nil && excluded.Contains(id) || excluded == nil && isExcluded(exclusions, value, id, pool) {
-			continue
+			return true
 		}
 		matches := true
 		for _, child := range rankedChildren[1:] {
@@ -533,7 +531,8 @@ func appendScannedAllMatches[C any, ID comparable](
 		if matches {
 			result = append(result, values[id])
 		}
-	}
+		return true
+	})
 	return result
 }
 
