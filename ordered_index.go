@@ -15,6 +15,7 @@ type orderedIndex[V any] struct {
 	compare            Compare[V]
 	blocks             []orderedBlock[V]
 	blockPrefix        []uint64
+	rangeBlocks        []orderedRangeBlock
 	firstBlockCapacity int
 	routing            orderedRouting
 }
@@ -32,8 +33,19 @@ type orderedRouting struct {
 // smaller blocks add enough aggregate unions and retained bitmaps to regress.
 const orderedBlockSize = 64
 
+// orderedRangeBlockSize bounds the extra retained bitmap data to one more
+// copy of each posting while reducing wide operator ranges to one visit per
+// eight ordinary blocks. CompareBy enables this second level selectively;
+// standalone ordered rules and Between keep their lower-memory layout.
+const orderedRangeBlockSize = 8
+
 type orderedBlock[V any] struct {
 	items []*orderedItem[V]
+	bits  *roaring.Bitmap
+}
+
+type orderedRangeBlock struct {
+	first int
 	bits  *roaring.Bitmap
 }
 
@@ -75,6 +87,21 @@ func (i *orderedIndex[V]) prepareSearch() {
 				prepareBitmapForSearch(item.bits)
 			}
 		}
+	}
+}
+
+func (i *orderedIndex[V]) prepareRangeSearch() {
+	if len(i.blocks) < orderedRangeBlockSize*2 {
+		return
+	}
+	i.rangeBlocks = make([]orderedRangeBlock, 0, len(i.blocks)/orderedRangeBlockSize)
+	for first := 0; first+orderedRangeBlockSize <= len(i.blocks); first += orderedRangeBlockSize {
+		bits := roaring.New()
+		for block := first; block < first+orderedRangeBlockSize; block++ {
+			bits.Or(i.blocks[block].bits)
+		}
+		prepareBitmapForSearch(bits)
+		i.rangeBlocks = append(i.rangeBlocks, orderedRangeBlock{first: first, bits: bits})
 	}
 }
 
@@ -337,9 +364,7 @@ func (i *orderedIndex[V]) walk(value V, ascending, inclusive bool, visit func(*r
 				visit(block.items[pos].bits)
 			}
 		}
-		for n := blockIndex + 1; n < len(i.blocks); n++ {
-			visit(i.blocks[n].bits)
-		}
+		i.walkBlockRange(blockIndex+1, len(i.blocks), visit)
 		return
 	}
 	lo, hi := 0, len(block.items)
@@ -359,8 +384,25 @@ func (i *orderedIndex[V]) walk(value V, ascending, inclusive bool, visit func(*r
 			visit(block.items[pos].bits)
 		}
 	}
-	for n := blockIndex - 1; n >= 0; n-- {
-		visit(i.blocks[n].bits)
+	i.walkBlockRange(0, blockIndex, visit)
+}
+
+func (i *orderedIndex[V]) walkBlockRange(first, last int, visit func(*roaring.Bitmap)) {
+	for first < last && first%orderedRangeBlockSize != 0 {
+		visit(i.blocks[first].bits)
+		first++
+	}
+	for first+orderedRangeBlockSize <= last {
+		rangeIndex := first / orderedRangeBlockSize
+		if rangeIndex >= len(i.rangeBlocks) || i.rangeBlocks[rangeIndex].first != first {
+			break
+		}
+		visit(i.rangeBlocks[rangeIndex].bits)
+		first += orderedRangeBlockSize
+	}
+	for first < last {
+		visit(i.blocks[first].bits)
+		first++
 	}
 }
 

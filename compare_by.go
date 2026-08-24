@@ -216,6 +216,7 @@ func (r *compareByRule[T, V]) prepareSearch() {
 	for _, index := range r.indexes {
 		if index != nil {
 			index.prepareSearch()
+			index.prepareRangeSearch()
 		}
 	}
 }

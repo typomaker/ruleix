@@ -183,3 +183,39 @@ func TestOrderedIndexFindsValuesAfterUnorderedInsertAndBlockSplits(t *testing.T)
 		t.Fatalf("exact(%d) = %v, want nil", values, bits)
 	}
 }
+
+func TestOrderedIndexRangeAggregatesPreserveWalkResults(t *testing.T) {
+	index := newOrderedIndex(cmp.Compare[int])
+	for value := range 10_000 {
+		index.insert(value, uint32(value))
+	}
+	index.prepareSearch()
+	index.prepareRangeSearch()
+
+	for _, test := range []struct {
+		value                int
+		ascending, inclusive bool
+	}{
+		{value: 0, ascending: true, inclusive: true},
+		{value: 4_999, ascending: true},
+		{value: 5_000, ascending: true, inclusive: true},
+		{value: 5_000},
+		{value: 5_000, inclusive: true},
+		{value: 9_999, inclusive: true},
+	} {
+		got := roaring.New()
+		index.walk(test.value, test.ascending, test.inclusive, got.Or)
+		for id := range uint32(10_000) {
+			want := id < uint32(test.value)
+			if test.ascending {
+				want = id > uint32(test.value)
+			}
+			if test.inclusive && id == uint32(test.value) {
+				want = true
+			}
+			if got.Contains(id) != want {
+				t.Fatalf("walk(%+v) membership for %d = %t, want %t", test, id, got.Contains(id), want)
+			}
+		}
+	}
+}

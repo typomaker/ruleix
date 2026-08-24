@@ -1618,3 +1618,29 @@ Reproduce the retained baseline with:
 go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
   -benchmem -benchtime=1s -count=5 .
 ```
+
+## 2026-08-24: bounded `CompareBy` range aggregates
+
+Each populated `CompareBy` ordered index now builds a second aggregation level
+over groups of eight ordinary blocks when the index contains at least two full
+groups. A wide operator range visits one bitmap per group plus its boundary
+blocks. Unlike a cumulative prefix or suffix bitmap for every boundary, this
+duplicates each covered posting only once and keeps the additional retained
+memory bounded.
+
+On Apple M1 Max with Go 1.26.0, five one-second production-shaped runs reduced
+median uncached `Index` search from 46.323 us to 43.426 us (6.3%). Allocated
+bytes remained 73,396/search and allocations remained 28. Warm `Local` search
+remained effectively flat at a 2.620 us median, 2,331 B, and two allocations.
+Five fixed-count retained-memory runs remained near 1.315 MB/index. Median build
+time was 35.0 ms with approximately 5.50 MB and 24,858 allocations.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' \
+  -bench '^(BenchmarkProductionShapeBuild|BenchmarkProductionShapeRetainedMemory)$' \
+  -benchmem -benchtime=5x -count=5 .
+```

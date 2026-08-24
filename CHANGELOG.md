@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `CompareBy` uses a bounded second level of ordered range aggregates, reducing
+  wide operator unions without changing per-search allocations.
 - Uncached `All` execution filters an existing candidate bitmap through
   `Between` bounds, avoiding materialization of the complete range result.
 - Exact ordered indexes use smaller aggregate blocks, reducing production-shaped
