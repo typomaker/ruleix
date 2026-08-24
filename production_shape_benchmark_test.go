@@ -295,6 +295,9 @@ func productionBenchmarkQuery(day int) productionBenchmarkConstraint {
 	}
 }
 
+// BenchmarkProductionShapeSearch last local run (Apple M1 Max):
+// go test -run '^$' -bench '^BenchmarkProductionShapeSearch$' -benchmem -benchtime=100ms -count=1
+// Local: 2,452 ns/op, 2,336 B/op, 2 allocs/op.
 func BenchmarkProductionShapeSearch(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
@@ -314,6 +317,7 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 		}
 		b.Run(name, func(b *testing.B) {
 			searcher := index.Local()
+			b.Cleanup(searcher.Close)
 			matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -363,6 +367,9 @@ func BenchmarkProductionShapeLocalClose(b *testing.B) {
 	}
 }
 
+// BenchmarkProductionShapeEqualityOnlySearch last local run (Apple M1 Max):
+// go test -run '^$' -bench '^BenchmarkProductionShapeEqualityOnlySearch$' -benchmem -benchtime=100ms -count=1
+// Local: 2,849 ns/op, 2,331 B/op, 2 allocs/op.
 func BenchmarkProductionShapeEqualityOnlySearch(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
@@ -382,6 +389,7 @@ func BenchmarkProductionShapeEqualityOnlySearch(b *testing.B) {
 		}
 		b.Run(name, func(b *testing.B) {
 			searcher := index.Local()
+			b.Cleanup(searcher.Close)
 			matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -398,6 +406,9 @@ func BenchmarkProductionShapeEqualityOnlySearch(b *testing.B) {
 	}
 }
 
+// BenchmarkProductionShapeParallelLocalBatch100 last local run (Apple M1 Max):
+// go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' -benchmem -benchtime=100ms -count=1
+// 124,198 ns/op, 1,242 ns/search, 238,817 B/op, 207 allocs/op.
 func BenchmarkProductionShapeParallelLocalBatch100(b *testing.B) {
 	const (
 		workers           = 5
@@ -430,6 +441,7 @@ func BenchmarkProductionShapeParallelLocalBatch100(b *testing.B) {
 		go func(jobs <-chan job) {
 			defer workersDone.Done()
 			local := index.Local()
+			defer local.Close()
 			matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
 			for work := range jobs {
 				for _, query := range work.queries {
@@ -554,6 +566,9 @@ func benchmarkProductionRetainedMemory(
 // heap of one Local while keeping its shared Index and caller-owned result
 // storage in the baseline. Warm alternates the same two queries as the search
 // benchmark, while Adaptive cycles four queries to exercise cache growth.
+// Last local run (Apple M1 Max):
+// go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' -benchtime=1x -count=1
+// Cold: 2,984; Warm: 90,064; Adaptive: 106,896 retained-B/local.
 func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
@@ -608,6 +623,9 @@ func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 				retained = after - before
 			}
 			b.ReportMetric(float64(retained)/float64(b.N), "retained-B/local")
+			for _, local := range locals {
+				local.Close()
+			}
 		})
 	}
 }
