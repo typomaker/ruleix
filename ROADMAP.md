@@ -192,19 +192,15 @@ into the shared immutable index or weaken concurrent search safety.
 Work through these steps in priority order, promoting an optimization only
 when production-shaped benchmarks demonstrate a material benefit:
 
-1. Extend the bounded equality-first planner beyond individually small bounds.
-   The first stage, including cheap bounds hidden in nested `All` nodes, is
-   recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md); retain its strict
-   candidate-scan threshold while investigating wider equality intersections.
-2. Optimize the uncached ordered estimate only if bounded planning and warm
+1. Optimize the uncached ordered estimate only if bounded planning and warm
    cache reuse still leave measurable overhead.
-3. Extend cheap estimates and lazy, empty-aware `All` execution for other
+2. Extend cheap estimates and lazy, empty-aware `All` execution for other
    production shapes where benchmarks show a benefit.
-4. Improve `Lossy` allocation and representation selection for existing rules,
+3. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-5. Tune the remaining `Local` admission, eviction, close/reuse behavior, and
+4. Tune the remaining `Local` admission, eviction, close/reuse behavior, and
    retained memory for production-shaped repeated and high-churn searches.
-6. Investigate generation-based updates only after rebuild benchmarks
+5. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
 
 For every optimization, compare production-shaped build time, search time,

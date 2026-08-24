@@ -1154,6 +1154,39 @@ go test -run '^$' \
   -benchmem -benchtime=500ms -count=5 .
 ```
 
+## 2026-08-24: rejected bounded equality-intersection experiment
+
+A partial `All` plan was prototyped that descended through nested groups and
+intersected equality postings containing at most 256 IDs. It retained the
+existing four-ID candidate-scan threshold: only an intersection at or below
+that threshold could bypass the remaining ordered cardinality estimates.
+Functional coverage confirmed that the approach preserved results and could
+avoid an ordered-like estimator in a constructed nested case.
+
+The optimization was rejected because the production shape did not improve.
+On Apple M1 Max with Go 1.26.0, paired five-run, 500 ms measurements compared
+the 256-ID probe with the same implementation locally disabled. Median
+`Index.Search` was 102.1 us in both configurations; warm `Local.Search` was
+4.215 us with the probe and 4.241 us without it. Equality-only Index and Local
+searches also remained within run noise, and allocation counts and bytes were
+unchanged. The experiment added planner complexity and eager bitmap work
+without materially recovering full-schema warm or parallel `Local` latency,
+so none of its runtime code was retained.
+
+This closes the wider equality-intersection variant while preserving the
+strict candidate threshold supported by `BenchmarkAllExecutionThreshold`.
+Future work should target the next prioritized item rather than retrying eager
+equality intersection without new workload evidence or a cheaper partial-plan
+representation.
+
+Reproduce with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkProductionShapeSearch|BenchmarkProductionShapeEqualityOnlySearch)$' \
+  -benchmem -benchtime=500ms -count=5 .
+```
+
 ## 2026-08-24: range-cardinality rollback experiment
 
 An isolated copy of `f50d22b` was benchmarked with the range-cardinality part
