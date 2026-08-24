@@ -49,6 +49,44 @@ For `All`, start with the most selective predicate. Refine the ordering only
 when cheap estimates can distinguish the cost of materializing a bitmap from
 checking the current candidate set.
 
+#### Highest priority: remove repeated range-cardinality work
+
+The production-shaped warm `Local.Search` regression is isolated to schemas
+that contain ordered branches. Commit `05f8065` made `orderedRule`, `CompareBy`,
+and `Between` participate in `All` cardinality ranking. Unlike the `v0.6.0`
+path, which can obtain cardinality from an already cached materialized bitmap,
+the current planner performs a fresh ordered boundary lookup and scans boundary
+posting cardinalities before executing or checking the selected rules. Removing
+range estimates from the current implementation improved warm local search by
+9.8%; removing ordered filters from the schema reduced the difference to 0.7%.
+The benchmark details are recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
+
+Address this without reverting the correctness and candidate-scanning work that
+followed `05f8065`:
+
+1. Add bounded, equality-informed planning. Evaluate cheap `Include`/`Exclude`
+   estimates first. Once a candidate is at or below the measured candidate-scan
+   threshold, materialize it and validate the remaining range predicates by ID
+   instead of calculating their cardinalities.
+2. Preserve selectivity across nested `All` nodes. A nested group such as
+   `All(Include(platform.name), CompareBy(platform.version))` must be able to
+   expose the cheap platform-name bound and stop before estimating the ordered
+   version branch. Use bounded estimates or an equivalent partial plan rather
+   than treating the nested group as one opaque estimator.
+3. Make the remaining range-estimate path cache-aware. On a warm `Local` hit,
+   reuse the cached bitmap cardinality or a cardinality stored with the cache
+   entry. Do not repeat an ordered boundary search for the same query value.
+4. If uncached range estimates remain material, benchmark per-item boundary
+   prefixes or a conservative block-level estimate so the fallback needs a
+   binary search and constant-time arithmetic rather than scanning up to one
+   ordered block.
+
+Accept the change only if it materially recovers full-schema warm and parallel
+`Local` latency, preserves equality-only performance and allocations, and does
+not regress range-only, high-churn, large-result, build-time, or retained-memory
+benchmarks. Exact zero detection must remain conservative and search results
+must remain unchanged.
+
 ### Planner and memory benchmark matrix
 
 The reproducible production baseline now covers 10K, 100K, and 1M rules by
@@ -154,14 +192,18 @@ into the shared immutable index or weaken concurrent search safety.
 Work through these steps in priority order, promoting an optimization only
 when production-shaped benchmarks demonstrate a material benefit:
 
-1. Extend cheap estimates and lazy, empty-aware `All` execution where
-   benchmarks show a benefit.
-2. Benchmark and add candidate scanning below a measured crossover threshold.
-3. Improve `Lossy` allocation and representation selection for existing rules,
+1. Implement bounded equality-first planning that skips range cardinality once
+   a candidate is small enough for ID checks, including selective predicates
+   hidden in nested `All` nodes.
+2. Reuse warm `Local` range cardinality and optimize the uncached ordered
+   estimate only if bounded planning still leaves measurable overhead.
+3. Extend cheap estimates and lazy, empty-aware `All` execution for other
+   production shapes where benchmarks show a benefit.
+4. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-4. Tune the remaining `Local` admission, eviction, close/reuse behavior, and
+5. Tune the remaining `Local` admission, eviction, close/reuse behavior, and
    retained memory for production-shaped repeated and high-churn searches.
-5. Investigate generation-based updates only after rebuild benchmarks
+6. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
 
 For every optimization, compare production-shaped build time, search time,
