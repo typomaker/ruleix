@@ -29,6 +29,8 @@ type betweenRule[T any, V any] struct {
 	compare Compare[V]
 }
 
+func (r *betweenRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+
 func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
 
 type betweenCache[V any] struct {
@@ -47,7 +49,10 @@ type betweenCacheOverflow[V any] struct {
 	clock   uint64
 }
 
-func newBetweenCache[V any](pool *bitmapPool) *betweenCache[V] {
+func newBetweenCache[V any](pool *bitmapPool, id ...nodeID) *betweenCache[V] {
+	if len(id) != 0 {
+		return &betweenCache[V]{observers: pool.observersFor(id[0])}
+	}
 	return &betweenCache[V]{observers: pool.observers.clone()}
 }
 
@@ -161,7 +166,7 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	node := &pool.local[int(r.nodeID)]
 	cache, _ := node.between.(*betweenCache[V])
 	if cache == nil {
-		cache = newBetweenCache[V](pool)
+		cache = newBetweenCache[V](pool, r.nodeID)
 		node.between = cache
 	}
 	if bits, found := r.lookupCachedBitmap(v, pool); found {

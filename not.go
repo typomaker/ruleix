@@ -20,6 +20,8 @@ type notRule[T any, V comparable] struct {
 	values equalityIndex[V]
 }
 
+func (r *notRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+
 func (*notRule[T, V]) inspectionStrategy() string { return "exclusion" }
 
 func (*notRule[T, V]) rule() {}
@@ -53,7 +55,7 @@ func (r *notRule[T, V]) exclude(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	node := &pool.local[int(r.nodeID)]
 	cache, _ := node.exclusion.(*valueBitmapCache[V])
 	if cache == nil {
-		cache = newValueBitmapCache[V](pool)
+		cache = newValueBitmapCache[V](pool, r.nodeID)
 		node.exclusion = cache
 	}
 	if bits, found := comparableValueCacheLookup(cache, value); found {

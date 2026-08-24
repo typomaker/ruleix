@@ -504,6 +504,8 @@ type lossyEqualityRule[T any, V comparable] struct {
 	buckets  map[uint64]*roaring.Bitmap
 }
 
+func (r *lossyEqualityRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+
 type scalarHasher[V comparable] struct {
 	stringSeed maphash.Seed
 	stringHash bool
@@ -656,6 +658,8 @@ type lossyOrderedRule[T any, V any] struct {
 	min, max, width uint64
 	buckets         []*roaring.Bitmap
 }
+
+func (r *lossyOrderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func lossyOrderedBucket(key, minimum, width, count uint64) uint64 {
 	bucket := (key - minimum) / width

@@ -354,6 +354,8 @@ type eqRule[T any, V comparable] struct {
 	values   equalityIndex[V]
 }
 
+func (r *eqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+
 func (*eqRule[T, V]) inspectionStrategy() string { return "equality" }
 
 func (*eqRule[T, V]) rule() {}
@@ -417,7 +419,7 @@ func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	node := &pool.local[int(r.nodeID)]
 	cache, _ := node.equality.(*valueBitmapCache[V])
 	if cache == nil {
-		cache = newValueBitmapCache[V](pool)
+		cache = newValueBitmapCache[V](pool, r.nodeID)
 		node.equality = cache
 	}
 	if bits, found := comparableValueCacheLookup(cache, value); found {
@@ -496,6 +498,8 @@ type unaryEqRule[T any, V comparable] struct {
 	key      V
 	set      equalitySet
 }
+
+func (r *unaryEqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*unaryEqRule[T, V]) inspectionStrategy() string { return "equality-unary" }
 
@@ -584,6 +588,8 @@ type binaryEqRule[T any, V comparable] struct {
 	keys     [2]V
 	sets     [2]equalitySet
 }
+
+func (r *binaryEqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*binaryEqRule[T, V]) inspectionStrategy() string { return "equality-binary" }
 
@@ -679,7 +685,7 @@ func equalityCache[V comparable](pool *bitmapPool, id nodeID) *valueBitmapCache[
 	node := &pool.local[int(id)]
 	cache, _ := node.equality.(*valueBitmapCache[V])
 	if cache == nil {
-		cache = newValueBitmapCache[V](pool)
+		cache = newValueBitmapCache[V](pool, id)
 		node.equality = cache
 	}
 	return cache

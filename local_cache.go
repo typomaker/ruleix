@@ -137,7 +137,10 @@ type valueBitmapCacheEntry[V any] struct {
 	bits        *roaring.Bitmap
 }
 
-func newValueBitmapCache[V any](pool *bitmapPool) *valueBitmapCache[V] {
+func newValueBitmapCache[V any](pool *bitmapPool, id ...nodeID) *valueBitmapCache[V] {
+	if len(id) != 0 {
+		return &valueBitmapCache[V]{observers: pool.observersFor(id[0])}
+	}
 	return &valueBitmapCache[V]{observers: pool.observers.clone()}
 }
 

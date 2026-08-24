@@ -375,6 +375,7 @@ type pendingInspection struct {
 	strategy string
 	mode     RuleMode
 	details  inspectionDetails
+	nodes    []nodeID
 }
 
 type inspectedRuntimeRule[T any] struct {
@@ -389,10 +390,6 @@ type inspectedExclusionRule[T any] struct {
 
 func (r *inspectedExclusionRule[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
 	metrics := p.inspectorObserver(r.metrics)
-	if p.local != nil {
-		p.observers.push(metrics)
-		defer p.observers.pop()
-	}
 	before := dst.GetCardinality()
 	r.child.exclude(v, dst, p)
 	metrics.observeCardinality(dst.GetCardinality() - before)
@@ -423,10 +420,6 @@ func (r *inspectedRuntimeRule[T]) cardinality(v T, p *bitmapPool) uint64 {
 }
 func (r *inspectedRuntimeRule[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool) {
 	metrics := p.inspectorObserver(r.metrics)
-	if p.local != nil {
-		p.observers.push(metrics)
-		defer p.observers.pop()
-	}
 	before := dst.GetCardinality()
 	if all, ok := r.child.(*allRule[T]); ok {
 		all.searchObserved(v, dst, p, r.metrics)
@@ -454,9 +447,7 @@ func (r *inspectedRuntimeRule[T]) lookupCachedBitmap(v T, p *bitmapPool) (*roari
 		return nil, false
 	}
 	metrics := p.inspectorObserver(r.metrics)
-	p.observers.push(metrics)
 	bits, found := provider.lookupCachedBitmap(v, p)
-	p.observers.pop()
 	if !found {
 		return nil, false
 	}
@@ -483,11 +474,12 @@ func stripInspectors[T any](
 		strategy := inspectionStrategyOf(typed.child)
 		mode := inspectionModeOf(typed.child)
 		details := inspectionDetailsOf(typed.child)
+		nodes := collectInspectedNodeIDs(typed.child, nil)
 		child, err := stripInspectors(typed.child, seen, pending)
 		if err != nil {
 			return nil, err
 		}
-		*pending = append(*pending, pendingInspection{dst: typed.dst, strategy: strategy, mode: mode, details: details})
+		*pending = append(*pending, pendingInspection{dst: typed.dst, strategy: strategy, mode: mode, details: details, nodes: nodes})
 		return &inspectedRuntimeRule[T]{child: child, metrics: &typed.dst.runtime}, nil
 	case *inspectionDetailsRule[T]:
 		return stripInspectors(typed.child, seen, pending)
@@ -503,6 +495,26 @@ func stripInspectors[T any](
 		return &allRule[T]{children: children}, nil
 	default:
 		return rule, nil
+	}
+}
+
+type runtimeNodeRule interface{ runtimeNodeID() nodeID }
+
+func collectInspectedNodeIDs[T any](rule Rule[T], dst []nodeID) []nodeID {
+	switch typed := rule.(type) {
+	case *inspectRule[T]:
+		return collectInspectedNodeIDs(typed.child, dst)
+	case *inspectionDetailsRule[T]:
+		return collectInspectedNodeIDs(typed.child, dst)
+	case *allRule[T]:
+		for _, child := range typed.children {
+			dst = collectInspectedNodeIDs(child, dst)
+		}
+		return dst
+	case runtimeNodeRule:
+		return append(dst, typed.runtimeNodeID())
+	default:
+		return dst
 	}
 }
 

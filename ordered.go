@@ -86,6 +86,8 @@ type orderedRule[T any, V any] struct {
 	index     orderedIndex[V]
 }
 
+func (r *orderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+
 func (r *orderedRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 	return r.newLossyAllPlanner().compile(limit)
 }
@@ -279,7 +281,7 @@ func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	node := &pool.local[int(r.nodeID)]
 	cache, _ := node.ordered.(*valueBitmapCache[V])
 	if cache == nil {
-		cache = newValueBitmapCache[V](pool)
+		cache = newValueBitmapCache[V](pool, r.nodeID)
 		node.ordered = cache
 	}
 	if bits, found := comparedValueCacheLookup(cache, value, r.compare); found {

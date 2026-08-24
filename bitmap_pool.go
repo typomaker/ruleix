@@ -7,12 +7,13 @@ import (
 )
 
 type bitmapPool struct {
-	pool       sync.Pool
-	rankedPool sync.Pool
-	local      []localNodeCache
-	allPlans   map[any]*localAllPlan
-	observers  cacheObservers
-	inspectors localInspectorRuntimeChunk
+	pool          sync.Pool
+	rankedPool    sync.Pool
+	local         []localNodeCache
+	allPlans      map[any]*localAllPlan
+	observers     cacheObservers // test-only fallback for caches without a compiled node ID
+	inspectors    localInspectorRuntimeChunk
+	nodeObservers []cacheObservers
 }
 
 type localInspectorRuntime struct {
@@ -99,17 +100,36 @@ func newBitmapPool() *bitmapPool {
 	return p
 }
 
-func newLocalBitmapPool(nodes int) *bitmapPool {
+func newLocalBitmapPool(nodes int, configured ...[][]*inspectorRuntime) *bitmapPool {
 	p := newBitmapPool()
 	p.local = make([]localNodeCache, nodes)
+	var inspectors [][]*inspectorRuntime
+	if len(configured) != 0 {
+		inspectors = configured[0]
+	}
+	if inspectors != nil {
+		p.nodeObservers = make([]cacheObservers, nodes)
+		for id, runtimes := range inspectors {
+			for _, runtime := range runtimes {
+				p.nodeObservers[id].push(p.inspectorObserver(runtime))
+			}
+		}
+	}
 	return p
+}
+
+func (p *bitmapPool) observersFor(id nodeID) *cacheObservers {
+	if int(id) >= len(p.nodeObservers) || p.nodeObservers[id].n == 0 {
+		return nil
+	}
+	observers := p.nodeObservers[id]
+	return &observers
 }
 func (p *bitmapPool) resetLocal() {
 	p.flushInspectorMetrics()
 	for i := range p.local {
 		p.local[i].reset(p)
 	}
-	p.observers = cacheObservers{}
 }
 func (p *bitmapPool) get() *roaring.Bitmap {
 	bm := p.pool.Get().(*roaring.Bitmap)

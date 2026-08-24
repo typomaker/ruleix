@@ -37,6 +37,8 @@ type compareByRule[T any, V any] struct {
 	hints    [5]orderedBuildStatistics
 }
 
+func (r *compareByRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+
 func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
 
 func (*compareByRule[T, V]) rule() {}
@@ -173,7 +175,7 @@ func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool)
 	node := &pool.local[int(r.nodeID)]
 	cache, _ := node.compareBy.(*valueBitmapCache[V])
 	if cache == nil {
-		cache = newValueBitmapCache[V](pool)
+		cache = newValueBitmapCache[V](pool, r.nodeID)
 		node.compareBy = cache
 	}
 	if bits, found := comparedValueCacheLookup(cache, value, r.compare); found {

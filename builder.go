@@ -21,12 +21,13 @@ type Builder[C any, ID comparable] struct {
 // Index maps query values to the unique IDs of all matching stored constraints.
 // It is immutable after Build and safe for concurrent calls to Search and Visit.
 type Index[C any, ID comparable] struct {
-	root       Rule[C]
-	values     []ID
-	pool       *bitmapPool
-	nodes      int
-	exclusions []exclusionRule[C]
-	locals     sync.Pool
+	root            Rule[C]
+	values          []ID
+	pool            *bitmapPool
+	nodes           int
+	exclusions      []exclusionRule[C]
+	locals          sync.Pool
+	localInspectors [][]*inspectorRuntime
 }
 
 // Local is a search context that keeps per-node cached results between calls.
@@ -156,6 +157,12 @@ func buildIndex[C any, ID comparable](
 	prepareRuleSearch(ix.root)
 	ix.nodes = int(ids.next)
 	for _, inspection := range inspections {
+		for _, id := range inspection.nodes {
+			if ix.localInspectors == nil {
+				ix.localInspectors = make([][]*inspectorRuntime, ix.nodes)
+			}
+			ix.localInspectors[int(id)] = append(ix.localInspectors[int(id)], &inspection.dst.runtime)
+		}
 		inspection.dst.published.Store(&inspectorSnapshotBox{snapshot: exactInspectorSnapshot{
 			strategyName: inspection.strategy,
 			modeName:     inspection.mode,
@@ -216,7 +223,7 @@ func (ix *Index[C, ID]) Search(value C, dst *[]ID) bool {
 func (ix *Index[C, ID]) Local() *Local[C, ID] {
 	pool, _ := ix.locals.Get().(*bitmapPool)
 	if pool == nil {
-		pool = newLocalBitmapPool(ix.nodes)
+		pool = newLocalBitmapPool(ix.nodes, ix.localInspectors)
 	}
 	return &Local[C, ID]{index: ix, pool: pool}
 }
