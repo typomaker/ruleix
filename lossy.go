@@ -502,6 +502,27 @@ type lossyEqualityRule[T any, V comparable] struct {
 	buckets  map[uint64]*roaring.Bitmap
 }
 
+func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bool) {
+	// A wildcard requires a union with the concrete bucket, so it cannot expose
+	// one of its owned bitmaps as the complete child result.
+	if !r.wildcard.IsEmpty() {
+		return nil, false
+	}
+	value, ok := r.get(v)
+	if !ok {
+		return r.wildcard, true
+	}
+	hash, ok := hashScalar(any(value))
+	if !ok {
+		return r.wildcard, true
+	}
+	bits := r.buckets[hash>>r.shift]
+	if bits == nil {
+		return r.wildcard, true
+	}
+	return bits, true
+}
+
 func (*lossyEqualityRule[T, V]) rule()                                                 {}
 func (r *lossyEqualityRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
 func (*lossyEqualityRule[T, V]) validate(T) error                                      { return nil }

@@ -201,6 +201,31 @@ func TestLossyOrderedNeverDropsExactMatches(t *testing.T) {
 
 var lossyPlannerBenchmarkCardinality uint64
 
+func TestLossyAllReusesPlanningBucket(t *testing.T) {
+	query := lossyConstraint{name: "customer-7", present: true}
+	hash, ok := hashScalar(query.name)
+	require.True(t, ok)
+	getterCalls := [2]int{}
+	children := make([]Rule[lossyConstraint], 2)
+	for i := range children {
+		i := i
+		children[i] = &lossyEqualityRule[lossyConstraint, string]{
+			get: func(v lossyConstraint) (string, bool) {
+				getterCalls[i]++
+				return v.name, v.present
+			},
+			wildcard: roaring.New(),
+			buckets:  map[uint64]*roaring.Bitmap{hash: roaring.BitmapOf(7)},
+		}
+	}
+
+	result := roaring.New()
+	(&allRule[lossyConstraint]{children: children}).search(query, result, newBitmapPool())
+
+	require.Equal(t, []uint32{7}, result.ToArray())
+	require.Equal(t, [2]int{1, 1}, getterCalls)
+}
+
 type unknownEstimateRule[T any] struct{ child Rule[T] }
 
 func (*unknownEstimateRule[T]) rule() {}

@@ -215,10 +215,21 @@ func (r *allRule[T]) searchRanked(
 		r.releaseRanked(pool, rankedChildren)
 		return
 	}
-	first := pool.get()
-	r.children[rankedChildren[0].childIdx].search(v, first, pool)
+	first := rankedChildren[0].bits
+	owned := false
+	if first == nil {
+		first = pool.get()
+		r.children[rankedChildren[0].childIdx].search(v, first, pool)
+		owned = true
+	}
 	first.Iterate(func(id uint32) bool {
 		for _, ranked := range rankedChildren[1:] {
+			if ranked.bits != nil {
+				if !ranked.bits.Contains(id) {
+					return true
+				}
+				continue
+			}
 			if !matchesRuleID(r.children[ranked.childIdx], v, id, pool) {
 				return true
 			}
@@ -226,7 +237,9 @@ func (r *allRule[T]) searchRanked(
 		dst.Add(id)
 		return true
 	})
-	pool.put(first)
+	if owned {
+		pool.put(first)
+	}
 }
 
 func matchesRuleID[T any](rule Rule[T], value T, id uint32, pool *bitmapPool) bool {
@@ -269,7 +282,14 @@ func (r *allRule[T]) rankChildren(
 	cheapBound := ^uint64(0)
 	for i, child := range r.children {
 		estimate := ^uint64(0)
-		if cheapEstimate, ok := cheapCardinality(child, v); ok {
+		if bits, ok := planningBitmap(child, v); ok {
+			estimate = bits.GetCardinality()
+			rankedChildren[i].bits = bits
+			if estimate == 0 {
+				return false
+			}
+			cheapBound = min(cheapBound, estimate)
+		} else if cheapEstimate, ok := cheapCardinality(child, v); ok {
 			estimate = cheapEstimate
 			if estimate == 0 {
 				return false
@@ -278,12 +298,13 @@ func (r *allRule[T]) rankChildren(
 		} else if cheapCardinalityIsZero(child, v) {
 			return false
 		}
-		rankedChildren[i] = rankedBitmap{card: estimate, childIdx: i}
+		rankedChildren[i].card = estimate
+		rankedChildren[i].childIdx = i
 	}
 	//nolint:nestif // Cache-aware ranking keeps the hot path allocation-free.
 	if cheapBound > allCandidateScanLimit {
 		for i, child := range r.children {
-			if _, ok := cheapCardinality(child, v); ok {
+			if rankedChildren[i].card != ^uint64(0) {
 				continue
 			}
 			if provider, ok := child.(cachedBitmapProvider[T]); ok {
@@ -400,6 +421,22 @@ func cachedCardinality[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, 
 		return 0, false
 	}
 	return estimator.estimateCachedCardinality(value, pool)
+}
+
+func planningBitmap[T any](rule Rule[T], value T) (*roaring.Bitmap, bool) {
+	switch wrapped := rule.(type) {
+	case *inspectedRuntimeRule[T]:
+		return planningBitmap(wrapped.child, value)
+	case *inspectionDetailsRule[T]:
+		return planningBitmap(wrapped.child, value)
+	case *lossyRule[T]:
+		return planningBitmap(wrapped.child, value)
+	}
+	provider, ok := rule.(planningBitmapProvider[T])
+	if !ok {
+		return nil, false
+	}
+	return provider.lookupPlanningBitmap(value)
 }
 
 func estimateCardinalityForPlan[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, bool) {

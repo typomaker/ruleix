@@ -83,6 +83,13 @@ type cachedBitmapProvider[T any] interface {
 	lookupCachedBitmap(T, *bitmapPool) (*roaring.Bitmap, bool)
 }
 
+// planningBitmapProvider exposes an immutable posting list found while All is
+// ranking its children. The bitmap remains owned by the rule and may only be
+// read by the search path.
+type planningBitmapProvider[T any] interface {
+	lookupPlanningBitmap(T) (*roaring.Bitmap, bool)
+}
+
 // cheapCardinalityEstimator is implemented by rules whose cardinality is a
 // constant-time lookup. All uses these estimates before ordered estimates so a
 // sufficiently small equality result can become the candidate set without a

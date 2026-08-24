@@ -384,6 +384,9 @@ func prepareRankedAllCandidates[C any](
 	if rankedChildren[0].card > allCandidateScanLimit {
 		return root.intersectRankedInOrderObserved(value, candidates, pool, rankedChildren, metrics)
 	}
+	if rankedChildren[0].bits != nil {
+		return true
+	}
 	bits := pool.get()
 	root.children[rankedChildren[0].childIdx].search(value, bits, pool)
 	rankedChildren[0].bits = bits
@@ -515,6 +518,13 @@ func appendScannedAllMatches[C any, ID comparable](
 		}
 		matches := true
 		for _, child := range rankedChildren[1:] {
+			if child.bits != nil {
+				if !child.bits.Contains(id) {
+					matches = false
+					break
+				}
+				continue
+			}
 			if !matchesRuleID(root.children[child.childIdx], value, id, pool) {
 				matches = false
 				break
