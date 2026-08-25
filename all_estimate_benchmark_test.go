@@ -83,6 +83,56 @@ func BenchmarkAllOrderedCandidateFiltering(b *testing.B) {
 	}
 }
 
+// BenchmarkOrderedCandidateFilteringShape compares candidate filtering when a
+// wide range finds every candidate near the beginning of its posting walk or
+// finds none. Apple M1 Max / Go 1.26.0 medians: current AndAny 168.1 us,
+// 126,562 B, 16 allocs for AllEarly and 558.5 ns, 960 B, 3 allocs for None;
+// probing the first 16 aggregates before the full AndAny regressed these to
+// 176.5 us, 131,349 B, 22 allocs and 819.8 ns, 1,600 B, 5 allocs. Reproduce
+// with:
+//
+// \tgo test -run '^$' -bench '^BenchmarkOrderedCandidateFilteringShape$' -benchmem -benchtime=1s -count=5 .
+func BenchmarkOrderedCandidateFilteringShape(b *testing.B) {
+	type constraint struct {
+		group int
+		value int
+	}
+	const entries = 100_000
+	const candidates = 1_024
+	constraints := make([]constraint, entries)
+	ids := make([]uint32, entries)
+	for id := range uint32(entries) {
+		constraints[id] = constraint{group: int(id) / candidates, value: int(id)}
+		ids[id] = id
+	}
+	rule := All(
+		Include(func(value constraint) (int, bool) { return value.group, true }),
+		GreaterOrEqual(func(value constraint) (int, bool) { return value.value, true }, cmp.Compare[int]),
+	)
+	index, err := New[constraint, uint32](rule).Build(Zip(constraints, ids))
+	requireNoBenchmarkError(b, err)
+	for _, test := range []struct {
+		name  string
+		group int
+		value int
+	}{
+		{name: "AllEarly", group: 0, value: entries - 1},
+		{name: "None", group: entries/candidates - 1, value: candidates},
+	} {
+		b.Run(test.name, func(b *testing.B) {
+			query := constraint{group: test.group, value: test.value}
+			dst := roaring.New()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				dst.Clear()
+				index.root.search(query, dst, index.pool)
+				plannerBenchmarkCardinality = dst.GetCardinality()
+			}
+		})
+	}
+}
+
 func requireNoBenchmarkError(b *testing.B, err error) {
 	b.Helper()
 	if err != nil {
