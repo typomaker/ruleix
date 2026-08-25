@@ -428,3 +428,36 @@ func TestLocalAdmitsEqualityBitmapAfterSecondUse(t *testing.T) {
 	require.True(t, cache.entries[0].initialized)
 	require.Equal(t, []int{1}, matches)
 }
+
+func TestLocalAllResultCacheInvalidatesWhenChildCacheChanges(t *testing.T) {
+	type constraint struct{ group, score int }
+	constraints := make([]constraint, 60)
+	ids := make([]int, len(constraints))
+	for id := range constraints {
+		constraints[id] = constraint{group: id / 10, score: id}
+		ids[id] = id
+	}
+	index, err := New[constraint, int](All(
+		Include(func(value constraint) (int, bool) { return value.group, true }),
+		GreaterOrEqual(func(value constraint) (int, bool) { return value.score, true }, cmp.Compare[int]),
+	)).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	local := index.Local()
+	t.Cleanup(local.Close)
+
+	for round := range 4 {
+		for value := range 6 {
+			for range 3 {
+				query := constraint{group: value, score: value*10 + 5}
+				var want, got []int
+				index.Search(query, &want)
+				local.Search(query, &got)
+				require.Equal(t, want, got, "round %d, value %d", round, value)
+			}
+		}
+	}
+	require.Positive(t, local.pool.cacheEpoch)
+	plan := local.pool.allPlans[index.root]
+	require.NotNil(t, plan)
+	require.True(t, plan.results[0].bits != nil || plan.results[1].bits != nil)
+}

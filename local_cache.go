@@ -13,6 +13,28 @@ type localNodeCache struct {
 type localAllPlan struct {
 	order     []int
 	firstCard uint64
+	// Keep the two most recent exact intersections alongside the learned child
+	// order. Repeated Local queries can share their immutable containers with a
+	// scratch result instead of cloning the first posting on every search.
+	results [2]localAllResult
+	next    uint8
+}
+
+type localAllResult struct {
+	inputs []*roaring.Bitmap
+	epoch  uint64
+	bits   *roaring.Bitmap
+}
+
+func (p *localAllPlan) resetResults(pool *bitmapPool) {
+	for i := range p.results {
+		result := &p.results[i]
+		if result.bits != nil {
+			pool.put(result.bits)
+		}
+		*result = localAllResult{}
+	}
+	p.next = 0
 }
 
 type localCacheResetter interface {
@@ -175,6 +197,7 @@ func (c *valueBitmapCache[V]) peek(value optionalValue[V], equal func(V, V) bool
 }
 
 func (c *valueBitmapCache[V]) replace(value optionalValue[V], pool *bitmapPool) *roaring.Bitmap {
+	pool.invalidateResultCache()
 	if c.overflow == nil && c.entries[c.next].initialized {
 		c.pressure++
 		if c.pressure >= 2 {

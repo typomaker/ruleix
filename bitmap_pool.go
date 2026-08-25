@@ -11,6 +11,7 @@ type bitmapPool struct {
 	rankedPool     sync.Pool
 	local          []localNodeCache
 	allPlans       map[any]*localAllPlan
+	cacheEpoch     uint64
 	observers      cacheObservers // test-only fallback for caches without a compiled node ID
 	inspectors     localInspectorRuntimeChunk
 	nodeObservers  []cacheObservers
@@ -148,10 +149,16 @@ func (p *bitmapPool) rootInspectorObserver(runtime *inspectorRuntime) inspectorR
 }
 func (p *bitmapPool) resetLocal() {
 	p.flushInspectorMetrics()
+	for _, plan := range p.allPlans {
+		plan.resetResults(p)
+	}
+	p.cacheEpoch++
 	for i := range p.local {
 		p.local[i].reset(p)
 	}
 }
+
+func (p *bitmapPool) invalidateResultCache() { p.cacheEpoch++ }
 func (p *bitmapPool) get() *roaring.Bitmap {
 	bm := p.pool.Get().(*roaring.Bitmap)
 	bm.Clear()

@@ -1834,3 +1834,40 @@ go test -run '^$' \
 go test -run '^$' -bench '^BenchmarkRepeatedBuild' \
   -benchmem -benchtime=3x -count=3 .
 ```
+
+## 2026-08-25: bounded warm-Local result cache
+
+Each learned `Local` `All` plan now retains the two most recent exact root
+intersections. The cache key is the ordered set of immutable child bitmap
+pointers plus an epoch incremented whenever a child cache entry is replaced.
+Hits can therefore share the cached result containers with the scratch bitmap
+without the copy-on-write clone previously required by the first `Bitmap.And`.
+Inspected searches bypass the result cache so runtime observations continue to
+describe child execution, and `Local.Close` returns retained result bitmaps to
+the existing bounded bitmap pool.
+
+On Apple M1 Max with Go 1.26.0, five one-second runs reduced the two-query warm
+production `Local` median from 2.418 us, 2,331 B, and two allocations to about
+0.55 us with zero measured bytes or allocations per search. The uncached
+`Index` path remained near 39 us, 73,394 B, and 28 allocations. Warm retained
+memory increased from the preceding roughly 88.8 KB to 95.2 KB per `Local`;
+adaptive four-query retained memory measured 107.6 KB. The short-lived six-
+search lifecycle measured a 299 us median, 293 KB, and 110 allocations.
+
+Two `Index` follow-ups were rejected. Scalar validation of a `Between` rule for
+candidate sets up to 256 cut traffic to 54,216 B and 18 allocations but
+regressed median search to 104.3 us. Enabling the bounded range aggregates for
+both `Between` sides also failed to improve the baseline, measuring a noisy
+41.6 us median with unchanged allocations. The retained `AndAny` path remains
+the better CPU tradeoff until Roaring exposes reusable union/intersection
+workspace or a destination-aware primitive.
+
+Reproduce with:
+
+```sh
+go test -run '^$' \
+  -bench '^BenchmarkProductionShape(Search|ParallelLocalBatch100|LocalClose)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchmem -benchtime=3x -count=3 .
+```

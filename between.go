@@ -195,6 +195,7 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		cache.next = (cache.next + 1) % uint8(len(cache.entries))
 	}
 	cached := cache.entry(index)
+	pool.invalidateResultCache()
 	cache.observers.admission()
 	if cached.initialized {
 		cache.observers.eviction()

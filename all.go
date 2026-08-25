@@ -478,6 +478,74 @@ func (r *allRule[T]) rememberLocalPlan(pool *bitmapPool, rankedChildren []ranked
 	plan.firstCard = rankedChildren[0].card
 }
 
+func (r *allRule[T]) loadLocalResult(
+	pool *bitmapPool,
+	rankedChildren []rankedBitmap,
+	dst *roaring.Bitmap,
+) bool {
+	if pool.local == nil || pool.observeRuntime {
+		return false
+	}
+	plan := pool.allPlans[r]
+	if plan == nil {
+		return false
+	}
+	for i := range plan.results {
+		result := &plan.results[i]
+		if result.bits == nil || result.epoch != pool.cacheEpoch || len(result.inputs) != len(rankedChildren) {
+			continue
+		}
+		match := true
+		for child := range rankedChildren {
+			if rankedChildren[child].bits == nil || result.inputs[child] != rankedChildren[child].bits {
+				match = false
+				break
+			}
+		}
+		if match {
+			dst.Or(result.bits)
+			return true
+		}
+	}
+	return false
+}
+
+func (r *allRule[T]) storeLocalResult(
+	pool *bitmapPool,
+	rankedChildren []rankedBitmap,
+	bits *roaring.Bitmap,
+) {
+	if pool.local == nil || pool.observeRuntime {
+		return
+	}
+	for _, child := range rankedChildren {
+		if child.bits == nil || child.owned {
+			return
+		}
+	}
+	plan := pool.allPlans[r]
+	if plan == nil {
+		return
+	}
+	entry := &plan.results[plan.next]
+	plan.next = (plan.next + 1) % uint8(len(plan.results))
+	if cap(entry.inputs) < len(rankedChildren) {
+		entry.inputs = make([]*roaring.Bitmap, len(rankedChildren))
+	} else {
+		entry.inputs = entry.inputs[:len(rankedChildren)]
+	}
+	for i := range rankedChildren {
+		entry.inputs[i] = rankedChildren[i].bits
+	}
+	if entry.bits == nil {
+		entry.bits = pool.get()
+	} else {
+		entry.bits.Clear()
+	}
+	entry.bits.Or(bits)
+	entry.epoch = pool.cacheEpoch
+}
+
 func cachedCardinality[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, bool) {
 	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
 		return cachedCardinality(observed.child, value, pool)

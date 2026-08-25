@@ -387,7 +387,8 @@ func searchAllMatches[C any, ID comparable](
 	if initiallyBroad {
 		candidates = pool.get()
 	}
-	if !prepareRankedAllCandidates(root, value, pool, rankedChildren, candidates, metrics) {
+	cachedResult := candidates != nil && root.loadLocalResult(pool, rankedChildren, candidates)
+	if !cachedResult && !prepareRankedAllCandidates(root, value, pool, rankedChildren, candidates, metrics) {
 		if candidates != nil {
 			pool.put(candidates)
 		}
@@ -397,6 +398,9 @@ func searchAllMatches[C any, ID comparable](
 		}
 		*dst = result
 		return
+	}
+	if candidates != nil && !cachedResult {
+		root.storeLocalResult(pool, rankedChildren, candidates)
 	}
 
 	excluded := buildAllExclusions(exclusions, value, rankedChildren[0].card, pool)
