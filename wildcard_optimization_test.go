@@ -168,7 +168,7 @@ func TestAllSharesInternedPartialEqualityWildcards(t *testing.T) {
 	}
 }
 
-func TestAllDoesNotEnableDuplicateChecksWithoutSharedWildcards(t *testing.T) {
+func TestAllStoresIDsOnlyForDuplicateEqualityBitmaps(t *testing.T) {
 	type constraint struct{ left, right *int }
 	schema := All(
 		Include(GetterFromPointer(func(value constraint) *int { return value.left })),
@@ -182,7 +182,9 @@ func TestAllDoesNotEnableDuplicateChecksWithoutSharedWildcards(t *testing.T) {
 	require.NoError(t, err)
 	root := index.root.(*allRule[constraint])
 	require.Nil(t, root.sharedWildcardGroups)
-	require.Nil(t, root.sharedPostingProviders)
+	// Neither the wildcard sets nor the small unique postings are shared, so no
+	// duplicate IDs or retained per-posting metadata are created.
+	require.Nil(t, root.duplicateBitmapIDs)
 }
 
 func TestAllChecksInternedEqualityPostingOnce(t *testing.T) {
@@ -201,14 +203,45 @@ func TestAllChecksInternedEqualityPostingOnce(t *testing.T) {
 	index, err := New[constraint, int](schema).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	root := index.root.(*allRule[constraint])
-	require.NotNil(t, root.sharedPostingProviders)
+	require.Len(t, root.duplicateBitmapIDs, 2) // empty wildcard and concrete posting
 
 	ranked := []rankedBitmap{{childIdx: 0}, {childIdx: 1}}
-	ranked = root.collectSharedPostingResults(constraint{left: &one, right: &one}, ranked)
+	ranked = root.deduplicateEqualityResults(constraint{left: &one, right: &one}, ranked)
 	require.Len(t, ranked, 1)
-	require.Equal(t, uint64(len(constraints)), ranked[0].card)
 
 	var matches []int
 	index.Search(constraint{left: &one, right: &one}, &matches)
 	require.Equal(t, ids, matches)
+}
+
+func TestAllDeduplicatesOnlyMatchingWildcardPostingPair(t *testing.T) {
+	type constraint struct{ left, right *int }
+	schema := All(
+		Include(GetterFromPointer(func(value constraint) *int { return value.left })),
+		Include(GetterFromPointer(func(value constraint) *int { return value.right })),
+	)
+	one, two := 1, 2
+	constraints := make([]constraint, 0, 80)
+	ids := make([]int, 0, 80)
+	for i := range 40 {
+		constraints = append(constraints, constraint{left: &one, right: &one})
+		ids = append(ids, i)
+	}
+	for i := 40; i < 80; i++ {
+		constraints = append(constraints, constraint{left: &one, right: &two})
+		ids = append(ids, i)
+	}
+	index, err := New[constraint, int](schema).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	root := index.root.(*allRule[constraint])
+
+	ranked := []rankedBitmap{{childIdx: 0}, {childIdx: 1}}
+	got := root.deduplicateEqualityResults(constraint{left: &one, right: &one}, append([]rankedBitmap(nil), ranked...))
+	require.Len(t, got, 2, "different concrete postings must remain distinct")
+
+	// Querying an absent value selects the same [empty wildcard, no posting]
+	// pair in both children, so the second rule is redundant.
+	missing := 3
+	got = root.deduplicateEqualityResults(constraint{left: &missing, right: &missing}, ranked)
+	require.Len(t, got, 1)
 }

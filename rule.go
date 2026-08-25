@@ -124,12 +124,12 @@ type sharedWildcardEquality[T any] interface {
 	addConcreteMatches(T, *roaring.Bitmap)
 }
 
-// internedEqualityResult exposes exact, immutable equality results whose
-// wildcard is empty. Build uses the inventory to enable duplicate handling
-// only when two children can actually return the same interned posting.
-type internedEqualityResult[T any] interface {
-	visitInternedEqualityResults(func(*roaring.Bitmap))
-	lookupInternedEqualityResult(T) (*roaring.Bitmap, bool)
+// equalityResultComponents exposes the immutable wildcard and concrete
+// posting that form an equality result. All assigns IDs only to components
+// that Build finds in more than one child.
+type equalityResultComponents[T any] interface {
+	visitEqualityResultBitmaps(func(*roaring.Bitmap))
+	lookupEqualityResultComponents(T) (wildcard, posting *roaring.Bitmap, deduplicable bool)
 }
 
 type exclusionRule[T any] interface {

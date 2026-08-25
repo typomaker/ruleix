@@ -34,8 +34,9 @@ type allRule[T any] struct {
 	// sharedWildcardGroups is allocated only when Build finds equality children
 	// whose interned, non-empty wildcard bitmap is identical. Ordinary All
 	// searches therefore do not pay for duplicate-result tracking.
-	sharedWildcardGroups   []int
-	sharedPostingProviders []internedEqualityResult[T]
+	sharedWildcardGroups       []int
+	duplicateBitmapIDs         map[*roaring.Bitmap]uint32
+	duplicateEqualityProviders []equalityResultComponents[T]
 	// Tests may search an internal rule before prepareSearch. Runtime indexes
 	// set this flag and can distinguish an exact schema from an unprepared one.
 	planningPrepared bool
@@ -96,7 +97,7 @@ func (r *allRule[T]) prepareSearch() {
 		r.planningProviders[i] = provider
 	}
 	r.prepareSharedWildcardGroups()
-	r.prepareSharedPostingResults()
+	r.prepareDuplicateEqualityResults()
 	r.planningPrepared = true
 }
 
@@ -130,25 +131,33 @@ func (r *allRule[T]) prepareSharedWildcardGroups() {
 	}
 }
 
-func (r *allRule[T]) prepareSharedPostingResults() {
+func (r *allRule[T]) prepareDuplicateEqualityResults() {
 	owners := make(map[*roaring.Bitmap]int)
-	providers := make([]internedEqualityResult[T], len(r.children))
+	providers := make([]equalityResultComponents[T], len(r.children))
+	nextID := uint32(1)
 	for i, child := range r.children {
-		provider := resolveInternedEqualityResult(child)
+		provider := resolveEqualityResultComponents(child)
 		if provider == nil {
 			continue
 		}
-		provider.visitInternedEqualityResults(func(bits *roaring.Bitmap) {
+		providers[i] = provider
+		provider.visitEqualityResultBitmaps(func(bits *roaring.Bitmap) {
+			if id := r.duplicateBitmapIDs[bits]; id != 0 {
+				r.duplicateEqualityProviders[i] = provider
+				return
+			}
 			if owner, found := owners[bits]; found && owner != i {
-				if r.sharedPostingProviders == nil {
-					r.sharedPostingProviders = make([]internedEqualityResult[T], len(r.children))
+				if r.duplicateBitmapIDs == nil {
+					r.duplicateBitmapIDs = make(map[*roaring.Bitmap]uint32)
+					r.duplicateEqualityProviders = make([]equalityResultComponents[T], len(r.children))
 				}
-				r.sharedPostingProviders[owner] = providers[owner]
-				r.sharedPostingProviders[i] = provider
+				r.duplicateBitmapIDs[bits] = nextID
+				nextID++
+				r.duplicateEqualityProviders[owner] = providers[owner]
+				r.duplicateEqualityProviders[i] = provider
 				return
 			}
 			owners[bits] = i
-			providers[i] = provider
 		})
 	}
 }
@@ -283,6 +292,9 @@ func (r *allRule[T]) searchRanked(
 	}
 	if len(rankedChildren) == 0 {
 		return
+	}
+	if r.duplicateBitmapIDs != nil {
+		rankedChildren = r.deduplicateEqualityResults(v, rankedChildren)
 	}
 	if rankedChildren[0].card > allCandidateScanLimit {
 		if !r.intersectRankedInOrderObserved(v, dst, pool, rankedChildren, metrics) {
@@ -693,9 +705,6 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 	if pool.local == nil && r.sharedWildcardGroups != nil {
 		rankedChildren = r.collectSharedWildcards(v, pool, rankedChildren)
 	}
-	if r.sharedPostingProviders != nil {
-		rankedChildren = r.collectSharedPostingResults(v, rankedChildren)
-	}
 	for i := range rankedChildren {
 		bits := rankedChildren[i].bits
 		if i > 0 {
@@ -907,38 +916,57 @@ func (r *allRule[T]) collectSharedWildcards(
 	return rankedChildren[:write]
 }
 
-func resolveInternedEqualityResult[T any](rule Rule[T]) internedEqualityResult[T] {
+func resolveEqualityResultComponents[T any](rule Rule[T]) equalityResultComponents[T] {
 	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
-		return resolveInternedEqualityResult(observed.child)
+		return resolveEqualityResultComponents(observed.child)
 	}
-	provider, _ := rule.(internedEqualityResult[T])
+	provider, _ := rule.(equalityResultComponents[T])
 	return provider
 }
 
-func (r *allRule[T]) collectSharedPostingResults(v T, rankedChildren []rankedBitmap) []rankedBitmap {
-	for i := range rankedChildren {
-		if rankedChildren[i].bits != nil {
-			continue
-		}
-		provider := r.sharedPostingProviders[rankedChildren[i].childIdx]
-		if provider == nil {
-			continue
-		}
-		if bits, found := provider.lookupInternedEqualityResult(v); found {
-			rankedChildren[i].bits = bits
-			rankedChildren[i].card = bits.GetCardinality()
-		}
-	}
+type equalityResultKey struct {
+	wildcard uint32
+	posting  uint32
+}
+
+func (r *allRule[T]) deduplicateEqualityResults(v T, rankedChildren []rankedBitmap) []rankedBitmap {
+	var seen [8]equalityResultKey
+	seenCount := 0
 	write := 0
 	for read := range rankedChildren {
 		duplicate := false
 		childIdx := rankedChildren[read].childIdx
-		if bits := rankedChildren[read].bits; bits != nil && r.sharedPostingProviders[childIdx] != nil {
-			for previous := range write {
-				previousIdx := rankedChildren[previous].childIdx
-				if r.sharedPostingProviders[previousIdx] != nil && rankedChildren[previous].bits == bits {
-					duplicate = true
-					break
+		provider := r.duplicateEqualityProviders[childIdx]
+		if provider != nil {
+			wildcard, posting, deduplicable := provider.lookupEqualityResultComponents(v)
+			wildcardID := r.duplicateBitmapIDs[wildcard]
+			postingID := r.duplicateBitmapIDs[posting]
+			if deduplicable && wildcardID != 0 && (posting == nil || postingID != 0) {
+				key := equalityResultKey{wildcard: wildcardID, posting: postingID}
+				for previous := range seenCount {
+					if seen[previous] == key {
+						duplicate = true
+						break
+					}
+				}
+				if !duplicate && seenCount < len(seen) {
+					seen[seenCount] = key
+					seenCount++
+				} else if !duplicate {
+					// All groups above the inline capacity are rare. Comparing the
+					// already-kept children avoids allocating a per-search map.
+					for previous := range write {
+						previousProvider := r.duplicateEqualityProviders[rankedChildren[previous].childIdx]
+						if previousProvider == nil {
+							continue
+						}
+						previousWildcard, previousPosting, ok := previousProvider.lookupEqualityResultComponents(v)
+						if ok && r.duplicateBitmapIDs[previousWildcard] == wildcardID &&
+							r.duplicateBitmapIDs[previousPosting] == postingID {
+							duplicate = true
+							break
+						}
+					}
 				}
 			}
 		}
