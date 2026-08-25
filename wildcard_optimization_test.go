@@ -182,7 +182,7 @@ func TestAllDoesNotEnableDuplicateChecksWithoutSharedWildcards(t *testing.T) {
 	require.NoError(t, err)
 	root := index.root.(*allRule[constraint])
 	require.Nil(t, root.sharedWildcardGroups)
-	require.False(t, root.sharedPostingResults)
+	require.Nil(t, root.sharedPostingProviders)
 }
 
 func TestAllChecksInternedEqualityPostingOnce(t *testing.T) {
@@ -201,7 +201,7 @@ func TestAllChecksInternedEqualityPostingOnce(t *testing.T) {
 	index, err := New[constraint, int](schema).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	root := index.root.(*allRule[constraint])
-	require.True(t, root.sharedPostingResults)
+	require.NotNil(t, root.sharedPostingProviders)
 
 	ranked := []rankedBitmap{{childIdx: 0}, {childIdx: 1}}
 	ranked = root.collectSharedPostingResults(constraint{left: &one, right: &one}, ranked)
