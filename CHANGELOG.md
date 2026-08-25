@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-25
+
+### Changed
+
+- Warm `Local` `All` searches cache two recent root intersections, reducing
+  repeated production-shaped searches to zero measured allocations while
+  keeping retained memory bounded.
+- `All` evaluates duplicate equality results once by their immutable index
+  components, including separately materialized postings that represent the
+  same constraint.
+- Candidate execution preserves direct scans when shared equality postings are
+  deduplicated, avoiding unnecessary bitmap materialization.
+
 ## [0.8.0] - 2026-08-24
 
 ### Changed
@@ -333,7 +346,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/typomaker/ruleix/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/typomaker/ruleix/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/typomaker/ruleix/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/typomaker/ruleix/compare/v0.6.0...v0.7.0

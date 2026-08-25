@@ -89,7 +89,10 @@ func BenchmarkInspectCandidateCheckOverhead(b *testing.B) {
 	})
 	b.Run("InspectedChild", func(b *testing.B) {
 		var inspector Inspector
-		benchmarkInspectSearch(b, All(Include(selective), Inspect(&inspector, Include(broad))), inspector, entries, query, false, true, 4)
+		benchmarkInspectSearch(
+			b, All(Include(selective), Inspect(&inspector, Include(broad))),
+			inspector, entries, query, false, true, 4,
+		)
 	})
 }
 

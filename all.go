@@ -851,7 +851,9 @@ func bitmapRangesDisjoint(first, second *roaring.Bitmap) bool {
 	return first.Maximum() < second.Minimum() || second.Maximum() < first.Minimum()
 }
 
-func (r *allRule[T]) collectSharedWildcards(
+// Keep the allocation-sensitive grouping in one pass; splitting it would
+// require carrying partially owned bitmaps across helpers.
+func (r *allRule[T]) collectSharedWildcards( //nolint:gocognit
 	v T,
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
@@ -929,7 +931,12 @@ type equalityResultKey struct {
 	posting  uint32
 }
 
-func (r *allRule[T]) deduplicateEqualityResults(v T, rankedChildren []rankedBitmap) []rankedBitmap {
+// Keep the inline and overflow paths together so the common case remains
+// allocation-free and the fallback can reuse the already compacted prefix.
+func (r *allRule[T]) deduplicateEqualityResults( //nolint:gocognit,nestif
+	v T,
+	rankedChildren []rankedBitmap,
+) []rankedBitmap {
 	var seen [8]equalityResultKey
 	seenCount := 0
 	write := 0
@@ -937,6 +944,8 @@ func (r *allRule[T]) deduplicateEqualityResults(v T, rankedChildren []rankedBitm
 		duplicate := false
 		childIdx := rankedChildren[read].childIdx
 		provider := r.duplicateEqualityProviders[childIdx]
+		// The nested inline/overflow split keeps the usual path allocation-free.
+		//nolint:nestif
 		if provider != nil {
 			wildcard, posting, deduplicable := provider.lookupEqualityResultComponents(v)
 			wildcardID := r.duplicateBitmapIDs[wildcard]

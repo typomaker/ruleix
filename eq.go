@@ -114,7 +114,9 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 			}
 			parent := &lossyEqualityRule[T, V]{
 				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-				shift: uint(64 - (bucketBits - 1)), hasher: hasher, buckets: make(map[uint64]*roaring.Bitmap, (len(candidate.buckets)+1)/2),
+				shift:   uint(64 - (bucketBits - 1)),
+				hasher:  hasher,
+				buckets: make(map[uint64]*roaring.Bitmap, (len(candidate.buckets)+1)/2),
 			}
 			for bucket, posting := range candidate.buckets {
 				parentBucket := bucket >> 1

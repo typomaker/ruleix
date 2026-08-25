@@ -479,7 +479,9 @@ func stripInspectors[T any](
 		if err != nil {
 			return nil, err
 		}
-		*pending = append(*pending, pendingInspection{dst: typed.dst, strategy: strategy, mode: mode, details: details, nodes: nodes})
+		*pending = append(*pending, pendingInspection{
+			dst: typed.dst, strategy: strategy, mode: mode, details: details, nodes: nodes,
+		})
 		return &inspectedRuntimeRule[T]{child: child, metrics: &typed.dst.runtime}, nil
 	case *inspectionDetailsRule[T]:
 		return stripInspectors(typed.child, seen, pending)
