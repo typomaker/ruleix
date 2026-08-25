@@ -153,10 +153,62 @@ func TestAllSharesInternedPartialEqualityWildcards(t *testing.T) {
 	left := root.children[0].(*eqRule[constraint, int])
 	right := root.children[1].(*eqRule[constraint, int])
 	require.Same(t, left.wildcard, right.wildcard)
+	require.Equal(t, []int{1, 1}, root.sharedWildcardGroups)
+
+	ranked := []rankedBitmap{{childIdx: 0}, {childIdx: 1}}
+	ranked = root.collectSharedWildcards(constraint{left: &one, right: &one}, index.pool, ranked)
+	require.Len(t, ranked, 1)
+	require.Equal(t, uint64(7), ranked[0].card)
+	root.releaseRanked(index.pool, ranked)
 
 	for _, search := range []func(constraint, *[]int) bool{index.Search, index.Local().Search} {
 		var matches []int
 		search(constraint{left: &one, right: &one}, &matches)
 		require.Equal(t, []int{0, 1, 2, 3, 4, 5, 6}, matches)
 	}
+}
+
+func TestAllDoesNotEnableDuplicateChecksWithoutSharedWildcards(t *testing.T) {
+	type constraint struct{ left, right *int }
+	schema := All(
+		Include(GetterFromPointer(func(value constraint) *int { return value.left })),
+		Include(GetterFromPointer(func(value constraint) *int { return value.right })),
+	)
+	one, two := 1, 2
+	index, err := New[constraint, int](schema).Build(Zip(
+		[]constraint{{left: &one}, {right: &two}, {left: &two, right: &one}},
+		[]int{0, 1, 2},
+	))
+	require.NoError(t, err)
+	root := index.root.(*allRule[constraint])
+	require.Nil(t, root.sharedWildcardGroups)
+	require.False(t, root.sharedPostingResults)
+}
+
+func TestAllChecksInternedEqualityPostingOnce(t *testing.T) {
+	type constraint struct{ left, right *int }
+	schema := All(
+		Include(GetterFromPointer(func(value constraint) *int { return value.left })),
+		Include(GetterFromPointer(func(value constraint) *int { return value.right })),
+	)
+	one := 1
+	constraints := make([]constraint, equalityArrayLimit+2)
+	ids := make([]int, len(constraints))
+	for i := range constraints {
+		constraints[i] = constraint{left: &one, right: &one}
+		ids[i] = i
+	}
+	index, err := New[constraint, int](schema).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	root := index.root.(*allRule[constraint])
+	require.True(t, root.sharedPostingResults)
+
+	ranked := []rankedBitmap{{childIdx: 0}, {childIdx: 1}}
+	ranked = root.collectSharedPostingResults(constraint{left: &one, right: &one}, ranked)
+	require.Len(t, ranked, 1)
+	require.Equal(t, uint64(len(constraints)), ranked[0].card)
+
+	var matches []int
+	index.Search(constraint{left: &one, right: &one}, &matches)
+	require.Equal(t, ids, matches)
 }

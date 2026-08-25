@@ -31,6 +31,11 @@ func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} 
 type allRule[T any] struct {
 	children          []Rule[T]
 	planningProviders []planningBitmapProvider[T]
+	// sharedWildcardGroups is allocated only when Build finds equality children
+	// whose interned, non-empty wildcard bitmap is identical. Ordinary All
+	// searches therefore do not pay for duplicate-result tracking.
+	sharedWildcardGroups []int
+	sharedPostingResults bool
 	// Tests may search an internal rule before prepareSearch. Runtime indexes
 	// set this flag and can distinguish an exact schema from an unprepared one.
 	planningPrepared bool
@@ -90,7 +95,59 @@ func (r *allRule[T]) prepareSearch() {
 		}
 		r.planningProviders[i] = provider
 	}
+	r.prepareSharedWildcardGroups()
+	r.prepareSharedPostingResults()
 	r.planningPrepared = true
+}
+
+func (r *allRule[T]) prepareSharedWildcardGroups() {
+	if r.sharedWildcardGroups != nil {
+		return
+	}
+	firstByWildcard := make(map[*roaring.Bitmap]int)
+	nextGroup := 1
+	for i, child := range r.children {
+		equality, ok := sharedWildcardOf(child)
+		if !ok || equality.sharedWildcard().IsEmpty() {
+			continue
+		}
+		wildcard := equality.sharedWildcard()
+		first, found := firstByWildcard[wildcard]
+		if !found {
+			firstByWildcard[wildcard] = i
+			continue
+		}
+		if r.sharedWildcardGroups == nil {
+			r.sharedWildcardGroups = make([]int, len(r.children))
+		}
+		group := r.sharedWildcardGroups[first]
+		if group == 0 {
+			group = nextGroup
+			nextGroup++
+			r.sharedWildcardGroups[first] = group
+		}
+		r.sharedWildcardGroups[i] = group
+	}
+}
+
+func (r *allRule[T]) prepareSharedPostingResults() {
+	owners := make(map[*roaring.Bitmap]int)
+	for i, child := range r.children {
+		provider := resolveInternedEqualityResult(child)
+		if provider == nil {
+			continue
+		}
+		provider.visitInternedEqualityResults(func(bits *roaring.Bitmap) {
+			if owner, found := owners[bits]; found && owner != i {
+				r.sharedPostingResults = true
+				return
+			}
+			owners[bits] = i
+		})
+		if r.sharedPostingResults {
+			return
+		}
+	}
 }
 func (r *allRule[T]) optimize(total uint64) Rule[T] {
 	if len(r.children) == 0 {
@@ -223,6 +280,12 @@ func (r *allRule[T]) searchRanked(
 	}
 	if len(rankedChildren) == 0 {
 		return
+	}
+	if pool.local == nil && r.sharedWildcardGroups != nil {
+		rankedChildren = r.collectSharedWildcards(v, pool, rankedChildren)
+	}
+	if r.sharedPostingResults {
+		rankedChildren = r.collectSharedPostingResults(v, rankedChildren)
 	}
 	if rankedChildren[0].card > allCandidateScanLimit {
 		if !r.intersectRankedInOrderObserved(v, dst, pool, rankedChildren, metrics) {
@@ -630,9 +693,6 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 	rankedChildren []rankedBitmap,
 	metrics *inspectorRuntime,
 ) bool {
-	if pool.local == nil {
-		r.collectSharedWildcards(v, pool, rankedChildren)
-	}
 	for i := range rankedChildren {
 		bits := rankedChildren[i].bits
 		if i > 0 {
@@ -783,30 +843,25 @@ func (r *allRule[T]) collectSharedWildcards(
 	v T,
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
-) {
+) []rankedBitmap {
 	for i := range rankedChildren {
-		if rankedChildren[i].bits != nil {
+		childIdx := rankedChildren[i].childIdx
+		group := r.sharedWildcardGroups[childIdx]
+		if group == 0 || rankedChildren[i].bits != nil {
 			continue
 		}
 		first, ok := sharedWildcardOf(r.children[rankedChildren[i].childIdx])
-		if !ok || first.sharedWildcard().IsEmpty() {
-			continue
-		}
-		groupSize := 1
-		for j := i + 1; j < len(rankedChildren); j++ {
-			other, ok := sharedWildcardOf(r.children[rankedChildren[j].childIdx])
-			if ok && other.sharedWildcard() == first.sharedWildcard() {
-				groupSize++
-			}
-		}
-		if groupSize < 2 {
+		if !ok {
 			continue
 		}
 		bits := pool.get()
 		first.addConcreteMatches(v, bits)
 		for j := i + 1; j < len(rankedChildren); j++ {
+			if r.sharedWildcardGroups[rankedChildren[j].childIdx] != group {
+				continue
+			}
 			other, ok := sharedWildcardOf(r.children[rankedChildren[j].childIdx])
-			if !ok || other.sharedWildcard() != first.sharedWildcard() {
+			if !ok {
 				continue
 			}
 			concrete := pool.get()
@@ -817,14 +872,78 @@ func (r *allRule[T]) collectSharedWildcards(
 		bits.Or(first.sharedWildcard())
 		card := bits.GetCardinality()
 		for j := i; j < len(rankedChildren); j++ {
-			other, ok := sharedWildcardOf(r.children[rankedChildren[j].childIdx])
-			if ok && other.sharedWildcard() == first.sharedWildcard() {
+			if r.sharedWildcardGroups[rankedChildren[j].childIdx] == group {
 				rankedChildren[j].bits = bits
 				rankedChildren[j].card = card
 			}
 		}
 		rankedChildren[i].owned = true
 	}
+
+	// Every member of a group now points at the already-combined result
+	// W union (A1 intersection ... intersection An). Keep it once so the normal
+	// intersection path performs no duplicate And or Contains operations.
+	write := 0
+	for read := range rankedChildren {
+		group := r.sharedWildcardGroups[rankedChildren[read].childIdx]
+		if group != 0 {
+			duplicate := false
+			for previous := range write {
+				if r.sharedWildcardGroups[rankedChildren[previous].childIdx] == group {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
+		}
+		rankedChildren[write] = rankedChildren[read]
+		write++
+	}
+	return rankedChildren[:write]
+}
+
+func resolveInternedEqualityResult[T any](rule Rule[T]) internedEqualityResult[T] {
+	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
+		return resolveInternedEqualityResult(observed.child)
+	}
+	provider, _ := rule.(internedEqualityResult[T])
+	return provider
+}
+
+func (r *allRule[T]) collectSharedPostingResults(v T, rankedChildren []rankedBitmap) []rankedBitmap {
+	for i := range rankedChildren {
+		if rankedChildren[i].bits != nil {
+			continue
+		}
+		provider := resolveInternedEqualityResult(r.children[rankedChildren[i].childIdx])
+		if provider == nil {
+			continue
+		}
+		if bits, found := provider.lookupInternedEqualityResult(v); found {
+			rankedChildren[i].bits = bits
+			rankedChildren[i].card = bits.GetCardinality()
+		}
+	}
+	write := 0
+	for read := range rankedChildren {
+		duplicate := false
+		if bits := rankedChildren[read].bits; bits != nil {
+			for previous := range write {
+				if rankedChildren[previous].bits == bits {
+					duplicate = true
+					break
+				}
+			}
+		}
+		if duplicate {
+			continue
+		}
+		rankedChildren[write] = rankedChildren[read]
+		write++
+	}
+	return rankedChildren[:write]
 }
 
 func (*allRule[T]) releaseRanked(pool *bitmapPool, rankedChildren []rankedBitmap) {

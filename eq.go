@@ -445,6 +445,27 @@ func (r *eqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
 	}
 }
 func (r *eqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
+func (r *eqRule[T, V]) visitInternedEqualityResults(visit func(*roaring.Bitmap)) {
+	if !r.wildcard.IsEmpty() {
+		return
+	}
+	for i := range r.values.sets {
+		if bits := r.values.sets[i].bits; bits != nil {
+			visit(bits)
+		}
+	}
+}
+func (r *eqRule[T, V]) lookupInternedEqualityResult(v T) (*roaring.Bitmap, bool) {
+	if !r.wildcard.IsEmpty() {
+		return nil, false
+	}
+	value, ok := r.get(v)
+	if !ok {
+		return nil, false
+	}
+	set := r.values.get(value)
+	return equalitySetBitmap(set)
+}
 func (r *eqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 	value, ok := r.get(v)
 	if ok {
@@ -565,6 +586,17 @@ func (r *unaryEqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitm
 	}
 }
 func (r *unaryEqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
+func (r *unaryEqRule[T, V]) visitInternedEqualityResults(visit func(*roaring.Bitmap)) {
+	if r.wildcard.IsEmpty() && r.set.bits != nil {
+		visit(r.set.bits)
+	}
+}
+func (r *unaryEqRule[T, V]) lookupInternedEqualityResult(v T) (*roaring.Bitmap, bool) {
+	if !r.wildcard.IsEmpty() {
+		return nil, false
+	}
+	return equalitySetBitmap(r.matchingSet(getOptional(r.get, v)))
+}
 func (r *unaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
 		set.addTo(dst)
@@ -661,6 +693,22 @@ func (r *binaryEqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bit
 	}
 }
 func (r *binaryEqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
+func (r *binaryEqRule[T, V]) visitInternedEqualityResults(visit func(*roaring.Bitmap)) {
+	if !r.wildcard.IsEmpty() {
+		return
+	}
+	for i := range r.sets {
+		if r.sets[i].bits != nil {
+			visit(r.sets[i].bits)
+		}
+	}
+}
+func (r *binaryEqRule[T, V]) lookupInternedEqualityResult(v T) (*roaring.Bitmap, bool) {
+	if !r.wildcard.IsEmpty() {
+		return nil, false
+	}
+	return equalitySetBitmap(r.matchingSet(getOptional(r.get, v)))
+}
 func (r *binaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
 		set.addTo(dst)
@@ -704,4 +752,11 @@ func lookupEqualityCachedBitmap[V comparable](
 		return nil, false
 	}
 	return comparableValueCacheLookup(cache, value)
+}
+
+func equalitySetBitmap(set *equalitySet) (*roaring.Bitmap, bool) {
+	if set == nil || set.bits == nil {
+		return nil, false
+	}
+	return set.bits, true
 }
