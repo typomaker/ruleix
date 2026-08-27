@@ -11,6 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Uncached `All` execution filters an existing candidate bitmap through
   `CompareBy` postings instead of materializing the complete operator union.
+- Per-`Local` exact `All` intersection caches share an accounted 64 KiB byte
+  budget, preventing broad repeated queries from retaining oversized results.
 
 ## [0.8.1] - 2026-08-25
 

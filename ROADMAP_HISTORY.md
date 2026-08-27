@@ -8,6 +8,27 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-27: bound retained `Local` exact intersections by bytes
+
+The two-entry exact-intersection caches attached to compiled `All` plans now
+share one 64 KiB accounted-byte budget per `Local`. The accounting includes
+the Roaring payload and immutable child-bitmap references, releases bytes on
+replacement and reset, and declines an oversized result instead of letting a
+broad repeated query raise the retained-memory floor. Query-shape plans remain
+schema-bounded, and child bitmaps retain their admission-after-repeat policy.
+
+On Apple M1 Max with Go 1.26.0, five 500 ms runs kept production-shaped warm
+`Local.Search` at a 563.0 ns/op median with 0 B/op and 0 allocations/op. The
+retained-memory matrix measured medians of 2,968 B/cold `Local`, 90,806 B/warm
+`Local`, and 107,675 B/adaptive `Local`. Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/Local$' \
+  -benchmem -benchtime=500ms -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory' \
+  -benchmem -benchtime=500ms -count=5 .
+```
+
 ## 2026-08-27: filter `All` candidates through `CompareBy`
 
 Uncached `All` execution now narrows an existing candidate bitmap directly

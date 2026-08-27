@@ -607,8 +607,17 @@ func (r *allRule[T]) storeLocalResult(
 	if plan == nil {
 		return
 	}
+	bitmapBytes := bits.GetSizeInBytes()
+	inputBytes := uint64(len(rankedChildren)) * 8
+	entryBytes := bitmapBytes + inputBytes
 	entry := &plan.results[plan.next]
+	available := uint64(maxLocalAllResultBytes) - min(pool.allResultBytes, uint64(maxLocalAllResultBytes))
+	available = saturatingAdd(available, entry.bytes)
+	if entryBytes > available {
+		return
+	}
 	plan.next = (plan.next + 1) % uint8(len(plan.results))
+	pool.allResultBytes -= entry.bytes
 	if cap(entry.inputs) < len(rankedChildren) {
 		entry.inputs = make([]*roaring.Bitmap, len(rankedChildren))
 	} else {
@@ -624,6 +633,8 @@ func (r *allRule[T]) storeLocalResult(
 	}
 	entry.bits.Or(bits)
 	entry.epoch = pool.cacheEpoch
+	entry.bytes = entryBytes
+	pool.allResultBytes += entryBytes
 }
 
 func cachedCardinality[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, bool) {

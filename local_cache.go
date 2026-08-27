@@ -24,6 +24,7 @@ type localAllResult struct {
 	inputs []*roaring.Bitmap
 	epoch  uint64
 	bits   *roaring.Bitmap
+	bytes  uint64
 }
 
 func (p *localAllPlan) resetResults(pool *bitmapPool) {
@@ -32,6 +33,7 @@ func (p *localAllPlan) resetResults(pool *bitmapPool) {
 		if result.bits != nil {
 			pool.put(result.bits)
 		}
+		pool.allResultBytes -= result.bytes
 		*result = localAllResult{}
 	}
 	p.next = 0

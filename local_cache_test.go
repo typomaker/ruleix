@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -460,4 +461,29 @@ func TestLocalAllResultCacheInvalidatesWhenChildCacheChanges(t *testing.T) {
 	plan := local.pool.allPlans[index.root]
 	require.NotNil(t, plan)
 	require.True(t, plan.results[0].bits != nil || plan.results[1].bits != nil)
+}
+
+func TestLocalAllResultCacheHonorsSharedByteBudget(t *testing.T) {
+	pool := newBitmapPool()
+	pool.local = make([]localNodeCache, 1)
+	pool.observeRuntime = false
+	rule := &allRule[int]{}
+	plan := &localAllPlan{order: []int{0}}
+	pool.allPlans = map[any]*localAllPlan{rule: plan}
+	ranked := []rankedBitmap{{bits: roaring.BitmapOf(1), childIdx: 0}}
+
+	large := roaring.New()
+	for id := uint32(0); large.GetSizeInBytes() <= maxLocalAllResultBytes; id += 2 {
+		large.Add(id)
+	}
+	rule.storeLocalResult(pool, ranked, large)
+	require.Zero(t, pool.allResultBytes)
+	require.Nil(t, plan.results[0].bits)
+
+	small := roaring.BitmapOf(1, 2, 3)
+	rule.storeLocalResult(pool, ranked, small)
+	require.Positive(t, pool.allResultBytes)
+	require.LessOrEqual(t, pool.allResultBytes, uint64(maxLocalAllResultBytes))
+	plan.resetResults(pool)
+	require.Zero(t, pool.allResultBytes)
 }

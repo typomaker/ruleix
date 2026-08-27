@@ -11,6 +11,7 @@ type bitmapPool struct {
 	rankedPool     sync.Pool
 	local          []localNodeCache
 	allPlans       map[any]*localAllPlan
+	allResultBytes uint64
 	cacheEpoch     uint64
 	observers      cacheObservers // test-only fallback for caches without a compiled node ID
 	inspectors     localInspectorRuntimeChunk
@@ -83,6 +84,11 @@ func (p *bitmapPool) flushInspectorMetrics() {
 // 64 KiB keeps the common small and medium scratch bitmaps reusable while
 // discarding bitmaps large enough to have accumulated many containers.
 const maxPooledBitmapBytes = 64 << 10
+
+// maxLocalAllResultBytes bounds exact-intersection bitmaps retained by one
+// Local across every compiled All node. Plans remain cheap and schema-bounded;
+// result payloads depend on query cardinality and need a separate byte budget.
+const maxLocalAllResultBytes = 64 << 10
 
 type rankedBitmap struct {
 	bits     *roaring.Bitmap

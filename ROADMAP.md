@@ -84,7 +84,9 @@ Implement the rewrite in this order:
    plan cheaply against current postings before reuse, and retain the current
    admission-after-repeat behavior so one-off values do not pin bitmaps. Bound
    caches by accounted bytes as well as entry count before increasing their
-   working-set capacity.
+   working-set capacity. Exact-intersection results now share a 64 KiB
+   accounted-byte budget per `Local`; apply the same accounting discipline to
+   any future plan or child-cache capacity increase.
 3. **Share sampled planner statistics across `Local` instances.** Only after
    the deterministic cost model is stable, add a compact `Index`-owned profile
    containing aggregate operation cost, actual cardinality, empty rate, and
