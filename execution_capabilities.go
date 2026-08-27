@@ -67,7 +67,8 @@ func supportsRuleIDMatch[T any](rule Rule[T]) bool {
 // shouldValidateCandidates compares direct ID checks with acquiring and
 // intersecting the remaining child results. The units are intentionally
 // coarse: a membership check costs 16 serialized bitmap bytes, while consuming
-// an existing posting costs its exact serialized size. This distinguishes a
+// an existing posting uses its exact serialized size and an unmaterialized
+// result uses its conservative cardinality estimate. This distinguishes a
 // dense run container from an equally cardinal sparse bitmap without scanning
 // either posting. Exact query facts in ranked take precedence over estimates.
 // If either side cannot be costed conservatively, retain the benchmark-selected
@@ -87,18 +88,31 @@ func (r *allRule[T]) shouldValidateRemaining(candidates uint64, remaining []rank
 	if len(remaining) == 0 {
 		return false
 	}
+	if candidates <= allCandidateScanLimit {
+		for _, child := range remaining {
+			if !r.supportsDirectIDMatch(child.childIdx) {
+				return false
+			}
+		}
+		return true
+	}
 	validationCost := uint64(0)
 	bitmapCost := uint64(0)
 	for _, child := range remaining {
 		if !r.supportsDirectIDMatch(child.childIdx) {
 			return candidates <= allCandidateScanLimit
 		}
-		validationCost = saturatingAdd(validationCost, saturatingMul(candidates, allDirectIDWork))
-
+		directWork := uint64(allDirectIDWork)
 		if child.bits == nil {
+			directWork = allUnmaterializedDirectIDWork
+		}
+		validationCost = saturatingAdd(validationCost, saturatingMul(candidates, directWork))
+
+		work, known := rankedBitmapNarrowWork(child)
+		if !known {
 			return candidates <= allCandidateScanLimit
 		}
-		bitmapCost = saturatingAdd(bitmapCost, child.bits.GetSerializedSizeInBytes())
+		bitmapCost = saturatingAdd(bitmapCost, work)
 	}
 	return validationCost < bitmapCost ||
 		(validationCost == bitmapCost && candidates <= allCandidateScanLimit)

@@ -21,6 +21,14 @@ func (r *inaccurateEstimateRule) estimateCheapCardinality(int) uint64 { return r
 
 type unknownEstimateMatchingRule[T any] struct{ child Rule[T] }
 
+type estimatedMatchingRule[T any] struct {
+	*unknownEstimateMatchingRule[T]
+	estimate uint64
+}
+
+func (r *estimatedMatchingRule[T]) estimateCardinality(T) uint64      { return r.estimate }
+func (r *estimatedMatchingRule[T]) estimateCheapCardinality(T) uint64 { return r.estimate }
+
 func (*unknownEstimateMatchingRule[T]) rule() {}
 func (r *unknownEstimateMatchingRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	return &unknownEstimateMatchingRule[T]{child: r.child.newState(ids, hints)}
@@ -174,6 +182,43 @@ func BenchmarkAllCostBasedBroadSibling(b *testing.B) {
 	} {
 		b.Run(name, func(b *testing.B) {
 			rule := &allRule[int]{children: children}
+			rule.prepareSearch()
+			pool := newBitmapPool()
+			dst := roaring.New()
+			b.ReportAllocs()
+			for range b.N {
+				dst.Clear()
+				rule.search(0, dst, pool)
+			}
+			plannerBenchmarkCardinality = dst.GetCardinality()
+		})
+	}
+}
+
+// BenchmarkAllEstimatedBroadSibling covers direct validation against an
+// unmaterialized child whose complete result has a conservative estimate.
+// Last local run on Apple M1 Max: cost model 542.9 ns/op, 64 B/op, 4 allocs;
+// unknown-cost fallback 20.844 us/op, 135,878 B/op, 51 allocs (median of five
+// 1 s runs).
+// Reproduce with:
+//
+//	go test -run '^$' -bench '^BenchmarkAllEstimatedBroadSibling$' -benchmem -benchtime=1s -count=5 .
+func BenchmarkAllEstimatedBroadSibling(b *testing.B) {
+	selective := roaring.New()
+	selective.AddRange(0, 16)
+	broad := roaring.New()
+	for id := uint32(0); id < 1_000_000; id += 10 {
+		broad.Add(id)
+	}
+	for name, sibling := range map[string]Rule[int]{
+		"CostModel": &estimatedMatchingRule[int]{
+			unknownEstimateMatchingRule: &unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: broad}},
+			estimate:                    broad.GetCardinality(),
+		},
+		"UnknownFallback": &unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: broad}},
+	} {
+		b.Run(name, func(b *testing.B) {
+			rule := &allRule[int]{children: []Rule[int]{&matchAllRule[int]{bits: selective}, sibling}}
 			rule.prepareSearch()
 			pool := newBitmapPool()
 			dst := roaring.New()

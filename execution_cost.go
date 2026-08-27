@@ -3,9 +3,14 @@ package ruleix
 const (
 	// Work units are serialized bitmap bytes. They deliberately approximate
 	// memory traffic instead of elapsed time, keeping decisions deterministic.
-	allDirectIDWork        = 16
-	allMaterializeIDWork   = 64
-	allMaterializeBaseWork = 64
+	allDirectIDWork = 16
+	// A representation matcher may perform getters, comparisons, or index
+	// lookups that are much more expensive than immutable bitmap membership.
+	// Until a representation exposes a cheaper exact cost, price an
+	// unmaterialized direct check conservatively.
+	allUnmaterializedDirectIDWork = 65536
+	allMaterializeIDWork          = 64
+	allMaterializeBaseWork        = 64
 )
 
 // estimatedBitmapWork is used only when the query cannot expose an immutable

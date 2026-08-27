@@ -100,6 +100,37 @@ go test -run '^$' \
   -benchmem -benchtime=1s -count=5 .
 ```
 
+## 2026-08-28: cost unmaterialized direct validation
+
+The step-2 executor can now compare direct ID validation with the conservative
+acquisition and intersection cost of a remaining child whose complete bitmap
+has not been built. Exact immutable bitmap membership retains its 16-byte work
+unit; representation matchers use a conservative 64 KiB unit until a later
+representation-specific operation proves a cheaper cost. The measured
+eight-candidate path remains an unconditional fallback when every remaining
+child supports direct matching, and unknown acquisition costs retain it above
+that boundary.
+
+The first prototype priced every representation matcher like bitmap membership.
+It reduced allocation traffic but regressed production-shaped `Index.Search`
+from the preceding 44 us class to about 95 us, so that price was rejected. With
+the conservative matcher price, five one-second runs measured medians of
+30.304 us/op, 40,853 B/op, and 28 allocs/op for `Index.Search`, and 558.2 ns/op
+with zero bytes and allocations for warm `Local.Search`. The focused sparse
+unmaterialized-sibling benchmark measured 542.9 ns/op, 64 B/op, and four
+allocations versus 20.844 us/op, 135,878 B/op, and 51 allocations when the cost
+is unavailable.
+
+The ordinary and race suites, parallel Local, production-scale matrix, and
+retained-memory gate passed. Parallel Local measured a 479.1 ns/search median;
+retained memory medians were 2,968 B cold, 91,019 B warm, and 107,861 B adaptive.
+Reproduce the focused comparison with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllEstimatedBroadSibling$' \
+  -benchmem -benchtime=1s -count=5 .
+```
+
 ## 2026-08-27: complete cost-based `All` cutover
 
 The adaptive `All` executor passed its production-shaped cutover gate after the
