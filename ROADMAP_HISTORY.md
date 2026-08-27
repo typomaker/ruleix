@@ -8,6 +8,30 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-27: complete representation-specific `All` candidate filtering
+
+The first cost-based executor step is complete. Ordered, `Between`, and
+`CompareBy` representations can narrow an existing candidate bitmap directly;
+the accepted focused results are recorded below. Exclusions already apply to
+the narrowed final result and direct ID validation covers selective candidate
+sets, so they need no separate positive-result materialization path.
+
+Equality candidate filtering was tested and rejected. On a 100K-rule shape
+whose second equality result combines a wildcard and a concrete posting,
+ordinary union materialization measured a median 9.48 us, 32,917 B, and 8
+allocations per operation across five 500 ms runs. Filtering with Roaring
+`AndAny` measured 9.09 us, 32,961 B, and 9 allocations: the small latency
+difference did not avoid union work or allocation traffic and also displaced
+the existing range-pruning strategy. The focused benchmark remains as a gate.
+Unconditional ordered-source streaming was separately rejected below; revisit
+either experiment only for a workload that can stop early or avoid materially
+more union work. Reproduce the equality comparison with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllEqualityCandidateFiltering$' \
+  -benchmem -benchtime=500ms -count=5 .
+```
+
 ## 2026-08-27: bound retained `Local` exact intersections by bytes
 
 The two-entry exact-intersection caches attached to compiled `All` plans now

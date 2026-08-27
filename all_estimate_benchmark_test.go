@@ -125,6 +125,45 @@ func BenchmarkAllCompareByCandidateFiltering(b *testing.B) {
 	}
 }
 
+// BenchmarkAllEqualityCandidateFiltering measures a broad equality candidate
+// followed by another equality result composed from a wildcard and a concrete
+// posting. Apple M1 Max / Go 1.26.0 medians across five 500 ms runs: 9.48 us,
+// 32,917 B, 8 allocs when materializing the equality union; an AndAny candidate
+// filter measured 9.09 us, 32,961 B, 9 allocs and was rejected. Reproduce with:
+//
+//	go test -run '^$' -bench '^BenchmarkAllEqualityCandidateFiltering$' -benchmem -benchtime=500ms -count=5 .
+func BenchmarkAllEqualityCandidateFiltering(b *testing.B) {
+	type constraint struct {
+		first  int
+		second int
+		any    bool
+	}
+	const entries = 100_000
+	constraints := make([]constraint, entries)
+	ids := make([]uint32, entries)
+	for id := range uint32(entries) {
+		constraints[id] = constraint{
+			first: int(id % 2), second: int(id % 4), any: id%5 == 0,
+		}
+		ids[id] = id
+	}
+	rule := All(
+		Include(func(value constraint) (int, bool) { return value.first, true }),
+		Include(func(value constraint) (int, bool) { return value.second, !value.any }),
+	)
+	index, err := New[constraint, uint32](rule).Build(Zip(constraints, ids))
+	requireNoBenchmarkError(b, err)
+	query := constraint{first: 0, second: 0}
+	dst := roaring.New()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		dst.Clear()
+		index.root.search(query, dst, index.pool)
+		plannerBenchmarkCardinality = dst.GetCardinality()
+	}
+}
+
 // BenchmarkAllOrderedStreaming measures a selective ordered source followed by
 // a broader exact equality posting. Apple M1 Max / Go 1.26.0 medians across
 // five 1 s runs: 232.8 us, 128,298 B, 20 allocs when intersecting each streamed

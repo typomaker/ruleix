@@ -70,16 +70,7 @@ allocation traffic.
 
 Implement the rewrite in this order:
 
-1. **Add representation-specific candidate filters and ordered streaming.**
-   Teach equality, exclusion, `CompareBy`, and `Between` representations to
-   narrow an existing candidate set without first constructing their complete
-   result where benchmarks justify it. Materialize an ordered union only when
-   it is selected as a broad candidate source or is cheaper than filtering.
-   Keep direct getters and comparisons out of shared mutable state. A first
-   posting-by-posting ordered streaming experiment did not beat Roaring union
-   materialization; reconsider streaming only for a workload where it can stop
-   early or avoid substantially more union work.
-2. **Retain bounded per-`Local` plans and results.** Cache query-shape plans,
+1. **Retain bounded per-`Local` plans and results.** Cache query-shape plans,
    child bitmaps, and exact intersections independently. Validate a cached
    plan cheaply against current postings before reuse, and retain the current
    admission-after-repeat behavior so one-off values do not pin bitmaps. Bound
@@ -87,7 +78,7 @@ Implement the rewrite in this order:
    working-set capacity. Exact-intersection results now share a 64 KiB
    accounted-byte budget per `Local`; apply the same accounting discipline to
    any future plan or child-cache capacity increase.
-3. **Share sampled planner statistics across `Local` instances.** Only after
+2. **Share sampled planner statistics across `Local` instances.** Only after
    the deterministic cost model is stable, add a compact `Index`-owned profile
    containing aggregate operation cost, actual cardinality, empty rate, and
    candidate rejection rate by bounded query shape. Each `Local` reads one
@@ -96,13 +87,13 @@ Implement the rewrite in this order:
    Never update shared atomics, take timers, or publish a new snapshot on every
    search. Cached bitmaps, query values, exact intersections, and final plan
    choices remain local.
-4. **Control learning bias and memory.** Track sample counts and confidence,
+3. **Control learning bias and memory.** Track sample counts and confidence,
    distinguish missing observations from zero cost, use occasional bounded
    exploration only in sampled local contexts, and let local evidence override
    the shared prior. Limit query shapes and shared profile bytes per compiled
    `All`, use deterministic eviction, and prove that adversarial high-cardinality
    query values cannot cause unbounded retention.
-5. **Cut over and simplify.** Run the old and new planners against the same
+4. **Cut over and simplify.** Run the old and new planners against the same
     generated and production-shaped queries in correctness tests, including
     nested `All`, wildcard sharing, exclusions, lossy rules, duplicate external
     IDs, and empty and large results. Enable the new executor only after its
