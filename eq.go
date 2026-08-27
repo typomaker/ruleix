@@ -356,6 +356,17 @@ type eqRule[T any, V comparable] struct {
 	values   equalityIndex[V]
 }
 
+func (r *eqRule[T, V]) executionFacts() ruleExecutionFacts {
+	facts := ruleExecutionFacts{
+		wildcard: wildcardMatchesQueries, wildcardCardinality: r.wildcard.GetCardinality(),
+	}
+	addExecutionPosting(&facts, facts.wildcardCardinality)
+	for i := range r.values.sets {
+		addExecutionPosting(&facts, r.values.sets[i].cardinality())
+	}
+	return facts
+}
+
 func (r *eqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*eqRule[T, V]) inspectionStrategy() string { return "equality" }
@@ -518,6 +529,13 @@ type unaryEqRule[T any, V comparable] struct {
 	set      equalitySet
 }
 
+func (r *unaryEqRule[T, V]) executionFacts() ruleExecutionFacts {
+	facts := ruleExecutionFacts{wildcard: wildcardMatchesQueries, wildcardCardinality: r.wildcard.GetCardinality()}
+	addExecutionPosting(&facts, facts.wildcardCardinality)
+	addExecutionPosting(&facts, r.set.cardinality())
+	return facts
+}
+
 func (r *unaryEqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*unaryEqRule[T, V]) inspectionStrategy() string { return "equality-unary" }
@@ -617,6 +635,15 @@ type binaryEqRule[T any, V comparable] struct {
 	wildcard *roaring.Bitmap
 	keys     [2]V
 	sets     [2]equalitySet
+}
+
+func (r *binaryEqRule[T, V]) executionFacts() ruleExecutionFacts {
+	facts := ruleExecutionFacts{wildcard: wildcardMatchesQueries, wildcardCardinality: r.wildcard.GetCardinality()}
+	addExecutionPosting(&facts, facts.wildcardCardinality)
+	for i := range r.sets {
+		addExecutionPosting(&facts, r.sets[i].cardinality())
+	}
+	return facts
 }
 
 func (r *binaryEqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }

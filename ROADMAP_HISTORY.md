@@ -8,6 +8,34 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-27: separate static execution analysis from query planning
+
+`Build` now compiles immutable execution facts beside each `All` child's
+capability and cost descriptor: posting count, minimum, maximum, and total
+posting cardinality, plus wildcard behavior and cardinality. Equality
+(including unary and binary specializations), ordered, `Between`, `CompareBy`,
+lossy equality and ordered, and match-all representations provide these facts.
+Wrappers are removed before analysis, so inspection and lossy policy do not
+hide the selected representation.
+
+The shadow planner no longer calls general cardinality estimators. It inspects
+only exact query postings, already-cached local bitmaps, and constant-time cheap
+cardinalities; a focused test proves that an ordered-cost estimator is not
+called. Descriptors retain no query values and require no runtime metrics.
+
+On Apple M1 Max, the shadow decision measured a median 91.46 ns/op with 0 B/op
+and 0 allocations/op across five 1 s runs. The production-shaped acceptance
+check measured median `Index.Search` 38.1 us/op, 73,394 B/op, 28 allocs/op and
+warm `Local.Search` 552.7 ns/op, 0 B/op, 0 allocs/op across three 500 ms runs.
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllShadowDecision$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=500ms -count=3 .
+```
+
 ## 2026-08-27: introduce execution capabilities and shadow cost model
 
 Compiled `All` rules now retain compact immutable descriptors for exact

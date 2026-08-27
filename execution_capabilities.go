@@ -31,6 +31,7 @@ const (
 
 type ruleExecutionDescriptor struct {
 	capabilities executionCapability
+	facts        ruleExecutionFacts
 	acquire      executionCostClass
 	estimate     executionCostClass
 	matchID      executionCostClass
@@ -39,11 +40,64 @@ type ruleExecutionDescriptor struct {
 	materialize  executionCostClass
 }
 
+type wildcardBehavior uint8
+
+const (
+	wildcardNone wildcardBehavior = iota
+	wildcardMatchesQueries
+	wildcardComposed
+)
+
+// ruleExecutionFacts are compiled once after Build has finished inserting
+// rules. They deliberately contain no query values or mutable observations.
+type ruleExecutionFacts struct {
+	postingCount        uint32
+	minPostingSize      uint64
+	maxPostingSize      uint64
+	totalPostingSize    uint64
+	wildcardCardinality uint64
+	wildcard            wildcardBehavior
+}
+
+type executionFactsProvider interface {
+	executionFacts() ruleExecutionFacts
+}
+
+func addExecutionPosting(facts *ruleExecutionFacts, size uint64) {
+	if facts.postingCount == 0 || size < facts.minPostingSize {
+		facts.minPostingSize = size
+	}
+	facts.postingCount++
+	facts.maxPostingSize = max(facts.maxPostingSize, size)
+	facts.totalPostingSize += size
+}
+
+func mergeExecutionFacts(left, right ruleExecutionFacts) ruleExecutionFacts {
+	merged := ruleExecutionFacts{
+		postingCount:        left.postingCount + right.postingCount,
+		maxPostingSize:      max(left.maxPostingSize, right.maxPostingSize),
+		totalPostingSize:    left.totalPostingSize + right.totalPostingSize,
+		wildcardCardinality: left.wildcardCardinality + right.wildcardCardinality,
+		wildcard:            wildcardComposed,
+	}
+	if left.postingCount == 0 {
+		merged.minPostingSize = right.minPostingSize
+	} else if right.postingCount == 0 {
+		merged.minPostingSize = left.minPostingSize
+	} else {
+		merged.minPostingSize = min(left.minPostingSize, right.minPostingSize)
+	}
+	return merged
+}
+
 func describeRuleExecution[T any](rule Rule[T]) ruleExecutionDescriptor {
 	rule = unwrapExecutionRule(rule)
 	d := ruleExecutionDescriptor{
 		capabilities: executionMaterialize,
 		materialize:  executionCostPerPosting,
+	}
+	if provider, ok := any(rule).(executionFactsProvider); ok {
+		d.facts = provider.executionFacts()
 	}
 	if _, ok := rule.(planningBitmapProvider[T]); ok {
 		d.capabilities |= executionExactPosting
@@ -120,8 +174,8 @@ func (r *allRule[T]) shadowDecision(value T, pool *bitmapPool) shadowExecutionDe
 		if bits, ok := cachedBitmap(child, value, pool); ok {
 			cardinality = bits.GetCardinality()
 			operation = shadowConsumePosting
-		} else if cardinality == ^uint64(0) && d.capabilities&executionEstimate != 0 {
-			if estimate, ok := estimateCardinalityForPlan(child, value, pool); ok {
+		} else if cardinality == ^uint64(0) && d.capabilities&executionCheapEstimate != 0 {
+			if estimate, ok := cheapCardinality(child, value); ok {
 				cardinality = estimate
 			}
 		}

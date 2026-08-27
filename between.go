@@ -29,6 +29,10 @@ type betweenRule[T any, V any] struct {
 	compare Compare[V]
 }
 
+func (r *betweenRule[T, V]) executionFacts() ruleExecutionFacts {
+	return mergeExecutionFacts(r.from.executionFacts(), r.until.executionFacts())
+}
+
 func (r *betweenRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
