@@ -14,7 +14,6 @@ func TestExecutionDescriptorMakesMissingCapabilitiesExplicit(t *testing.T) {
 	require.Equal(t, executionMaterialize, descriptor.capabilities)
 	require.Equal(t, executionCostUnavailable, descriptor.matchID)
 	require.Equal(t, executionCostUnavailable, descriptor.filter)
-	require.Equal(t, executionCostUnavailable, descriptor.stream)
 	require.Equal(t, executionCostPerPosting, descriptor.materialize)
 }
 
@@ -29,7 +28,7 @@ func TestExecutionDescriptorRecordsRepresentationOperations(t *testing.T) {
 	descriptor := describeRuleExecution[int](ordered)
 
 	require.Equal(t,
-		executionEstimate|executionMatchID|executionFilterCandidates|executionOrderedStream|executionMaterialize,
+		executionEstimate|executionMatchID|executionFilterCandidates|executionMaterialize,
 		descriptor.capabilities,
 	)
 	require.Equal(t, executionCostOrderedWalk, descriptor.estimate)

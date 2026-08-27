@@ -12,7 +12,6 @@ const (
 	executionEstimate
 	executionMatchID
 	executionFilterCandidates
-	executionOrderedStream
 	executionMaterialize
 )
 
@@ -36,7 +35,6 @@ type ruleExecutionDescriptor struct {
 	estimate     executionCostClass
 	matchID      executionCostClass
 	filter       executionCostClass
-	stream       executionCostClass
 	materialize  executionCostClass
 }
 
@@ -118,10 +116,6 @@ func describeRuleExecution[T any](rule Rule[T]) ruleExecutionDescriptor {
 		d.capabilities |= executionFilterCandidates
 		d.filter = executionCostPerPosting
 	}
-	if _, ok := rule.(orderedResultStreamer[T]); ok {
-		d.capabilities |= executionOrderedStream
-		d.stream = executionCostOrderedWalk
-	}
 	return d
 }
 
@@ -147,7 +141,6 @@ const (
 	shadowConsumePosting
 	shadowValidateCandidates
 	shadowFilterCandidates
-	shadowStreamResult
 )
 
 type shadowExecutionDecision struct {

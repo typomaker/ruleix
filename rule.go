@@ -116,13 +116,6 @@ type candidateFilter[T any] interface {
 	filterCandidates(T, *roaring.Bitmap, *bitmapPool)
 }
 
-// orderedResultStreamer visits the immutable postings that form a rule result
-// in representation order. Returning false stops the walk. The operation does
-// not construct the complete result bitmap.
-type orderedResultStreamer[T any] interface {
-	streamMatchingBitmaps(T, func(*roaring.Bitmap) bool)
-}
-
 // sharedWildcardEquality exposes the two disjoint parts of an equality match
 // to All. Equal wildcard pointers are guaranteed immutable after Build and
 // arise naturally from bitmap interning.

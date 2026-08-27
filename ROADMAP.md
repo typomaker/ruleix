@@ -75,7 +75,10 @@ Implement the rewrite in this order:
    narrow an existing candidate set without first constructing their complete
    result where benchmarks justify it. Materialize an ordered union only when
    it is selected as a broad candidate source or is cheaper than filtering.
-   Keep direct getters and comparisons out of shared mutable state.
+   Keep direct getters and comparisons out of shared mutable state. A first
+   posting-by-posting ordered streaming experiment did not beat Roaring union
+   materialization; reconsider streaming only for a workload where it can stop
+   early or avoid substantially more union work.
 2. **Retain bounded per-`Local` plans and results.** Cache query-shape plans,
    child bitmaps, and exact intersections independently. Validate a cached
    plan cheaply against current postings before reuse, and retain the current

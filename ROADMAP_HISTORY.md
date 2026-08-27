@@ -37,6 +37,26 @@ go test -run '^$' \
   -benchmem -benchtime=300ms -count=3 .
 ```
 
+## 2026-08-27: reject unconditional ordered-source streaming
+
+The first ordered streaming experiment intersected each immutable ordered
+posting with all remaining exact `All` postings before adding it to the final
+union. It preserved exact insertion-ordered results and avoided constructing
+the complete ordered child bitmap, but did not reduce work on a 100K-rule case:
+Roaring's bulk union followed by intersection was already slightly faster and
+used one fewer pooled temporary.
+
+On Apple M1 Max with Go 1.26.0, five 1 s runs measured streaming at a median
+232.8 us/op, 128,298 B/op, and 20 allocs/op, versus 229.8 us/op, 128,042 B/op,
+and 19 allocs/op for materialization. The streaming execution capability and
+unused representation methods were removed. The focused benchmark remains as
+a gate for a future bounded or early-stopping strategy. Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllOrderedStreaming$' \
+  -benchmem -benchtime=1s -count=5 .
+```
+
 ## 2026-08-27: separate static execution analysis from query planning
 
 `Build` now compiles immutable execution facts beside each `All` child's
@@ -77,8 +97,9 @@ an implicit per-candidate `MatchID` fallback.
 The opt-in shadow decision selects a proposed candidate source and validation
 mode for tests and benchmarks only; production `Search` does not invoke it or
 change results. Equality/range interfaces remain allocation-free, and ordered
-and `CompareBy` representations now expose ordered posting streams for future
-executor steps. On Apple M1 Max, the three-child shadow decision measured a
+and `CompareBy` representations exposed ordered posting streams for the
+experiment recorded above; those unused capabilities were later removed. On
+Apple M1 Max, the three-child shadow decision measured a
 median 104.6 ns/op with 0 B/op and 0 allocations/op across five 1 s runs.
 Reproduce with:
 
