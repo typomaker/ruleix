@@ -86,19 +86,6 @@ type orderedRule[T any, V any] struct {
 	index     orderedIndex[V]
 }
 
-func (r *orderedRule[T, V]) executionFacts() ruleExecutionFacts {
-	facts := ruleExecutionFacts{
-		wildcard: wildcardMatchesQueries, wildcardCardinality: r.wildcard.GetCardinality(),
-	}
-	addExecutionPosting(&facts, facts.wildcardCardinality)
-	for _, block := range r.index.blocks {
-		for _, item := range block.items {
-			addExecutionPosting(&facts, item.bits.GetCardinality())
-		}
-	}
-	return facts
-}
-
 func (r *orderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (r *orderedRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {

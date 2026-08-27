@@ -504,15 +504,6 @@ type lossyEqualityRule[T any, V comparable] struct {
 	buckets  map[uint64]*roaring.Bitmap
 }
 
-func (r *lossyEqualityRule[T, V]) executionFacts() ruleExecutionFacts {
-	facts := ruleExecutionFacts{wildcard: wildcardMatchesQueries, wildcardCardinality: r.wildcard.GetCardinality()}
-	addExecutionPosting(&facts, facts.wildcardCardinality)
-	for _, bits := range r.buckets {
-		addExecutionPosting(&facts, bits.GetCardinality())
-	}
-	return facts
-}
-
 func (r *lossyEqualityRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 type scalarHasher[V comparable] struct {
@@ -667,17 +658,6 @@ type lossyOrderedRule[T any, V any] struct {
 	wildcard        *roaring.Bitmap
 	min, max, width uint64
 	buckets         []*roaring.Bitmap
-}
-
-func (r *lossyOrderedRule[T, V]) executionFacts() ruleExecutionFacts {
-	facts := ruleExecutionFacts{wildcard: wildcardMatchesQueries, wildcardCardinality: r.wildcard.GetCardinality()}
-	addExecutionPosting(&facts, facts.wildcardCardinality)
-	for _, bits := range r.buckets {
-		if bits != nil {
-			addExecutionPosting(&facts, bits.GetCardinality())
-		}
-	}
-	return facts
 }
 
 func (r *lossyOrderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }

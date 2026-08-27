@@ -24,9 +24,9 @@ const allDirectExclusionScanLimit = 16
 func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} }
 
 type allRule[T any] struct {
-	children             []Rule[T]
-	planningProviders    []planningBitmapProvider[T]
-	executionDescriptors []ruleExecutionDescriptor
+	children          []Rule[T]
+	planningProviders []planningBitmapProvider[T]
+	directIDMatchers  []bool
 	// sharedWildcardGroups is allocated only when Build finds equality children
 	// whose interned, non-empty wildcard bitmap is identical. Ordinary All
 	// searches therefore do not pay for duplicate-result tracking.
@@ -83,10 +83,10 @@ func (r *allRule[T]) prepareSearch() {
 		prepareRuleSearch(child)
 	}
 	for i, child := range r.children {
-		if r.executionDescriptors == nil {
-			r.executionDescriptors = make([]ruleExecutionDescriptor, len(r.children))
+		if r.directIDMatchers == nil {
+			r.directIDMatchers = make([]bool, len(r.children))
 		}
-		r.executionDescriptors[i] = describeRuleExecution(child)
+		r.directIDMatchers[i] = supportsRuleIDMatch(child)
 		provider := resolvePlanningBitmapProvider(child)
 		if provider == nil {
 			continue
@@ -101,11 +101,11 @@ func (r *allRule[T]) prepareSearch() {
 	r.planningPrepared = true
 }
 
-func (r *allRule[T]) executionDescriptor(index int, child Rule[T]) ruleExecutionDescriptor {
-	if len(r.executionDescriptors) == len(r.children) {
-		return r.executionDescriptors[index]
+func (r *allRule[T]) supportsDirectIDMatch(index int) bool {
+	if len(r.directIDMatchers) == len(r.children) {
+		return r.directIDMatchers[index]
 	}
-	return describeRuleExecution(child)
+	return supportsRuleIDMatch(r.children[index])
 }
 
 func (r *allRule[T]) prepareSharedWildcardGroups() {
@@ -846,8 +846,7 @@ func (r *allRule[T]) validateCandidateBitmap(
 		if remaining[i].bits != nil {
 			continue
 		}
-		descriptor := r.executionDescriptor(remaining[i].childIdx, r.children[remaining[i].childIdx])
-		if descriptor.capabilities&executionMatchID != 0 {
+		if r.supportsDirectIDMatch(remaining[i].childIdx) {
 			continue
 		}
 		bits := pool.get()
@@ -907,8 +906,7 @@ func (r *allRule[T]) candidateValidationScore(candidates uint64, ranked rankedBi
 	if ranked.bits != nil {
 		return rejected, 1
 	}
-	descriptor := r.executionDescriptor(ranked.childIdx, r.children[ranked.childIdx])
-	if descriptor.matchID == executionCostPerCandidate {
+	if r.supportsDirectIDMatch(ranked.childIdx) {
 		return rejected, 2
 	}
 	return rejected, 4

@@ -37,24 +37,6 @@ type compareByRule[T any, V any] struct {
 	hints    [5]orderedBuildStatistics
 }
 
-func (r *compareByRule[T, V]) executionFacts() ruleExecutionFacts {
-	facts := ruleExecutionFacts{
-		wildcard: wildcardMatchesQueries, wildcardCardinality: r.wildcard.GetCardinality(),
-	}
-	addExecutionPosting(&facts, facts.wildcardCardinality)
-	for _, index := range r.indexes {
-		if index == nil {
-			continue
-		}
-		for _, block := range index.blocks {
-			for _, item := range block.items {
-				addExecutionPosting(&facts, item.bits.GetCardinality())
-			}
-		}
-	}
-	return facts
-}
-
 func (r *compareByRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }

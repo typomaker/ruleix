@@ -209,11 +209,6 @@ func optimizeRule[T any](rule Rule[T], total uint64) Rule[T] {
 
 type matchAllRule[T any] struct{ bits *roaring.Bitmap }
 
-func (r *matchAllRule[T]) executionFacts() ruleExecutionFacts {
-	size := r.bits.GetCardinality()
-	return ruleExecutionFacts{postingCount: 1, minPostingSize: size, maxPostingSize: size, totalPostingSize: size}
-}
-
 func (*matchAllRule[T]) rule()                                                 {}
 func (r *matchAllRule[T]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
 func (*matchAllRule[T]) validate(T) error                                      { return nil }

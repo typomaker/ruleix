@@ -49,35 +49,6 @@ For `All`, start with the most selective predicate. Refine the ordering only
 when cheap estimates can distinguish the cost of materializing a bitmap from
 checking the current candidate set.
 
-#### Cost-based `All` executor rewrite
-
-Replace the current cardinality-ordered executor incrementally rather than in
-one change. The target planner chooses an operation, not only a child order:
-consume an existing posting, validate a small candidate set by ID, filter an
-existing bitmap in place, stream an ordered result, or materialize a complete
-child bitmap. Preserve insertion-ordered results, exact matching semantics,
-the immutable `Index`, lock-free concurrent `Index.Search`, and allocation-free
-warm `Local.Search` throughout the migration.
-
-Use the production-shaped planner matrix as the acceptance gate for every
-step. Record `Index.Search` and cold, warm, parallel, and high-churn
-`Local.Search` latency, bytes, and allocations, plus retained bytes per live
-`Local`. Add focused cases for inaccurate estimates, expensive per-ID checks,
-late empty children, correlated predicates, and the scan/materialize boundary.
-Do not remove the existing executor until the replacement matches its results
-and large-result performance and materially reduces selective-search work or
-allocation traffic.
-
-The bounded shared profile, confidence gate, sampled exploration, and memory
-proof are recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Complete the
-rewrite in this order:
-
-1. **Cut over and simplify.** The generated differential correctness gate
-    against the materialize-all executor is complete and recorded in
-    [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Run the benchmark gates, then
-    remove the shadow planner, obsolete ranking interfaces, and compatibility
-    branches in a separate reviewable change.
-
 Treat shared statistics as optional hints. A fresh `Local`, a discarded
 profile, and a profile trained by a different workload must all remain correct
 and must fall back to the deterministic build-time model. Keep planner learning
@@ -227,12 +198,11 @@ into the shared immutable index or weaken concurrent search safety.
 Work through these steps in priority order, promoting an optimization only
 when production-shaped benchmarks demonstrate a material benefit:
 
-1. Complete the shadow comparison and cost-based `All` cutover gates.
-2. Improve `Lossy` allocation and representation selection for existing rules,
+1. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-3. Optimize the uncached ordered estimate only if bounded planning and warm
+2. Optimize the uncached ordered estimate only if bounded planning and warm
    cache reuse still leave measurable overhead.
-4. Investigate generation-based updates only after rebuild benchmarks
+3. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
 
 For every optimization, compare production-shaped build time, search time,

@@ -8,6 +8,34 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-27: complete cost-based `All` cutover
+
+The adaptive `All` executor passed its production-shaped cutover gate after the
+generated differential suite established equivalence with recursive
+materialize-all execution. The unused shadow decision path, its coarse
+operation costs, compiled posting facts, benchmark, and capability-only tests
+have been removed. Production execution retains only the compiled fact it
+actually consumes: whether each child supports direct ID matching. Internal
+unprepared-rule tests derive that fact on demand; built indexes use the compact
+immutable slice prepared by `Build`.
+
+On Apple M1 Max with Go 1.26.0, three 300 ms runs measured `Index.Search` at
+41.5--42.1 us/op with 73,571--73,572 B/op and 31 allocations. Warm
+`Local.Search` measured 569.0--570.2 ns/op with zero measured bytes or
+allocations. Parallel batches had a 486.5 ns/search median (one 552.6 ns
+outlier). Retained memory measured 2,968 B per cold `Local`, 90,960 B per warm
+`Local` (one 90,997 B run), and 107,824 B for the adaptive case. Reproduce with:
+
+```sh
+go test ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=300ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=300ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchmem -benchtime=3x -count=3 .
+```
+
 ## 2026-08-27: complete representation-specific `All` candidate filtering
 
 The first cost-based executor step is complete. Ordered, `Between`, and
