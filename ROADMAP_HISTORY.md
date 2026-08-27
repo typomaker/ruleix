@@ -8,6 +8,38 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-28: measure the `Index.Search` materialization budget
+
+A test-only replay benchmark now accounts for immutable bitmap acquisition,
+complete child-result materialization, candidate filtering, intersections,
+exclusions, peak simultaneous scratch bitmaps, and final result decoding. It
+attributes serialized bytes and operation counts to equality, ordered,
+`Between`, `CompareBy`, nested `All`, and lossy representations. The replay is
+compiled only in tests; production search has no new field, hook, branch,
+atomic, or timer.
+
+On the 38,098-entry Apple M1 Max shape, three 200 ms runs of the full
+materialize-first replay consistently measured six complete child results and
+33,160 serialized bytes per search: 4,152 equality bytes, 16,416 ordered
+bytes, 4,384 `Between` bytes, and 8,208 `CompareBy` bytes. Five intersections
+and one exclusion reduced that work to a 31-ID, 78-byte final bitmap, with two
+scratch bitmaps live at once. Enabling the existing candidate filters reduced
+the budget to two materializations and 4,152 serialized bytes while performing
+four filters. This identifies ordered materialization as the largest first
+target and shows why aggregate allocator traffic near 73.6 KiB/op is larger
+than the useful 78-byte result. The unchanged production benchmark measured
+medians of 44.0 us/op, 73,571 B/op, and 31 allocations for `Index.Search`, and
+578.9 ns/op with zero bytes and allocations for warm `Local.Search`. Reproduce
+the complete representation matrix and allocation-class gate with:
+
+```sh
+go test -run '^TestAllMaterializationBudgetAccounting$' .
+go test -run '^$' -bench '^BenchmarkAllMaterializationBudget/' \
+  -benchtime=200ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+```
+
 ## 2026-08-27: complete cost-based `All` cutover
 
 The adaptive `All` executor passed its production-shaped cutover gate after the

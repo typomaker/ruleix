@@ -79,35 +79,7 @@ noisy results and rerun with a longer benchtime before deciding.
 Complete the steps in order. A later step may rely only on capabilities that
 survived the earlier benchmark gate.
 
-### 1. Measure where `Index.Search` materializes
-
-**Implement**
-
-- Add benchmark-only accounting around bitmap acquisition, child-result
-  materialization, candidate filtering, intersections, exclusions, and final
-  result decoding. Report counts and bytes per operation without changing the
-  production `Search` path.
-- Attribute work by compiled representation: equality, ordered, `Between`,
-  `CompareBy`, nested `All`, lossy wrappers, and exclusions.
-- Add focused production-shaped variants that isolate the dominant allocation
-  sources instead of relying only on aggregate `B/op`.
-- Record the number and serialized size of materialized child results, peak
-  simultaneous scratch bitmaps, and final result cardinality.
-
-**Accept when**
-
-- Repeated runs explain most of the approximately 73.6 KiB/op production
-  traffic by named operations and representations.
-- Accounting is benchmark-only or compile-time test instrumentation and adds
-  no fields, branches, atomics, or timers to ordinary production searches.
-
-**Result**
-
-A reproducible materialization budget identifies which operation should be
-optimized first and prevents changes that merely move allocations between
-helpers.
-
-### 2. Make execution capabilities explicit and truthful
+### 1. Make execution capabilities explicit and truthful
 
 **Implement**
 
@@ -138,7 +110,7 @@ helpers.
 The planner has a small, trustworthy description of legal operations, and all
 fallback costs are visible before execution begins.
 
-### 3. Implement a deterministic total-cost model
+### 2. Implement a deterministic total-cost model
 
 **Implement**
 
@@ -177,7 +149,7 @@ fallback costs are visible before execution begins.
 A deterministic build-time model can choose a cheap initial operation without
 runtime learning and without assuming that the smallest result is cheapest.
 
-### 4. Select the next operation adaptively
+### 3. Select the next operation adaptively
 
 **Implement**
 
@@ -213,7 +185,7 @@ runtime learning and without assuming that the smallest result is cheapest.
 Production search becomes an operation-cost executor instead of a
 cardinality-ordered executor with a bitmap-versus-ID switch.
 
-### 5. Add representation-specific operations only when they avoid work
+### 4. Add representation-specific operations only when they avoid work
 
 **Implement**
 
@@ -241,7 +213,7 @@ cardinality-ordered executor with a bitmap-versus-ID switch.
 The executor has a minimal set of proven representation-specific operations,
 not speculative capabilities maintained only because they fit the design.
 
-### 6. Make shared planner statistics useful and bounded
+### 5. Make shared planner statistics useful and bounded
 
 **Implement**
 
@@ -279,7 +251,7 @@ not speculative capabilities maintained only because they fit the design.
 Cross-`Local` learning either provides a measured cold-start benefit with a
 bounded implementation or is removed instead of accumulating unused telemetry.
 
-### 7. Finish byte-bounded `Local` state
+### 6. Finish byte-bounded `Local` state
 
 **Implement**
 
@@ -307,7 +279,7 @@ The faster planner has a predictable memory cost per live goroutine and cannot
 trade temporary `Index.Search` allocations for unbounded retained `Local`
 memory.
 
-### 8. Differential cutover and cleanup
+### 7. Differential cutover and cleanup
 
 **Implement**
 
