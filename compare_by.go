@@ -125,6 +125,31 @@ func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 		index.walk(value, false, true, visit)
 	}
 }
+func (r *compareByRule[T, V]) appendMatchingBitmaps(v T, dst []*roaring.Bitmap) []*roaring.Bitmap {
+	value, ok := r.value(v)
+	dst = append(dst, r.wildcard)
+	if !ok {
+		return dst
+	}
+	if index := r.indexes[OperatorEQ]; index != nil {
+		if bits := index.exact(value); bits != nil {
+			dst = append(dst, bits)
+		}
+	}
+	if index := r.indexes[OperatorLT]; index != nil {
+		index.walk(value, true, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+	}
+	if index := r.indexes[OperatorLTE]; index != nil {
+		index.walk(value, true, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+	}
+	if index := r.indexes[OperatorGT]; index != nil {
+		index.walk(value, false, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+	}
+	if index := r.indexes[OperatorGTE]; index != nil {
+		index.walk(value, false, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+	}
+	return dst
+}
 func (r *compareByRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	return r.estimateCardinality(v)
 }
@@ -216,6 +241,18 @@ func (r *compareByRule[T, V]) matchesID(v T, id uint32) bool {
 		}
 	})
 	return found
+}
+func (r *compareByRule[T, V]) filterCandidates(v T, dst *roaring.Bitmap, _ *bitmapPool) {
+	// CompareBy can contribute postings from five operator indexes. Keep the
+	// common aggregate-block shape on the stack so candidate filtering does not
+	// add slice-growth allocations to production-shaped Index searches.
+	var inline [64]*roaring.Bitmap
+	postings := r.appendMatchingBitmaps(v, inline[:0])
+	if len(postings) == 0 {
+		dst.Clear()
+		return
+	}
+	dst.AndAny(postings...)
 }
 func (*compareByRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
 func (r *compareByRule[T, V]) optimize(total uint64) Rule[T] {

@@ -36,6 +36,26 @@ func TestExecutionDescriptorRecordsRepresentationOperations(t *testing.T) {
 	require.Equal(t, executionCostPerPosting, descriptor.filter)
 }
 
+func TestCompareByFiltersExistingCandidates(t *testing.T) {
+	rule := &compareByRule[int, int]{
+		value:    func(value int) (int, bool) { return value, true },
+		operator: func(int) (Operator, bool) { return OperatorGTE, true },
+		compare:  func(a, b int) int { return a - b },
+		wildcard: roaring.New(),
+	}
+	for id, value := range []int{1, 3, 5, 7} {
+		rule.insert(value, uint32(id))
+	}
+	rule.wildcard.Add(4)
+
+	candidates := roaring.BitmapOf(0, 1, 2, 4)
+	rule.filterCandidates(4, candidates, nil)
+
+	require.Equal(t, []uint32{0, 1, 4}, candidates.ToArray())
+	descriptor := describeRuleExecution[int](rule)
+	require.NotZero(t, descriptor.capabilities&executionFilterCandidates)
+}
+
 func TestExecutionDescriptorCompilesPostingFacts(t *testing.T) {
 	rule := &eqRule[int, int]{
 		wildcard: roaring.BitmapOf(1, 2),

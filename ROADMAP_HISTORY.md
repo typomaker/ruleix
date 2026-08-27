@@ -8,6 +8,25 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-27: filter `All` candidates through `CompareBy`
+
+Uncached `All` execution now narrows an existing candidate bitmap directly
+through the immutable postings selected by `CompareBy`. It uses Roaring's
+multi-posting intersection-with-union operation, preserving wildcard and all
+five stored-operator semantics without first materializing the complete
+operator union. The capability is visible to the cost model and preserves
+insertion-ordered final results.
+
+On Apple M1 Max with Go 1.26.0, five 1 s runs of a 38,098-rule broad-equality
+plus `CompareBy` shape improved from a 59.5 us/op median, 41,937 B/op, and 13
+allocations/op to 47.0 us/op, 21,060 B/op, and 7 allocations/op. Reproduce
+with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllCompareByCandidateFiltering$' \
+  -benchmem -benchtime=1s -count=5 .
+```
+
 ## 2026-08-27: replan `All` after measured narrowing
 
 The cost-based `All` executor now reconsiders direct candidate validation after

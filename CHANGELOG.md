@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Uncached `All` execution filters an existing candidate bitmap through
+  `CompareBy` postings instead of materializing the complete operator union.
+
 ## [0.8.1] - 2026-08-25
 
 ### Changed
