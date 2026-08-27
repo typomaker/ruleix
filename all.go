@@ -719,6 +719,10 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 		rankedChildren = r.collectSharedWildcards(v, pool, rankedChildren)
 	}
 	for i := range rankedChildren {
+		if i > 0 {
+			next := i + selectNextBitmapOperation(rankedChildren[i:])
+			rankedChildren[i], rankedChildren[next] = rankedChildren[next], rankedChildren[i]
+		}
 		bits := rankedChildren[i].bits
 		//nolint:nestif // Operation selection keeps filtering and replanning adjacent.
 		if i > 0 {

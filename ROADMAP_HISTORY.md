@@ -74,6 +74,32 @@ go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
   -benchmem -benchtime=1s -count=5 .
 ```
 
+## 2026-08-28: accept bounded next-bitmap replanning
+
+The first step-2 executor increment now rescans the unexecuted child suffix
+after every exact narrowing boundary and selects the cheapest known bitmap
+operation by exact serialized posting size or estimated acquisition work.
+Unknown operations remain behind costed operations and keep their prior order.
+The scan uses the existing bounded ranked slice and allocates no plan graph.
+
+On Apple M1 Max, five 1-second runs kept the focused allocation classes equal
+to parent `848d1e9`: `BenchmarkAllCostBasedBroadSibling/CostModel` measured a
+384.5 ns/op parent median versus 382.1 ns/op for the change, both at 64 B/op
+and 4 allocs/op. `BenchmarkAllReplanAfterIntersection` measured 428.7 ns/op
+versus 431.6 ns/op, both at 144 B/op and 10 allocs/op. Production-shaped
+medians were 44.304 us/op, 73,571 B/op, 31 allocs/op for `Index.Search` and
+564.4 ns/op, 0 B/op, 0 allocs/op for warm `Local.Search`; the Index latency is
+1.7% above the previous recorded parent median and remains inside the 3% gate.
+
+The ordinary and race suites, parallel Local, production-scale matrix, and
+retained-memory gate passed. Reproduce the focused comparison with:
+
+```sh
+go test -run '^$' \
+  -bench '^(BenchmarkAllCostBasedBroadSibling|BenchmarkAllReplanAfterIntersection)$' \
+  -benchmem -benchtime=1s -count=5 .
+```
+
 ## 2026-08-27: complete cost-based `All` cutover
 
 The adaptive `All` executor passed its production-shaped cutover gate after the

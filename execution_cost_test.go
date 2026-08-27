@@ -59,3 +59,28 @@ func TestValidationMaterializationBoundary(t *testing.T) {
 	require.True(t, rule.shouldValidateRemaining(8, remaining))
 	require.False(t, rule.shouldValidateRemaining(1_000, remaining))
 }
+
+func TestSelectNextBitmapOperationPrefersCheapBroaderPosting(t *testing.T) {
+	cheapBroad := roaring.New()
+	cheapBroad.AddRange(0, 10_000)
+	expensiveSparse := roaring.New()
+	for id := uint32(0); id < 9_000; id++ {
+		expensiveSparse.Add(id * 32)
+	}
+	remaining := []rankedBitmap{
+		{bits: expensiveSparse, card: expensiveSparse.GetCardinality(), childIdx: 1},
+		{bits: cheapBroad, card: cheapBroad.GetCardinality(), childIdx: 2},
+	}
+
+	require.Equal(t, 1, selectNextBitmapOperation(remaining))
+}
+
+func TestSelectNextBitmapOperationLeavesUnknownWorkLast(t *testing.T) {
+	posting := roaring.BitmapOf(1, 2, 3)
+	remaining := []rankedBitmap{
+		{card: ^uint64(0), childIdx: 1},
+		{bits: posting, card: posting.GetCardinality(), childIdx: 2},
+	}
+
+	require.Equal(t, 1, selectNextBitmapOperation(remaining))
+}

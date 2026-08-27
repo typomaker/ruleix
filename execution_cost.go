@@ -34,6 +34,23 @@ func rankedBitmapNarrowWork(ranked rankedBitmap) (uint64, bool) {
 	return saturatingMul(work, 2), true
 }
 
+// selectNextBitmapOperation replans the next narrowing operation from facts
+// available after the previous exact operation. The scan is allocation-free;
+// exact postings use their serialized payload while unmaterialized children
+// include their estimated acquisition cost. Unknown work stays behind every
+// costed operation and otherwise preserves schema/ranking order.
+func selectNextBitmapOperation(remaining []rankedBitmap) int {
+	best := 0
+	bestWork, bestKnown := rankedBitmapWork(remaining[0])
+	for i := 1; i < len(remaining); i++ {
+		work, known := rankedBitmapWork(remaining[i])
+		if known && (!bestKnown || work < bestWork) {
+			best, bestWork, bestKnown = i, work, true
+		}
+	}
+	return best
+}
+
 // allSourceTotalWork scores acquiring one child as the candidate source and
 // then completing the remaining children by their cheapest known exact
 // operation. Unknown operations make the score unavailable, preserving the
