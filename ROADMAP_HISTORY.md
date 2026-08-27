@@ -1976,3 +1976,33 @@ go test -run '^$' -bench '^BenchmarkAllCostBasedBroadSibling$' \
 go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
   -benchmem -benchtime=1s -count=5 .
 ```
+
+## 2026-08-27: direct candidate validation order
+
+Direct `All` validation now has an execution order independent of the bitmap
+cardinality order. It compares conservative expected rejection per cost unit,
+preferring an immutable bitmap membership check over a representation matcher
+when the cheaper check is expected to discard enough of the batch. Checks
+still short-circuit on the first rejection. A remaining rule without direct ID
+matching is materialized once for the candidate batch rather than once per ID.
+
+On Apple M1 Max with Go 1.26.0, the focused inaccurate-estimate and expensive
+per-ID case measured a 1.035 us median with rejection-per-cost ordering versus
+2.436 us in cardinality order, with both paths retaining 80 B and five
+allocations per search. Three 300 ms runs kept the existing broad-sibling cost
+case near 292 ns, 32 B, and two allocations, and replanning after intersection
+near 454 ns, 144 B, and ten allocations. The completed 10K production-scale
+shapes retained their existing allocation classes, including zero allocations
+for empty search and 26 for the selective query.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllCandidateValidationOrder$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' \
+  -bench '^(BenchmarkAllCostBasedBroadSibling|BenchmarkAllReplanAfterIntersection)$' \
+  -benchmem -benchtime=300ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/Rules10000/' \
+  -benchmem -benchtime=300ms -count=3 .
+```

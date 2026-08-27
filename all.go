@@ -318,6 +318,7 @@ func (r *allRule[T]) searchRanked(
 		r.children[rankedChildren[0].childIdx].search(v, first, pool)
 		owned = true
 	}
+	r.orderCandidateValidation(first.GetCardinality(), rankedChildren[1:])
 	first.Iterate(func(id uint32) bool {
 		for _, ranked := range rankedChildren[1:] {
 			if ranked.bits != nil {
@@ -714,6 +715,7 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 	}
 	for i := range rankedChildren {
 		bits := rankedChildren[i].bits
+		//nolint:nestif // Operation selection keeps filtering and replanning adjacent.
 		if i > 0 {
 			if i == 1 {
 				dst.Or(rankedChildren[0].bits)
@@ -754,26 +756,9 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 		//nolint:nestif // Candidate fallback deliberately validates all remaining rule forms here.
 		if rankedChildren[i].card <= allCandidateScanLimit {
 			dst.Clear()
-			rankedChildren[i].bits.Iterate(func(id uint32) bool {
-				for j, ranked := range rankedChildren {
-					if j == i {
-						continue
-					}
-					if ranked.bits != nil {
-						observeCandidateCheck(r.children[ranked.childIdx], pool)
-						if !ranked.bits.Contains(id) {
-							return true
-						}
-						continue
-					}
-					if !matchesRuleID(r.children[ranked.childIdx], v, id, pool) {
-						return true
-					}
-				}
-				dst.Add(id)
-				return true
-			})
-			return !dst.IsEmpty()
+			dst.Or(rankedChildren[i].bits)
+			rankedChildren[0], rankedChildren[i] = rankedChildren[i], rankedChildren[0]
+			return r.validateCandidateBitmap(v, dst, pool, rankedChildren[1:])
 		}
 		if i == 0 {
 			continue
@@ -825,6 +810,23 @@ func (r *allRule[T]) validateCandidateBitmap(
 	pool *bitmapPool,
 	remaining []rankedBitmap,
 ) bool {
+	// A rule without direct matching is still valid on the small-candidate
+	// fallback. Materialize it once for the batch instead of once per ID.
+	for i := range remaining {
+		if remaining[i].bits != nil {
+			continue
+		}
+		descriptor := r.executionDescriptor(remaining[i].childIdx, r.children[remaining[i].childIdx])
+		if descriptor.capabilities&executionMatchID != 0 {
+			continue
+		}
+		bits := pool.get()
+		r.children[remaining[i].childIdx].search(v, bits, pool)
+		remaining[i].bits = bits
+		remaining[i].card = bits.GetCardinality()
+		remaining[i].owned = true
+	}
+	r.orderCandidateValidation(dst.GetCardinality(), remaining)
 	accepted := pool.get()
 	dst.Iterate(func(id uint32) bool {
 		for _, ranked := range remaining {
@@ -846,6 +848,40 @@ func (r *allRule[T]) validateCandidateBitmap(
 	dst.Or(accepted)
 	pool.put(accepted)
 	return !dst.IsEmpty()
+}
+
+// orderCandidateValidation uses a plan that is deliberately independent of
+// bitmap execution order. A child with a smaller expected surviving fraction
+// rejects more candidates; an immutable bitmap lookup is cheaper than invoking
+// a representation matcher. Comparing the ratios by cross multiplication
+// keeps planning allocation-free and avoids floating-point work on the hot
+// path. Unknown estimates retain schema order behind costed checks.
+func (r *allRule[T]) orderCandidateValidation(candidates uint64, remaining []rankedBitmap) {
+	for i := 1; i < len(remaining); i++ {
+		for j := i; j > 0 && r.candidateValidationBefore(candidates, remaining[j], remaining[j-1]); j-- {
+			remaining[j], remaining[j-1] = remaining[j-1], remaining[j]
+		}
+	}
+}
+
+func (r *allRule[T]) candidateValidationBefore(candidates uint64, left, right rankedBitmap) bool {
+	leftRejected, leftCost := r.candidateValidationScore(candidates, left)
+	rightRejected, rightCost := r.candidateValidationScore(candidates, right)
+	return saturatingMul(leftRejected, rightCost) > saturatingMul(rightRejected, leftCost)
+}
+
+func (r *allRule[T]) candidateValidationScore(candidates uint64, ranked rankedBitmap) (rejected, cost uint64) {
+	if ranked.card != ^uint64(0) && ranked.card < candidates {
+		rejected = candidates - ranked.card
+	}
+	if ranked.bits != nil {
+		return rejected, 1
+	}
+	descriptor := r.executionDescriptor(ranked.childIdx, r.children[ranked.childIdx])
+	if descriptor.matchID == executionCostPerCandidate {
+		return rejected, 2
+	}
+	return rejected, 4
 }
 
 func filterCandidatesThroughRule[T any](rule Rule[T], value T, dst *roaring.Bitmap, pool *bitmapPool) bool {

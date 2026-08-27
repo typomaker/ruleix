@@ -11,6 +11,14 @@ const plannerBenchmarkUniverse = 1 << 20
 
 var plannerBenchmarkCardinality uint64
 
+type inaccurateEstimateRule struct {
+	*countingRule
+	estimate uint64
+}
+
+func (r *inaccurateEstimateRule) estimateCardinality(int) uint64      { return r.estimate }
+func (r *inaccurateEstimateRule) estimateCheapCardinality(int) uint64 { return r.estimate }
+
 type unknownEstimateMatchingRule[T any] struct{ child Rule[T] }
 
 func (*unknownEstimateMatchingRule[T]) rule() {}
@@ -230,6 +238,41 @@ func BenchmarkAllReplanAfterIntersection(b *testing.B) {
 		rule.search(0, dst, pool)
 	}
 	plannerBenchmarkCardinality = dst.GetCardinality()
+}
+
+// BenchmarkAllCandidateValidationOrder covers a cheaper bitmap check that is
+// less selective than a representation matcher. Rejection-per-cost ordering
+// runs the bitmap first; the comparison hides that bitmap and therefore keeps
+// cardinality order. Last local run on Apple M1 Max: cost order 1.035 us/op,
+// 80 B/op, 5 allocs; cardinality order 2.436 us/op, 80 B/op, 5 allocs (median
+// of five 1 s runs). Reproduce with:
+//
+//	go test -run '^$' -bench '^BenchmarkAllCandidateValidationOrder$' -benchmem -benchtime=1s -count=5 .
+func BenchmarkAllCandidateValidationOrder(b *testing.B) {
+	source := &inaccurateEstimateRule{countingRule: &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5, 6, 7}}, estimate: 1}
+	expensiveIDs := []uint32{0, 1}
+	for id := uint32(1_000); id < 2_000; id++ {
+		expensiveIDs = append(expensiveIDs, id)
+	}
+	expensive := &inaccurateEstimateRule{countingRule: &countingRule{ids: expensiveIDs}, estimate: 2}
+	cheap := &countingRule{ids: []uint32{0, 1, 2, 3}}
+	for name, cheapRule := range map[string]Rule[int]{
+		"CostOrder":        &planningCountingRule{countingRule: cheap, bits: roaring.BitmapOf(0, 1, 2, 3)},
+		"CardinalityOrder": cheap,
+	} {
+		b.Run(name, func(b *testing.B) {
+			rule := &allRule[int]{children: []Rule[int]{source, expensive, cheapRule}}
+			rule.prepareSearch()
+			pool := newBitmapPool()
+			dst := roaring.New()
+			b.ReportAllocs()
+			for range b.N {
+				dst.Clear()
+				rule.search(0, dst, pool)
+			}
+			plannerBenchmarkCardinality = dst.GetCardinality()
+		})
+	}
 }
 
 func plannerBenchmarkPostings(children int, cardinality uint64, sparse bool) []*roaring.Bitmap {

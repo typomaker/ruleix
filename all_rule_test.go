@@ -29,6 +29,41 @@ func TestAllOptimizeFlattensNestedGroups(t *testing.T) {
 	require.Equal(t, []Rule[int]{first, second, third}, all.children)
 }
 
+func TestAllOrdersCandidateValidationByRejectionPerCost(t *testing.T) {
+	expensive := &countingRule{ids: []uint32{0, 1}}
+	cheap := &countingRule{ids: []uint32{0, 1, 2, 3}}
+	rule := &allRule[int]{children: []Rule[int]{expensive, cheap}}
+	rule.prepareSearch()
+	candidates := roaring.New()
+	candidates.AddRange(0, 8)
+	remaining := []rankedBitmap{
+		{card: 2, childIdx: 0},
+		{bits: roaring.BitmapOf(0, 1, 2, 3), card: 4, childIdx: 1},
+	}
+
+	require.True(t, rule.validateCandidateBitmap(0, candidates, newBitmapPool(), remaining))
+
+	require.Equal(t, []uint32{0, 1}, candidates.ToArray())
+	// The cheaper bitmap rejects half the batch before the more selective
+	// representation matcher runs.
+	require.Equal(t, 4, expensive.matchIDCalls)
+}
+
+func TestAllMaterializesUnsupportedCandidateRuleOncePerBatch(t *testing.T) {
+	child := &countingRule{ids: []uint32{1}}
+	unsupported := &checkerOnlyRule{child: child}
+	rule := &allRule[int]{children: []Rule[int]{unsupported}}
+	rule.prepareSearch()
+	candidates := roaring.New()
+	candidates.AddRange(0, 4)
+	remaining := []rankedBitmap{{card: ^uint64(0), childIdx: 0}}
+
+	require.True(t, rule.validateCandidateBitmap(0, candidates, newBitmapPool(), remaining))
+
+	require.Equal(t, []uint32{1}, candidates.ToArray())
+	require.Equal(t, 1, child.searchCalls)
+}
+
 type zeroCheckingRule struct{ *countingRule }
 
 func (r *zeroCheckingRule) isCardinalityZero(int) bool { return len(r.ids) == 0 }

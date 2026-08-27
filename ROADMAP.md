@@ -76,18 +76,13 @@ Implement the rewrite in this order:
    result where benchmarks justify it. Materialize an ordered union only when
    it is selected as a broad candidate source or is cheaper than filtering.
    Keep direct getters and comparisons out of shared mutable state.
-2. **Use a separate order for direct candidate validation.** Once execution
-   switches to ID checks, order the remaining rules by expected rejection per
-   unit cost rather than bitmap cardinality. Short-circuit on the first
-   rejection. If a rule lacks direct matching, materialize it at most once for
-   the whole candidate batch or select another supported filtering operation.
-3. **Retain bounded per-`Local` plans and results.** Cache query-shape plans,
+2. **Retain bounded per-`Local` plans and results.** Cache query-shape plans,
    child bitmaps, and exact intersections independently. Validate a cached
    plan cheaply against current postings before reuse, and retain the current
    admission-after-repeat behavior so one-off values do not pin bitmaps. Bound
    caches by accounted bytes as well as entry count before increasing their
    working-set capacity.
-4. **Share sampled planner statistics across `Local` instances.** Only after
+3. **Share sampled planner statistics across `Local` instances.** Only after
    the deterministic cost model is stable, add a compact `Index`-owned profile
    containing aggregate operation cost, actual cardinality, empty rate, and
    candidate rejection rate by bounded query shape. Each `Local` reads one
@@ -96,13 +91,13 @@ Implement the rewrite in this order:
    Never update shared atomics, take timers, or publish a new snapshot on every
    search. Cached bitmaps, query values, exact intersections, and final plan
    choices remain local.
-5. **Control learning bias and memory.** Track sample counts and confidence,
+4. **Control learning bias and memory.** Track sample counts and confidence,
    distinguish missing observations from zero cost, use occasional bounded
    exploration only in sampled local contexts, and let local evidence override
    the shared prior. Limit query shapes and shared profile bytes per compiled
    `All`, use deterministic eviction, and prove that adversarial high-cardinality
    query values cannot cause unbounded retention.
-6. **Cut over and simplify.** Run the old and new planners against the same
+5. **Cut over and simplify.** Run the old and new planners against the same
     generated and production-shaped queries in correctness tests, including
     nested `All`, wildcard sharing, exclusions, lossy rules, duplicate external
     IDs, and empty and large results. Enable the new executor only after its
