@@ -8,6 +8,40 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-28: make `All` execution capabilities explicit and truthful
+
+Every compiled `All` child now has one immutable descriptor for the operations
+production can invoke directly: exact posting lookup, direct ID matching, and
+candidate filtering. Complete materialization remains the explicit universal
+fallback; ordered iteration is not advertised because production has no
+accepted implementation. Constant-time cardinality contracts remain separate
+until the next total-cost-model step consumes their build facts.
+
+Wrapper discovery happens once during `Build`. Nested `All` exposes direct ID
+matching only when every descendant supports it, including through inspection
+and lossy wrappers. Both bitmap-returning search and direct result assembly use
+the same batch helper for unsupported remaining children, so a fallback result
+is materialized at most once rather than once per candidate ID. Focused tests
+cover truthful nested and wrapped capabilities and the unsupported batch path.
+
+On Apple M1 Max with Go 1.26.0, three 300 ms runs measured `Index.Search` at
+43.6--45.5 us/op with 73,571--73,572 B/op and 31 allocations. Warm
+`Local.Search` measured 564.3--571.8 ns/op with zero measured bytes or
+allocations, parallel batches measured 475.8--483.0 ns/search, and retained
+memory remained 2,968--2,973 B per cold `Local`, 90,960 B warm, and
+107,824--107,861 B adaptive. Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=300ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=300ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-28: measure the `Index.Search` materialization budget
 
 A test-only replay benchmark now accounts for immutable bitmap acquisition,

@@ -25,8 +25,9 @@ func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} 
 
 type allRule[T any] struct {
 	children          []Rule[T]
+	execution         []executionCapability[T]
 	planningProviders []planningBitmapProvider[T]
-	directIDMatchers  []bool
+	directIDComplete  bool
 	// sharedWildcardGroups is allocated only when Build finds equality children
 	// whose interned, non-empty wildcard bitmap is identical. Ordinary All
 	// searches therefore do not pay for duplicate-result tracking.
@@ -83,18 +84,23 @@ func (r *allRule[T]) prepareSearch() {
 		prepareRuleSearch(child)
 	}
 	for i, child := range r.children {
-		if r.directIDMatchers == nil {
-			r.directIDMatchers = make([]bool, len(r.children))
+		if r.execution == nil {
+			r.execution = make([]executionCapability[T], len(r.children))
 		}
-		r.directIDMatchers[i] = supportsRuleIDMatch(child)
-		provider := resolvePlanningBitmapProvider(child)
-		if provider == nil {
-			continue
+		r.execution[i] = describeExecutionCapability(child)
+		if r.execution[i].posting != nil {
+			if r.planningProviders == nil {
+				r.planningProviders = make([]planningBitmapProvider[T], len(r.children))
+			}
+			r.planningProviders[i] = r.execution[i].posting
 		}
-		if r.planningProviders == nil {
-			r.planningProviders = make([]planningBitmapProvider[T], len(r.children))
+	}
+	r.directIDComplete = true
+	for i := range r.execution {
+		if r.execution[i].directID == nil {
+			r.directIDComplete = false
+			break
 		}
-		r.planningProviders[i] = provider
 	}
 	r.prepareSharedWildcardGroups()
 	r.prepareDuplicateEqualityResults()
@@ -102,10 +108,7 @@ func (r *allRule[T]) prepareSearch() {
 }
 
 func (r *allRule[T]) supportsDirectIDMatch(index int) bool {
-	if len(r.directIDMatchers) == len(r.children) {
-		return r.directIDMatchers[index]
-	}
-	return supportsRuleIDMatch(r.children[index])
+	return r.executionCapability(index).directID != nil
 }
 
 func (r *allRule[T]) prepareSharedWildcardGroups() {
@@ -262,9 +265,9 @@ func (r *allRule[T]) isCardinalityZero(v T) bool {
 	return false
 }
 func (r *allRule[T]) matchesID(v T, id uint32) bool {
-	for _, child := range r.children {
-		matcher, ok := child.(ruleIDMatcher[T])
-		if !ok || !matcher.matchesID(v, id) {
+	for i := range r.children {
+		matcher := r.executionCapability(i).directID
+		if matcher == nil || !matcher.matchesID(v, id) {
 			return false
 		}
 	}
@@ -322,40 +325,12 @@ func (r *allRule[T]) searchRanked(
 		r.children[rankedChildren[0].childIdx].search(v, first, pool)
 		owned = true
 	}
-	r.orderCandidateValidation(first.GetCardinality(), rankedChildren[1:])
-	first.Iterate(func(id uint32) bool {
-		for _, ranked := range rankedChildren[1:] {
-			if ranked.bits != nil {
-				if !ranked.bits.Contains(id) {
-					return true
-				}
-				continue
-			}
-			if !matchesRuleID(r.children[ranked.childIdx], v, id, pool) {
-				return true
-			}
-		}
-		dst.Add(id)
-		return true
-	})
+	dst.Or(first)
+	r.validateCandidateBitmap(v, dst, pool, rankedChildren[1:])
 	if owned {
 		pool.put(first)
 	}
-}
-
-func matchesRuleID[T any](rule Rule[T], value T, id uint32, pool *bitmapPool) bool {
-	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
-		pool.inspectorObserver(observed.metrics).candidateCheck()
-		return matchesRuleID(observed.child, value, id, pool)
-	}
-	if matcher, ok := rule.(ruleIDMatcher[T]); ok {
-		return matcher.matchesID(value, id)
-	}
-	bits := pool.get()
-	rule.search(value, bits, pool)
-	matches := bits.Contains(id)
-	pool.put(bits)
-	return matches
+	r.releaseRanked(pool, rankedChildren[1:])
 }
 
 func sharedWildcardOf[T any](rule Rule[T]) (sharedWildcardEquality[T], bool) {
@@ -750,7 +725,7 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 			if i == 1 {
 				dst.Or(rankedChildren[0].bits)
 			}
-			if filtered := filterCandidatesThroughRule(r.children[rankedChildren[i].childIdx], v, dst, pool); filtered {
+			if filtered := r.filterCandidates(rankedChildren[i].childIdx, v, dst, pool); filtered {
 				if dst.IsEmpty() {
 					return false
 				}
@@ -840,20 +815,8 @@ func (r *allRule[T]) validateCandidateBitmap(
 	pool *bitmapPool,
 	remaining []rankedBitmap,
 ) bool {
-	// A rule without direct matching is still valid on the small-candidate
-	// fallback. Materialize it once for the batch instead of once per ID.
-	for i := range remaining {
-		if remaining[i].bits != nil {
-			continue
-		}
-		if r.supportsDirectIDMatch(remaining[i].childIdx) {
-			continue
-		}
-		bits := pool.get()
-		r.children[remaining[i].childIdx].search(v, bits, pool)
-		remaining[i].bits = bits
-		remaining[i].card = bits.GetCardinality()
-		remaining[i].owned = true
+	if !r.directIDComplete {
+		r.materializeUnsupportedRemaining(v, pool, remaining)
 	}
 	r.orderCandidateValidation(dst.GetCardinality(), remaining)
 	accepted := pool.get()
@@ -866,7 +829,7 @@ func (r *allRule[T]) validateCandidateBitmap(
 				}
 				continue
 			}
-			if !matchesRuleID(r.children[ranked.childIdx], v, id, pool) {
+			if !r.matchesChildID(ranked.childIdx, v, id, pool) {
 				return true
 			}
 		}
@@ -877,6 +840,26 @@ func (r *allRule[T]) validateCandidateBitmap(
 	dst.Or(accepted)
 	pool.put(accepted)
 	return !dst.IsEmpty()
+}
+
+// materializeUnsupportedRemaining is shared by bitmap-returning and direct
+// result assembly. It guarantees that an unsupported child is acquired once
+// for the whole candidate batch, never once per candidate ID.
+func (r *allRule[T]) materializeUnsupportedRemaining(v T, pool *bitmapPool, remaining []rankedBitmap) bool {
+	for i := range remaining {
+		if remaining[i].bits != nil || r.supportsDirectIDMatch(remaining[i].childIdx) {
+			continue
+		}
+		bits := pool.get()
+		r.children[remaining[i].childIdx].search(v, bits, pool)
+		remaining[i].bits = bits
+		remaining[i].card = bits.GetCardinality()
+		remaining[i].owned = true
+		if bits.IsEmpty() {
+			return false
+		}
+	}
+	return true
 }
 
 // orderCandidateValidation uses a plan that is deliberately independent of
@@ -912,16 +895,25 @@ func (r *allRule[T]) candidateValidationScore(candidates uint64, ranked rankedBi
 	return rejected, 4
 }
 
-func filterCandidatesThroughRule[T any](rule Rule[T], value T, dst *roaring.Bitmap, pool *bitmapPool) bool {
+func (r *allRule[T]) filterCandidates(index int, value T, dst *roaring.Bitmap, pool *bitmapPool) bool {
 	if pool.local != nil {
 		return false
 	}
-	filter, ok := rule.(candidateFilter[T])
-	if !ok {
+	filter := r.executionCapability(index).filter
+	if filter == nil {
 		return false
 	}
 	filter.filterCandidates(value, dst, pool)
 	return true
+}
+
+func (r *allRule[T]) matchesChildID(index int, value T, id uint32, pool *bitmapPool) bool {
+	matcher := r.executionCapability(index).directID
+	if matcher == nil {
+		return false
+	}
+	observeCandidateCheck(r.children[index], pool)
+	return matcher.matchesID(value, id)
 }
 
 func observeCandidateCheck[T any](rule Rule[T], pool *bitmapPool) {

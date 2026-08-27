@@ -454,15 +454,23 @@ func prepareRankedAllCandidates[C any](
 		return root.intersectRankedInOrderObserved(value, candidates, pool, rankedChildren, metrics)
 	}
 	if rankedChildren[0].bits != nil {
-		return true
+		if root.directIDComplete {
+			return true
+		}
+		return root.materializeUnsupportedRemaining(value, pool, rankedChildren[1:])
 	}
 	bits := pool.get()
 	root.children[rankedChildren[0].childIdx].search(value, bits, pool)
 	rankedChildren[0].bits = bits
 	rankedChildren[0].card = bits.GetCardinality()
 	rankedChildren[0].owned = true
-	return rankedChildren[0].card <= allCandidateScanLimit ||
-		materializeRankedAfterFirst(root, value, pool, rankedChildren, metrics)
+	if rankedChildren[0].card <= allCandidateScanLimit {
+		if root.directIDComplete {
+			return true
+		}
+		return root.materializeUnsupportedRemaining(value, pool, rankedChildren[1:])
+	}
+	return materializeRankedAfterFirst(root, value, pool, rankedChildren, metrics)
 }
 
 func materializeRankedAfterFirst[C any](
@@ -592,7 +600,7 @@ func appendScannedAllMatches[C any, ID comparable](
 				}
 				continue
 			}
-			if !matchesRuleID(root.children[child.childIdx], value, id, pool) {
+			if !root.matchesChildID(child.childIdx, value, id, pool) {
 				matches = false
 				break
 			}

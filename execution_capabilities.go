@@ -1,5 +1,49 @@
 package ruleix
 
+// executionCapability is the immutable description of operations an All
+// child can execute directly. Nil operation slots are deliberately explicit:
+// callers must materialize complete once for the batch instead of discovering
+// an interface (or accidentally materializing) for every candidate ID.
+type executionCapability[T any] struct {
+	posting  planningBitmapProvider[T]
+	directID ruleIDMatcher[T]
+	filter   candidateFilter[T]
+}
+
+func describeExecutionCapability[T any](rule Rule[T]) executionCapability[T] {
+	operationRule := unwrapExecutionRule(rule)
+	result := executionCapability[T]{}
+	result.posting, _ = operationRule.(planningBitmapProvider[T])
+	result.filter, _ = operationRule.(candidateFilter[T])
+	if nested, ok := operationRule.(*allRule[T]); ok {
+		if nested.planningPrepared {
+			for i := range nested.children {
+				if !nested.supportsDirectIDMatch(i) {
+					return result
+				}
+			}
+		} else {
+			for _, child := range nested.children {
+				if !supportsRuleIDMatch(child) {
+					return result
+				}
+			}
+		}
+		result.directID = nested
+		return result
+	}
+	result.directID, _ = operationRule.(ruleIDMatcher[T])
+	return result
+}
+
+func (r *allRule[T]) executionCapability(index int) *executionCapability[T] {
+	if len(r.execution) == len(r.children) {
+		return &r.execution[index]
+	}
+	capability := describeExecutionCapability(r.children[index])
+	return &capability
+}
+
 func unwrapExecutionRule[T any](rule Rule[T]) Rule[T] {
 	for {
 		switch wrapped := rule.(type) {
