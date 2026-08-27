@@ -2295,3 +2295,23 @@ next cutover change. Reproduce with:
 ```sh
 go test ./...
 ```
+## 2026-08-28: reject eager total-cost source ranking
+
+An initial step-1 prototype scored every mixed exact/estimated child as a
+possible candidate source before the existing cardinality sort. The pure cost
+primitives and table tests were retained, but production ranking was removed:
+the extra bounded scoring pass did not improve `Index.Search` and regressed the
+warm `Local.Search` median beyond the 3% gate.
+
+Apple M1 Max, parent `ecbccc9`, five 1-second runs of
+`BenchmarkProductionShapeSearch/(Index|Local)`: parent medians were 43.575
+us/op Index and 566.0 ns/op Local; the prototype medians were 45.377 us/op and
+591.5 ns/op. Bytes and allocations were unchanged at 73,571 B/op, 31 allocs/op
+for Index and 0 B/op, 0 allocs/op for Local.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+```

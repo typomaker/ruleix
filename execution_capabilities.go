@@ -93,7 +93,7 @@ func (r *allRule[T]) shouldValidateRemaining(candidates uint64, remaining []rank
 		if !r.supportsDirectIDMatch(child.childIdx) {
 			return candidates <= allCandidateScanLimit
 		}
-		validationCost = saturatingAdd(validationCost, saturatingMul(candidates, 16))
+		validationCost = saturatingAdd(validationCost, saturatingMul(candidates, allDirectIDWork))
 
 		if child.bits == nil {
 			return candidates <= allCandidateScanLimit
