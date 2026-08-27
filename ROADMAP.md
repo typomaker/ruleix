@@ -1,211 +1,342 @@
 # Roadmap
 
-This document collects possible directions for `ruleix`. Items are exploratory:
-their presence here does not promise implementation or inclusion in a specific
-release. Candidates should be promoted only after their semantics, indexing
-cost, and expected usage are understood.
+This file is the active implementation plan for reducing search work and
+temporary bitmap materialization. Completed work and rejected experiments
+belong in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md); release-facing behavior
+belongs in [`CHANGELOG.md`](CHANGELOG.md). Do not keep completed, superseded,
+or unrelated proposals here.
 
-Keep this file limited to active and deferred work. Once a roadmap step is
-completed or an experiment reaches a decision, remove it from this file and
-record the outcome and supporting evidence in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md) or a dedicated historical document.
+## Objective
 
-## Current priority: performance and memory optimization
+Replace the remaining cardinality-ordered `All` executor with a bounded
+operation-cost planner that chooses what to do next, not only which child has
+the smallest estimated result. It must avoid constructing complete child
+bitmaps when an existing posting, candidate filter, ordered stream, or direct
+ID validation can produce the same exact result more cheaply.
 
-Optimize the existing feature set before expanding the public API. Prefer work
-that improves production-shaped build time, search latency, or retained memory
-and require benchmark evidence before adopting an optimization.
+The current Apple M1 Max production-shaped cutover measurements are the
+reference point, not a success claim:
 
-Keep the roadmap focused on optimizing the existing API: execution planning,
-build-time analysis, diagnostics, memory-bounded indexes, and reusable local
-search state.
+| Path | Latency | Temporary memory | Allocations |
+| --- | ---: | ---: | ---: |
+| `Index.Search` | 41.5--42.1 us/op | 73,571--73,572 B/op | 31 allocs/op |
+| warm `Local.Search` | 569.0--570.2 ns/op | 0 B/op | 0 allocs/op |
 
-### Architectural guardrails
+The rewrite is successful only when it materially reduces `Index.Search`
+temporary bytes or latency on production-shaped and focused workloads while
+preserving zero-allocation warm `Local.Search`. A focused microbenchmark win is
+not sufficient for final cutover if production allocation traffic increases.
 
-Performance work should preserve the properties that make the current index
-useful: an immutable index after `Build`, lock-free concurrent searches,
-`uint32` internal rule IDs, and Roaring bitmaps as the primary representation
-for large candidate sets. Do not add mutex-protected mutable postings, switch to
-larger IDs, or replace Roaring without workload-specific benchmark evidence.
+## Non-negotiable constraints
 
-Keep the first planner internal and deliberately small. Avoid a general-purpose
-database optimizer, expensive runtime statistics, or public API changes until a
-measured need justifies them.
+- Preserve the public API, exact matching semantics, first-insertion result
+  order, duplicate external-ID behavior, and all `Inspect` observations.
+- Keep the built `Index` immutable and ordinary concurrent `Index.Search`
+  lock-free. Planner learning may publish only from sampled `Local` contexts.
+- Keep `uint32` internal IDs and Roaring bitmaps for broad candidate sets.
+- Keep the common `All` planning path allocation-free for up to eight children
+  and reuse bounded pooled storage for larger groups.
+- Never materialize a complete child result once per candidate as an implicit
+  `MatchID` fallback. Unsupported operations must remain explicit.
+- Treat learned statistics as optional hints. Missing, stale, discarded, or
+  adversarial profiles must affect performance only, never correctness.
+- Introduce no public planner API until internal benchmarks demonstrate a need.
+- Accept, reject, or revise every optimization using repeatable benchmark
+  evidence. Remove rejected production code and record the result in history.
 
-### Adaptive `All` execution planner
+## Required benchmark and correctness gate
 
-The primary optimization candidate is a hybrid executor that avoids
-materializing every child bitmap before intersection. Wildcard-heavy fields can
-match nearly the whole index, so their expected result cardinality, including
-both the wildcard and value-specific postings, matters more than the size of
-either posting alone.
+Run the focused tests introduced by each step and, before accepting every
+executor change, run at least:
 
-The initial estimate-based ordering, lazy empty-aware execution, and benchmark-
-selected bitmap-to-candidate threshold are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Introduce representation-specific
-cost classes only if measurements show a material benefit.
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
 
-For `All`, start with the most selective predicate. Refine the ordering only
-when cheap estimates can distinguish the cost of materializing a bitmap from
-checking the current candidate set.
+Compare medians against the parent commit and the reference above. Also run
+empty, selective, wildcard-heavy, range-heavy, large-result, nested-`All`,
+high-churn, and inaccurate-estimate cases. Each new or changed benchmark must
+include a nearby comment containing its latest local result and a complete
+reproduction command.
 
-Treat shared statistics as optional hints. A fresh `Local`, a discarded
-profile, and a profile trained by a different workload must all remain correct
-and must fall back to the deterministic build-time model. Keep planner learning
-separate from `Inspect`: inspection may reuse the batching mechanism, but
-enabling or disabling an inspector must never change the selected plan.
+An implementation step may be accepted when it provides a clear focused win
+and does not materially regress the production matrix. Treat a repeatable
+regression above 3% in latency, any new warm-`Local` allocation, or unexplained
+growth in `Index.Search` allocation count or bytes as a failed gate. Record
+noisy results and rerun with a longer benchtime before deciding.
 
-#### Deferred candidate: remove repeated range-cardinality work
+## Implementation plan
 
-The production-shaped warm `Local.Search` regression is isolated to schemas
-that contain ordered branches. Commit `05f8065` made `orderedRule`, `CompareBy`,
-and `Between` participate in `All` cardinality ranking. Unlike the `v0.6.0`
-path, which can obtain cardinality from an already cached materialized bitmap,
-the current planner performs a fresh ordered boundary lookup and scans boundary
-posting cardinalities before executing or checking the selected rules. Removing
-range estimates from the current implementation improved warm local search by
-9.8%; removing ordered filters from the schema reduced the difference to 0.7%.
-The benchmark details are recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
+Complete the steps in order. A later step may rely only on capabilities that
+survived the earlier benchmark gate.
 
-Address this without reverting the correctness and candidate-scanning work that
-followed `05f8065`:
+### 1. Measure where `Index.Search` materializes
 
-1. Add bounded, equality-informed planning. Evaluate cheap `Include`/`Exclude`
-   estimates first. Once a candidate is at or below the measured candidate-scan
-   threshold, materialize it and validate the remaining range predicates by ID
-   instead of calculating their cardinalities.
-2. Preserve selectivity across nested `All` nodes. A nested group such as
-   `All(Include(platform.name), CompareBy(platform.version))` must be able to
-   expose the cheap platform-name bound and stop before estimating the ordered
-   version branch. Use bounded estimates or an equivalent partial plan rather
-   than treating the nested group as one opaque estimator.
-3. The warm `Local` range-estimate path now reuses cached ordered bitmaps and
-   their cardinalities; the implementation and production evidence are
-   recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
-4. If uncached range estimates remain material, benchmark per-item boundary
-   prefixes or a conservative block-level estimate so the fallback needs a
-   binary search and constant-time arithmetic rather than scanning up to one
-   ordered block.
+**Implement**
 
-Accept the change only if it materially recovers full-schema warm and parallel
-`Local` latency, preserves equality-only performance and allocations, and does
-not regress range-only, high-churn, large-result, build-time, or retained-memory
-benchmarks. Exact zero detection must remain conservative and search results
-must remain unchanged.
+- Add benchmark-only accounting around bitmap acquisition, child-result
+  materialization, candidate filtering, intersections, exclusions, and final
+  result decoding. Report counts and bytes per operation without changing the
+  production `Search` path.
+- Attribute work by compiled representation: equality, ordered, `Between`,
+  `CompareBy`, nested `All`, lossy wrappers, and exclusions.
+- Add focused production-shaped variants that isolate the dominant allocation
+  sources instead of relying only on aggregate `B/op`.
+- Record the number and serialized size of materialized child results, peak
+  simultaneous scratch bitmaps, and final result cardinality.
 
-### Planner and memory benchmark matrix
+**Accept when**
 
-The reproducible production baseline now covers 10K, 100K, and 1M rules by
-default, with opt-in 5M and 10M cases for capable hosts. Its search matrix
-includes empty and small results, selective and wildcard-heavy queries, large
-results, nested combinators, and range-heavy queries; its definition and
-reproduction commands are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Include sparse constraints, dense constraints, high- and
-low-cardinality values, and highly skewed wildcard distributions in future
-workload-specific additions.
+- Repeated runs explain most of the approximately 73.6 KiB/op production
+  traffic by named operations and representations.
+- Accounting is benchmark-only or compile-time test instrumentation and adds
+  no fields, branches, atomics, or timers to ordinary production searches.
 
-The baseline measures build time, search time and allocations, retained index
-bytes, peak build heap, GC pressure, logical posting count and size, and
-wildcard ratio. Compare
-bitmap-only, candidate-only, and adaptive execution over candidate counts from
-1 through at least 16K.
+**Result**
 
-The first planner iteration is successful only if it preserves the public API,
-immutability, and concurrent search safety; avoids eager materialization; exits
-early on empty results; improves selective and wildcard-heavy workloads; and
-does not materially regress large-result latency or allocations.
+A reproducible materialization budget identifies which operation should be
+optimized first and prevents changes that merely move allocations between
+helpers.
 
-### Analyzer and planner diagnostics
+### 2. Make execution capabilities explicit and truthful
 
-Keep build-time analysis separate from query execution. The analyzer should
-select representations and prepare compact, immutable statistics that the
-planner can consume without rescanning postings or retaining expensive runtime
-instrumentation.
+**Implement**
 
-Develop `Inspect` as the single stable view of one compiled rule. It should
-report build-time facts through one `Inspector.Snapshot`: exact or lossy mode,
-strategy, entry and rule counts, accounted memory, budget, item and distinct
-value counts, granularity, and false-positive rate where available. Allow
-separate inspectors on children of a pooled `Lossy(All(...))` rather than
-returning arrays of internal child details.
+- Introduce a compact immutable descriptor per compiled `All` child. Describe
+  only operations the production planner can actually invoke: exact posting,
+  constant-time cardinality, direct ID match, candidate filter, ordered
+  iteration, and complete materialization.
+- Record conservative build-time cost facts needed by those operations, such
+  as posting count, wildcard contribution, serialized bytes, and whether an
+  operation requires a query-dependent union.
+- Make nested `All` advertise direct ID matching only when every descendant can
+  perform it exactly. Remove type assertions that claim support while silently
+  falling back to full materialization or false rejection.
+- Route root and nested `All` candidate validation through one batch helper.
+  Materialize an unsupported remaining rule at most once for the whole batch.
+- Add tests containing nested groups, wrappers, exclusions, and deliberately
+  unsupported internal test rules.
 
-An inspected rule should also accumulate low-priority metrics from sampled
-`Local` executions without changing ordinary `Search`, `Visit`, or `Local`
-hot paths. Expose them directly through `InspectorSnapshot`, without a nested
-metrics object or reset API. Counters are cache hits, cache
-misses, cache admissions, cache evictions, cache expansions, candidate checks,
-`All` range prunings, and empty results. A
-histogram reports result cardinality. Inspector exposes no gauges. Counters
-remain monotonic sample totals for the inspector lifetime so callers can
-calculate interval deltas without treating them as complete workload totals.
+**Accept when**
 
-Collect no per-query explanation. `Index.Explain` and its plan types were
-removed: callers need aggregate behavior they can act on, not a diagnostic
-search that performs extra work. Schemas without `Inspect` must retain the
-current hot path. Measure and document sampled-context overhead separately;
-avoid timers, forced bitmap materialization, exact rechecks of lossy results,
-and other metrics whose collection changes the selected execution strategy.
+- A capability reported as supported never invokes another execution mode.
+- No candidate loop can materialize the same complete child result once per ID.
+- Prepared indexes perform capability lookup without interface discovery in
+  the hot loop and retain the existing allocation class.
 
-### Rebuild scalability
+**Result**
 
-Retain full immutable rebuilds until benchmarks show that update frequency,
-peak memory, or publication latency is a real bottleneck. A lightweight store
-may build a new index separately and atomically publish the completed
-generation, keeping searches read-only.
+The planner has a small, trustworthy description of legal operations, and all
+fallback costs are visible before execution begins.
 
-If full rebuilds eventually become prohibitive, evaluate immutable base and
-delta generations with tombstones and periodic compaction. Account for the
-temporary memory of two generations and build allocations. Do not make mutable
-posting lists the primary update mechanism.
+### 3. Implement a deterministic total-cost model
 
-### Memory-bounded lossy indexes
+**Implement**
 
-Add an opt-in `Lossy` policy for indexes whose exact representation would
-exceed a caller-provided memory budget. Lossy search results may contain false
-positives, but must never omit an exact match. When the exact representation
-fits the budget, `Build` should retain it rather than approximating needlessly.
-Keep this policy orthogonal to operators: the intended API is a decorator such
-as `Lossy(Include(...), MemoryLimit(20<<20))`, not lossy-specific parameters on
-every rule constructor.
+- Assign conservative integer work units to acquiring a source, intersecting
+  an existing bitmap, filtering current candidates, direct ID validation, and
+  final materialization. Avoid timers and floating-point arithmetic.
+- Estimate total work, not cardinality alone:
 
-The policy now supports one pooled budget around `All`; its deterministic
-allocation, redistribution behavior, composition invariant, initial cost and
-quality benchmark, and equality and ordered planning optimizations are recorded
-in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Continue improving budget
-allocation and representation selection for the existing supported rules only
-when a concrete workload and benchmark evidence justify the change.
+  ```text
+  acquire candidate source
+  + narrow or validate remaining rules
+  + expected temporary bitmap bytes
+  ```
 
-Require production-shaped benchmarks for build time, peak and retained memory,
-search latency, allocations, and observed false-positive rate. The detailed
-design constraints and open decisions are recorded in
-[`docs/lossy-index.md`](docs/lossy-index.md).
+- Cost query-dependent unions and ordered ranges even when their complete
+  bitmap has not been built. Use immutable build facts plus constant-time query
+  facts; never scan ordered postings only to estimate their cost.
+- Prefer exact current-query postings and cached bitmaps over estimates. Use
+  the measured candidate threshold of eight only when required information is
+  unavailable or costs tie.
+- Add table tests for dense versus sparse bitmaps with equal cardinality,
+  expensive selective sources versus cheap broader postings, unknown costs,
+  saturating arithmetic, and the scan/materialize boundary.
 
-### `Local` cache efficiency
+**Accept when**
 
-Keep `Local` as an explicitly per-goroutine, bounded cache of intermediate
-search results. Optimize admission, replacement, and reset behavior against
-repeated-value, alternating-value, and high-churn workloads while accounting
-for both hit-rate gains and retained bytes per live `Local`.
+- The planner can compare direct validation with an unmaterialized remaining
+  child instead of immediately falling back to `candidates <= 8`.
+- Cost calculation remains allocation-free and bounded by the number of `All`
+  children.
+- Focused decisions match measured winners across the benchmark matrix; revise
+  cost constants when they do not.
 
-Evaluate cache specialization by existing rule representation only when it
-reduces search latency or allocations without making one-off queries retain
-large bitmaps. Include cold, warm, cache-fill, churn, close/reuse, and many-
-live-local cases in the production benchmark matrix. Do not move cached state
-into the shared immutable index or weaken concurrent search safety.
+**Result**
 
-## Prioritized roadmap
+A deterministic build-time model can choose a cheap initial operation without
+runtime learning and without assuming that the smallest result is cheapest.
 
-Work through these steps in priority order, promoting an optimization only
-when production-shaped benchmarks demonstrate a material benefit:
+### 4. Select the next operation adaptively
 
-1. Improve `Lossy` allocation and representation selection for existing rules,
-   using memory and false-positive quality benchmarks.
-2. Optimize the uncached ordered estimate only if bounded planning and warm
-   cache reuse still leave measurable overhead.
-3. Investigate generation-based updates only after rebuild benchmarks
-   demonstrate a bottleneck.
+**Implement**
 
-For every optimization, compare production-shaped build time, search time,
-allocations, and retained memory. For lossy representations also compare peak
-memory and observed false-positive rate; for `Local`, report retained bytes per
-live cache.
+- Replace the one-time cardinality sort as the execution plan with a bounded
+  loop over remaining children and supported operations.
+- At the start and after every exact narrowing step, choose the least estimated
+  remaining total cost among:
+  - consume an immutable posting;
+  - filter the current candidate bitmap;
+  - validate candidate IDs;
+  - iterate an ordered source;
+  - materialize a complete child result and intersect it.
+- Use actual candidate cardinality and actual serialized bitmap size after
+  every operation. Stop immediately on an exact empty result.
+- Maintain separate scoring for bitmap narrowing and direct validation. Direct
+  checks should be ordered by expected rejection per cost unit and
+  short-circuit on the first rejection.
+- Bound replanning to an allocation-free scan of the remaining child slice;
+  do not build a heap-backed plan graph.
+
+**Accept when**
+
+- An inaccurate estimate cannot force execution to materialize every remaining
+  broad result after candidates have become small.
+- A cheap broader posting may correctly precede an expensive narrower source.
+- Candidate filters are chosen only when measured cheaper than materialization,
+  rather than being invoked unconditionally by representation type.
+- Focused late-empty, late-selective, correlated, and expensive-`MatchID`
+  benchmarks improve without regressing broad-result searches.
+
+**Result**
+
+Production search becomes an operation-cost executor instead of a
+cardinality-ordered executor with a bitmap-versus-ID switch.
+
+### 5. Add representation-specific operations only when they avoid work
+
+**Implement**
+
+- Re-evaluate equality, ordered, `Between`, and `CompareBy` against the new
+  planner one representation at a time.
+- For ordered rules, prototype bounded or early-stopping iteration that can
+  avoid a meaningful part of a union. Do not restore unconditional streaming;
+  the previous version was slower than bulk union plus intersection.
+- Keep existing accepted candidate filters only when the cost model can select
+  them and focused benchmarks show reduced work. Remove capabilities that are
+  never selected or duplicate a faster Roaring primitive.
+- Preserve wildcard semantics, all stored comparison operators, lossy no-false-
+  negative guarantees, inspection metrics, and range empty detection.
+
+**Accept when**
+
+- Each retained operation avoids named materialization or intersection work
+  from step 1 and wins its focused benchmark.
+- Equality filtering and ordered streaming remain rejected unless a new
+  bounded workload demonstrates a material improvement in latency or bytes.
+- The production matrix shows no allocation regression.
+
+**Result**
+
+The executor has a minimal set of proven representation-specific operations,
+not speculative capabilities maintained only because they fit the design.
+
+### 6. Make shared planner statistics useful and bounded
+
+**Implement**
+
+- Do not collect planner fields that no decision reads. Either feed operation
+  cost, actual cardinality, empty rate, and candidate rejection rate into the
+  cost model or remove those fields.
+- Define a query shape from facts available before plan reuse, such as field
+  presence, equality versus ordered access, wildcard/concrete state, and a
+  bounded range-width class. Do not call a bucket of the previously selected
+  first child's cardinality the current query shape.
+- Keep a fixed number of shapes and child-order entries per compiled `All`.
+  Store no query values, getters, or unbounded keys in the shared profile.
+- Let each `Local` read one immutable snapshot, accumulate an unsynchronized
+  overlay, and publish batched deltas only when sampled. Keep publication off
+  every-search paths.
+- Combine the shared prior with local evidence using sample counts and bounded
+  confidence. Exact current-query facts always override learned values.
+- Preserve deterministic exploration in a small fraction of sampled `Local`
+  contexts so an early popular plan cannot suppress contrary evidence.
+
+**Accept when**
+
+- Two deliberately different query shapes learn different useful plans and a
+  new `Local` selects the matching shape before its first search plan executes.
+- A profile trained on the opposite workload is cheaply rejected or overridden
+  and never changes results.
+- Shared memory is bounded by compiled schema size and configured constants;
+  ordinary and warm `Local.Search` retain their allocation classes.
+- A benchmark demonstrates that sharing improves a new `Local` versus starting
+  from deterministic planning. Otherwise remove shared learning and retain the
+  deterministic planner.
+
+**Result**
+
+Cross-`Local` learning either provides a measured cold-start benefit with a
+bounded implementation or is removed instead of accumulating unused telemetry.
+
+### 7. Finish byte-bounded `Local` state
+
+**Implement**
+
+- Maintain separate accounted budgets for child bitmaps, exact intersections,
+  learned plans, and planner profiles. Include Roaring payload, input bitmap
+  references, keys, and overflow structures in the accounting model.
+- Validate cached plans against exact current postings and capabilities before
+  reuse. Cache exact intersections only when all input bitmap identities and
+  the cache epoch match.
+- Keep admission-after-repeat for value bitmaps. Exercise alternating values,
+  one-off churn, adaptive capacity, oversized results, `Close`, and pool reuse.
+- Report retained bytes per cold, warm, adaptive, and adversarial `Local`.
+
+**Accept when**
+
+- No query stream can make retained per-`Local` bitmap or plan state grow
+  without the documented bound.
+- Declining an oversized cache entry affects only reuse, not correctness.
+- `Close` releases all accounted payload and a recycled `Local` starts with
+  reset admission, observation, and profile state.
+
+**Result**
+
+The faster planner has a predictable memory cost per live goroutine and cannot
+trade temporary `Index.Search` allocations for unbounded retained `Local`
+memory.
+
+### 8. Differential cutover and cleanup
+
+**Implement**
+
+- Keep a test-only recursive materialize-all reference executor. Compare it
+  with the adaptive executor over generated schemas and queries covering every
+  representation, nested combinators, wrappers, wildcard sharing, exclusions,
+  lossy rules, duplicate IDs, empty results, and broad results.
+- Add fuzzing for result equivalence and preserve deterministic insertion order.
+- Run the race detector and the complete benchmark gate. Compare final results
+  with both the parent commit and the reference measurements at the top of this
+  file.
+- Remove the old cardinality-only decision path, unused shadow code, unread
+  statistics, obsolete interfaces, and compatibility branches only after the
+  new production executor passes all gates.
+- Move each completed or rejected step to `ROADMAP_HISTORY.md` with commands,
+  hardware, medians, bytes, allocations, and the decision rationale.
+
+**Accept when**
+
+- Differential, fuzz, ordinary, and race tests pass.
+- Warm `Local.Search` remains at 0 B/op and 0 allocs/op.
+- Production-shaped `Index.Search` materially improves latency or temporary
+  bytes without increasing allocation count, and focused workloads explain the
+  improvement.
+- Large-result, parallel, retained-memory, build-time, and lossy-quality gates
+  show no material regression.
+
+**Result**
+
+One production executor remains. Its capabilities, cost model, learned hints,
+and memory budgets are all exercised by code and benchmarks; there is no
+shadow architecture or roadmap claim stronger than the measured result.
