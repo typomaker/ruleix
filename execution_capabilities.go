@@ -156,6 +156,51 @@ type shadowExecutionDecision struct {
 	cardinality uint64
 }
 
+// shouldValidateCandidates compares direct ID checks with acquiring and
+// intersecting the remaining child results. The units are intentionally
+// coarse: a membership check costs 16 serialized bitmap bytes, while consuming
+// an existing posting costs its exact serialized size. This distinguishes a
+// dense run container from an equally cardinal sparse bitmap without scanning
+// either posting. Exact query facts in ranked take precedence over estimates.
+// If either side cannot be costed conservatively, retain the benchmark-selected
+// limit as the fallback.
+func (r *allRule[T]) shouldValidateCandidates(ranked []rankedBitmap) bool {
+	if len(ranked) == 0 || ranked[0].card == ^uint64(0) {
+		return false
+	}
+	candidates := ranked[0].card
+	validationCost := uint64(0)
+	bitmapCost := uint64(0)
+	for _, child := range ranked[1:] {
+		descriptor := r.executionDescriptor(child.childIdx, r.children[child.childIdx])
+		if descriptor.capabilities&executionMatchID == 0 {
+			return candidates <= allCandidateScanLimit
+		}
+		validationCost = saturatingAdd(validationCost, saturatingMul(candidates, 16))
+
+		if child.bits == nil {
+			return candidates <= allCandidateScanLimit
+		}
+		bitmapCost = saturatingAdd(bitmapCost, child.bits.GetSerializedSizeInBytes())
+	}
+	return validationCost < bitmapCost ||
+		(validationCost == bitmapCost && candidates <= allCandidateScanLimit)
+}
+
+func saturatingAdd(left, right uint64) uint64 {
+	if ^uint64(0)-left < right {
+		return ^uint64(0)
+	}
+	return left + right
+}
+
+func saturatingMul(left, right uint64) uint64 {
+	if left != 0 && right > ^uint64(0)/left {
+		return ^uint64(0)
+	}
+	return left * right
+}
+
 // shadowDecision computes a proposed first operation for tests and benchmarks.
 // Production Search deliberately does not call it while the cost model is
 // being validated.

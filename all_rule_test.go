@@ -81,6 +81,15 @@ type cachedEstimateRule struct {
 	bits *roaring.Bitmap
 }
 
+type planningCountingRule struct {
+	*countingRule
+	bits *roaring.Bitmap
+}
+
+func (r *planningCountingRule) lookupPlanningBitmap(int) (*roaring.Bitmap, bool) {
+	return r.bits, true
+}
+
 func (r *cachedEstimateRule) estimateCachedCardinality(int, *bitmapPool) (uint64, bool) {
 	return r.bits.GetCardinality(), true
 }
@@ -391,6 +400,36 @@ func TestAllCandidateScanLimit(t *testing.T) {
 			require.Equal(t, test.wantMatchCalls, second.matchIDCalls)
 		})
 	}
+}
+
+func TestAllCostModelValidatesBeyondFallbackForBroadSibling(t *testing.T) {
+	selectiveIDs := make([]uint32, allCandidateScanLimit+8)
+	for i := range selectiveIDs {
+		selectiveIDs[i] = uint32(i)
+	}
+	broadIDs := make([]uint32, 10_000)
+	for i := range broadIDs {
+		broadIDs[i] = uint32(i * 10)
+	}
+	selectiveCounter := &countingRule{ids: selectiveIDs}
+	broadCounter := &countingRule{ids: broadIDs}
+	selective := &planningCountingRule{countingRule: selectiveCounter, bits: roaring.BitmapOf(selectiveIDs...)}
+	broad := &planningCountingRule{countingRule: broadCounter, bits: roaring.BitmapOf(broadIDs...)}
+	rule := &allRule[int]{children: []Rule[int]{selective, broad}}
+	rule.prepareSearch()
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+	require.True(t, rule.shouldValidateCandidates([]rankedBitmap{
+		{bits: selective.bits, card: selective.bits.GetCardinality(), childIdx: 0},
+		{bits: broad.bits, card: broad.bits.GetCardinality(), childIdx: 1},
+	}))
+
+	rule.search(0, dst, pool)
+
+	require.Equal(t, []uint32{0, 10}, dst.ToArray())
+	require.Zero(t, selectiveCounter.searchCalls)
+	require.Zero(t, broadCounter.searchCalls)
 }
 
 func TestAllSwitchesToCandidateScanAfterSmallMaterializedResult(t *testing.T) {

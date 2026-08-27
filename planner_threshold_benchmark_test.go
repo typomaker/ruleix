@@ -142,6 +142,43 @@ func BenchmarkAllMaterializedCandidateFallback(b *testing.B) {
 	}
 }
 
+// BenchmarkAllCostBasedBroadSibling covers the first production cost-model
+// decision that intentionally scans beyond allCandidateScanLimit: 16 exact
+// candidates are cheaper to validate than intersecting a 100K-ID sibling.
+// Last local run on Apple M1 Max: cost model 285.5 ns/op, 32 B/op, 2 allocs;
+// threshold fallback 25.7 us/op, 135,910 B/op, 53 allocs (median of five 1 s runs).
+// Reproduce with:
+//
+//	go test -run '^$' -bench '^BenchmarkAllCostBasedBroadSibling$' -benchmem -benchtime=1s -count=5 .
+func BenchmarkAllCostBasedBroadSibling(b *testing.B) {
+	selective := roaring.New()
+	selective.AddRange(0, 16)
+	broad := roaring.New()
+	for id := uint32(0); id < 1_000_000; id += 10 {
+		broad.Add(id)
+	}
+	for name, children := range map[string][]Rule[int]{
+		"CostModel": {&matchAllRule[int]{bits: selective}, &matchAllRule[int]{bits: broad}},
+		"ThresholdFallback": {
+			&unknownEstimateRule[int]{child: &matchAllRule[int]{bits: selective}},
+			&unknownEstimateRule[int]{child: &matchAllRule[int]{bits: broad}},
+		},
+	} {
+		b.Run(name, func(b *testing.B) {
+			rule := &allRule[int]{children: children}
+			rule.prepareSearch()
+			pool := newBitmapPool()
+			dst := roaring.New()
+			b.ReportAllocs()
+			for range b.N {
+				dst.Clear()
+				rule.search(0, dst, pool)
+			}
+			plannerBenchmarkCardinality = dst.GetCardinality()
+		})
+	}
+}
+
 // BenchmarkAllLateMaterializedCandidateFallback covers a small result found
 // after a broad child has already been materialized. The executor can validate
 // that earlier child from its bitmap instead of invoking its rule matcher.

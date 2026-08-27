@@ -70,39 +70,31 @@ allocation traffic.
 
 Implement the rewrite in this order:
 
-1. **Select the initial operation by estimated total cost.** Compare the cost
-   of acquiring each candidate source plus validating its candidates with the
-   cost of bitmap filtering or intersection. Replace the global candidate
-   threshold as a decision rule with a cost comparison based on candidate
-   count and the remaining rules' supported operations. Keep the measured
-   threshold of eight as a conservative fallback when cost information is
-   unavailable. Prefer exact current-query facts over learned or approximate
-   statistics.
-2. **Make execution adaptive after every narrowing step.** Reconsider the
+1. **Make execution adaptive after every narrowing step.** Reconsider the
    remaining operations using the measured candidate cardinality after each
    posting, filter, or materialization. Switch immediately to direct ID
    validation when it becomes cheaper; stop on an exact empty result; and do
    not follow a stale pre-sorted order after actual cardinalities contradict
    its estimates. Bound replanning work and keep the common small-`All` path
    allocation-free.
-3. **Add representation-specific candidate filters and ordered streaming.**
+2. **Add representation-specific candidate filters and ordered streaming.**
    Teach equality, exclusion, `CompareBy`, and `Between` representations to
    narrow an existing candidate set without first constructing their complete
    result where benchmarks justify it. Materialize an ordered union only when
    it is selected as a broad candidate source or is cheaper than filtering.
    Keep direct getters and comparisons out of shared mutable state.
-4. **Use a separate order for direct candidate validation.** Once execution
+3. **Use a separate order for direct candidate validation.** Once execution
    switches to ID checks, order the remaining rules by expected rejection per
    unit cost rather than bitmap cardinality. Short-circuit on the first
    rejection. If a rule lacks direct matching, materialize it at most once for
    the whole candidate batch or select another supported filtering operation.
-5. **Retain bounded per-`Local` plans and results.** Cache query-shape plans,
+4. **Retain bounded per-`Local` plans and results.** Cache query-shape plans,
    child bitmaps, and exact intersections independently. Validate a cached
    plan cheaply against current postings before reuse, and retain the current
    admission-after-repeat behavior so one-off values do not pin bitmaps. Bound
    caches by accounted bytes as well as entry count before increasing their
    working-set capacity.
-6. **Share sampled planner statistics across `Local` instances.** Only after
+5. **Share sampled planner statistics across `Local` instances.** Only after
    the deterministic cost model is stable, add a compact `Index`-owned profile
    containing aggregate operation cost, actual cardinality, empty rate, and
    candidate rejection rate by bounded query shape. Each `Local` reads one
@@ -111,13 +103,13 @@ Implement the rewrite in this order:
    Never update shared atomics, take timers, or publish a new snapshot on every
    search. Cached bitmaps, query values, exact intersections, and final plan
    choices remain local.
-7. **Control learning bias and memory.** Track sample counts and confidence,
+6. **Control learning bias and memory.** Track sample counts and confidence,
    distinguish missing observations from zero cost, use occasional bounded
    exploration only in sampled local contexts, and let local evidence override
    the shared prior. Limit query shapes and shared profile bytes per compiled
    `All`, use deterministic eviction, and prove that adversarial high-cardinality
    query values cannot cause unbounded retention.
-8. **Cut over and simplify.** Run the old and new planners against the same
+7. **Cut over and simplify.** Run the old and new planners against the same
     generated and production-shaped queries in correctness tests, including
     nested `All`, wildcard sharing, exclusions, lossy rules, duplicate external
     IDs, and empty and large results. Enable the new executor only after its

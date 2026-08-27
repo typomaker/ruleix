@@ -1921,3 +1921,29 @@ go test -run '^$' \
 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
   -benchmem -benchtime=3x -count=3 .
 ```
+
+## 2026-08-27: cost-based initial `All` operation
+
+`All` now chooses between direct candidate validation and bitmap execution by
+comparing estimated work instead of using cardinality eight as the decision
+boundary. The planner uses the exact serialized size of already available
+planning or cached bitmaps, which distinguishes cheap dense containers from
+large sparse postings without scanning them. It validates only when every
+remaining rule supports direct ID matching; unavailable cost information keeps
+the benchmark-selected threshold of eight as a conservative fallback.
+
+On Apple M1 Max with Go 1.26.0, a 16-candidate query with a sparse 100K-ID
+sibling measured a 285.5 ns median, 32 B, and two allocations, versus 25.7 us,
+135,910 B, and 53 allocations through the threshold fallback. Five one-second
+production-shaped runs measured a 40.645 us median for `Index.Search`, 73,396 B,
+and 28 allocations. Warm `Local.Search` measured 560.4 ns with zero measured
+bytes or allocations.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllCostBasedBroadSibling$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+```

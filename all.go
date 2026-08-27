@@ -308,7 +308,7 @@ func (r *allRule[T]) searchRanked(
 	if r.duplicateBitmapIDs != nil {
 		rankedChildren = r.deduplicateEqualityResults(v, rankedChildren)
 	}
-	if rankedChildren[0].card > allCandidateScanLimit {
+	if !r.shouldValidateCandidates(rankedChildren) {
 		if !r.intersectRankedInOrderObserved(v, dst, pool, rankedChildren, metrics) {
 			r.releaseRanked(pool, rankedChildren)
 			return
