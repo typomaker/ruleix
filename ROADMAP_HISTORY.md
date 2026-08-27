@@ -2181,3 +2181,23 @@ go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
   -benchmem -benchtime=3x -count=3 .
 ```
+
+## 2026-08-27: adaptive `All` differential correctness gate
+
+The adaptive executor now runs in correctness tests against a recursive oracle
+that preserves the replaced execution strategy: materialize every `All` child
+completely and intersect the bitmaps in schema order. The deterministic matrix
+covers 512 queries over 320 generated constraints in both exact and bounded
+lossy schemas. It varies nested `All`, equality wildcards, ordered predicates,
+`Between`, exclusions, empty and broad results, and non-consecutive duplicate
+external IDs. Every query is checked through `Index.Search` and both cold and
+warm calls on its own `Local`, preserving insertion-ordered results as well as
+membership.
+
+This closes the shadow comparison correctness gate. The production-shaped
+benchmark gate and removal of the now-unused shadow decision model remain the
+next cutover change. Reproduce with:
+
+```sh
+go test ./...
+```

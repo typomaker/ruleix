@@ -72,12 +72,11 @@ The bounded shared profile, confidence gate, sampled exploration, and memory
 proof are recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Complete the
 rewrite in this order:
 
-1. **Cut over and simplify.** Run the old and new planners against the same
-    generated and production-shaped queries in correctness tests, including
-    nested `All`, wildcard sharing, exclusions, lossy rules, duplicate external
-    IDs, and empty and large results. Enable the new executor only after its
-    benchmark gates pass, then remove the shadow planner, obsolete ranking
-    interfaces, and compatibility branches in a separate reviewable change.
+1. **Cut over and simplify.** The generated differential correctness gate
+    against the materialize-all executor is complete and recorded in
+    [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Run the benchmark gates, then
+    remove the shadow planner, obsolete ranking interfaces, and compatibility
+    branches in a separate reviewable change.
 
 Treat shared statistics as optional hints. A fresh `Local`, a discarded
 profile, and a profile trained by a different workload must all remain correct
