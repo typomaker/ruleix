@@ -70,22 +70,13 @@ allocation traffic.
 
 Implement the rewrite in this order:
 
-1. **Share sampled planner statistics across `Local` instances.** Only after
-   the deterministic cost model is stable, add a compact `Index`-owned profile
-   containing aggregate operation cost, actual cardinality, empty rate, and
-   candidate rejection rate by bounded query shape. Each `Local` reads one
-   immutable snapshot as a starting prior, accumulates an unsynchronized local
-   overlay, and publishes batched deltas on `Close` or at a coarse interval.
-   Never update shared atomics, take timers, or publish a new snapshot on every
-   search. Cached bitmaps, query values, exact intersections, and final plan
-   choices remain local.
-2. **Control learning bias and memory.** Track sample counts and confidence,
+1. **Control learning bias and memory.** Track sample counts and confidence,
    distinguish missing observations from zero cost, use occasional bounded
    exploration only in sampled local contexts, and let local evidence override
    the shared prior. Limit query shapes and shared profile bytes per compiled
    `All`, use deterministic eviction, and prove that adversarial high-cardinality
    query values cannot cause unbounded retention.
-3. **Cut over and simplify.** Run the old and new planners against the same
+2. **Cut over and simplify.** Run the old and new planners against the same
     generated and production-shaped queries in correctness tests, including
     nested `All`, wildcard sharing, exclusions, lossy rules, duplicate external
     IDs, and empty and large results. Enable the new executor only after its
@@ -241,16 +232,13 @@ into the shared immutable index or weaken concurrent search safety.
 Work through these steps in priority order, promoting an optimization only
 when production-shaped benchmarks demonstrate a material benefit:
 
-1. Execute the cost-based `All` rewrite through explicit capabilities, static
-   descriptors, operation-cost selection, and adaptive narrowing before adding
-   shared runtime learning.
-2. Add bounded cross-`Local` planner statistics only after the deterministic
-   executor and per-`Local` plan validation pass their benchmark gates.
-3. Improve `Lossy` allocation and representation selection for existing rules,
+1. Control shared-planner learning bias and memory, then complete the shadow
+   comparison and cutover gates.
+2. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
-4. Optimize the uncached ordered estimate only if bounded planning and warm
+3. Optimize the uncached ordered estimate only if bounded planning and warm
    cache reuse still leave measurable overhead.
-5. Investigate generation-based updates only after rebuild benchmarks
+4. Investigate generation-based updates only after rebuild benchmarks
    demonstrate a bottleneck.
 
 For every optimization, compare production-shaped build time, search time,

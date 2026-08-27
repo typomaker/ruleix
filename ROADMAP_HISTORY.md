@@ -2116,3 +2116,34 @@ go test ./...
 go test -run '^$' -bench '^BenchmarkProductionShape(Search|LocalRetainedMemory)$' \
   -benchmem -benchtime=1s -count=3 .
 ```
+
+## 2026-08-27: bounded cross-`Local` planner profile
+
+Every `Index` now owns a compact planner profile keyed only by compiled `All`
+nodes and eight bounded cardinality shapes. One in 64 `Local` lifetimes records
+deterministic work units, actual result cardinality, empty results, candidate
+checks, and candidate rejections in an unsynchronized overlay. `Local.Close`
+merges the batch under one publication lock and atomically publishes a new
+immutable snapshot; searches never take timers, update shared counters, or
+retain query values and bitmaps in the profile.
+
+Fresh `Local` contexts can seed a child order from the most frequently sampled
+shape. The existing exact-cardinality validation rejects a stale prior and
+lets local evidence replace it. Shapes are fixed at eight and stored orders at
+16 children per compiled `All`, so high-cardinality query values cannot grow
+profile storage.
+
+On Apple M1 Max with Go 1.26.0, three 300 ms production-shaped runs measured a
+43.6--44.4 us `Index.Search` range with 73,570--73,572 B and 31 allocations.
+Warm `Local.Search` measured a 563.6--576.4 ns range with zero measured bytes
+or allocations. Retained memory measured 2,968 B per cold `Local`, 90,960 B
+per warm `Local`, and 107,824 B for the adaptive four-query case. Reproduce
+with:
+
+```sh
+go test ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=300ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchmem -benchtime=3x -count=3 .
+```
