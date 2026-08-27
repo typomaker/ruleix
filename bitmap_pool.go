@@ -21,6 +21,7 @@ type bitmapPool struct {
 	rootObserver    inspectorRuntimeObserver
 	observeRuntime  bool
 	samplePlanner   bool
+	explorePlanner  bool
 	plannerSnapshot *plannerProfileSnapshot
 	plannerOverlay  plannerProfileOverlay
 }
@@ -173,6 +174,7 @@ func (p *bitmapPool) resetLocal() {
 	}
 	p.childCacheBytes = 0
 	p.samplePlanner = false
+	p.explorePlanner = false
 	p.plannerSnapshot = nil
 	p.plannerOverlay = plannerProfileOverlay{}
 }

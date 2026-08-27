@@ -8,6 +8,7 @@ import (
 const (
 	plannerProfileShapeLimit = 8
 	plannerProfileOrderLimit = 16
+	plannerProfileMinSamples = 4
 )
 
 type plannerProfileSnapshot struct {
@@ -24,6 +25,7 @@ type plannerShapeProfile struct {
 	actualCardinality   uint64
 	emptyResults        uint64
 	candidateChecks     uint64
+	candidateSamples    uint64
 	candidateRejections uint64
 	order               [plannerProfileOrderLimit]uint16
 	orderLen            uint8
@@ -90,6 +92,7 @@ func (p *bitmapPool) finishPlannerObservation(rule any, result uint64) {
 		shape.emptyResults++
 	}
 	if observation.candidates != ^uint64(0) {
+		shape.candidateSamples++
 		shape.candidateChecks = saturatingAdd(shape.candidateChecks, observation.candidates)
 		if result < observation.candidates {
 			shape.candidateRejections = saturatingAdd(shape.candidateRejections, observation.candidates-result)
@@ -147,6 +150,7 @@ func (p *plannerProfilePublisher) publish(overlay plannerProfileOverlay) {
 			dst.actualCardinality = saturatingAdd(dst.actualCardinality, src.actualCardinality)
 			dst.emptyResults = saturatingAdd(dst.emptyResults, src.emptyResults)
 			dst.candidateChecks = saturatingAdd(dst.candidateChecks, src.candidateChecks)
+			dst.candidateSamples = saturatingAdd(dst.candidateSamples, src.candidateSamples)
 			dst.candidateRejections = saturatingAdd(dst.candidateRejections, src.candidateRejections)
 			if src.orderLen != 0 {
 				dst.order, dst.orderLen = src.order, src.orderLen
@@ -158,7 +162,10 @@ func (p *plannerProfilePublisher) publish(overlay plannerProfileOverlay) {
 }
 
 func (p *bitmapPool) seedSharedPlannerOrder(rule any, children int) *localAllPlan {
-	if p.plannerSnapshot == nil || children > plannerProfileOrderLimit {
+	// One in eight sampled Locals deliberately uses the deterministic build-time
+	// model. This bounded exploration prevents an early shared prior from
+	// suppressing contrary evidence without adding work to ordinary Locals.
+	if p.explorePlanner || p.plannerSnapshot == nil || children > plannerProfileOrderLimit {
 		return nil
 	}
 	profile, ok := p.plannerSnapshot.rules[rule]
@@ -168,7 +175,7 @@ func (p *bitmapPool) seedSharedPlannerOrder(rule any, children int) *localAllPla
 	best := -1
 	for i := range profile.shapes {
 		shape := &profile.shapes[i]
-		if int(shape.orderLen) != children || shape.samples == 0 {
+		if int(shape.orderLen) != children || shape.samples < plannerProfileMinSamples {
 			continue
 		}
 		if best < 0 || shape.samples > profile.shapes[best].samples {
@@ -180,8 +187,8 @@ func (p *bitmapPool) seedSharedPlannerOrder(rule any, children int) *localAllPla
 	}
 	shape := &profile.shapes[best]
 	firstCard := ^uint64(0)
-	if shape.candidateChecks != 0 {
-		firstCard = shape.candidateChecks / shape.samples
+	if shape.candidateSamples != 0 {
+		firstCard = shape.candidateChecks / shape.candidateSamples
 	}
 	plan := &localAllPlan{order: make([]int, children), firstCard: firstCard}
 	var seen [plannerProfileOrderLimit]bool

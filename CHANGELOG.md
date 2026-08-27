@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Shared `All` planner profiles require multiple samples before influencing a
+  fresh `Local`, distinguish missing candidate observations from zero work,
+  and use bounded sampled exploration to correct stale priors.
 - Uncached `All` execution filters an existing candidate bitmap through
   `CompareBy` postings instead of materializing the complete operator union.
 - Per-`Local` exact `All` intersection caches share an accounted 64 KiB byte

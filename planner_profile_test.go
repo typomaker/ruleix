@@ -25,6 +25,7 @@ func TestPlannerProfilePublishesBatchedImmutableSnapshot(t *testing.T) {
 	require.Equal(t, uint64(1), shape.samples)
 	require.Equal(t, uint64(1), shape.actualCardinality)
 	require.Equal(t, uint64(4), shape.candidateChecks)
+	require.Equal(t, uint64(1), shape.candidateSamples)
 	require.Equal(t, uint64(3), shape.candidateRejections)
 	require.Equal(t, []uint16{1, 0}, shape.order[:shape.orderLen])
 
@@ -43,7 +44,7 @@ func TestPlannerProfileSeedsFreshLocalWithoutQueryValues(t *testing.T) {
 	rule := &allRule[int]{children: []Rule[int]{&matchAllRule[int]{}, &matchAllRule[int]{}}}
 	profile := plannerRuleProfile{}
 	profile.shapes[2] = plannerShapeProfile{
-		samples: 7, candidateChecks: 28, orderLen: 2,
+		samples: 7, candidateChecks: 28, candidateSamples: 7, orderLen: 2,
 		order: [plannerProfileOrderLimit]uint16{1, 0},
 	}
 	pool := newLocalBitmapPool(0)
@@ -56,10 +57,54 @@ func TestPlannerProfileSeedsFreshLocalWithoutQueryValues(t *testing.T) {
 	require.Len(t, pool.plannerSnapshot.rules, 1)
 }
 
+func TestPlannerProfileRequiresConfidenceAndDistinguishesZeroCost(t *testing.T) {
+	rule := &allRule[int]{children: []Rule[int]{&matchAllRule[int]{}, &matchAllRule[int]{}}}
+	profile := plannerRuleProfile{}
+	profile.shapes[0] = plannerShapeProfile{
+		samples: plannerProfileMinSamples - 1, candidateSamples: plannerProfileMinSamples - 1,
+		orderLen: 2, order: [plannerProfileOrderLimit]uint16{1, 0},
+	}
+	pool := newLocalBitmapPool(0)
+	pool.plannerSnapshot = &plannerProfileSnapshot{rules: map[any]plannerRuleProfile{rule: profile}}
+	require.Nil(t, pool.seedSharedPlannerOrder(rule, 2))
+
+	shape := &profile.shapes[0]
+	shape.samples++
+	shape.candidateSamples++
+	pool.plannerSnapshot = &plannerProfileSnapshot{rules: map[any]plannerRuleProfile{rule: profile}}
+	plan := pool.seedSharedPlannerOrder(rule, 2)
+	require.NotNil(t, plan)
+	require.Zero(t, plan.firstCard)
+
+	profile.shapes[0].candidateSamples = 0
+	pool.plannerSnapshot = &plannerProfileSnapshot{rules: map[any]plannerRuleProfile{rule: profile}}
+	require.Equal(t, ^uint64(0), pool.seedSharedPlannerOrder(rule, 2).firstCard)
+}
+
+func TestPlannerProfileExploresOnlyBoundedSampledLocals(t *testing.T) {
+	index, err := New[[2]int, int](All(
+		Include(func(value [2]int) (int, bool) { return value[0], true }),
+		Include(func(value [2]int) (int, bool) { return value[1], true }),
+	)).Build(Zip([][2]int{{1, 1}}, []int{1}))
+	require.NoError(t, err)
+
+	index.localTelemetry.Store(511)
+	local := index.Local()
+	require.True(t, local.pool.samplePlanner)
+	require.True(t, local.pool.explorePlanner)
+	local.Close()
+
+	local = index.Local()
+	require.False(t, local.pool.samplePlanner)
+	require.False(t, local.pool.explorePlanner)
+	local.Close()
+}
+
 func TestPlannerProfileUsesBoundedShapesAndOrder(t *testing.T) {
 	require.Equal(t, plannerProfileShapeLimit-1, plannerShape(^uint64(0)))
 	require.Less(t, plannerShape(uint64(1)<<40), plannerProfileShapeLimit)
 	require.Equal(t, 16, plannerProfileOrderLimit)
+	require.Equal(t, 4, plannerProfileMinSamples)
 }
 
 func TestSampledLocalPublishesPlannerProfileOnClose(t *testing.T) {

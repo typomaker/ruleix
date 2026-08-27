@@ -2147,3 +2147,37 @@ go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
   -benchmem -benchtime=3x -count=3 .
 ```
+
+## 2026-08-27: control shared-planner learning bias
+
+A shared shape now needs four observations before it can seed a fresh `Local`.
+Candidate observation count is stored separately from total candidate checks,
+so a measured zero-candidate plan remains different from a shape with no
+candidate observation. One in eight already-sampled contexts (one in 512
+`Local` lifetimes overall) deliberately ignores the shared prior and runs the
+deterministic build-time model. This bounded exploration can replace a stale
+prior with local evidence without adding work to ordinary contexts.
+
+The profile still has exactly eight shapes and at most 16 stored child indexes
+per compiled `All`; it stores neither query keys nor runtime-created rules.
+Consequently adversarial distinct or high-cardinality query values cannot add
+profile entries or increase the per-rule representation. Focused tests cover
+the confidence threshold, missing-versus-zero observations, the exploration
+cadence, and fallback to the deterministic model.
+
+On Apple M1 Max with Go 1.26.0, three 300 ms runs measured `Index.Search` at
+41.952--43.727 us with 73,570--73,571 B and 31 allocations. Warm
+`Local.Search` measured 584.8--592.8 ns with zero measured bytes or
+allocations, and parallel batches measured 483.8--490.6 ns/search. Retained
+memory remained 2,968--2,973 B per cold `Local`, 90,960 B per warm `Local`, and
+107,824 B for the adaptive high-churn case. Reproduce with:
+
+```sh
+go test ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=300ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=300ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchmem -benchtime=3x -count=3 .
+```

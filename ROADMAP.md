@@ -68,15 +68,11 @@ Do not remove the existing executor until the replacement matches its results
 and large-result performance and materially reduces selective-search work or
 allocation traffic.
 
-Implement the rewrite in this order:
+The bounded shared profile, confidence gate, sampled exploration, and memory
+proof are recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Complete the
+rewrite in this order:
 
-1. **Control learning bias and memory.** Track sample counts and confidence,
-   distinguish missing observations from zero cost, use occasional bounded
-   exploration only in sampled local contexts, and let local evidence override
-   the shared prior. Limit query shapes and shared profile bytes per compiled
-   `All`, use deterministic eviction, and prove that adversarial high-cardinality
-   query values cannot cause unbounded retention.
-2. **Cut over and simplify.** Run the old and new planners against the same
+1. **Cut over and simplify.** Run the old and new planners against the same
     generated and production-shaped queries in correctness tests, including
     nested `All`, wildcard sharing, exclusions, lossy rules, duplicate external
     IDs, and empty and large results. Enable the new executor only after its
@@ -232,8 +228,7 @@ into the shared immutable index or weaken concurrent search safety.
 Work through these steps in priority order, promoting an optimization only
 when production-shaped benchmarks demonstrate a material benefit:
 
-1. Control shared-planner learning bias and memory, then complete the shadow
-   comparison and cutover gates.
+1. Complete the shadow comparison and cost-based `All` cutover gates.
 2. Improve `Lossy` allocation and representation selection for existing rules,
    using memory and false-positive quality benchmarks.
 3. Optimize the uncached ordered estimate only if bounded planning and warm

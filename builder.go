@@ -240,7 +240,8 @@ func (ix *Index[C, ID]) Search(value C, dst *[]ID) bool {
 // can be reused. The Index remains immutable and may be shared by all of those
 // goroutines.
 func (ix *Index[C, ID]) Local() *Local[C, ID] {
-	sampled := ix.localTelemetry.Add(1)%64 == 0
+	localOrdinal := ix.localTelemetry.Add(1)
+	sampled := localOrdinal%64 == 0
 	observed := (ix.rootMetrics != nil || ix.localInspectors != nil) && sampled
 	pools := &ix.locals
 	if observed {
@@ -258,6 +259,7 @@ func (ix *Index[C, ID]) Local() *Local[C, ID] {
 		pool.bindRootInspector(ix.rootMetrics)
 	}
 	pool.samplePlanner = sampled
+	pool.explorePlanner = sampled && localOrdinal%(64*8) == 0
 	pool.plannerSnapshot = ix.plannerProfiles.snapshot.Load()
 	return &Local[C, ID]{index: ix, pool: pool, observed: observed}
 }
