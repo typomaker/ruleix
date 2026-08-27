@@ -81,6 +81,7 @@ type betweenCacheEntry[V any] struct {
 	from        V
 	until       V
 	bits        *roaring.Bitmap
+	bytes       uint64
 }
 
 func (*betweenRule[T, V]) rule() {}
@@ -207,10 +208,21 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	if cached.bits == nil {
 		cached.bits = pool.get()
 	} else {
+		pool.childCacheBytes -= cached.bytes
+		cached.bytes = 0
 		cached.bits.Clear()
 	}
 	cached.bits.SetCopyOnWrite(true)
 	r.searchUncached(v, cached.bits, pool)
+	bytes := cached.bits.GetSizeInBytes()
+	if bytes > uint64(maxLocalChildCacheBytes)-min(pool.childCacheBytes, uint64(maxLocalChildCacheBytes)) {
+		dst.Or(cached.bits)
+		pool.put(cached.bits)
+		*cached = betweenCacheEntry[V]{}
+		return
+	}
+	cached.bytes = bytes
+	pool.childCacheBytes += bytes
 	cached.initialized = true
 	cached.hasFrom, cached.hasUntil = hasFrom, hasUntil
 	var zero V
@@ -228,6 +240,7 @@ func (c *betweenCache[V]) reset(pool *bitmapPool) {
 	for i := 0; i < c.capacity(); i++ {
 		entry := c.entry(i)
 		if entry.bits != nil {
+			pool.childCacheBytes -= entry.bytes
 			pool.put(entry.bits)
 		}
 	}

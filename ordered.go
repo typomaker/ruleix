@@ -309,6 +309,7 @@ func (r *orderedRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	bits := cache.replace(value, pool)
 	r.addMatches(value, bits)
 	dst.Or(bits)
+	cache.commit(bits, pool)
 }
 func (r *orderedRule[T, V]) matchesID(v T, id uint32) bool {
 	if r.wildcard.Contains(id) {

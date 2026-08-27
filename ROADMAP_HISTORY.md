@@ -2091,3 +2091,28 @@ go test -run '^$' \
 go test -run '^$' -bench '^BenchmarkProductionScaleSearch/Rules10000/' \
   -benchmem -benchtime=300ms -count=3 .
 ```
+## 2026-08-27: byte-bounded per-Local child caches
+
+Materialized equality, ordered, comparison, interval, lossy equality, and
+exclusion results now share a 1 MiB accounted-byte budget per `Local`, in
+addition to their existing two-entry and adaptive four-entry limits. An
+admitted result that would exceed the shared budget is used by the current
+search but immediately released instead of being retained. Exact `All`
+intersections keep their independent 64 KiB budget, and admission still
+requires a repeated value so high-churn one-off queries retain no bitmaps.
+
+The focused budget test constructs a child result larger than 1 MiB and proves
+that it is not reusable or accounted after the search, then verifies that a
+small result is accounted and released on reset. On Apple M1 Max with Go
+1.26.0, three one-second runs measured a 43.629 us worst-case `Index.Search`
+run with 73,572 B and 31 allocations; warm `Local.Search` measured a 578.1 ns
+median with zero measured bytes or allocations. Median retained memory was
+90,958 B per warm `Local` and 107,847 B per adaptive four-query `Local`, below
+the new ceiling and consistent with the preceding measurements. Reproduce
+with:
+
+```sh
+go test ./...
+go test -run '^$' -bench '^BenchmarkProductionShape(Search|LocalRetainedMemory)$' \
+  -benchmem -benchtime=1s -count=3 .
+```

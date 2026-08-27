@@ -7,18 +7,19 @@ import (
 )
 
 type bitmapPool struct {
-	pool           sync.Pool
-	rankedPool     sync.Pool
-	local          []localNodeCache
-	allPlans       map[any]*localAllPlan
-	allResultBytes uint64
-	cacheEpoch     uint64
-	observers      cacheObservers // test-only fallback for caches without a compiled node ID
-	inspectors     localInspectorRuntimeChunk
-	nodeObservers  []cacheObservers
-	rootRuntime    *inspectorRuntime
-	rootObserver   inspectorRuntimeObserver
-	observeRuntime bool
+	pool            sync.Pool
+	rankedPool      sync.Pool
+	local           []localNodeCache
+	allPlans        map[any]*localAllPlan
+	allResultBytes  uint64
+	childCacheBytes uint64
+	cacheEpoch      uint64
+	observers       cacheObservers // test-only fallback for caches without a compiled node ID
+	inspectors      localInspectorRuntimeChunk
+	nodeObservers   []cacheObservers
+	rootRuntime     *inspectorRuntime
+	rootObserver    inspectorRuntimeObserver
+	observeRuntime  bool
 }
 
 type localInspectorRuntime struct {
@@ -89,6 +90,11 @@ const maxPooledBitmapBytes = 64 << 10
 // Local across every compiled All node. Plans remain cheap and schema-bounded;
 // result payloads depend on query cardinality and need a separate byte budget.
 const maxLocalAllResultBytes = 64 << 10
+
+// maxLocalChildCacheBytes bounds materialized filter results retained across
+// every node in one Local. Entry-count limits alone are insufficient when a
+// repeated query produces a very large bitmap.
+const maxLocalChildCacheBytes = 1 << 20
 
 type rankedBitmap struct {
 	bits     *roaring.Bitmap
@@ -162,6 +168,7 @@ func (p *bitmapPool) resetLocal() {
 	for i := range p.local {
 		p.local[i].reset(p)
 	}
+	p.childCacheBytes = 0
 }
 
 func (p *bitmapPool) invalidateResultCache() { p.cacheEpoch++ }

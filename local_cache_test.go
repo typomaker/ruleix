@@ -487,3 +487,26 @@ func TestLocalAllResultCacheHonorsSharedByteBudget(t *testing.T) {
 	plan.resetResults(pool)
 	require.Zero(t, pool.allResultBytes)
 }
+
+func TestLocalChildCacheHonorsSharedByteBudget(t *testing.T) {
+	pool := newLocalBitmapPool(1)
+	cache := newValueBitmapCache[int](pool)
+	value := optionalValue[int]{value: 1, ok: true}
+	bits := cache.replace(value, pool)
+	for id := uint32(0); bits.GetSizeInBytes() <= maxLocalChildCacheBytes; id += 2 {
+		bits.Add(id)
+	}
+	cache.commit(bits, pool)
+
+	reused, found := comparableValueCacheLookup(cache, value)
+	require.False(t, found)
+	require.Nil(t, reused)
+	require.Zero(t, pool.childCacheBytes)
+
+	small := cache.replace(value, pool)
+	small.AddMany([]uint32{1, 2, 3})
+	cache.commit(small, pool)
+	require.Positive(t, pool.childCacheBytes)
+	cache.reset(pool)
+	require.Zero(t, pool.childCacheBytes)
+}

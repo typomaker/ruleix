@@ -159,6 +159,7 @@ type valueBitmapCacheEntry[V any] struct {
 	hasValue    bool
 	value       V
 	bits        *roaring.Bitmap
+	bytes       uint64
 }
 
 func newValueBitmapCache[V any](pool *bitmapPool, id ...nodeID) *valueBitmapCache[V] {
@@ -223,6 +224,8 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V], pool *bitmapPool) 
 	} else {
 		entry.bits.Clear()
 	}
+	pool.childCacheBytes -= entry.bytes
+	entry.bytes = 0
 	entry.bits.SetCopyOnWrite(true)
 	entry.initialized = true
 	entry.hasValue = value.ok
@@ -234,10 +237,32 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V], pool *bitmapPool) 
 	return entry.bits
 }
 
+func (c *valueBitmapCache[V]) commit(bits *roaring.Bitmap, pool *bitmapPool) {
+	for i := 0; i < c.capacity(); i++ {
+		entry := c.entry(i)
+		if entry.bits != bits {
+			continue
+		}
+		bytes := bits.GetSizeInBytes()
+		if bytes > uint64(maxLocalChildCacheBytes)-min(pool.childCacheBytes, uint64(maxLocalChildCacheBytes)) {
+			entry.initialized = false
+			var zero V
+			entry.value = zero
+			entry.bits = nil
+			pool.put(bits)
+			return
+		}
+		entry.bytes = bytes
+		pool.childCacheBytes += bytes
+		return
+	}
+}
+
 func (c *valueBitmapCache[V]) reset(pool *bitmapPool) {
 	for i := 0; i < c.capacity(); i++ {
 		entry := c.entry(i)
 		if entry.bits != nil {
+			pool.childCacheBytes -= entry.bytes
 			pool.put(entry.bits)
 		}
 	}

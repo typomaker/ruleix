@@ -573,6 +573,7 @@ func (r *lossyEqualityRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapP
 			bits := cache.replace(value, pool)
 			r.addMatches(value, bits)
 			dst.Or(bits)
+			cache.commit(bits, pool)
 			return
 		}
 	}
