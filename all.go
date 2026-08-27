@@ -29,8 +29,9 @@ const allDirectExclusionScanLimit = 16
 func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} }
 
 type allRule[T any] struct {
-	children          []Rule[T]
-	planningProviders []planningBitmapProvider[T]
+	children             []Rule[T]
+	planningProviders    []planningBitmapProvider[T]
+	executionDescriptors []ruleExecutionDescriptor
 	// sharedWildcardGroups is allocated only when Build finds equality children
 	// whose interned, non-empty wildcard bitmap is identical. Ordinary All
 	// searches therefore do not pay for duplicate-result tracking.
@@ -87,6 +88,10 @@ func (r *allRule[T]) prepareSearch() {
 		prepareRuleSearch(child)
 	}
 	for i, child := range r.children {
+		if r.executionDescriptors == nil {
+			r.executionDescriptors = make([]ruleExecutionDescriptor, len(r.children))
+		}
+		r.executionDescriptors[i] = describeRuleExecution(child)
 		provider := resolvePlanningBitmapProvider(child)
 		if provider == nil {
 			continue
@@ -99,6 +104,13 @@ func (r *allRule[T]) prepareSearch() {
 	r.prepareSharedWildcardGroups()
 	r.prepareDuplicateEqualityResults()
 	r.planningPrepared = true
+}
+
+func (r *allRule[T]) executionDescriptor(index int, child Rule[T]) ruleExecutionDescriptor {
+	if len(r.executionDescriptors) == len(r.children) {
+		return r.executionDescriptors[index]
+	}
+	return describeRuleExecution(child)
 }
 
 func (r *allRule[T]) prepareSharedWildcardGroups() {

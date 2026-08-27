@@ -199,6 +199,14 @@ func (r *compareByRule[T, V]) matchesID(v T, id uint32) bool {
 	})
 	return found
 }
+func (r *compareByRule[T, V]) streamMatchingBitmaps(v T, yield func(*roaring.Bitmap) bool) {
+	stopped := false
+	r.each(v, func(bits *roaring.Bitmap) {
+		if !stopped {
+			stopped = !yield(bits)
+		}
+	})
+}
 func (*compareByRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
 func (r *compareByRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {

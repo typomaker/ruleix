@@ -8,6 +8,28 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-27: introduce execution capabilities and shadow cost model
+
+Compiled `All` rules now retain compact immutable descriptors for exact
+postings, constant-time and ordered estimates, direct ID matching, candidate
+filtering, ordered posting streaming, and complete materialization. Each
+operation has a coarse build-time cost class and unsupported operations remain
+explicit. In particular, the shadow planner cannot turn materialization into
+an implicit per-candidate `MatchID` fallback.
+
+The opt-in shadow decision selects a proposed candidate source and validation
+mode for tests and benchmarks only; production `Search` does not invoke it or
+change results. Equality/range interfaces remain allocation-free, and ordered
+and `CompareBy` representations now expose ordered posting streams for future
+executor steps. On Apple M1 Max, the three-child shadow decision measured a
+median 104.6 ns/op with 0 B/op and 0 allocations/op across five 1 s runs.
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllShadowDecision$' \
+  -benchmem -benchtime=1s -count=5 .
+```
+
 ## 2026-08-24: move Inspector telemetry off ordinary search paths
 
 Inspector now keeps a plain compiled tree for shared `Index` execution and for

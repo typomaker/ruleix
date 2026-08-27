@@ -116,6 +116,13 @@ type candidateFilter[T any] interface {
 	filterCandidates(T, *roaring.Bitmap, *bitmapPool)
 }
 
+// orderedResultStreamer visits the immutable postings that form a rule result
+// in representation order. Returning false stops the walk. The operation does
+// not construct the complete result bitmap.
+type orderedResultStreamer[T any] interface {
+	streamMatchingBitmaps(T, func(*roaring.Bitmap) bool)
+}
+
 // sharedWildcardEquality exposes the two disjoint parts of an equality match
 // to All. Equal wildcard pointers are guaranteed immutable after Build and
 // arise naturally from bitmap interning.
@@ -216,6 +223,7 @@ func (*matchAllRule[T]) insert(T, uint32)                                      {
 func (r *matchAllRule[T]) cardinality(T, *bitmapPool) uint64                   { return r.bits.GetCardinality() }
 func (r *matchAllRule[T]) estimateCardinality(T) uint64                        { return r.bits.GetCardinality() }
 func (r *matchAllRule[T]) estimateCheapCardinality(T) uint64                   { return r.bits.GetCardinality() }
+func (r *matchAllRule[T]) lookupPlanningBitmap(T) (*roaring.Bitmap, bool)      { return r.bits, true }
 func (r *matchAllRule[T]) matchesID(_ T, id uint32) bool                       { return r.bits.Contains(id) }
 func (r *matchAllRule[T]) search(_ T, dst *roaring.Bitmap, _ *bitmapPool)      { dst.Or(r.bits) }
 func (*matchAllRule[T]) exclude(T, *roaring.Bitmap, *bitmapPool)               {}

@@ -322,6 +322,15 @@ func (r *orderedRule[T, V]) appendMatchingBitmaps(value optionalValue[V], dst []
 	}
 	return dst
 }
+func (r *orderedRule[T, V]) streamMatchingBitmaps(v T, yield func(*roaring.Bitmap) bool) {
+	if !r.wildcard.IsEmpty() && !yield(r.wildcard) {
+		return
+	}
+	value, ok := r.get(v)
+	if ok {
+		r.index.walk(value, r.dir == lessThan, r.inclusive, func(bits *roaring.Bitmap) { yield(bits) })
+	}
+}
 func (r *orderedRule[T, V]) filterCandidates(v T, dst *roaring.Bitmap, _ *bitmapPool) {
 	var inline [16]*roaring.Bitmap
 	postings := r.appendMatchingBitmaps(getOptional(r.get, v), inline[:0])
