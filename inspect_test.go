@@ -66,7 +66,7 @@ func TestInspectReportsAllRangePruning(t *testing.T) {
 	require.Equal(t, uint64(1), snapshot.EmptyResult())
 }
 
-func TestInspectReportsLaterAllRangePruning(t *testing.T) {
+func TestInspectReportsAdaptiveEmptyBeforeLaterAllRangePruning(t *testing.T) {
 	type constraint struct{ first, second, third int }
 	constraints := make([]constraint, 29)
 	ids := make([]int, len(constraints))
@@ -89,7 +89,9 @@ func TestInspectReportsLaterAllRangePruning(t *testing.T) {
 
 	var matches []int
 	require.False(t, index.search(constraint{first: 1, second: 1, third: 1}, &matches, newBitmapPool()))
-	require.Equal(t, uint64(1), inspector.Snapshot().RangePruning())
+	snapshot := inspector.Snapshot()
+	require.Zero(t, snapshot.RangePruning())
+	require.Equal(t, uint64(1), snapshot.EmptyResult())
 }
 
 func TestInspectDoesNotEnableLocalRangePruning(t *testing.T) {

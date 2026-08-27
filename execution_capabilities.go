@@ -168,10 +168,20 @@ func (r *allRule[T]) shouldValidateCandidates(ranked []rankedBitmap) bool {
 	if len(ranked) == 0 || ranked[0].card == ^uint64(0) {
 		return false
 	}
-	candidates := ranked[0].card
+	return r.shouldValidateRemaining(ranked[0].card, ranked[1:])
+}
+
+// shouldValidateRemaining replans after an operation has produced an exact
+// candidate cardinality. Keeping the remaining slice separate from the
+// candidate source lets execution reconsider the bitmap/ID-check boundary
+// after every narrowing step instead of following the initial ranking.
+func (r *allRule[T]) shouldValidateRemaining(candidates uint64, remaining []rankedBitmap) bool {
+	if len(remaining) == 0 {
+		return false
+	}
 	validationCost := uint64(0)
 	bitmapCost := uint64(0)
-	for _, child := range ranked[1:] {
+	for _, child := range remaining {
 		descriptor := r.executionDescriptor(child.childIdx, r.children[child.childIdx])
 		if descriptor.capabilities&executionMatchID == 0 {
 			return candidates <= allCandidateScanLimit

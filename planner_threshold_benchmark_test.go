@@ -202,6 +202,36 @@ func BenchmarkAllLateMaterializedCandidateFallback(b *testing.B) {
 	plannerBenchmarkCardinality = dst.GetCardinality()
 }
 
+// BenchmarkAllReplanAfterIntersection covers inaccurate 16-ID estimates whose
+// measured overlap has only two IDs. The executor replans at that boundary and
+// validates the remaining 100K-ID posting instead of materializing it.
+// Last local run on Apple M1 Max: 413.8 ns/op, 144 B/op, 10 allocs/op
+// (median of five 1 s runs). Reproduce with:
+//
+//	go test -run '^$' -bench '^BenchmarkAllReplanAfterIntersection$' -benchmem -benchtime=1s -count=5 .
+func BenchmarkAllReplanAfterIntersection(b *testing.B) {
+	first := roaring.New()
+	first.AddRange(0, 16)
+	second := roaring.New()
+	second.AddRange(14, 30)
+	broad := roaring.New()
+	broad.AddRange(0, 100_000)
+	rule := &allRule[int]{children: []Rule[int]{
+		&unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: first}},
+		&unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: second}},
+		&matchAllRule[int]{bits: broad},
+	}}
+	rule.prepareSearch()
+	pool := newBitmapPool()
+	dst := roaring.New()
+	b.ReportAllocs()
+	for range b.N {
+		dst.Clear()
+		rule.search(0, dst, pool)
+	}
+	plannerBenchmarkCardinality = dst.GetCardinality()
+}
+
 func plannerBenchmarkPostings(children int, cardinality uint64, sparse bool) []*roaring.Bitmap {
 	postings := make([]*roaring.Bitmap, children)
 	step := uint64(1)

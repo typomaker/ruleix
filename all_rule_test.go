@@ -245,7 +245,7 @@ func TestAllBitmapPathStopsAfterDisjointLeadingPair(t *testing.T) {
 	require.Zero(t, unreached.searchCalls)
 }
 
-func TestAllBitmapPathStopsAfterLaterDisjointRange(t *testing.T) {
+func TestAllReplansAfterIntersectionBeforeLaterDisjointRange(t *testing.T) {
 	first := &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8}}
 	second := &countingRule{ids: []uint32{4, 5, 6, 7, 8, 9, 10, 11, 12}}
 	disjoint := &countingRule{ids: []uint32{13, 14, 15, 16, 17, 18, 19, 20, 21}}
@@ -260,8 +260,10 @@ func TestAllBitmapPathStopsAfterLaterDisjointRange(t *testing.T) {
 	require.True(t, dst.IsEmpty())
 	require.Equal(t, 1, first.searchCalls)
 	require.Equal(t, 1, second.searchCalls)
-	require.Equal(t, 1, disjoint.searchCalls)
+	require.Zero(t, disjoint.searchCalls)
+	require.Equal(t, 5, disjoint.matchIDCalls)
 	require.Zero(t, unreached.searchCalls)
+	require.Zero(t, unreached.matchIDCalls)
 }
 
 func TestAllChecksCheapEmptyChildBeforeMaterializing(t *testing.T) {
@@ -476,4 +478,32 @@ func TestAllReusesEarlierMaterializedResultsAfterCandidateSwitch(t *testing.T) {
 	require.Equal(t, 1, selective.searchCalls)
 	require.Zero(t, third.searchCalls)
 	require.Equal(t, 1, third.matchIDCalls)
+}
+
+func TestAllReplansAfterIntersectionNarrowsCandidates(t *testing.T) {
+	first := &countingRule{ids: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}
+	second := &countingRule{ids: []uint32{14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29}}
+	broadIDs := make([]uint32, 10_000)
+	for i := range broadIDs {
+		broadIDs[i] = uint32(i)
+	}
+	broadCounter := &countingRule{ids: broadIDs}
+	broad := &planningCountingRule{countingRule: broadCounter, bits: roaring.BitmapOf(broadIDs...)}
+	rule := &allRule[int]{children: []Rule[int]{
+		&conservativeEstimateRule{countingRule: first},
+		&conservativeEstimateRule{countingRule: second},
+		broad,
+	}}
+	rule.prepareSearch()
+	pool := newBitmapPool()
+	dst := pool.get()
+	defer pool.put(dst)
+
+	rule.search(0, dst, pool)
+
+	require.Equal(t, []uint32{14, 15}, dst.ToArray())
+	require.Equal(t, 1, first.searchCalls)
+	require.Equal(t, 1, second.searchCalls)
+	require.Zero(t, broadCounter.searchCalls)
+	require.Zero(t, broadCounter.matchIDCalls)
 }

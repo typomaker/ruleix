@@ -8,11 +8,6 @@ import "github.com/RoaringBitmap/roaring/v2"
 // BenchmarkAllExecutionThreshold.
 const allCandidateScanLimit = 8
 
-// Range pruning pays for the first two intersections, where an empty result
-// avoids most remaining materializations. If they survive, collecting the rest
-// eagerly keeps the common overlap path compact and cache-friendly.
-const allSequentialIntersectionLimit = 3
-
 // Direct exclusion lookups include a getter and a map lookup per exclusion,
 // so they stop paying off sooner than ordinary posting-list membership tests.
 const allDirectExclusionScanLimit = 16
@@ -727,6 +722,9 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 				if dst.IsEmpty() {
 					return false
 				}
+				if r.shouldValidateRemaining(dst.GetCardinality(), rankedChildren[i+1:]) {
+					return r.validateCandidateBitmap(v, dst, pool, rankedChildren[i+1:])
+				}
 				continue
 			}
 		}
@@ -777,9 +775,6 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 			})
 			return !dst.IsEmpty()
 		}
-		if i >= allSequentialIntersectionLimit {
-			continue
-		}
 		if i == 0 {
 			continue
 		}
@@ -810,20 +805,47 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 			}
 			return false
 		}
+		if r.shouldValidateRemaining(dst.GetCardinality(), rankedChildren[i+1:]) {
+			return r.validateCandidateBitmap(v, dst, pool, rankedChildren[i+1:])
+		}
 	}
 	if len(rankedChildren) == 1 {
 		dst.Or(rankedChildren[0].bits)
 	}
-	for i := allSequentialIntersectionLimit; i < len(rankedChildren); i++ {
-		if rankedChildren[i].bits == nil {
-			continue
-		}
-		dst.And(rankedChildren[i].bits)
-		if dst.IsEmpty() {
-			return false
-		}
-	}
 	return true
+}
+
+// validateCandidateBitmap preserves insertion order by iterating the narrowed
+// candidate bitmap and appending accepted IDs to a fresh pooled bitmap. It is
+// selected only when the measured cardinality makes direct checks cheaper than
+// materializing the remaining complete results.
+func (r *allRule[T]) validateCandidateBitmap(
+	v T,
+	dst *roaring.Bitmap,
+	pool *bitmapPool,
+	remaining []rankedBitmap,
+) bool {
+	accepted := pool.get()
+	dst.Iterate(func(id uint32) bool {
+		for _, ranked := range remaining {
+			if ranked.bits != nil {
+				observeCandidateCheck(r.children[ranked.childIdx], pool)
+				if !ranked.bits.Contains(id) {
+					return true
+				}
+				continue
+			}
+			if !matchesRuleID(r.children[ranked.childIdx], v, id, pool) {
+				return true
+			}
+		}
+		accepted.Add(id)
+		return true
+	})
+	dst.Clear()
+	dst.Or(accepted)
+	pool.put(accepted)
+	return !dst.IsEmpty()
 }
 
 func filterCandidatesThroughRule[T any](rule Rule[T], value T, dst *roaring.Bitmap, pool *bitmapPool) bool {

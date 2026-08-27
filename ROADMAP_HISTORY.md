@@ -8,6 +8,35 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-27: replan `All` after measured narrowing
+
+The cost-based `All` executor now reconsiders direct candidate validation after
+every exact bitmap intersection. A candidate set that becomes selective only
+after intersecting two inaccurately estimated children no longer follows the
+stale initial order and materializes every remaining broad result. The executor
+uses the measured intersection cardinality, compares ID-check work with exact
+remaining bitmap sizes, stops on an exact empty result, and keeps replanning
+bounded by the existing child slice with no heap-backed plan state. Focused
+tests cover inaccurate estimates, the mid-execution bitmap/ID boundary, skipped
+late materialization, early rejection, and Inspector's resulting strategy.
+
+On Apple M1 Max, three 300 ms runs measured the existing broad-sibling cost
+case at 284.9--293.7 ns/op, 32 B/op, and 2 allocs/op; the late selective
+materialization case at 513.5--519.2 ns/op, 176 B/op, and 12 allocs/op.
+The focused post-intersection replan measured a median 413.8 ns/op, 144 B/op,
+and 10 allocs/op across five 1 s runs.
+The final production-shaped gate measured `Index.Search` at 42.6--42.9 us/op,
+73,395--73,398 B/op, and 28 allocs/op, and warm `Local.Search` at
+579.6--584.0 ns/op with 0 B/op and 0 allocations/op. Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllReplanAfterIntersection$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' \
+  -bench '^(BenchmarkAllCostBasedBroadSibling|BenchmarkAllLateMaterializedCandidateFallback|BenchmarkProductionShapeSearch)' \
+  -benchmem -benchtime=300ms -count=3 .
+```
+
 ## 2026-08-27: separate static execution analysis from query planning
 
 `Build` now compiles immutable execution facts beside each `All` child's
