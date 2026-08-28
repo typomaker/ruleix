@@ -297,16 +297,12 @@ func (r *allRule[T]) searchRanked(
 	rankedChildren []rankedBitmap,
 	metrics *inspectorRuntime,
 ) {
-	before := dst.GetCardinality()
 	if !r.rankChildren(v, pool, rankedChildren) {
-		pool.observePlannerEmpty(r)
 		return
 	}
 	if len(rankedChildren) == 0 {
 		return
 	}
-	pool.beginPlannerObservation(r, rankedChildren)
-	defer func() { pool.finishPlannerObservation(r, dst.GetCardinality()-min(before, dst.GetCardinality())) }()
 	if r.duplicateBitmapIDs != nil {
 		rankedChildren = r.deduplicateEqualityResults(v, rankedChildren)
 	}
@@ -476,18 +472,7 @@ func (r *allRule[T]) reuseLocalPlan(
 }
 
 func (r *allRule[T]) localPlan(pool *bitmapPool) *localAllPlan {
-	if plan := pool.allPlans[r]; plan != nil {
-		return plan
-	}
-	plan := pool.seedSharedPlannerOrder(r, len(r.children))
-	if plan == nil {
-		return nil
-	}
-	if pool.allPlans == nil {
-		pool.allPlans = make(map[any]*localAllPlan)
-	}
-	pool.allPlans[r] = plan
-	return plan
+	return pool.allPlans[r]
 }
 
 func (r *allRule[T]) populatePlanningLocalPlan(

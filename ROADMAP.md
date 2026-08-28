@@ -8,11 +8,11 @@ or unrelated proposals here.
 
 ## Objective
 
-Finish the operation-cost `All` executor by making optional shared learning
-useful or removing it, and proving that every retained local and shared state
-has a byte bound. The deterministic planner, adaptive operation loop, and
-representation-specific operation audit are complete; their measured results
-are recorded in
+Finish the operation-cost `All` executor by proving that every retained local
+state has a byte bound. Shared learning was removed after it failed its
+cold-start evidence gate. The deterministic planner, adaptive operation loop,
+and representation-specific operation audit are complete; their measured
+results are recorded in
 [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
 
 The current Apple M1 Max production-shaped cutover measurements are the
@@ -80,51 +80,13 @@ noisy results and rerun with a longer benchtime before deciding.
 Complete the steps in order. A later step may rely only on capabilities that
 survived the earlier benchmark gate.
 
-### 1. Make shared planner statistics useful and bounded
-
-**Implement**
-
-- Do not collect planner fields that no decision reads. Either feed operation
-  cost, actual cardinality, empty rate, and candidate rejection rate into the
-  cost model or remove those fields.
-- Define a query shape from facts available before plan reuse, such as field
-  presence, equality versus ordered access, wildcard/concrete state, and a
-  bounded range-width class. Do not call a bucket of the previously selected
-  first child's cardinality the current query shape.
-- Keep a fixed number of shapes and child-order entries per compiled `All`.
-  Store no query values, getters, or unbounded keys in the shared profile.
-- Let each `Local` read one immutable snapshot, accumulate an unsynchronized
-  overlay, and publish batched deltas only when sampled. Keep publication off
-  every-search paths.
-- Combine the shared prior with local evidence using sample counts and bounded
-  confidence. Exact current-query facts always override learned values.
-- Preserve deterministic exploration in a small fraction of sampled `Local`
-  contexts so an early popular plan cannot suppress contrary evidence.
-
-**Accept when**
-
-- Two deliberately different query shapes learn different useful plans and a
-  new `Local` selects the matching shape before its first search plan executes.
-- A profile trained on the opposite workload is cheaply rejected or overridden
-  and never changes results.
-- Shared memory is bounded by compiled schema size and configured constants;
-  ordinary and warm `Local.Search` retain their allocation classes.
-- A benchmark demonstrates that sharing improves a new `Local` versus starting
-  from deterministic planning. Otherwise remove shared learning and retain the
-  deterministic planner.
-
-**Result**
-
-Cross-`Local` learning either provides a measured cold-start benefit with a
-bounded implementation or is removed instead of accumulating unused telemetry.
-
-### 2. Finish byte-bounded `Local` state
+### 1. Finish byte-bounded `Local` state
 
 **Implement**
 
 - Maintain separate accounted budgets for child bitmaps, exact intersections,
-  learned plans, and planner profiles. Include Roaring payload, input bitmap
-  references, keys, and overflow structures in the accounting model.
+  and learned plans. Include Roaring payload, input bitmap references, keys,
+  and overflow structures in the accounting model.
 - Validate cached plans against exact current postings and capabilities before
   reuse. Cache exact intersections only when all input bitmap identities and
   the cache epoch match.
@@ -149,7 +111,7 @@ bounded implementation or is removed instead of accumulating unused telemetry.
   do not materially regress, and warm `Local.Search` remains at 0 B/op and
   0 allocs/op. Otherwise remove the experiment and record its rejection.
 - `Close` releases all accounted payload and a recycled `Local` starts with
-  reset admission, observation, and profile state.
+  reset admission and observation state.
 
 **Result**
 
@@ -157,7 +119,7 @@ The faster planner has a predictable memory cost per live goroutine and cannot
 trade temporary `Index.Search` allocations for unbounded retained `Local`
 memory.
 
-### 3. Differential cutover and cleanup
+### 2. Differential cutover and cleanup
 
 **Implement**
 

@@ -34,7 +34,6 @@ type Index[C any, ID comparable] struct {
 	observedLocals     sync.Pool
 	localTelemetry     atomic.Uint64
 	localInspectors    [][]*inspectorRuntime
-	plannerProfiles    plannerProfilePublisher
 }
 
 // Local is a search context that keeps per-node cached results between calls.
@@ -258,9 +257,6 @@ func (ix *Index[C, ID]) Local() *Local[C, ID] {
 	if observed {
 		pool.bindRootInspector(ix.rootMetrics)
 	}
-	pool.samplePlanner = sampled
-	pool.explorePlanner = sampled && localOrdinal%(64*8) == 0
-	pool.plannerSnapshot = ix.plannerProfiles.snapshot.Load()
 	return &Local[C, ID]{index: ix, pool: pool, observed: observed}
 }
 
@@ -286,9 +282,6 @@ func (local *Local[C, ID]) Close() {
 	}
 	local.requireOpen()
 	index := local.index
-	if local.pool.samplePlanner {
-		index.plannerProfiles.publish(local.pool.plannerOverlay)
-	}
 	local.pool.resetLocal()
 	if local.observed {
 		index.observedLocals.Put(local.pool)
@@ -374,7 +367,6 @@ func searchAllMatches[C any, ID comparable](
 	metrics *inspectorRuntime,
 ) {
 	result := *dst
-	before := len(result)
 	var inline [8]rankedBitmap
 	var rankedChildren []rankedBitmap
 	var buffer *rankedBitmapBuffer
@@ -385,16 +377,12 @@ func searchAllMatches[C any, ID comparable](
 		rankedChildren = inline[:len(root.children)]
 	}
 	if !root.rankChildren(value, pool, rankedChildren) || len(rankedChildren) == 0 {
-		pool.observePlannerEmpty(root)
 		if buffer != nil {
 			pool.putRanked(buffer)
 		}
 		*dst = result
 		return
 	}
-	pool.beginPlannerObservation(root, rankedChildren)
-	defer func() { pool.finishPlannerObservation(root, uint64(len(*dst)-before)) }()
-
 	initiallyBroad := rankedChildren[0].card > allCandidateScanLimit
 	var candidates *roaring.Bitmap
 	if initiallyBroad {

@@ -2542,3 +2542,44 @@ go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
   -benchtime=3x -count=3 .
 ```
+
+## 2026-08-28: remove shared planner learning
+
+The bounded cross-`Local` profile was removed at its evidence gate. Its eight
+"query shapes" were buckets of the previously selected first child's
+cardinality, a fact available only after planning rather than a description of
+the incoming query. The profile also collected operation cost, actual result
+cardinality, empty rate, and candidate rejection rate without reading any of
+them when choosing a plan. No benchmark demonstrated that its shared prior
+improved a fresh `Local` over deterministic planning, so retaining and
+extending this telemetry would not satisfy the roadmap acceptance criterion.
+
+`Local` planning remains deterministic and learns a schema-bounded child order
+inside each recyclable context. Removing the shared snapshot, sampled overlay,
+publication mutex, exploration state, and their tests leaves `Inspect`
+sampling unchanged and removes all shared planner-profile retention.
+
+On Apple M1 Max with Go 1.26.0, isolated five-second benchmark sets measured
+the parent at a 33.084 us `Index.Search` median, 40,852 B, and 28 allocations,
+and a 565.1 ns warm `Local.Search` median with zero bytes and allocations. The
+removal measured 33.021 us, 40,852 B, and 28 allocations for `Index.Search`,
+and 560.7 ns, zero bytes, and zero allocations for warm `Local.Search`.
+Parallel batches measured a 443.0 ns/search median. Retained memory remained
+2,968 B per cold `Local`, 91,003 B per warm `Local`, and 107,845 B for the
+adaptive case. The full production-scale matrix retained its allocation
+classes.
+
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```

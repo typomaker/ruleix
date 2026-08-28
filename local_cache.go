@@ -16,15 +16,8 @@ type localAllPlan struct {
 	// Keep the two most recent exact intersections alongside the learned child
 	// order. Repeated Local queries can share their immutable containers with a
 	// scratch result instead of cloning the first posting on every search.
-	results     [2]localAllResult
-	next        uint8
-	observation localPlannerObservation
-}
-
-type localPlannerObservation struct {
-	active     bool
-	shape      uint8
-	candidates uint64
+	results [2]localAllResult
+	next    uint8
 }
 
 type localAllResult struct {

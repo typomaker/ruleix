@@ -20,10 +20,6 @@ type bitmapPool struct {
 	rootRuntime     *inspectorRuntime
 	rootObserver    inspectorRuntimeObserver
 	observeRuntime  bool
-	samplePlanner   bool
-	explorePlanner  bool
-	plannerSnapshot *plannerProfileSnapshot
-	plannerOverlay  plannerProfileOverlay
 }
 
 type localInspectorRuntime struct {
@@ -173,10 +169,6 @@ func (p *bitmapPool) resetLocal() {
 		p.local[i].reset(p)
 	}
 	p.childCacheBytes = 0
-	p.samplePlanner = false
-	p.explorePlanner = false
-	p.plannerSnapshot = nil
-	p.plannerOverlay = plannerProfileOverlay{}
 }
 
 func (p *bitmapPool) invalidateResultCache() { p.cacheEpoch++ }
