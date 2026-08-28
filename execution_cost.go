@@ -39,6 +39,21 @@ func rankedBitmapNarrowWork(ranked rankedBitmap) (uint64, bool) {
 	return saturatingMul(work, 2), true
 }
 
+// shouldFilterCandidates compares narrowing the current candidates in place
+// with materializing the complete child result and intersecting it. A filter
+// reads the query-dependent child source plus the current candidates; ordinary
+// bitmap narrowing reads the child source twice (acquisition and intersection).
+// Unknown source work keeps the universal materialization path.
+func shouldFilterCandidates(candidateBytes uint64, ranked rankedBitmap) bool {
+	work, known := rankedBitmapWork(ranked)
+	if !known {
+		return false
+	}
+	filterWork := saturatingAdd(work, candidateBytes)
+	materializeWork := saturatingMul(work, 2)
+	return filterWork < materializeWork
+}
+
 // selectNextBitmapOperation replans the next narrowing operation from facts
 // available after the previous exact operation. The scan is allocation-free;
 // exact postings use their serialized payload while unmaterialized children

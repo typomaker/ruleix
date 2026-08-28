@@ -8,6 +8,43 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-28: select candidate filtering by operation cost
+
+The adaptive `All` executor no longer invokes every advertised candidate
+filter unconditionally. After each exact narrowing step it compares reading
+the current candidate bitmap plus the query-dependent child source with
+acquiring that complete source and intersecting it. Filtering wins only below
+that deterministic boundary; ties and unknown costs retain complete
+materialization. The comparison uses serialized bitmap bytes, saturating
+integer arithmetic, and adds no planning allocation.
+
+On Apple M1 Max with Go 1.26.0, five one-second A/B runs measured the parent
+`Index.Search` median at 33.230 us/op and the cost-selected version at
+32.766 us/op; both retained 40,852--40,853 B/op and 28 allocations/op. Warm
+`Local.Search` remained at a 565.7 ns/op median with zero bytes and zero
+allocations. Focused ordered filtering measured 52.985 us/op, 39,879 B/op,
+11 allocations, and CompareBy measured 46.893 us/op, 21,059 B/op,
+7 allocations, preserving their accepted allocation classes. Parallel Local
+measured 447.5 ns/search; retained memory remained 2,968 B cold, 91,019 B warm,
+and 107,861 B adaptive. Ordinary, race, production-scale, and retained-memory
+gates passed. Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' \
+  -bench '^(BenchmarkAllOrderedCandidateFiltering|BenchmarkAllCompareByCandidateFiltering)$' \
+  -benchmem -benchtime=500ms -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-28: make `All` execution capabilities explicit and truthful
 
 Every compiled `All` child now has one immutable descriptor for the operations

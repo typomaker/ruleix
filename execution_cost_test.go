@@ -121,3 +121,20 @@ func TestSelectNextBitmapOperationLeavesUnknownWorkLast(t *testing.T) {
 
 	require.Equal(t, 1, selectNextBitmapOperation(remaining))
 }
+
+func TestCandidateFilterMaterializationBoundary(t *testing.T) {
+	child := roaring.New()
+	for id := uint32(0); id < 1_000; id += 10 {
+		child.Add(id)
+	}
+	ranked := rankedBitmap{bits: child, card: child.GetCardinality(), childIdx: 1}
+	childBytes := child.GetSerializedSizeInBytes()
+
+	require.True(t, shouldFilterCandidates(childBytes-1, ranked))
+	require.False(t, shouldFilterCandidates(childBytes, ranked))
+	require.False(t, shouldFilterCandidates(childBytes+1, ranked))
+}
+
+func TestCandidateFilterKeepsUnknownMaterializationFallback(t *testing.T) {
+	require.False(t, shouldFilterCandidates(1, rankedBitmap{card: ^uint64(0), childIdx: 1}))
+}

@@ -736,7 +736,8 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 			if i == 1 {
 				dst.Or(rankedChildren[0].bits)
 			}
-			if filtered := r.filterCandidates(rankedChildren[i].childIdx, v, dst, pool); filtered {
+			if shouldFilterCandidates(dst.GetSerializedSizeInBytes(), rankedChildren[i]) &&
+				r.filterCandidates(rankedChildren[i].childIdx, v, dst, pool) {
 				if dst.IsEmpty() {
 					return false
 				}
