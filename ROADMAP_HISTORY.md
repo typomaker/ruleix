@@ -8,6 +8,50 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-28: retain only measured representation-specific operations
+
+The representation-specific operation audit against the completed adaptive
+cost planner is complete. Ordered, `Between`, and `CompareBy` candidate filters
+remain the minimal production set: the planner advertises them explicitly and
+selects them only when filtering the measured candidate bitmap costs less than
+materializing and intersecting the complete child result. They avoid those
+complete ordered unions on the accepted focused workloads. Equality filtering
+still cannot avoid its wildcard-plus-concrete union work, and no bounded or
+early-stopping ordered workload justified restoring the previously rejected
+posting-stream capability, so neither operation was added.
+
+On Apple M1 Max with Go 1.26.0, five 500 ms focused runs measured medians of
+52.943 us/op, 39,879 B/op, and 11 allocations for ordered filtering, and
+46.596 us/op, 21,060 B/op, and seven allocations for `CompareBy` filtering.
+The equality gate retained ordinary materialization at 10.113 us/op,
+32,917 B/op, and eight allocations; the ordered-streaming gate retained bulk
+union plus intersection at 232.530 us/op, 128,042 B/op, and 19 allocations.
+Specialized `Between` retained two fewer allocations than its composed form.
+
+The complete acceptance matrix passed. Five one-second production-shaped runs
+measured a 33.484 us/op `Index.Search` median, 40,852 B/op, and 28 allocations;
+warm `Local.Search` measured 569.3 ns/op at zero bytes and zero allocations.
+Parallel batches measured 453.0 ns/search. The 10K, 100K, and 1M scale matrix
+passed, including empty, selective, wildcard-heavy, large-result, nested-`All`,
+and range-heavy cases. Retained memory measured 2,968 B cold, 91,019 B warm,
+and 107,861 B adaptive. Ordinary and race suites also passed. Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' \
+  -bench '^(BenchmarkAllEqualityCandidateFiltering|BenchmarkAllOrderedStreaming|BenchmarkAllOrderedCandidateFiltering|BenchmarkAllCompareByCandidateFiltering|BenchmarkBetweenSelectiveSide)$' \
+  -benchmem -benchtime=500ms -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-28: complete deterministic and adaptive operation-cost planning
 
 The first two steps of the rewritten roadmap are complete. `All` now uses

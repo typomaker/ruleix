@@ -8,11 +8,11 @@ or unrelated proposals here.
 
 ## Objective
 
-Finish the operation-cost `All` executor by retaining only
-representation-specific operations with measured value, making optional
-shared learning useful or removing it, and proving that every retained local
-and shared state has a byte bound. The deterministic planner and adaptive
-operation loop are complete; their measured result is recorded in
+Finish the operation-cost `All` executor by making optional shared learning
+useful or removing it, and proving that every retained local and shared state
+has a byte bound. The deterministic planner, adaptive operation loop, and
+representation-specific operation audit are complete; their measured results
+are recorded in
 [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
 
 The current Apple M1 Max production-shaped cutover measurements are the
@@ -80,35 +80,7 @@ noisy results and rerun with a longer benchtime before deciding.
 Complete the steps in order. A later step may rely only on capabilities that
 survived the earlier benchmark gate.
 
-### 1. Add representation-specific operations only when they avoid work
-
-**Implement**
-
-- Re-evaluate equality, ordered, `Between`, and `CompareBy` against the new
-  planner one representation at a time.
-- For ordered rules, prototype bounded or early-stopping iteration that can
-  avoid a meaningful part of a union. Do not restore unconditional streaming;
-  the previous version was slower than bulk union plus intersection.
-- Keep existing accepted candidate filters only when the cost model can select
-  them and focused benchmarks show reduced work. Remove capabilities that are
-  never selected or duplicate a faster Roaring primitive.
-- Preserve wildcard semantics, all stored comparison operators, lossy no-false-
-  negative guarantees, inspection metrics, and range empty detection.
-
-**Accept when**
-
-- Each retained operation avoids named materialization or intersection work
-  from step 1 and wins its focused benchmark.
-- Equality filtering and ordered streaming remain rejected unless a new
-  bounded workload demonstrates a material improvement in latency or bytes.
-- The production matrix shows no allocation regression.
-
-**Result**
-
-The executor has a minimal set of proven representation-specific operations,
-not speculative capabilities maintained only because they fit the design.
-
-### 2. Make shared planner statistics useful and bounded
+### 1. Make shared planner statistics useful and bounded
 
 **Implement**
 
@@ -146,7 +118,7 @@ not speculative capabilities maintained only because they fit the design.
 Cross-`Local` learning either provides a measured cold-start benefit with a
 bounded implementation or is removed instead of accumulating unused telemetry.
 
-### 3. Finish byte-bounded `Local` state
+### 2. Finish byte-bounded `Local` state
 
 **Implement**
 
@@ -174,7 +146,7 @@ The faster planner has a predictable memory cost per live goroutine and cannot
 trade temporary `Index.Search` allocations for unbounded retained `Local`
 memory.
 
-### 4. Differential cutover and cleanup
+### 3. Differential cutover and cleanup
 
 **Implement**
 
