@@ -56,6 +56,23 @@ func selectNextBitmapOperation(remaining []rankedBitmap) int {
 	return best
 }
 
+// selectInitialBitmapSource compares complete plans for uncached Index
+// searches. Exact postings use serialized bytes and estimated sources include
+// acquisition and temporary-payload work. If every candidate plan is unknown,
+// established order is preserved. The scan is bounded by the All width and
+// does not allocate.
+func (r *allRule[T]) selectInitialBitmapSource(children []rankedBitmap) int {
+	best := 0
+	bestWork, bestKnown := r.allSourceTotalWork(children[0], children)
+	for i := 1; i < len(children); i++ {
+		work, known := r.allSourceTotalWork(children[i], children)
+		if known && (!bestKnown || work < bestWork) {
+			best, bestWork, bestKnown = i, work, true
+		}
+	}
+	return best
+}
+
 // allSourceTotalWork scores acquiring one child as the candidate source and
 // then completing the remaining children by their cheapest known exact
 // operation. Unknown operations make the score unavailable, preserving the

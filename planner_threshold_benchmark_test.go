@@ -195,6 +195,44 @@ func BenchmarkAllCostBasedBroadSibling(b *testing.B) {
 	}
 }
 
+// BenchmarkAllInitialSourceTotalCost isolates the initial-source decision for
+// uncached Index execution. The narrower source is expensive to materialize,
+// while the slightly broader dense posting is cheap to clone before the same
+// exact narrowing work. Last local run on Apple M1 Max: total cost 2.439 us/op,
+// 12,393 B/op, 8 allocs; cardinality order 3.919 us/op, 20,612 B/op,
+// 10 allocs (median of five 1 s runs). Reproduce with:
+//
+//	go test -run '^$' -bench '^BenchmarkAllInitialSourceTotalCost$' -benchmem -benchtime=1s -count=5 .
+func BenchmarkAllInitialSourceTotalCost(b *testing.B) {
+	narrow := roaring.New()
+	for id := uint32(0); id < 4_000; id++ {
+		narrow.Add(id * 32)
+	}
+	broad := roaring.New()
+	broad.AddRange(0, 4_096)
+	narrowRule := &estimatedMatchingRule[int]{
+		unknownEstimateMatchingRule: &unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: narrow}},
+		estimate:                    narrow.GetCardinality(),
+	}
+	for name, broadRule := range map[string]Rule[int]{
+		"TotalCost":        &matchAllRule[int]{bits: broad},
+		"CardinalityOrder": &unknownEstimateMatchingRule[int]{child: &matchAllRule[int]{bits: broad}},
+	} {
+		b.Run(name, func(b *testing.B) {
+			rule := &allRule[int]{children: []Rule[int]{narrowRule, broadRule}}
+			rule.prepareSearch()
+			pool := newBitmapPool()
+			dst := roaring.New()
+			b.ReportAllocs()
+			for range b.N {
+				dst.Clear()
+				rule.search(0, dst, pool)
+			}
+			plannerBenchmarkCardinality = dst.GetCardinality()
+		})
+	}
+}
+
 // BenchmarkAllEstimatedBroadSibling covers direct validation against an
 // unmaterialized child whose complete result has a conservative estimate.
 // Last local run on Apple M1 Max: cost model 542.9 ns/op, 64 B/op, 4 allocs;

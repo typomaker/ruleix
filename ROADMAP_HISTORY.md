@@ -2372,3 +2372,39 @@ Reproduce with:
 go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
   -benchmem -benchtime=1s -count=5 .
 ```
+
+## 2026-08-28: apply total-cost source ranking to uncached Index searches
+
+The retained deterministic total-cost model now selects the initial `All`
+bitmap source for uncached `Index.Search` only. Exact postings and conservative
+materialization estimates can therefore put a cheap broader source ahead of a
+slightly narrower but expensive source. Cached `Local` plans keep their prior
+zero-allocation path, avoiding the hot-path regression that rejected the eager
+prototype above. Unknown complete-plan costs preserve the established order.
+
+On Apple M1 Max with Go 1.26.0, the focused mixed exact/estimated benchmark
+measured a 2.439 us median, 12,393 B, and eight allocations with total-cost
+selection versus 3.919 us, 20,612 B, and ten allocations with cardinality
+order. Five one-second production-shaped runs measured `Index.Search` at a
+33.005 us median versus 33.409 us at parent `b7de20e`, with both at 40,852 B
+and 28 allocations. Warm `Local.Search` measured 568.5 ns, zero bytes, and zero
+allocations versus 572.0 ns at the parent. Parallel batches measured a 460.6
+ns/search median. Retained memory measured 2,968 B per cold `Local`, 91,019 B
+per warm `Local`, and 107,861 B for the adaptive case.
+
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkAllInitialSourceTotalCost$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```

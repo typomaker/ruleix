@@ -310,6 +310,13 @@ func (r *allRule[T]) searchRanked(
 	if r.duplicateBitmapIDs != nil {
 		rankedChildren = r.deduplicateEqualityResults(v, rankedChildren)
 	}
+	// Local plans prioritize reuse and must keep their zero-allocation hot path.
+	// For uncached Index searches, exact postings can be compared by complete
+	// operation cost without speculative representation work.
+	if pool.local == nil && len(rankedChildren) > 1 {
+		first := r.selectInitialBitmapSource(rankedChildren)
+		rankedChildren[0], rankedChildren[first] = rankedChildren[first], rankedChildren[0]
+	}
 	if !r.shouldValidateCandidates(rankedChildren) {
 		if !r.intersectRankedInOrderObserved(v, dst, pool, rankedChildren, metrics) {
 			r.releaseRanked(pool, rankedChildren)

@@ -40,6 +40,34 @@ func TestAllTotalCostPrefersCheapBroaderPosting(t *testing.T) {
 	require.Less(t, broadCost, narrowCost)
 }
 
+func TestSelectInitialBitmapSourcePrefersCheapBroaderPosting(t *testing.T) {
+	broad := roaring.New()
+	broad.AddRange(0, 4_096)
+	narrowSparse := roaring.New()
+	for id := uint32(0); id < 4_000; id++ {
+		narrowSparse.Add(id * 32)
+	}
+	rule := &allRule[int]{children: []Rule[int]{&countingRule{}, &countingRule{}}}
+	rule.prepareSearch()
+
+	children := []rankedBitmap{
+		{card: narrowSparse.GetCardinality(), childIdx: 0},
+		{bits: broad, card: broad.GetCardinality(), childIdx: 1},
+	}
+	require.Equal(t, 1, rule.selectInitialBitmapSource(children))
+}
+
+func TestSelectInitialBitmapSourceKeepsUnknownPlanOrder(t *testing.T) {
+	rule := &allRule[int]{children: []Rule[int]{&countingRule{}, &countingRule{}}}
+	rule.prepareSearch()
+
+	children := []rankedBitmap{
+		{card: ^uint64(0), childIdx: 0},
+		{card: ^uint64(0), childIdx: 1},
+	}
+	require.Zero(t, rule.selectInitialBitmapSource(children))
+}
+
 func TestEstimatedBitmapWorkUnknownAndSaturating(t *testing.T) {
 	_, known := estimatedBitmapWork(^uint64(0))
 	require.False(t, known)
