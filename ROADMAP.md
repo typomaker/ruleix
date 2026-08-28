@@ -130,6 +130,13 @@ bounded implementation or is removed instead of accumulating unused telemetry.
   the cache epoch match.
 - Keep admission-after-repeat for value bitmaps. Exercise alternating values,
   one-off churn, adaptive capacity, oversized results, `Close`, and pool reuse.
+- Test whether warm `Local.Search` can skip repeated work when equality,
+  ordered, `Between`, `CompareBy`, or nested-`All` children resolve to
+  pointer-identical cached bitmaps. Benchmark 2, 4, and 8 duplicate children
+  end to end, including the existing equality-component deduplication as the
+  baseline, and compare the identity-check cost with the avoided `And`,
+  `Contains`, and materialization work. Add no per-query map or unbounded
+  identity state.
 - Report retained bytes per cold, warm, adaptive, and adversarial `Local`.
 
 **Accept when**
@@ -137,6 +144,10 @@ bounded implementation or is removed instead of accumulating unused telemetry.
 - No query stream can make retained per-`Local` bitmap or plan state grow
   without the documented bound.
 - Declining an oversized cache entry affects only reuse, not correctness.
+- Retain duplicate-bitmap skipping only when focused cold and warm benchmarks
+  show a repeatable latency win above noise, ordinary non-duplicate workloads
+  do not materially regress, and warm `Local.Search` remains at 0 B/op and
+  0 allocs/op. Otherwise remove the experiment and record its rejection.
 - `Close` releases all accounted payload and a recycled `Local` starts with
   reset admission, observation, and profile state.
 
