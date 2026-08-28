@@ -8,6 +8,59 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-28: complete deterministic and adaptive operation-cost planning
+
+The first two steps of the rewritten roadmap are complete. `All` now uses
+deterministic saturating integer work units to compare exact postings,
+estimated materialization, bitmap intersection, candidate filtering, and
+direct ID validation. Exact query postings and measured candidate cardinality
+and serialized size override estimates. Unavailable costs retain the measured
+eight-candidate fallback instead of inventing precision.
+
+Uncached `Index.Search` chooses an initial source by total remaining plan cost,
+so a cheap broader posting can precede an expensive narrower result. After
+every exact narrowing operation, the executor rescans the bounded remaining
+slice without allocation, selects the cheapest known bitmap operation,
+compares advertised filters with materialization, and switches to direct
+validation when that is cheaper. Direct checks use separate
+rejection-per-cost ordering and short-circuit. Inaccurate estimates therefore
+cannot force every broad sibling to be materialized after the exact candidate
+set becomes small. Ordered iteration remains deliberately unsupported pending
+the representation-specific evidence required by the next active step.
+
+On Apple M1 Max with Go 1.26.0, five one-second production-shaped runs measured
+a 32.239 us/op `Index.Search` median, 40,852 B/op, and 28 allocations/op. This
+improves the roadmap reference of 41.5--42.1 us/op, 73,571--73,572 B/op, and 31
+allocations/op. Warm `Local.Search` measured 562.7 ns/op at zero bytes and zero
+allocations. Parallel batches measured a 453.2 ns/search median. Retained
+memory remained 2,968--2,973 B cold, 91,019 B warm, and 107,861 B adaptive.
+
+Focused five-run medians measured 2.422 us/op, 12,393 B, and eight allocations
+for total-cost initial-source selection versus 3.928 us/op, 20,612 B, and ten
+allocations for cardinality order. Cost-ordered candidate validation measured
+1.055 us/op, 96 B, and six allocations versus 2.582 us/op, 152 B, and nine
+allocations for the comparison. Estimated broad-sibling validation measured
+511.9 ns/op, 64 B, and four allocations versus 25.228 us/op, 135,878 B, and 51
+allocations when the cost is unavailable. Ordinary, race, production-scale,
+large-result, nested-`All`, wildcard-heavy, range-heavy, and retained-memory
+gates passed. Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' \
+  -bench '^(BenchmarkAllCostBasedBroadSibling|BenchmarkAllInitialSourceTotalCost|BenchmarkAllEstimatedBroadSibling|BenchmarkAllLateMaterializedCandidateFallback|BenchmarkAllReplanAfterIntersection|BenchmarkAllCandidateValidationOrder|BenchmarkAllOrderedCandidateFiltering|BenchmarkAllCompareByCandidateFiltering)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-28: select candidate filtering by operation cost
 
 The adaptive `All` executor no longer invokes every advertised candidate

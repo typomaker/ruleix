@@ -8,11 +8,12 @@ or unrelated proposals here.
 
 ## Objective
 
-Replace the remaining cardinality-ordered `All` executor with a bounded
-operation-cost planner that chooses what to do next, not only which child has
-the smallest estimated result. It must avoid constructing complete child
-bitmaps when an existing posting, candidate filter, ordered stream, or direct
-ID validation can produce the same exact result more cheaply.
+Finish the operation-cost `All` executor by retaining only
+representation-specific operations with measured value, making optional
+shared learning useful or removing it, and proving that every retained local
+and shared state has a byte bound. The deterministic planner and adaptive
+operation loop are complete; their measured result is recorded in
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
 
 The current Apple M1 Max production-shaped cutover measurements are the
 reference point, not a success claim:
@@ -79,82 +80,7 @@ noisy results and rerun with a longer benchtime before deciding.
 Complete the steps in order. A later step may rely only on capabilities that
 survived the earlier benchmark gate.
 
-### 1. Implement a deterministic total-cost model
-
-**Implement**
-
-- Assign conservative integer work units to acquiring a source, intersecting
-  an existing bitmap, filtering current candidates, direct ID validation, and
-  final materialization. Avoid timers and floating-point arithmetic.
-- Estimate total work, not cardinality alone:
-
-  ```text
-  acquire candidate source
-  + narrow or validate remaining rules
-  + expected temporary bitmap bytes
-  ```
-
-- Cost query-dependent unions and ordered ranges even when their complete
-  bitmap has not been built. Use immutable build facts plus constant-time query
-  facts; never scan ordered postings only to estimate their cost.
-- Prefer exact current-query postings and cached bitmaps over estimates. Use
-  the measured candidate threshold of eight only when required information is
-  unavailable or costs tie.
-- Add table tests for dense versus sparse bitmaps with equal cardinality,
-  expensive selective sources versus cheap broader postings, unknown costs,
-  saturating arithmetic, and the scan/materialize boundary.
-
-**Accept when**
-
-- The planner can compare direct validation with an unmaterialized remaining
-  child instead of immediately falling back to `candidates <= 8`.
-- Cost calculation remains allocation-free and bounded by the number of `All`
-  children.
-- Focused decisions match measured winners across the benchmark matrix; revise
-  cost constants when they do not.
-
-**Result**
-
-A deterministic build-time model can choose a cheap initial operation without
-runtime learning and without assuming that the smallest result is cheapest.
-
-### 2. Select the next operation adaptively
-
-**Implement**
-
-- Replace the one-time cardinality sort as the execution plan with a bounded
-  loop over remaining children and supported operations.
-- At the start and after every exact narrowing step, choose the least estimated
-  remaining total cost among:
-  - consume an immutable posting;
-  - filter the current candidate bitmap;
-  - validate candidate IDs;
-  - iterate an ordered source;
-  - materialize a complete child result and intersect it.
-- Use actual candidate cardinality and actual serialized bitmap size after
-  every operation. Stop immediately on an exact empty result.
-- Maintain separate scoring for bitmap narrowing and direct validation. Direct
-  checks should be ordered by expected rejection per cost unit and
-  short-circuit on the first rejection.
-- Bound replanning to an allocation-free scan of the remaining child slice;
-  do not build a heap-backed plan graph.
-
-**Accept when**
-
-- An inaccurate estimate cannot force execution to materialize every remaining
-  broad result after candidates have become small.
-- A cheap broader posting may correctly precede an expensive narrower source.
-- Candidate filters are chosen only when measured cheaper than materialization,
-  rather than being invoked unconditionally by representation type.
-- Focused late-empty, late-selective, correlated, and expensive-`MatchID`
-  benchmarks improve without regressing broad-result searches.
-
-**Result**
-
-Production search becomes an operation-cost executor instead of a
-cardinality-ordered executor with a bitmap-versus-ID switch.
-
-### 3. Add representation-specific operations only when they avoid work
+### 1. Add representation-specific operations only when they avoid work
 
 **Implement**
 
@@ -182,7 +108,7 @@ cardinality-ordered executor with a bitmap-versus-ID switch.
 The executor has a minimal set of proven representation-specific operations,
 not speculative capabilities maintained only because they fit the design.
 
-### 4. Make shared planner statistics useful and bounded
+### 2. Make shared planner statistics useful and bounded
 
 **Implement**
 
@@ -220,7 +146,7 @@ not speculative capabilities maintained only because they fit the design.
 Cross-`Local` learning either provides a measured cold-start benefit with a
 bounded implementation or is removed instead of accumulating unused telemetry.
 
-### 5. Finish byte-bounded `Local` state
+### 3. Finish byte-bounded `Local` state
 
 **Implement**
 
@@ -248,7 +174,7 @@ The faster planner has a predictable memory cost per live goroutine and cannot
 trade temporary `Index.Search` allocations for unbounded retained `Local`
 memory.
 
-### 6. Differential cutover and cleanup
+### 4. Differential cutover and cleanup
 
 **Implement**
 
