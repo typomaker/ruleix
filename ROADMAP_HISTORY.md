@@ -2701,3 +2701,33 @@ Reproduce with:
 go test -run '^$' -bench '^BenchmarkLocalDuplicateEquality/' \
   -benchmem -benchtime=500ms -count=3 .
 ```
+
+## 2026-08-29: reject representation-retained equality source IDs
+
+The follow-up to the map-backed source-class experiment assigned a
+collision-checked `uint32` ID while each immutable bitmap was interned and
+stored that ID directly beside equality wildcard and posting representations.
+An equality result could then expose one packed wildcard/posting key without a
+runtime bitmap-to-ID lookup. The interner still used `Equals` after checksum
+and cardinality filtering, so collisions could not merge distinct sources.
+
+The production changes were removed at the focused gate. On Apple M1 Max with
+Go 1.26.0, three 500 ms runs measured cold 2/4/8-child medians of
+1.695/2.663/4.676 us, 1,073/1,185/1,409 B, and 9/11/15 allocations. Warm
+medians were 753.7/803.7/887.9 ns with zero bytes and allocations. The retained
+linear baseline documented beside the benchmark is 1.436/2.319/4.066 us,
+656/752/944 B, and 5/7/11 allocations cold, and 720.3/760.5/831.2 ns warm.
+Moving IDs into the representation therefore did not remove the build-time
+class-map cost and still regressed both cold construction and warm latency.
+
+This rejects retaining a source ID on every equality bitmap merely to replace
+the existing pointer-pair lookup. A later identity design must eliminate the
+per-`All` class maps as well, or restrict itself to unconditional build-time
+operand elimination that adds no query-time work.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLocalDuplicateEquality/' \
+  -benchmem -benchtime=500ms -count=3 .
+```
