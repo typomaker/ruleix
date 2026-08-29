@@ -2583,3 +2583,33 @@ go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
   -benchtime=3x -count=3 .
 ```
+
+## 2026-08-29: reject per-query duplicate cached-bitmap scanning
+
+A bounded pointer-identity scan was tested before `All` intersection. It used
+only the existing ranked-child slice, retained no map or query state, and
+removed later children whose already-resolved bitmap pointer matched an
+earlier child. Equality postings provide the only production case where
+separate children naturally resolve to the same pointer: immutable equality
+postings are interned at build time. Ordered, `Between`, and `CompareBy`
+caches are owned by distinct compiled nodes and materialize distinct bitmap
+objects, while nested `All` groups are flattened during optimization. There
+was consequently no wider production identity source for the scan to exploit.
+
+The runtime change was not retained. On Apple M1 Max with Go 1.26.0, three
+500 ms runs of the new end-to-end 2/4/8-child equality matrix measured baseline
+cold medians of 1.535/2.462/4.344 us and warm medians of
+756.2/802.2/873.9 ns. The generic identity scan reduced cold medians to
+1.050/1.153/1.350 us and allocations from 5/7/11 to two, but warm medians
+regressed to 800.2/880.5/1056 ns (+5.8%/+9.8%/+20.8%). Warm searches remained
+at 0 B/op and 0 allocs/op. Calling the existing equality-component
+deduplication from the root executor was slower still at warm medians of
+883.3/963.7/1137 ns. The cold-only win therefore fails the roadmap requirement
+for a repeatable warm improvement without an ordinary hot-path penalty.
+
+Reproduce the retained baseline with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLocalDuplicateEquality/' \
+  -benchmem -benchtime=500ms -count=3 .
+```
