@@ -100,11 +100,6 @@ final decision so machine drift cannot be mistaken for a 3--6% effect.
   only for unconditional aliases of the same proven operation. Never merge
   independently opaque getters/comparators or ranges that merely happen to
   materialize equal results for one query.
-- Compile each `All` directly into unique physical operands. Remove
-  unconditional same-rule and same-operation aliases before node-cache
-  construction, ranking, insertion, and execution. Attach all logical wrapper
-  and `Inspect` sites to the remaining operand rather than retaining duplicate
-  executable children.
 - For query-dependent equality wildcard/posting pairs, assign dense duplicate
   class ordinals directly in the compiled operand. Temporary maps are allowed
   during `Build` but must be discarded before the immutable `Index` is

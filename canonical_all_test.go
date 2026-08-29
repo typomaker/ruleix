@@ -107,8 +107,33 @@ func TestBuildCanonicalizationPreservesSeparateInspectSites(t *testing.T) {
 	require.Equal(t, 1, index.nodes)
 	require.Equal(t, uint64(len(constraints)), first.Snapshot().EntryCount())
 	require.Equal(t, uint64(len(constraints)), second.Snapshot().EntryCount())
+	require.Len(t, index.root.(*allRule[canonicalConstraint]).children, 1)
+	observed := index.observedRoot.(*allRule[canonicalConstraint]).children[0].(*inspectedRuntimeRule[canonicalConstraint])
+	require.Len(t, observed.aliases, 1)
 
 	var matches []int
+	index.pool.observeRuntime = true
 	index.Search(constraints[0], &matches)
 	require.Equal(t, []int{10}, matches)
+	require.Equal(t, first.Snapshot().ResultCardinality(), second.Snapshot().ResultCardinality())
+	require.Equal(t, uint64(1), first.Snapshot().ResultCardinality().One)
+}
+
+func TestIdentityABRetainsBaselineAndCompilesIntegratedAliases(t *testing.T) {
+	shared := Include(func(v canonicalConstraint) (int, bool) { return v.value, true })
+	constraints, ids := canonicalEntries()
+	var inspectors [4]Inspector
+	schema := All(
+		Inspect(&inspectors[0], shared), Inspect(&inspectors[1], shared),
+		Inspect(&inspectors[2], shared), Inspect(&inspectors[3], shared),
+	)
+	baseline := buildIdentityABIndex(t, identityBaseline, schema, constraints, ids)
+	integrated := buildIdentityABIndex(t, identityIntegrated, schema, constraints, ids)
+	require.Len(t, baseline.index.root.(*allRule[canonicalConstraint]).children, 4)
+	require.Len(t, integrated.index.root.(*allRule[canonicalConstraint]).children, 1)
+
+	var baselineMatches, integratedMatches []int
+	baseline.index.Search(constraints[0], &baselineMatches)
+	integrated.index.Search(constraints[0], &integratedMatches)
+	require.Equal(t, baselineMatches, integratedMatches)
 }

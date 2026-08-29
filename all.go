@@ -230,6 +230,9 @@ func (r *allRule[T]) optimize(total uint64) Rule[T] {
 		return universal
 	}
 	if len(children) == 1 {
+		if observed, ok := children[0].(*inspectedRuntimeRule[T]); ok && len(observed.aliases) != 0 {
+			return &allRule[T]{children: children}
+		}
 		return children[0]
 	}
 	return &allRule[T]{children: children}
@@ -315,15 +318,25 @@ func (r *allRule[T]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 }
 
 func (r *allRule[T]) searchObserved(v T, dst *roaring.Bitmap, pool *bitmapPool, metrics *inspectorRuntime) {
+	r.searchObservedAliases(v, dst, pool, metrics, nil)
+}
+
+func (r *allRule[T]) searchObservedAliases(
+	v T,
+	dst *roaring.Bitmap,
+	pool *bitmapPool,
+	metrics *inspectorRuntime,
+	aliases []*inspectorRuntime,
+) {
 	// Most All groups are small. Keeping their ranking storage on the stack
 	// avoids a service allocation without adding shared mutable state.
 	var inline [8]rankedBitmap
 	if len(r.children) <= len(inline) {
-		r.searchRanked(v, dst, pool, inline[:len(r.children)], metrics)
+		r.searchRanked(v, dst, pool, inline[:len(r.children)], metrics, aliases)
 		return
 	}
 	buffer := pool.getRanked(len(r.children))
-	r.searchRanked(v, dst, pool, buffer.items, metrics)
+	r.searchRanked(v, dst, pool, buffer.items, metrics, aliases)
 	pool.putRanked(buffer)
 }
 
@@ -333,6 +346,7 @@ func (r *allRule[T]) searchRanked(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 	metrics *inspectorRuntime,
+	metricAliases []*inspectorRuntime,
 ) {
 	if !r.rankChildren(v, pool, rankedChildren) {
 		return
@@ -354,7 +368,7 @@ func (r *allRule[T]) searchRanked(
 		rankedChildren[0], rankedChildren[first] = rankedChildren[first], rankedChildren[0]
 	}
 	if !r.shouldValidateCandidates(rankedChildren) {
-		if !r.intersectRankedInOrderObserved(v, dst, pool, rankedChildren, metrics) {
+		if !r.intersectRankedInOrderObserved(v, dst, pool, rankedChildren, metrics, metricAliases) {
 			r.releaseRanked(pool, rankedChildren)
 			return
 		}
@@ -775,6 +789,7 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 	metrics *inspectorRuntime,
+	metricAliases []*inspectorRuntime,
 ) bool {
 	if pool.local == nil && r.sharedWildcardGroups != nil {
 		rankedChildren = r.collectSharedWildcards(v, pool, rankedChildren)
@@ -846,6 +861,9 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 		}
 		if shouldPruneBitmapRanges(pool) && bitmapRangesDisjoint(current, bits) {
 			observeRangePruning(metrics, pool)
+			for _, alias := range metricAliases {
+				observeRangePruning(alias, pool)
+			}
 			dst.Clear()
 			for j := range rankedChildren {
 				if rankedChildren[j].owned {
@@ -995,6 +1013,9 @@ func (r *allRule[T]) matchesChildID(index int, value T, id uint32, pool *bitmapP
 func observeCandidateCheck[T any](rule Rule[T], pool *bitmapPool) {
 	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
 		pool.inspectorObserver(observed.metrics).candidateCheck()
+		for _, alias := range observed.aliases {
+			pool.inspectorObserver(alias).candidateCheck()
+		}
 	}
 }
 

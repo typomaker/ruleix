@@ -78,6 +78,16 @@ func buildIndex[C any, ID comparable](
 	collectStatistics bool,
 	hints *buildStatistics,
 ) (*Index[C, ID], buildStatistics, error) {
+	return buildIndexPhysicalAliases(schema, entries, collectStatistics, hints, true)
+}
+
+func buildIndexPhysicalAliases[C any, ID comparable](
+	schema Rule[C],
+	entries iter.Seq2[C, ID],
+	collectStatistics bool,
+	hints *buildStatistics,
+	compilePhysicalAliases bool,
+) (*Index[C, ID], buildStatistics, error) {
 	if entries == nil {
 		return nil, buildStatistics{}, fmt.Errorf("ruleix: nil entry sequence")
 	}
@@ -129,6 +139,9 @@ func buildIndex[C any, ID comparable](
 	ix.root, err = stripInspectors(ix.root, make(map[*inspectorState]struct{}), &inspections)
 	if err != nil {
 		return nil, buildStatistics{}, err
+	}
+	if compilePhysicalAliases {
+		ix.root = compileAllPhysicalOperands(ix.root)
 	}
 	// Removing transparent decorators can expose All simplifications that were
 	// intentionally hidden while retaining the inspector-to-child association.
@@ -439,7 +452,7 @@ func prepareRankedAllCandidates[C any](
 	metrics *inspectorRuntime,
 ) bool {
 	if rankedChildren[0].card > allCandidateScanLimit {
-		return root.intersectRankedInOrderObserved(value, candidates, pool, rankedChildren, metrics)
+		return root.intersectRankedInOrderObserved(value, candidates, pool, rankedChildren, metrics, nil)
 	}
 	if rankedChildren[0].bits != nil {
 		if root.directIDComplete {

@@ -387,6 +387,7 @@ type pendingInspection struct {
 type inspectedRuntimeRule[T any] struct {
 	child   Rule[T]
 	metrics *inspectorRuntime
+	aliases []*inspectorRuntime
 }
 
 type inspectedExclusionRule[T any] struct {
@@ -428,12 +429,15 @@ func (r *inspectedRuntimeRule[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool
 	metrics := p.inspectorObserver(r.metrics)
 	before := dst.GetCardinality()
 	if all, ok := r.child.(*allRule[T]); ok {
-		all.searchObserved(v, dst, p, r.metrics)
+		all.searchObservedAliases(v, dst, p, r.metrics, r.aliases)
 	} else {
 		r.child.search(v, dst, p)
 	}
 	n := dst.GetCardinality() - before
 	metrics.observeCardinality(n)
+	for _, alias := range r.aliases {
+		p.inspectorObserver(alias).observeCardinality(n)
+	}
 }
 func (r *inspectedRuntimeRule[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
 	r.child.exclude(v, dst, p)
@@ -458,6 +462,9 @@ func (r *inspectedRuntimeRule[T]) lookupCachedBitmap(v T, p *bitmapPool) (*roari
 		return nil, false
 	}
 	metrics.observeCardinality(bits.GetCardinality())
+	for _, alias := range r.aliases {
+		p.inspectorObserver(alias).observeCardinality(bits.GetCardinality())
+	}
 	return bits, true
 }
 func (r *inspectedRuntimeRule[T]) isCardinalityZero(v T) bool {
@@ -536,6 +543,52 @@ func removeRuntimeInspectors[T any](rule Rule[T]) Rule[T] {
 			children[i] = removeRuntimeInspectors(child)
 		}
 		return &allRule[T]{children: children}
+	default:
+		return rule
+	}
+}
+
+// compileAllPhysicalOperands removes only aliases whose build-time state is
+// the exact same pointer-backed operation. Independently compiled operations
+// remain separate even when bitmap interning later gives them equal contents.
+// Inspector wrappers are retained as one executable wrapper with fan-out
+// destinations for every logical observation site.
+func compileAllPhysicalOperands[T any](rule Rule[T]) Rule[T] {
+	switch typed := rule.(type) {
+	case *inspectedRuntimeRule[T]:
+		typed.child = compileAllPhysicalOperands(typed.child)
+		return typed
+	case *allRule[T]:
+		children := make([]Rule[T], 0, len(typed.children))
+		owners := make(map[Rule[T]]int, len(typed.children))
+		for _, child := range typed.children {
+			child = compileAllPhysicalOperands(child)
+			physical := child
+			if observed, ok := child.(*inspectedRuntimeRule[T]); ok {
+				physical = observed.child
+			}
+			owner, duplicate := owners[physical]
+			if !duplicate {
+				owners[physical] = len(children)
+				children = append(children, child)
+				continue
+			}
+			incoming, incomingObserved := child.(*inspectedRuntimeRule[T])
+			if !incomingObserved {
+				continue
+			}
+			existing, existingObserved := children[owner].(*inspectedRuntimeRule[T])
+			if !existingObserved {
+				existing = &inspectedRuntimeRule[T]{child: physical, metrics: incoming.metrics}
+				existing.aliases = append(existing.aliases, incoming.aliases...)
+				children[owner] = existing
+				continue
+			}
+			existing.aliases = append(existing.aliases, incoming.metrics)
+			existing.aliases = append(existing.aliases, incoming.aliases...)
+		}
+		typed.children = children
+		return typed
 	default:
 		return rule
 	}

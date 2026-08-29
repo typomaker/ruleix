@@ -1,5 +1,19 @@
 # Roadmap history
 
+## 2026-08-29: compile unconditional `All` aliases into physical operands
+
+- Added a build-time physical-operand compiler that removes only aliases of
+  the exact same canonical pointer-backed operation; independently compiled
+  operations remain separate even when their immutable bitmaps have equal
+  contents.
+- Compiled aliases disappear before `All` ranking, cache preparation, and
+  execution. Canonical state reuse already prevents repeated insertion.
+- Multiple logical `Inspect` sites now fan cardinality, candidate-check, range-
+  pruning, and cache observations out from the one retained physical operand.
+- Kept baseline and integrated compilation selectable in the internal A/B
+  harness and added structural/result tests proving four aliases remain in the
+  baseline but collapse in the integrated variant.
+
 ## 2026-08-29: compile collision-checked physical bitmap source IDs
 
 Bitmap interning now assigns a nonzero, build-scoped `uint32` physical source
