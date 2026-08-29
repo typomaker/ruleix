@@ -2670,3 +2670,34 @@ Reproduce the retained baseline with:
 go test -run '^$' -bench '^BenchmarkLocalDuplicateEquality/' \
   -benchmem -benchtime=500ms -count=3 .
 ```
+
+## 2026-08-29: reject map-backed dense equality source classes
+
+A build-scoped bitmap-ID prototype extended the collision-checked interner to
+assign IDs only after `Equals` proved canonical identity. Each compiled `All`
+then converted the potentially shared wildcard/posting pairs into dense local
+class ordinals. Query execution replaced the retained inline linear key scan
+with a class lookup and a stack bit mask. The prototype preserved the
+zero-allocation warm path, but the lookup itself was slower and retaining the
+interner's pointer-to-ID table increased cold `Local` construction traffic.
+
+The runtime and retained ID table were removed at the focused gate. On Apple
+M1 Max with Go 1.26.0, three 500 ms runs measured cold 2/4/8-child medians of
+1.699/2.678/4.688 us, 1,073/1,185/1,409 B, and 9/11/15 allocations. Warm
+medians were 758.4/803.7/883.8 ns with zero bytes and allocations. The retained
+linear baseline documented beside the benchmark is 1.436/2.319/4.066 us,
+656/752/944 B, and 5/7/11 allocations cold, and 720.3/760.5/831.2 ns warm.
+Thus the map-backed dense-class design regressed warm latency by roughly
+5--6% and cold allocations by four, failing both acceptance thresholds.
+
+This result rejects a retained global pointer-ID map plus a per-`All` class
+map; it does not reject a future representation-native encoding that stores a
+dense ordinal directly beside each query-selected posting and therefore needs
+no runtime map lookup.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLocalDuplicateEquality/' \
+  -benchmem -benchtime=500ms -count=3 .
+```
