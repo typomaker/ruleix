@@ -1,5 +1,22 @@
 # Roadmap history
 
+## 2026-08-29: compile collision-checked physical bitmap source IDs
+
+Bitmap interning now assigns a nonzero, build-scoped `uint32` physical source
+ID only after checksum/cardinality fingerprinting and `Bitmap.Equals` prove
+identity. Exact equality wildcard and Roaring-backed concrete postings retain
+the ID directly in their representation metadata; lossy equality wildcard and
+bucket postings do the same. The interner's temporary fingerprint tables are
+discarded before the immutable index is published, so search performs no
+bitmap-pointer-to-ID lookup and retains no global identity map.
+
+Focused tests force a fingerprint collision, prove that unequal contents get
+different IDs, prove that collision-list equality reuses both the bitmap and
+ID, and verify that separate builds restart the ID scope. The ordinary and
+race suites pass. This completes the first compilation milestone of the
+integrated physical-identity experiment; canonical ordered/range operation IDs
+and direct `All` operand compilation remain active in the roadmap.
+
 ## 2026-08-29: build the physical-identity A/B harness
 
 The internal `BenchmarkPhysicalIdentityAB` now builds the baseline and

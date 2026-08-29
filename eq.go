@@ -20,9 +20,10 @@ type equalityLossyAllPlanner[T any, V comparable] struct {
 
 //nolint:gocognit // Planning evaluates representations in one allocation-aware pass.
 func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
-	// V1 exact accounting: wildcard payload, 16 bytes of strategy metadata, and for
-	// each occupied bucket an 8-byte key, 8-byte logical slot, and payload.
-	exact := uint64(16) + bitmapBytes(r.wildcard)
+	// V1 exact accounting: wildcard payload, 24 bytes of strategy/source
+	// metadata, and for each occupied bucket an 8-byte key, 16-byte logical
+	// slot (including its source ID and alignment), and payload.
+	exact := uint64(24) + bitmapBytes(r.wildcard)
 	items := r.wildcard.GetCardinality()
 	distinct := uint64(0)
 	hasher := newScalarHasher[V]()
@@ -49,7 +50,7 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 			if !ok {
 				continue
 			}
-			exact += uint64(len(encoded)) + 8 + equalitySetBytes(&r.values.sets[n])
+			exact += uint64(len(encoded)) + 16 + equalitySetBytes(&r.values.sets[n])
 		}
 	} else {
 		for value, offset := range r.values.offsets {
@@ -60,7 +61,7 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 			if !ok {
 				continue
 			}
-			exact += uint64(len(encoded)) + 8 + equalitySetBytes(&r.values.sets[offset])
+			exact += uint64(len(encoded)) + 16 + equalitySetBytes(&r.values.sets[offset])
 		}
 	}
 	exactRepresentation := Rule[T](&inspectionDetailsRule[T]{
@@ -83,23 +84,23 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		allDifferentValuePairs := float64(concreteItems)*float64(concreteItems) - sameValuePairs
 		candidate := &lossyEqualityRule[T, V]{
 			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			shift: 64 - lossyMaxBucketBits, hasher: hasher, buckets: make(map[uint64]*roaring.Bitmap),
+			shift: 64 - lossyMaxBucketBits, hasher: hasher, buckets: make(map[uint64]lossyEqualityPosting),
 		}
 		for _, value := range hashed {
 			bucket := value.hash >> candidate.shift
 			posting := candidate.buckets[bucket]
-			if posting == nil {
-				posting = roaring.New()
-				candidate.buckets[bucket] = posting
+			if posting.bits == nil {
+				posting.bits = roaring.New()
 			}
-			value.set.addTo(posting)
+			value.set.addTo(posting.bits)
+			candidate.buckets[bucket] = posting
 		}
 		for bucketBits := lossyMaxBucketBits; ; bucketBits-- {
-			usage := uint64(32) + bitmapBytes(candidate.wildcard)
+			usage := uint64(40) + bitmapBytes(candidate.wildcard)
 			var collidingDifferentValuePairs float64
 			for _, posting := range candidate.buckets {
-				usage += 16 + bitmapBytes(posting)
-				count := float64(posting.GetCardinality())
+				usage += 24 + bitmapBytes(posting.bits)
+				count := float64(posting.bits.GetCardinality())
 				collidingDifferentValuePairs += count * count
 			}
 			details := representationDetails(usage, items, distinct, uint64(len(candidate.buckets)), true)
@@ -116,16 +117,16 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
 				shift:   uint(64 - (bucketBits - 1)),
 				hasher:  hasher,
-				buckets: make(map[uint64]*roaring.Bitmap, (len(candidate.buckets)+1)/2),
+				buckets: make(map[uint64]lossyEqualityPosting, (len(candidate.buckets)+1)/2),
 			}
 			for bucket, posting := range candidate.buckets {
 				parentBucket := bucket >> 1
 				parentPosting := parent.buckets[parentBucket]
-				if parentPosting == nil {
-					parentPosting = roaring.New()
-					parent.buckets[parentBucket] = parentPosting
+				if parentPosting.bits == nil {
+					parentPosting.bits = roaring.New()
 				}
-				parentPosting.Or(posting)
+				parentPosting.bits.Or(posting.bits)
+				parent.buckets[parentBucket] = parentPosting
 			}
 			candidate = parent
 		}
@@ -203,6 +204,7 @@ type equalitySet struct {
 	single uint32
 	small  []uint32
 	bits   *roaring.Bitmap
+	source physicalSourceID
 }
 
 func newEqualitySet(id uint32) *equalitySet { return &equalitySet{single: id} }
@@ -345,15 +347,16 @@ func (s *equalitySet) prepareSearch() {
 }
 func (s *equalitySet) internBitmaps(interner *bitmapInterner) {
 	if s.bits != nil {
-		interner.intern(&s.bits)
+		s.source = interner.internSource(&s.bits)
 	}
 }
 
 type eqRule[T any, V comparable] struct {
-	nodeID   nodeID
-	get      Getter[T, V]
-	wildcard *roaring.Bitmap
-	values   equalityIndex[V]
+	nodeID         nodeID
+	get            Getter[T, V]
+	wildcard       *roaring.Bitmap
+	wildcardSource physicalSourceID
+	values         equalityIndex[V]
 }
 
 func (r *eqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
@@ -505,7 +508,7 @@ func (r *eqRule[T, V]) prepareSearch() {
 	}
 }
 func (r *eqRule[T, V]) internBitmaps(interner *bitmapInterner) {
-	interner.intern(&r.wildcard)
+	r.wildcardSource = interner.internSource(&r.wildcard)
 	for i := range r.values.sets {
 		r.values.sets[i].internBitmaps(interner)
 	}
@@ -515,11 +518,12 @@ func (r *eqRule[T, V]) internBitmaps(interner *bitmapInterner) {
 // low-cardinality equality filters. Besides avoiding a map lookup, they discard
 // the slice and capacity retained by the general equality index.
 type unaryEqRule[T any, V comparable] struct {
-	nodeID   nodeID
-	get      Getter[T, V]
-	wildcard *roaring.Bitmap
-	key      V
-	set      equalitySet
+	nodeID         nodeID
+	get            Getter[T, V]
+	wildcard       *roaring.Bitmap
+	wildcardSource physicalSourceID
+	key            V
+	set            equalitySet
 }
 
 func (r *unaryEqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
@@ -612,16 +616,17 @@ func (r *unaryEqRule[T, V]) prepareSearch() {
 	r.set.prepareSearch()
 }
 func (r *unaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
-	interner.intern(&r.wildcard)
+	r.wildcardSource = interner.internSource(&r.wildcard)
 	r.set.internBitmaps(interner)
 }
 
 type binaryEqRule[T any, V comparable] struct {
-	nodeID   nodeID
-	get      Getter[T, V]
-	wildcard *roaring.Bitmap
-	keys     [2]V
-	sets     [2]equalitySet
+	nodeID         nodeID
+	get            Getter[T, V]
+	wildcard       *roaring.Bitmap
+	wildcardSource physicalSourceID
+	keys           [2]V
+	sets           [2]equalitySet
 }
 
 func (r *binaryEqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
@@ -724,7 +729,7 @@ func (r *binaryEqRule[T, V]) prepareSearch() {
 	}
 }
 func (r *binaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
-	interner.intern(&r.wildcard)
+	r.wildcardSource = interner.internSource(&r.wildcard)
 	for i := range r.sets {
 		r.sets[i].internBitmaps(interner)
 	}

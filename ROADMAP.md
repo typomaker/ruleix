@@ -94,11 +94,6 @@ final decision so machine drift cannot be mistaken for a 3--6% effect.
 
 #### B. Compile the complete identity representation
 
-- During collision-checked bitmap interning, assign a build-scoped `uint32`
-  physical source ID only after fingerprint, cardinality, and `Bitmap.Equals`
-  confirm equality. Store representation-native source metadata beside each
-  equality wildcard and concrete posting; perform no bitmap-pointer-to-ID map
-  lookup during search.
 - Give every provably identical ordered/range operation a canonical operation
   ID containing representation ownership, bound role, direction, inclusivity,
   wildcard policy, comparator policy, and stable query-bound identity. Use it

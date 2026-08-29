@@ -6,8 +6,18 @@ import "github.com/RoaringBitmap/roaring/v2"
 // bitmap. Checksum narrows candidates cheaply; Equals preserves correctness in
 // the event of a collision.
 type bitmapInterner struct {
-	canonical  map[bitmapFingerprint]*roaring.Bitmap
-	collisions map[bitmapFingerprint][]*roaring.Bitmap
+	canonical  map[bitmapFingerprint]internedBitmap
+	collisions map[bitmapFingerprint][]internedBitmap
+	nextID     physicalSourceID
+}
+
+// physicalSourceID names one collision-checked immutable bitmap within a
+// single Build. Zero means that a representation has no bitmap source.
+type physicalSourceID uint32
+
+type internedBitmap struct {
+	bits *roaring.Bitmap
+	id   physicalSourceID
 }
 
 type bitmapFingerprint struct {
@@ -16,31 +26,58 @@ type bitmapFingerprint struct {
 }
 
 func newBitmapInterner() *bitmapInterner {
-	return &bitmapInterner{canonical: make(map[bitmapFingerprint]*roaring.Bitmap)}
+	return &bitmapInterner{
+		canonical: make(map[bitmapFingerprint]internedBitmap),
+		nextID:    1,
+	}
 }
 
 func (i *bitmapInterner) intern(target **roaring.Bitmap) {
+	i.internSource(target)
+}
+
+func (i *bitmapInterner) internSource(target **roaring.Bitmap) physicalSourceID {
 	bits := *target
 	fingerprint := bitmapFingerprint{checksum: bits.Checksum(), cardinality: bits.GetCardinality()}
+	return i.internSourceWithFingerprint(target, fingerprint)
+}
+
+func (i *bitmapInterner) internSourceWithFingerprint(
+	target **roaring.Bitmap,
+	fingerprint bitmapFingerprint,
+) physicalSourceID {
+	bits := *target
 	canonical := i.canonical[fingerprint]
-	if canonical == nil {
-		i.canonical[fingerprint] = bits
-		return
+	if canonical.bits == nil {
+		id := i.allocateSourceID()
+		i.canonical[fingerprint] = internedBitmap{bits: bits, id: id}
+		return id
 	}
-	if canonical.Equals(bits) {
-		*target = canonical
-		return
+	if canonical.bits.Equals(bits) {
+		*target = canonical.bits
+		return canonical.id
 	}
 	for _, collision := range i.collisions[fingerprint] {
-		if collision.Equals(bits) {
-			*target = collision
-			return
+		if collision.bits.Equals(bits) {
+			*target = collision.bits
+			return collision.id
 		}
 	}
 	if i.collisions == nil {
-		i.collisions = make(map[bitmapFingerprint][]*roaring.Bitmap)
+		i.collisions = make(map[bitmapFingerprint][]internedBitmap)
 	}
-	i.collisions[fingerprint] = append(i.collisions[fingerprint], bits)
+	id := i.allocateSourceID()
+	i.collisions[fingerprint] = append(i.collisions[fingerprint], internedBitmap{bits: bits, id: id})
+	return id
+}
+
+func (i *bitmapInterner) allocateSourceID() physicalSourceID {
+	id := i.nextID
+	i.nextID++
+	if id == 0 {
+		panic("ruleix: physical bitmap source ID overflow")
+	}
+	return id
 }
 
 type bitmapInternable interface {

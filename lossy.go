@@ -502,12 +502,18 @@ func fnvHashTaggedUint64(tag byte, value uint64) uint64 {
 }
 
 type lossyEqualityRule[T any, V comparable] struct {
-	nodeID   nodeID
-	get      Getter[T, V]
-	wildcard *roaring.Bitmap
-	shift    uint
-	hasher   scalarHasher[V]
-	buckets  map[uint64]*roaring.Bitmap
+	nodeID         nodeID
+	get            Getter[T, V]
+	wildcard       *roaring.Bitmap
+	wildcardSource physicalSourceID
+	shift          uint
+	hasher         scalarHasher[V]
+	buckets        map[uint64]lossyEqualityPosting
+}
+
+type lossyEqualityPosting struct {
+	bits   *roaring.Bitmap
+	source physicalSourceID
 }
 
 func (r *lossyEqualityRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
@@ -547,7 +553,7 @@ func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bo
 	if !ok {
 		return r.wildcard, true
 	}
-	bits := r.buckets[hash>>r.shift]
+	bits := r.buckets[hash>>r.shift].bits
 	if bits == nil {
 		return r.wildcard, true
 	}
@@ -585,7 +591,7 @@ func (r *lossyEqualityRule[T, V]) addMatches(value optionalValue[V], dst *roarin
 	if !ok {
 		return
 	}
-	if bits := r.buckets[hash>>r.shift]; bits != nil {
+	if bits := r.buckets[hash>>r.shift].bits; bits != nil {
 		dst.Or(bits)
 	}
 }
@@ -599,7 +605,7 @@ func (r *lossyEqualityRule[T, V]) estimateCardinality(v T) uint64 {
 	if !ok {
 		return n
 	}
-	if bits := r.buckets[hash>>r.shift]; bits != nil {
+	if bits := r.buckets[hash>>r.shift].bits; bits != nil {
 		n += bits.GetCardinality()
 	}
 	return n
@@ -632,7 +638,7 @@ func (r *lossyEqualityRule[T, V]) matchesID(v T, id uint32) bool {
 	if !ok {
 		return false
 	}
-	bits := r.buckets[hash>>r.shift]
+	bits := r.buckets[hash>>r.shift].bits
 	return bits != nil && bits.Contains(id)
 }
 func (r *lossyEqualityRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
@@ -644,15 +650,15 @@ func (*lossyEqualityRule[T, V]) inspectionStrategy() string                   { 
 func (*lossyEqualityRule[T, V]) inspectionMode() RuleMode                     { return RuleModeLossy }
 func (r *lossyEqualityRule[T, V]) prepareSearch() {
 	prepareBitmapForSearch(r.wildcard)
-	for _, b := range r.buckets {
-		prepareBitmapForSearch(b)
+	for _, posting := range r.buckets {
+		prepareBitmapForSearch(posting.bits)
 	}
 }
 func (r *lossyEqualityRule[T, V]) internBitmaps(i *bitmapInterner) {
-	i.intern(&r.wildcard)
-	for k, b := range r.buckets {
-		i.intern(&b)
-		r.buckets[k] = b
+	r.wildcardSource = i.internSource(&r.wildcard)
+	for k, posting := range r.buckets {
+		posting.source = i.internSource(&posting.bits)
+		r.buckets[k] = posting
 	}
 }
 

@@ -215,7 +215,7 @@ func TestLossyAllReusesPlanningBucket(t *testing.T) {
 				return v.name, v.present
 			},
 			wildcard: roaring.New(),
-			buckets:  map[uint64]*roaring.Bitmap{hash: roaring.BitmapOf(7)},
+			buckets:  map[uint64]lossyEqualityPosting{hash: {bits: roaring.BitmapOf(7)}},
 		}
 	}
 
@@ -240,7 +240,7 @@ func TestLossyAllLocalPlanReusesPlanningBucket(t *testing.T) {
 				return v.name, v.present
 			},
 			wildcard: roaring.New(),
-			buckets:  map[uint64]*roaring.Bitmap{hash: roaring.BitmapOf(7)},
+			buckets:  map[uint64]lossyEqualityPosting{hash: {bits: roaring.BitmapOf(7)}},
 		}
 	}
 
@@ -263,7 +263,7 @@ func TestLossyEqualityLocalCachesRepeatedValue(t *testing.T) {
 		get:      func(v lossyConstraint) (string, bool) { return v.name, v.present },
 		wildcard: roaring.New(),
 		shift:    56,
-		buckets:  map[uint64]*roaring.Bitmap{hash >> 56: roaring.BitmapOf(7)},
+		buckets:  map[uint64]lossyEqualityPosting{hash >> 56: {bits: roaring.BitmapOf(7)}},
 	}
 	pool := newLocalBitmapPool(1)
 	query := lossyConstraint{name: value, present: true}
@@ -304,6 +304,10 @@ func (r *unknownEstimateRule[T]) collectBuildStatistics(stats []nodeBuildStatist
 }
 
 func BenchmarkLossyAllSelectivePlanning(b *testing.B) {
+	// Apple M1 Max, Go 1.26.0: Adaptive 3678 ns/op, 3113 B/op, 69 allocs/op;
+	// UnknownEstimate 5241 ns/op, 3914 B/op, 106 allocs/op (medians).
+	// Reproduce: go test -run '^$' -bench '^BenchmarkLossyAllSelectivePlanning$'
+	// -benchmem -benchtime=1s -count=5 .
 	const entries = 100_000
 	query := lossyConstraint{name: "customer-7", present: true}
 	hash, ok := hashScalar(query.name)
@@ -315,7 +319,7 @@ func BenchmarkLossyAllSelectivePlanning(b *testing.B) {
 	selective := &lossyEqualityRule[lossyConstraint, string]{
 		get:      func(v lossyConstraint) (string, bool) { return v.name, v.present },
 		wildcard: roaring.New(),
-		buckets:  map[uint64]*roaring.Bitmap{hash: roaring.BitmapOf(7)},
+		buckets:  map[uint64]lossyEqualityPosting{hash: {bits: roaring.BitmapOf(7)}},
 	}
 	children := make([]Rule[lossyConstraint], 0, 8)
 	for range 7 {
