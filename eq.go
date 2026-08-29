@@ -525,13 +525,22 @@ func (r *eqRule[T, V]) internBitmaps(interner *bitmapInterner) {
 		r.values.sets[i].internBitmaps(interner)
 	}
 }
-func (r *eqRule[T, V]) visitEqualitySourceClasses(visit func(equalitySourcePair, func(uint32))) {
-	visit(equalitySourcePair{wildcard: r.wildcardSource}, func(class uint32) { r.wildcardClass = class })
+func (r *eqRule[T, V]) equalitySourceCount() int { return 1 + len(r.values.sets) }
+func (r *eqRule[T, V]) visitEqualitySources(visit func(equalitySourcePair)) {
+	visit(equalitySourcePair{wildcard: r.wildcardSource})
+	for i := range r.values.sets {
+		set := r.values.sets[i]
+		if set.source != 0 {
+			visit(equalitySourcePair{wildcard: r.wildcardSource, posting: set.source})
+		}
+	}
+}
+func (r *eqRule[T, V]) assignEqualityClasses(classes map[equalitySourcePair]uint32) {
+	r.wildcardClass = classes[equalitySourcePair{wildcard: r.wildcardSource}]
 	for i := range r.values.sets {
 		set := &r.values.sets[i]
 		if set.source != 0 {
-			visit(equalitySourcePair{wildcard: r.wildcardSource, posting: set.source},
-				func(class uint32) { set.class = class })
+			set.class = classes[equalitySourcePair{wildcard: r.wildcardSource, posting: set.source}]
 		}
 	}
 }
@@ -648,11 +657,17 @@ func (r *unaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
 	r.wildcardSource = interner.internSource(&r.wildcard)
 	r.set.internBitmaps(interner)
 }
-func (r *unaryEqRule[T, V]) visitEqualitySourceClasses(visit func(equalitySourcePair, func(uint32))) {
-	visit(equalitySourcePair{wildcard: r.wildcardSource}, func(class uint32) { r.wildcardClass = class })
+func (r *unaryEqRule[T, V]) equalitySourceCount() int { return 2 }
+func (r *unaryEqRule[T, V]) visitEqualitySources(visit func(equalitySourcePair)) {
+	visit(equalitySourcePair{wildcard: r.wildcardSource})
 	if r.set.source != 0 {
-		visit(equalitySourcePair{wildcard: r.wildcardSource, posting: r.set.source},
-			func(class uint32) { r.set.class = class })
+		visit(equalitySourcePair{wildcard: r.wildcardSource, posting: r.set.source})
+	}
+}
+func (r *unaryEqRule[T, V]) assignEqualityClasses(classes map[equalitySourcePair]uint32) {
+	r.wildcardClass = classes[equalitySourcePair{wildcard: r.wildcardSource}]
+	if r.set.source != 0 {
+		r.set.class = classes[equalitySourcePair{wildcard: r.wildcardSource, posting: r.set.source}]
 	}
 }
 
@@ -777,13 +792,22 @@ func (r *binaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
 		r.sets[i].internBitmaps(interner)
 	}
 }
-func (r *binaryEqRule[T, V]) visitEqualitySourceClasses(visit func(equalitySourcePair, func(uint32))) {
-	visit(equalitySourcePair{wildcard: r.wildcardSource}, func(class uint32) { r.wildcardClass = class })
+func (r *binaryEqRule[T, V]) equalitySourceCount() int { return 3 }
+func (r *binaryEqRule[T, V]) visitEqualitySources(visit func(equalitySourcePair)) {
+	visit(equalitySourcePair{wildcard: r.wildcardSource})
+	for i := range r.sets {
+		set := r.sets[i]
+		if set.source != 0 {
+			visit(equalitySourcePair{wildcard: r.wildcardSource, posting: set.source})
+		}
+	}
+}
+func (r *binaryEqRule[T, V]) assignEqualityClasses(classes map[equalitySourcePair]uint32) {
+	r.wildcardClass = classes[equalitySourcePair{wildcard: r.wildcardSource}]
 	for i := range r.sets {
 		set := &r.sets[i]
 		if set.source != 0 {
-			visit(equalitySourcePair{wildcard: r.wildcardSource, posting: set.source},
-				func(class uint32) { set.class = class })
+			set.class = classes[equalitySourcePair{wildcard: r.wildcardSource, posting: set.source}]
 		}
 	}
 }

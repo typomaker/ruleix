@@ -120,33 +120,62 @@ func compileAllEqualityClasses[T any](rule Rule[T]) {
 	for _, child := range all.children {
 		compileAllEqualityClasses(child)
 	}
-	type occurrence struct {
-		owners map[int][]func(uint32)
+	sourceCount := 0
+	for _, child := range all.children {
+		if compiler, ok := unwrapExecutionRule(child).(equalityClassCompiler); ok {
+			sourceCount += compiler.equalitySourceCount()
+		}
 	}
-	occurrences := make(map[equalitySourcePair]*occurrence)
+	occurrences := make(map[equalitySourcePair]equalitySourceOccurrence, sourceCount)
+	counter := equalitySourceOwnerCounter{occurrences: occurrences}
 	for childIndex, child := range all.children {
 		compiler, ok := unwrapExecutionRule(child).(equalityClassCompiler)
 		if !ok {
 			continue
 		}
-		compiler.visitEqualitySourceClasses(func(pair equalitySourcePair, assign func(uint32)) {
-			entry := occurrences[pair]
-			if entry == nil {
-				entry = &occurrence{owners: make(map[int][]func(uint32))}
-				occurrences[pair] = entry
-			}
-			entry.owners[childIndex] = append(entry.owners[childIndex], assign)
-		})
+		counter.owner = childIndex + 1
+		compiler.visitEqualitySources(counter.visit)
 	}
+	repeatedCount := 0
 	for _, entry := range occurrences {
-		if len(entry.owners) < 2 {
+		if entry.owners >= 2 {
+			repeatedCount++
+		}
+	}
+	classes := make(map[equalitySourcePair]uint32, repeatedCount)
+	for pair, entry := range occurrences {
+		if entry.owners < 2 {
 			continue
 		}
 		all.equalityClassCount++
-		for _, assigns := range entry.owners {
-			for _, assign := range assigns {
-				assign(all.equalityClassCount)
-			}
+		classes[pair] = all.equalityClassCount
+	}
+	if len(classes) == 0 {
+		return
+	}
+	for _, child := range all.children {
+		if compiler, ok := unwrapExecutionRule(child).(equalityClassCompiler); ok {
+			compiler.assignEqualityClasses(classes)
 		}
 	}
+}
+
+type equalitySourceOwnerCounter struct {
+	occurrences map[equalitySourcePair]equalitySourceOccurrence
+	owner       int
+}
+
+type equalitySourceOccurrence struct {
+	lastOwner int
+	owners    int
+}
+
+func (c *equalitySourceOwnerCounter) visit(pair equalitySourcePair) {
+	entry := c.occurrences[pair]
+	if entry.lastOwner == c.owner {
+		return
+	}
+	entry.lastOwner = c.owner
+	entry.owners++
+	c.occurrences[pair] = entry
 }

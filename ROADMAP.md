@@ -81,31 +81,11 @@ noisy results and rerun with a longer benchtime before deciding.
 
 ## Implementation plan
 
-The integrated physical-source identity experiment is complete and accepted.
-Its design, decision matrix, and production-gate evidence are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The next work is grouped by the
-lifetime of the affected data so that build-time allocation changes are
-measured separately from query-time bitmap work.
-
-### Step 1: remove equality-class build callbacks
-
-Replace the per-posting `func(uint32)` ownership callbacks in
-`compileAllEqualityClasses` with structural two-pass bookkeeping while keeping
-physical-source collision checks, canonical operands, and dense equality class
-IDs:
-
-1. Count distinct physical child owners for each `equalitySourcePair` and
-   assign a dense class only to repeated pairs.
-2. Walk the compiled children again and write class IDs directly through
-   stable indexes or slots, without retaining closures.
-3. Pre-size the maps and slices from provider and posting counts where those
-   bounds are already available.
-
-Gate this step primarily on `Index.Build`: recover the allocation-count
-regression relative to `v0.8.1` without materially regressing build latency,
-search latency, or the accepted physical-source semantics. Profile allocations
-again after the rewrite and verify that `compileAllEqualityClasses.func1` no
-longer dominates allocated objects.
+The integrated physical-source identity experiment and the structural
+equality-class build rewrite are complete and accepted. Their designs,
+decision matrices, and production-gate evidence are recorded in
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The remaining work concerns
+query-time bitmap lifetime, followed by a possible warm-result specialization.
 
 ### Step 2: reduce uncached search materialization
 

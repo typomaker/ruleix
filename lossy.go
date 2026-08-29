@@ -674,18 +674,23 @@ func (r *lossyEqualityRule[T, V]) internBitmaps(i *bitmapInterner) {
 		r.buckets[k] = posting
 	}
 }
-func (r *lossyEqualityRule[T, V]) visitEqualitySourceClasses(visit func(equalitySourcePair, func(uint32))) {
-	visit(equalitySourcePair{wildcard: r.wildcardSource}, func(class uint32) { r.wildcardClass = class })
-	for key, posting := range r.buckets {
+func (r *lossyEqualityRule[T, V]) equalitySourceCount() int { return 1 + len(r.buckets) }
+func (r *lossyEqualityRule[T, V]) visitEqualitySources(visit func(equalitySourcePair)) {
+	visit(equalitySourcePair{wildcard: r.wildcardSource})
+	for _, posting := range r.buckets {
 		if posting.source == 0 {
 			continue
 		}
-		bucket := key
-		visit(equalitySourcePair{wildcard: r.wildcardSource, posting: posting.source}, func(class uint32) {
-			updated := r.buckets[bucket]
-			updated.class = class
-			r.buckets[bucket] = updated
-		})
+		visit(equalitySourcePair{wildcard: r.wildcardSource, posting: posting.source})
+	}
+}
+func (r *lossyEqualityRule[T, V]) assignEqualityClasses(classes map[equalitySourcePair]uint32) {
+	r.wildcardClass = classes[equalitySourcePair{wildcard: r.wildcardSource}]
+	for key, posting := range r.buckets {
+		if posting.source != 0 {
+			posting.class = classes[equalitySourcePair{wildcard: r.wildcardSource, posting: posting.source}]
+			r.buckets[key] = posting
+		}
 	}
 }
 

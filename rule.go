@@ -132,12 +132,14 @@ type equalityResultComponents[T any] interface {
 	lookupEqualityResultComponents(T) (wildcard, posting *roaring.Bitmap, deduplicable bool)
 }
 
-// equalityClassCompiler exposes representation-native slots only while Build
-// assigns dense query-result classes. The compiler's maps are discarded; each
-// immutable equality representation retains only the ordinal selected for its
-// wildcard/posting pair.
+// equalityClassCompiler exposes representation-native sources only while Build
+// assigns dense query-result classes. The first pass reports source pairs
+// without retaining per-posting setters; the second writes the selected class
+// directly into each representation's stable slots.
 type equalityClassCompiler interface {
-	visitEqualitySourceClasses(func(equalitySourcePair, func(uint32)))
+	equalitySourceCount() int
+	visitEqualitySources(func(equalitySourcePair))
+	assignEqualityClasses(map[equalitySourcePair]uint32)
 }
 
 // equalityClassProvider returns the dense All-local class selected by the

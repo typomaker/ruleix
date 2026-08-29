@@ -1,5 +1,48 @@
 # Roadmap history
 
+## 2026-08-29: remove equality-class build callbacks
+
+`compileAllEqualityClasses` now uses structural two-pass bookkeeping. The
+first pass reports only `equalitySourcePair` values and counts distinct
+physical child owners in one pre-sized map. It retains no per-posting setter
+closures or owner maps. The second pass gives each equality representation the
+dense class table and writes ordinals directly into general, unary, binary,
+and lossy slots. Compact equality sets with no physical bitmap source remain
+unclassified.
+
+Five one-second production-shape build runs compared the parent `a933729`
+against this rewrite. Parent medians were 35.27 ms/op, 5,248,945 B/op, and
+33,116 allocs/op. Rewrite medians were 34.95 ms/op, 5,020,690 B/op, and 30,202
+allocs/op: 2,914 fewer allocations (-8.8%), 228,255 fewer bytes (-4.35%), and
+no build-latency regression. This restores the `v0.8.1` allocation count.
+
+The post-rewrite allocation-object profile no longer contains
+`compileAllEqualityClasses.func1`. The search gate remained stable: median
+`Index.Search` was 32.93 us/op, 40,852 B/op, and 28 allocs/op; median warm
+`Local.Search` was 573.8 ns/op, 0 B/op, and 0 allocs/op. The scale matrix,
+parallel local batch, retained-memory matrix, full tests, and race tests all
+passed without a representation or correctness regression.
+
+Reproduction commands:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeBuild$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeBuild$' \
+  -benchtime=10x -count=1 -memprofile=build.mem .
+go tool pprof -top -alloc_objects -nodecount=25 build.mem
+```
+
 ## 2026-08-29: accept integrated physical-source identity executor
 
 The complete map-free executor passed its single decision gate. Build-time
