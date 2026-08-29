@@ -42,6 +42,9 @@ func (r *compareByRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
 
 func (*compareByRule[T, V]) rule() {}
+func (r *compareByRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
+	return canonicalRuleDescriptor{representation: canonicalCompareBy, schema: r}
+}
 func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
 	return &compareByRule[T, V]{

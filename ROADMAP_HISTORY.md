@@ -8,6 +8,63 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-29: finish byte-bounded Local state and canonicalize exact aliases
+
+`Local` now maintains separate byte accounts for child bitmap payloads, exact
+`All` intersections, and learned plans. Plan accounting charges the map key and
+entry allowance plus complete child-order capacity. Exact-result accounting
+charges retained input-reference capacity, and reuse still requires identical
+bitmap identities and the current cache epoch. Cached child orders must be a
+complete permutation. `Close` drops exact results and learned plans, so a
+pooled context starts with reset planning, admission, replacement, and
+observation state. The retained-memory benchmark now includes 256 one-off
+adversarial queries per `Local`.
+
+Build also canonicalizes exact children only when the same pointer-backed
+schema instance is repeated in `All`. A private descriptor combines that
+stable instance identity with its exact representation policy; equality,
+ordered, `Between`, `CompareBy`, and nested `All` are admitted. Independently
+constructed rules, lossy policies, exclusions, and opaque wrappers are not.
+Canonicalization happens before node-ID assignment and insertion, flattened
+duplicates are removed, and separate `Inspect` sites retain their observations
+while sharing the underlying node and Local cache.
+
+The focused 2/4/8 matrix passed on Apple M1 Max with Go 1.26.0. At eight
+equality aliases, shared `Index.Search` measured a 215.9 ns/op median versus
+1.880 us/op independently, and warm `Local.Search` measured 203.2 versus
+384.0 ns/op; warm searches remained at zero bytes and allocations. Shared
+builds measured 237.6 us/op, 257,282 B/op, and 1,528 allocations versus
+1.217 ms/op, 681,980 B/op, and 11,945 allocations. Retained memory measured
+65,664 versus 107,931 B/index and 1,549 versus 4,421 B/warm-Local.
+
+The ordinary production gate showed no material regression: five runs
+measured a 33.347 us/op `Index.Search` median at 40,852 B/op and 28 allocations,
+and a 582.5 ns/op warm `Local.Search` median at zero bytes and allocations.
+Parallel batches measured 457.3 ns/search. Retained memory measured 2,968 B
+cold, 91,003 B warm, 107,845 B adaptive, and 73,984 B adversarial. Ordinary,
+non-aliased production builds measured a 34.768 ms/op median at 5,003,875 B/op
+and 30,239 allocations. Race and the complete 10K/100K/1M scale matrix passed.
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkCanonicalAll(Aliases|Build)/' \
+  -benchmem -benchtime=500ms -count=5 .
+go test -run '^$' -bench '^BenchmarkCanonicalAllRetainedMemory/' \
+  -benchtime=3x -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeBuild$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchmem -benchtime=3x -count=3 .
+```
+
 ## 2026-08-28: retain only measured representation-specific operations
 
 The representation-specific operation audit against the completed adaptive

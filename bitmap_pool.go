@@ -11,6 +11,7 @@ type bitmapPool struct {
 	rankedPool      sync.Pool
 	local           []localNodeCache
 	allPlans        map[any]*localAllPlan
+	allPlanBytes    uint64
 	allResultBytes  uint64
 	childCacheBytes uint64
 	cacheEpoch      uint64
@@ -91,6 +92,14 @@ const maxPooledBitmapBytes = 64 << 10
 // result payloads depend on query cardinality and need a separate byte budget.
 const maxLocalAllResultBytes = 64 << 10
 
+// maxLocalAllPlanBytes bounds the map entries and child-order slices retained
+// by one Local. The accounting deliberately charges the complete slice
+// capacity plus a conservative map-entry allowance, rather than only the
+// currently used order length.
+const maxLocalAllPlanBytes = 64 << 10
+
+const localAllPlanEntryBytes = 64
+
 // maxLocalChildCacheBytes bounds materialized filter results retained across
 // every node in one Local. Entry-count limits alone are insufficient when a
 // repeated query produces a very large bitmap.
@@ -164,6 +173,8 @@ func (p *bitmapPool) resetLocal() {
 	for _, plan := range p.allPlans {
 		plan.resetResults(p)
 	}
+	p.allPlans = nil
+	p.allPlanBytes = 0
 	p.cacheEpoch++
 	for i := range p.local {
 		p.local[i].reset(p)

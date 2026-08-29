@@ -344,16 +344,22 @@ func Inspect[T any](dst *Inspector, rule Rule[T]) Rule[T] {
 func newInspectorFor[T any](Rule[T]) Inspector { return &inspector{} }
 
 type inspectRule[T any] struct {
-	dst   *inspectorState
-	child Rule[T]
+	dst            *inspectorState
+	child          Rule[T]
+	canonicalAlias bool
 }
 
 func (*inspectRule[T]) rule() {}
 func (r *inspectRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
-	return &inspectRule[T]{dst: r.dst, child: r.child.newState(ids, hints)}
+	child, reused := canonicalRuleStateReuse(r.child, ids, hints)
+	return &inspectRule[T]{dst: r.dst, child: child, canonicalAlias: reused}
 }
-func (r *inspectRule[T]) validate(v T) error    { return r.child.validate(v) }
-func (r *inspectRule[T]) insert(v T, id uint32) { r.child.insert(v, id) }
+func (r *inspectRule[T]) validate(v T) error { return r.child.validate(v) }
+func (r *inspectRule[T]) insert(v T, id uint32) {
+	if !r.canonicalAlias {
+		r.child.insert(v, id)
+	}
+}
 func (r *inspectRule[T]) cardinality(v T, pool *bitmapPool) uint64 {
 	return r.child.cardinality(v, pool)
 }

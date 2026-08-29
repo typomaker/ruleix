@@ -39,7 +39,10 @@ type allRule[T any] struct {
 	planningPrepared bool
 }
 
-func (*allRule[T]) rule()                      {}
+func (*allRule[T]) rule() {}
+func (r *allRule[T]) canonicalDescriptor() canonicalRuleDescriptor {
+	return canonicalRuleDescriptor{representation: canonicalAll, schema: r}
+}
 func (*allRule[T]) inspectionStrategy() string { return "all" }
 func (r *allRule[T]) inspectionMode() RuleMode {
 	for _, child := range r.children {
@@ -50,9 +53,17 @@ func (r *allRule[T]) inspectionMode() RuleMode {
 	return RuleModeExact
 }
 func (r *allRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
-	children := make([]Rule[T], len(r.children))
-	for i, child := range r.children {
-		children[i] = child.newState(ids, hints)
+	children := make([]Rule[T], 0, len(r.children))
+	seen := make(map[Rule[T]]struct{}, len(r.children))
+	for _, child := range r.children {
+		state := canonicalRuleState(child, ids, hints)
+		if _, canonical := child.(canonicalBuildRule); canonical {
+			if _, duplicate := seen[state]; duplicate {
+				continue
+			}
+			seen[state] = struct{}{}
+		}
+		children = append(children, state)
 	}
 	return &allRule[T]{children: children}
 }
@@ -176,7 +187,17 @@ func (r *allRule[T]) optimize(total uint64) Rule[T] {
 		return r
 	}
 	children := make([]Rule[T], 0, len(r.children))
+	seen := make(map[Rule[T]]struct{}, len(r.children))
 	var universal *matchAllRule[T]
+	appendChild := func(child Rule[T]) {
+		if _, canonical := child.(canonicalBuildRule); canonical {
+			if _, duplicate := seen[child]; duplicate {
+				return
+			}
+			seen[child] = struct{}{}
+		}
+		children = append(children, child)
+	}
 	for _, child := range r.children {
 		optimized := optimizeRule(child, total)
 		if matchAll, ok := optimized.(*matchAllRule[T]); ok {
@@ -184,10 +205,12 @@ func (r *allRule[T]) optimize(total uint64) Rule[T] {
 			continue
 		}
 		if nested, ok := optimized.(*allRule[T]); ok {
-			children = append(children, nested.children...)
+			for _, nestedChild := range nested.children {
+				appendChild(nestedChild)
+			}
 			continue
 		}
-		children = append(children, optimized)
+		appendChild(optimized)
 	}
 	if len(children) == 0 {
 		return universal
@@ -432,7 +455,7 @@ func (r *allRule[T]) reuseLocalPlan(
 	rankedChildren []rankedBitmap,
 ) (result, reused bool) {
 	plan := r.localPlan(pool)
-	if plan == nil || len(plan.order) != len(r.children) {
+	if plan == nil || !validLocalPlanOrder(plan.order, len(r.children)) {
 		return false, false
 	}
 	if len(r.planningProviders) == 0 && r.planningPrepared {
@@ -469,6 +492,26 @@ func (r *allRule[T]) reuseLocalPlan(
 		return false, false
 	}
 	return true, true
+}
+
+func validLocalPlanOrder(order []int, children int) bool {
+	if len(order) != children {
+		return false
+	}
+	// The allocation-free common path has at most eight children. Larger
+	// groups are already on the pooled ranked-buffer path, so this quadratic
+	// validation remains bounded by the compiled schema and needs no scratch.
+	for i, child := range order {
+		if child < 0 || child >= children {
+			return false
+		}
+		for previous := 0; previous < i; previous++ {
+			if order[previous] == child {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (r *allRule[T]) localPlan(pool *bitmapPool) *localAllPlan {
@@ -530,13 +573,18 @@ func cachedChildMoreSelective(first uint64, children []rankedBitmap) bool {
 }
 
 func (r *allRule[T]) rememberLocalPlan(pool *bitmapPool, rankedChildren []rankedBitmap) {
-	if pool.allPlans == nil {
-		pool.allPlans = make(map[any]*localAllPlan)
-	}
 	plan := pool.allPlans[r]
 	if plan == nil {
-		plan = &localAllPlan{order: make([]int, len(rankedChildren))}
+		bytes := uint64(localAllPlanEntryBytes + len(rankedChildren)*8)
+		if bytes > uint64(maxLocalAllPlanBytes)-min(pool.allPlanBytes, uint64(maxLocalAllPlanBytes)) {
+			return
+		}
+		if pool.allPlans == nil {
+			pool.allPlans = make(map[any]*localAllPlan)
+		}
+		plan = &localAllPlan{order: make([]int, len(rankedChildren)), bytes: bytes}
 		pool.allPlans[r] = plan
+		pool.allPlanBytes += bytes
 	}
 	for i, ranked := range rankedChildren {
 		plan.order[i] = ranked.childIdx
@@ -593,10 +641,14 @@ func (r *allRule[T]) storeLocalResult(
 	if plan == nil {
 		return
 	}
-	bitmapBytes := bits.GetSizeInBytes()
-	inputBytes := uint64(len(rankedChildren)) * 8
-	entryBytes := bitmapBytes + inputBytes
 	entry := &plan.results[plan.next]
+	bitmapBytes := bits.GetSizeInBytes()
+	inputCapacity := len(rankedChildren)
+	if cap(entry.inputs) > inputCapacity {
+		inputCapacity = cap(entry.inputs)
+	}
+	inputBytes := uint64(inputCapacity) * 8
+	entryBytes := bitmapBytes + inputBytes
 	available := uint64(maxLocalAllResultBytes) - min(pool.allResultBytes, uint64(maxLocalAllResultBytes))
 	available = saturatingAdd(available, entry.bytes)
 	if entryBytes > available {

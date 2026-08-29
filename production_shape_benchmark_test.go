@@ -342,7 +342,7 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 // Last local run (Apple M1 Max): 298,957 ns/op, 293,341 B/op, 110 allocs/op.
 // Reproduce with:
 //
-// 	go test -run '^$' -bench '^BenchmarkProductionShapeLocalClose$' -benchmem -benchtime=1s -count=5 .
+//	go test -run '^$' -bench '^BenchmarkProductionShapeLocalClose$' -benchmem -benchtime=1s -count=5 .
 func BenchmarkProductionShapeLocalClose(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
@@ -573,7 +573,8 @@ func benchmarkProductionRetainedMemory(
 // benchmark, while Adaptive cycles four queries to exercise cache growth.
 // Last local run (Apple M1 Max):
 // go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' -benchmem -benchtime=3x -count=3 .
-// Cold: 2,968; Warm: 95,184; Adaptive: 107,616 retained-B/local.
+// Cold: 2,968; Warm: 91,003; Adaptive: 107,845; Adversarial: 73,984
+// retained-B/local.
 func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
@@ -592,7 +593,7 @@ func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 	for _, mode := range []struct {
 		name    string
 		queries int
-	}{{"Cold", 0}, {"Warm", 2}, {"Adaptive", 4}} {
+	}{{"Cold", 0}, {"Warm", 2}, {"Adaptive", 4}, {"Adversarial", -1}} {
 		name := mode.name
 		b.Run(name, func(b *testing.B) {
 			locals := make([]*ruleix.Local[productionBenchmarkConstraint, productionBenchmarkID], b.N)
@@ -604,7 +605,12 @@ func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 			b.ResetTimer()
 			for i := range b.N {
 				local := index.Local()
-				if mode.queries > 0 {
+				if mode.queries < 0 {
+					for value := 100; value < 356; value++ {
+						matches = matches[:0]
+						local.Search(productionBenchmarkQuery(value), &matches)
+					}
+				} else if mode.queries > 0 {
 					for range 6 {
 						for _, query := range queries[:mode.queries] {
 							matches = matches[:0]

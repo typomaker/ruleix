@@ -210,6 +210,9 @@ func (p *orderedLossyAllPlanner[T, V]) compile(limit uint64) (Rule[T], error) {
 func (*orderedRule[T, V]) inspectionStrategy() string { return "ordered" }
 
 func (*orderedRule[T, V]) rule() {}
+func (r *orderedRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
+	return canonicalRuleDescriptor{representation: canonicalOrdered, schema: r}
+}
 func (r *orderedRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
 	return r.newStateWithID(id, hints.node(id).ordered)

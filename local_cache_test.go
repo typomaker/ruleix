@@ -13,8 +13,8 @@ import (
 func TestValueBitmapCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	cache := &valueBitmapCache[int]{}
 	a, b, c := 1, 2, 3
-
 	pool := newBitmapPool()
+
 	cache.replace(optionalValue[int]{value: a, ok: true}, pool).Add(1)
 	cache.replace(optionalValue[int]{value: b, ok: true}, pool).Add(2)
 
@@ -107,7 +107,7 @@ func TestResetLocalReturnsCachedBitmapsToScratchPool(t *testing.T) {
 	require.Same(t, betweenCache, pool.local[1].between)
 	require.Equal(t, 2, valueCache.capacity())
 	require.Equal(t, 2, betweenCache.capacity())
-	require.Equal(t, []int{1, 0}, pool.allPlans["all"].order)
+	require.Nil(t, pool.allPlans)
 }
 
 func TestEqualityExposesOnlyWarmLocalBitmap(t *testing.T) {
@@ -202,7 +202,7 @@ func TestAllUsesWarmOrderedLocalBitmapsDuringPlanning(t *testing.T) {
 	}
 	pool := local.pool
 	local.Close()
-	require.Same(t, plan, pool.allPlans[root])
+	require.Nil(t, pool.allPlans)
 }
 
 var benchmarkLocalLifecycle *bitmapPool
@@ -485,6 +485,49 @@ func TestLocalAllResultCacheHonorsSharedByteBudget(t *testing.T) {
 	require.Positive(t, pool.allResultBytes)
 	require.LessOrEqual(t, pool.allResultBytes, uint64(maxLocalAllResultBytes))
 	plan.resetResults(pool)
+	require.Zero(t, pool.allResultBytes)
+}
+
+func TestLocalAllPlanHonorsSharedByteBudget(t *testing.T) {
+	pool := newLocalBitmapPool(0)
+	children := make([]Rule[int], maxLocalAllPlanBytes/8)
+	ranked := make([]rankedBitmap, len(children))
+	for i := range ranked {
+		ranked[i] = rankedBitmap{childIdx: i, card: 1}
+	}
+	rule := &allRule[int]{children: children}
+	rule.rememberLocalPlan(pool, ranked)
+	require.Nil(t, pool.allPlans)
+	require.Zero(t, pool.allPlanBytes)
+
+	small := &allRule[int]{children: children[:2]}
+	small.rememberLocalPlan(pool, ranked[:2])
+	require.NotNil(t, pool.allPlans[small])
+	require.Positive(t, pool.allPlanBytes)
+	require.LessOrEqual(t, pool.allPlanBytes, uint64(maxLocalAllPlanBytes))
+}
+
+func TestLocalRejectsInvalidCachedPlan(t *testing.T) {
+	pool := newLocalBitmapPool(0)
+	rule := &allRule[int]{children: []Rule[int]{&countingRule{}, &countingRule{}}}
+	pool.allPlans = map[any]*localAllPlan{
+		rule: {order: []int{0, 0}, firstCard: 1},
+	}
+	ranked := make([]rankedBitmap, 2)
+	_, reused := rule.reuseLocalPlan(0, pool, ranked)
+	require.False(t, reused)
+}
+
+func TestLocalResetDropsPlansAndTheirAccounting(t *testing.T) {
+	pool := newLocalBitmapPool(0)
+	rule := &allRule[int]{children: []Rule[int]{&countingRule{}}}
+	rule.rememberLocalPlan(pool, []rankedBitmap{{childIdx: 0, card: 1}})
+	require.NotEmpty(t, pool.allPlans)
+	require.Positive(t, pool.allPlanBytes)
+
+	pool.resetLocal()
+	require.Nil(t, pool.allPlans)
+	require.Zero(t, pool.allPlanBytes)
 	require.Zero(t, pool.allResultBytes)
 }
 

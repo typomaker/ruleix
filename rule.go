@@ -231,7 +231,60 @@ func newMatchAllRule[T any](bits *roaring.Bitmap) Rule[T] {
 
 type nodeID uint32
 
-type nodeIDAllocator struct{ next nodeID }
+type nodeIDAllocator struct {
+	next      nodeID
+	canonical map[any]any
+}
+
+type canonicalRepresentation uint8
+
+const (
+	canonicalAll canonicalRepresentation = iota + 1
+	canonicalEquality
+	canonicalOrdered
+	canonicalBetween
+	canonicalCompareBy
+)
+
+// canonicalRuleDescriptor is deliberately build-scoped and identity-based.
+// The representation tag records the complete operator/wildcard/comparator
+// policy selected by the constructor; schema is the exact pointer-backed rule
+// instance carrying its getters and children. Independently constructed rules
+// are therefore never inferred equivalent from function pointers or postings.
+type canonicalRuleDescriptor struct {
+	representation canonicalRepresentation
+	schema         any
+}
+
+type canonicalBuildRule interface {
+	canonicalDescriptor() canonicalRuleDescriptor
+}
+
+func canonicalRuleState[T any](rule Rule[T], ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
+	state, _ := canonicalRuleStateReuse(rule, ids, hints)
+	return state
+}
+
+func canonicalRuleStateReuse[T any](
+	rule Rule[T],
+	ids *nodeIDAllocator,
+	hints *buildStatistics,
+) (Rule[T], bool) {
+	canonical, ok := rule.(canonicalBuildRule)
+	if !ok {
+		return rule.newState(ids, hints), false
+	}
+	if ids.canonical == nil {
+		ids.canonical = make(map[any]any)
+	}
+	descriptor := canonical.canonicalDescriptor()
+	if state, ok := ids.canonical[descriptor]; ok {
+		return state.(Rule[T]), true
+	}
+	state := rule.newState(ids, hints)
+	ids.canonical[descriptor] = state
+	return state, false
+}
 
 func (a *nodeIDAllocator) allocate() nodeID {
 	id := a.next

@@ -13,6 +13,7 @@ type localNodeCache struct {
 type localAllPlan struct {
 	order     []int
 	firstCard uint64
+	bytes     uint64
 	// Keep the two most recent exact intersections alongside the learned child
 	// order. Repeated Local queries can share their immutable containers with a
 	// scratch result instead of cloning the first posting on every search.

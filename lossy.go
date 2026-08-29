@@ -88,16 +88,22 @@ func (p defaultLossyAllPlanner[T]) compile(limit uint64) (Rule[T], error) {
 }
 
 type inspectionDetailsRule[T any] struct {
-	child   Rule[T]
-	details inspectionDetails
+	child          Rule[T]
+	details        inspectionDetails
+	canonicalAlias bool
 }
 
 func (*inspectionDetailsRule[T]) rule() {}
 func (r *inspectionDetailsRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
-	return &inspectionDetailsRule[T]{child: r.child.newState(ids, hints), details: r.details}
+	child, reused := canonicalRuleStateReuse(r.child, ids, hints)
+	return &inspectionDetailsRule[T]{child: child, details: r.details, canonicalAlias: reused}
 }
-func (r *inspectionDetailsRule[T]) validate(v T) error    { return r.child.validate(v) }
-func (r *inspectionDetailsRule[T]) insert(v T, id uint32) { r.child.insert(v, id) }
+func (r *inspectionDetailsRule[T]) validate(v T) error { return r.child.validate(v) }
+func (r *inspectionDetailsRule[T]) insert(v T, id uint32) {
+	if !r.canonicalAlias {
+		r.child.insert(v, id)
+	}
+}
 func (r *inspectionDetailsRule[T]) cardinality(v T, p *bitmapPool) uint64 {
 	return r.child.cardinality(v, p)
 }

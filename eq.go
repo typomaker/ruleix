@@ -361,6 +361,9 @@ func (r *eqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 func (*eqRule[T, V]) inspectionStrategy() string { return "equality" }
 
 func (*eqRule[T, V]) rule() {}
+func (r *eqRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
+	return canonicalRuleDescriptor{representation: canonicalEquality, schema: r}
+}
 func (r *eqRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
 	return &eqRule[T, V]{

@@ -80,74 +80,7 @@ noisy results and rerun with a longer benchtime before deciding.
 Complete the steps in order. A later step may rely only on capabilities that
 survived the earlier benchmark gate.
 
-### 1. Finish byte-bounded `Local` state
-
-**Implement**
-
-- Maintain separate accounted budgets for child bitmaps, exact intersections,
-  and learned plans. Include Roaring payload, input bitmap references, keys,
-  and overflow structures in the accounting model.
-- Validate cached plans against exact current postings and capabilities before
-  reuse. Cache exact intersections only when all input bitmap identities and
-  the cache epoch match.
-- Keep admission-after-repeat for value bitmaps. Exercise alternating values,
-  one-off churn, adaptive capacity, oversized results, `Close`, and pool reuse.
-- Canonicalize provably equivalent `All` children during `Build` so they share
-  one compiled representation and one `Local` cache node instead of producing
-  equal child bitmaps and discovering that equality during `Search`. Start
-  with repeated use of the same schema rule instance and propagate its stable
-  internal identity through exact wrappers and nested `All`; do not infer
-  equivalence from rule type, function pointers, comparator type, or equal
-  observed postings. Preserve separate `Inspect` observation sites even when
-  their underlying exact representation and cache are shared.
-- Define a private canonical descriptor for every representation admitted to
-  build-time sharing. Include the operator, direction and inclusivity, wildcard
-  behavior, value/comparator identity, wrapper policy, and child identities
-  needed to prove identical matching semantics. Treat an opaque getter,
-  comparator, lossy policy, exclusion, or wrapper without a stable descriptor
-  as non-shareable. Keep this identity build-scoped and introduce no public
-  planner or identity API unless benchmarks demonstrate that independently
-  constructed rules also need an explicit caller-supplied identity.
-- Deduplicate canonical children before assigning node IDs, collecting build
-  statistics, inserting constraints, preparing planning capabilities, and
-  constructing `All` execution metadata. Ensure one logical posting is built
-  and cached once, duplicate conjunction operands perform no `And`, `Contains`,
-  or materialization work, and cache invalidation advances once per shared
-  entry replacement. Cover two, four, and eight aliases of equality, ordered,
-  `Between`, `CompareBy`, exact wrappers, and flattened nested `All`, plus
-  deliberately similar but non-equivalent rules that must remain independent.
-- Benchmark cold `Index.Search`, cold and warm `Local.Search`, build time,
-  retained index bytes, and retained per-`Local` bytes for two, four, and eight
-  canonical aliases. Compare with the retained equality-component
-  deduplication and the rejected per-query pointer scan recorded in history;
-  also measure ordinary schemas without aliases so descriptor construction and
-  canonical lookup remain build-only costs.
-- Report retained bytes per cold, warm, adaptive, and adversarial `Local`.
-
-**Accept when**
-
-- No query stream can make retained per-`Local` bitmap or plan state grow
-  without the documented bound.
-- Declining an oversized cache entry affects only reuse, not correctness.
-- Retain build-time canonicalization only when every shared pair has a
-  structural proof of equivalent exact semantics, differential tests preserve
-  matching order, duplicate external-ID behavior, and every `Inspect`
-  observation, and the focused 2/4/8 matrices show a repeatable cold and warm
-  latency or retained-byte win. Warm `Local.Search` must remain at 0 B/op and
-  0 allocs/op, ordinary non-aliased production workloads must remain within
-  the 3% latency gate, and build time or allocation traffic must not materially
-  regress. Otherwise remove the production canonicalization and record the
-  rejected descriptor scope and measurements in history.
-- `Close` releases all accounted payload and a recycled `Local` starts with
-  reset admission and observation state.
-
-**Result**
-
-The faster planner has a predictable memory cost per live goroutine and cannot
-trade temporary `Index.Search` allocations for unbounded retained `Local`
-memory.
-
-### 2. Differential cutover and cleanup
+### 1. Differential cutover and cleanup
 
 **Implement**
 

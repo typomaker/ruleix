@@ -81,6 +81,9 @@ type betweenCacheEntry[V any] struct {
 }
 
 func (*betweenRule[T, V]) rule() {}
+func (r *betweenRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
+	return canonicalRuleDescriptor{representation: canonicalBetween, schema: r}
+}
 func (r *betweenRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	// Between owns one stateful node. Its two ordered indexes are internal
 	// components whose future statistics belong to this node.
