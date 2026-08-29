@@ -1,5 +1,37 @@
 # Roadmap history
 
+## 2026-08-30: reject compiled warm-Local plan routing
+
+CPU profiling attributed about 53% cumulative time to `reuseLocalPlan`, so the
+experiment routed prepared indexes directly through their compiled planning
+and cached capability arrays. A second revision stored the last successful
+source per child in the Local plan, but that extra slice access was slower and
+was removed. Splitting schemas with and without planning providers into
+separate hot loops reduced `reuseLocalPlan` to about 47% cumulative time while
+preserving 0 B/op and 0 allocations.
+
+The internal improvement did not survive a strict end-to-end gate. Seven
+interleaved one-second runs of prebuilt candidate and parent binaries measured
+warm production-shaped Local medians of 535.4 and 537.2 ns/op respectively,
+only a 0.34% reduction; the candidate won four of seven paired runs. Earlier
+non-interleaved candidate medians ranged from 529.0 to 535.9 ns/op, confirming
+that machine drift was larger than the claimed benefit. The implementation was
+therefore removed.
+
+Before rejection, ordinary and race tests passed, along with parallel Local,
+the full 10K/100K/1M scale matrix, and retained-memory checks. Retained Local
+memory remained 2,968 B cold, 90,960 B warm, 107,835 B adaptive, and about
+73,931 B adversarial. The result indicates that further Local work needs to
+remove bitmap lookup or result-enumeration work, not only capability-routing
+branches.
+
+Reproduce the primary benchmark with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/Local$' \
+  -benchmem -benchtime=1s -count=7 .
+```
+
 ## 2026-08-30: reject small-result bitmap decoding
 
 A bounded experiment replaced the final Roaring callback with `ManyIterator`
