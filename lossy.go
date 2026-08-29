@@ -654,6 +654,7 @@ func (r *lossyEqualityRule[T, V]) matchesID(v T, id uint32) bool {
 	bits := r.buckets[hash>>r.shift].bits
 	return bits != nil && bits.Contains(id)
 }
+func (*lossyEqualityRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
 func (r *lossyEqualityRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	return r.estimateCardinality(v)
 }

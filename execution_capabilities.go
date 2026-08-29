@@ -5,9 +5,10 @@ package ruleix
 // callers must materialize complete once for the batch instead of discovering
 // an interface (or accidentally materializing) for every candidate ID.
 type executionCapability[T any] struct {
-	posting  planningBitmapProvider[T]
-	directID ruleIDMatcher[T]
-	filter   candidateFilter[T]
+	posting      planningBitmapProvider[T]
+	directID     ruleIDMatcher[T]
+	directIDWork uint64
+	filter       candidateFilter[T]
 }
 
 func describeExecutionCapability[T any](rule Rule[T]) executionCapability[T] {
@@ -30,9 +31,16 @@ func describeExecutionCapability[T any](rule Rule[T]) executionCapability[T] {
 			}
 		}
 		result.directID = nested
+		result.directIDWork = allUnmaterializedDirectIDWork
 		return result
 	}
 	result.directID, _ = operationRule.(ruleIDMatcher[T])
+	if result.directID != nil {
+		result.directIDWork = allUnmaterializedDirectIDWork
+		if estimator, ok := operationRule.(directIDWorkEstimator); ok {
+			result.directIDWork = estimator.directIDWork()
+		}
+	}
 	return result
 }
 
@@ -42,6 +50,17 @@ func (r *allRule[T]) executionCapability(index int) *executionCapability[T] {
 	}
 	capability := describeExecutionCapability(r.children[index])
 	return &capability
+}
+
+func (r *allRule[T]) directIDOperationWork(index int, materialized bool) uint64 {
+	if materialized {
+		return allDirectIDWork
+	}
+	work := r.executionCapability(index).directIDWork
+	if work == 0 {
+		return allUnmaterializedDirectIDWork
+	}
+	return work
 }
 
 func unwrapExecutionRule[T any](rule Rule[T]) Rule[T] {
@@ -102,8 +121,8 @@ func (r *allRule[T]) shouldValidateRemaining(candidates uint64, remaining []rank
 		if !r.supportsDirectIDMatch(child.childIdx) {
 			return candidates <= allCandidateScanLimit
 		}
-		directWork := uint64(allDirectIDWork)
-		if child.bits == nil {
+		directWork := r.directIDOperationWork(child.childIdx, child.bits != nil)
+		if child.bits == nil && candidates > allCheapDirectIDScanLimit {
 			directWork = allUnmaterializedDirectIDWork
 		}
 		validationCost = saturatingAdd(validationCost, saturatingMul(candidates, directWork))

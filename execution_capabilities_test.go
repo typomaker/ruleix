@@ -44,6 +44,21 @@ func TestExecutionCapabilityUnwrapsDirectIDOperationsTruthfully(t *testing.T) {
 	require.Nil(t, describeExecutionCapability[int](unsupported).directID)
 }
 
+func TestEqualityDirectIDWorkIsBoundedButLargeCandidateSetsStayOnBitmapPath(t *testing.T) {
+	equality := &eqRule[int, int]{wildcard: roaring.BitmapOf(1)}
+	capability := describeExecutionCapability[int](equality)
+	require.Equal(t, uint64(32), capability.directIDWork)
+
+	rule := &allRule[int]{children: []Rule[int]{
+		&matchAllRule[int]{bits: roaring.BitmapOf(1)},
+		equality,
+	}}
+	rule.prepareSearch()
+	remaining := []rankedBitmap{{card: 50_000, childIdx: 1}}
+	require.True(t, rule.shouldValidateRemaining(128, remaining))
+	require.False(t, rule.shouldValidateRemaining(allCheapDirectIDScanLimit+1, remaining))
+}
+
 func TestNestedAllAdvertisesDirectIDOnlyWhenEveryChildSupportsIt(t *testing.T) {
 	supported := &allRule[int]{children: []Rule[int]{
 		&countingRule{ids: []uint32{1}},

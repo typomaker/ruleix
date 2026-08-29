@@ -437,6 +437,7 @@ func (r *eqRule[T, V]) matchesID(v T, id uint32) bool {
 	set := r.values.get(value)
 	return set != nil && set.contains(id)
 }
+func (*eqRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
 func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)
 	if pool.local == nil {
@@ -624,6 +625,7 @@ func (r *unaryEqRule[T, V]) matchesID(v T, id uint32) bool {
 	set := r.matchingSet(getOptional(r.get, v))
 	return set != nil && set.contains(id)
 }
+func (*unaryEqRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
 func (r *unaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)
 	if pool.local == nil {
@@ -756,6 +758,7 @@ func (r *binaryEqRule[T, V]) matchesID(v T, id uint32) bool {
 	set := r.matchingSet(getOptional(r.get, v))
 	return set != nil && set.contains(id)
 }
+func (*binaryEqRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
 func (r *binaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)
 	if pool.local == nil {

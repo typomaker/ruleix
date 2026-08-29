@@ -84,21 +84,8 @@ noisy results and rerun with a longer benchtime before deciding.
 The integrated physical-source identity experiment, structural equality-class
 build rewrite, and uncached bitmap-lifetime audit are complete. Their designs,
 decision matrices, and production-gate evidence are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The remaining work concerns
-cardinality-gated direct-ID filtering, followed by a possible warm-result
-specialization.
-
-### Step 3: add cardinality-gated direct-ID filtering
-
-Prototype early validation of selective direct-ID constraints before
-`AndAny`. Enable it only when cheap cardinality evidence predicts less work
-than bitmap intersection. Build a benchmark matrix for small, medium, and
-large postings and for one versus several direct-ID constraints.
-
-If the prototype regresses a workload, retain the experiment and profile as a
-separate commit, determine whether the missing condition is a cardinality
-threshold, result-density check, or operation-order constraint, and test that
-bounded guard before rejecting the approach.
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The remaining work concerns a
+possible warm-result specialization.
 
 ### Step 4: specialize small warm-Local results
 

@@ -9,6 +9,7 @@ const (
 	// Until a representation exposes a cheaper exact cost, price an
 	// unmaterialized direct check conservatively.
 	allUnmaterializedDirectIDWork = 65536
+	allEqualityDirectIDWork       = 32
 	allMaterializeIDWork          = 64
 	allMaterializeBaseWork        = 64
 )

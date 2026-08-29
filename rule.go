@@ -110,6 +110,13 @@ type ruleIDMatcher[T any] interface {
 	matchesID(T, uint32) bool
 }
 
+// directIDWorkEstimator marks representations whose unmaterialized ID lookup
+// has a small, bounded cost. All keeps other matchers behind the conservative
+// fallback because ordered and comparator-backed lookups may traverse indexes.
+type directIDWorkEstimator interface {
+	directIDWork() uint64
+}
+
 // candidateFilter narrows an existing candidate bitmap without materializing
 // the rule's complete result. Implementations must only remove IDs from dst.
 type candidateFilter[T any] interface {

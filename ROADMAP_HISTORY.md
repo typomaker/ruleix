@@ -1,5 +1,47 @@
 # Roadmap history
 
+## 2026-08-29: add cardinality-gated equality ID filtering
+
+Equality representations now advertise a bounded direct-ID lookup cost to the
+`All` executor. This lets exact cardinality evidence choose direct validation
+before materializing a wildcard/concrete union with `AndAny`. Ordered,
+comparator-backed, nested, and otherwise unclassified matchers retain the
+conservative cost. A 512-candidate guard prevents the per-ID map and bitmap
+lookups from replacing the faster bitmap path for large inputs.
+
+The new matrix covers 8, 128, and 4,096 candidates with one and three direct
+constraints. On Apple M1 Max with Go 1.26.0, three 500 ms runs measured
+Adaptive versus forced Bitmap medians of 634 ns/4.57 us and 815 ns/23.6 us for
+8 candidates; 3.71/9.55 us and 5.13/29.3 us for 128 candidates; and
+8.87/21.0 us and 38.3/44.0 us for 4,096 candidates. The unguarded prototype
+regressed the large cases to 105.5 us and 149.8 us, which established the
+cardinality guard. The guarded large path remains on candidate filtering and
+still beats complete materialization.
+
+The production gate remained stable: `Index.Search` measured a 32.96 us
+median, 40,851--40,852 B/op, and 28 allocations; warm `Local.Search` measured
+567.5 ns/op with zero bytes and allocations; parallel Local batches measured
+457.5 ns/search. The complete 10K/100K/1M scale matrix retained its allocation
+classes. Retained Local memory was 2,968 B cold, 90,960 B warm, and 107,835 B
+adaptive. Ordinary and race tests passed.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkAllDirectIDFiltering/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-29: remove equality-class build callbacks
 
 `compileAllEqualityClasses` now uses structural two-pass bookkeeping. The

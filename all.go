@@ -8,6 +8,11 @@ import "github.com/RoaringBitmap/roaring/v2"
 // BenchmarkAllExecutionThreshold.
 const allCandidateScanLimit = 8
 
+// Equality matchers remain cheaper than materializing broad unions for
+// medium candidate sets, but per-ID map and bitmap lookups lose decisively on
+// large sets. Keep the representation-specific shortcut cardinality-gated.
+const allCheapDirectIDScanLimit = 512
+
 // Direct exclusion lookups include a getter and a map lookup per exclusion,
 // so they stop paying off sooner than ordinary posting-list membership tests.
 const allDirectExclusionScanLimit = 16
