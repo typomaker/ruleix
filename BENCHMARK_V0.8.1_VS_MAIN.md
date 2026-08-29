@@ -130,3 +130,94 @@ go tool pprof -list='reuseLocalPlan' local.cpu
 измерил 569,9 ns/op и больше не содержит `validLocalPlanOrder` среди горячих
 узлов. Размещение флага рядом с существующим `uint8` не изменило медианы
 удерживаемой Local памяти.
+
+## Повторный профиль после интеграции physical-source identity
+
+Повторный замер выполнен 29 августа 2026 года для `v0.8.1` (`f941ec3`) и
+`72d496c`. Медианы десяти односекундных прогонов:
+
+| Сценарий | v0.8.1 | `72d496c` | Изменение |
+|---|---:|---:|---:|
+| `Index.Search`, время | 43,14 µs | 33,66 µs | **−22,0%** |
+| `Index.Search`, память | 73 394 B/op | 40 851 B/op | **−44,3%** |
+| `Index.Search`, аллокации | 28 allocs/op | 28 allocs/op | 0% |
+| warm `Local.Search`, время | 563,9 ns | 564,0 ns | 0,0% |
+| warm `Local.Search`, память | 0 B/op | 0 B/op | 0% |
+| `Build`, время | 34,78 ms | 33,89 ms | −2,6% |
+| `Build`, память | 5 002 202 B/op | 5 244 901 B/op | **+4,9%** |
+| `Build`, аллокации | 30 203 allocs/op | 33 116 allocs/op | **+9,6%** |
+
+Пятисекундный контроль подтвердил `Index.Search`: 41,33 µs и 73 365 B/op на
+теге против 32,44 µs и 40 835 B/op на `72d496c`. Для `Build` контроль дал
+34,39 ms, 4 895 311 B/op и 30 197 allocs/op на теге против 34,42 ms,
+5 141 672 B/op и 33 110 allocs/op на текущем коммите. Время сборки совпадает;
+регрессия ограничена allocation traffic.
+
+### Узкие места
+
+1. В uncached `Index.Search` основная оставшаяся стоимость — создание и
+   клонирование Roaring-контейнеров. На текущем коммите 80,1% выделенных байтов
+   приходятся на `bitmapContainer.clone` и `newBitmapContainer`; ещё 12,4% — на
+   array containers. Основные потребители — `Between.filterCandidates`,
+   `collectSharedWildcards`, `Bitmap.AndAny` и промежуточные `And`/`Or`.
+   Новый executor уже уменьшил этот трафик на 44,3%, но именно сокращение числа
+   материализованных bitmap остаётся крупнейшим резервом обычного поиска.
+
+2. В warm `Local.Search` регрессии относительно тега больше нет. Горячий узел
+   — `allRule.reuseLocalPlan` (53,8% cumulative CPU), внутри него lookup
+   дочерних кэшей; выдача результата через Roaring iterator занимает около
+   23,8% cumulative CPU. Путь сохраняет 0 B/op и 0 allocs/op, поэтому следующий
+   выигрыш здесь требует уменьшать число lookup/интерфейсных проверок или
+   ускорять перечисление результата, а не управлять памятью.
+
+3. В `Build` новый явный узкий участок — `compileAllEqualityClasses`. В
+   allocation-object профиле сохраненные callback-замыкания дали 818 215
+   объектов за серию профилирования, тогда как у тега такого узла нет. В
+   пересчете benchmark это объясняет практически всю разницу в 2 913
+   allocs/op. По allocation space этот же callback дал 58,6 MB за серию, а
+   `bitmapInterner.internSourceWithFingerprint` — ещё 40,3 MB. CPU при этом не
+   регрессировал, поэтому оптимизация должна сохранять текущий search layout.
+
+### Что целесообразно перенести из v0.8.1
+
+Главный кандидат — не старый алгоритм поиска целиком, а принцип старой
+`prepareDuplicateEqualityResults`: структурный проход с компактными данными без
+сохранения функции-замыкания для каждого equality posting. Его можно совместить
+с новым алгоритмом в два прохода:
+
+1. собрать для каждого `equalitySourcePair` число разных физических детей и
+   назначить dense class только повторяющимся парам;
+2. повторно пройти providers и записать class ID непосредственно через
+   индекс/указатель на слот, а не через `func(uint32)`.
+
+Это должно вернуть большую часть дополнительных 2 913 build-аллокаций, не
+отказываясь от collision-checked physical IDs, canonical operands и проверки
+одного physical equality source ровно один раз. Полезно также заранее оценивать
+capacity временных maps/slices из числа equality providers: тег выигрывал за
+счет более простого одноцелевого bookkeeping, и этот прием переносим без смены
+семантики.
+
+Для search path переносить старые `collectSharedWildcards` и полную
+материализацию дочерних результатов не следует: профиль и A/B показывают, что
+именно новый candidate filtering сократил время на 22% и байты на 44%. Более
+безопасные следующие эксперименты — повторное использование одного
+materialization buffer для `Between`/wildcards и ранний direct-ID validation до
+`AndAny`, но их нужно принимать только по отдельной матрице cardinality и без
+регрессии warm Local.
+
+Воспроизведение повторного профиля:
+
+```sh
+go test -run '^$' \
+  -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=10 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/Index$' \
+  -benchtime=5s -count=1 -cpuprofile=index.cpu -memprofile=index.mem .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/Local$' \
+  -benchtime=5s -count=1 -cpuprofile=local.cpu -memprofile=local.mem .
+go test -run '^$' -bench '^BenchmarkProductionShapeBuild$' \
+  -benchmem -benchtime=5s -count=1 -cpuprofile=build.cpu \
+  -memprofile=build.mem .
+go tool pprof -top -sample_index=alloc_space index.mem
+go tool pprof -top -sample_index=alloc_objects build.mem
+```
