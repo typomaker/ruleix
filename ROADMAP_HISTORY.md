@@ -1,5 +1,66 @@
 # Roadmap history
 
+## 2026-08-29: accept integrated physical-source identity executor
+
+The complete map-free executor passed its single decision gate. Build-time
+canonical operand elimination, representation-native equality classes,
+constant-time checked masks on cold searches, inspector fan-out, and stable
+Local plan reuse were measured together. The test-only baseline remains in the
+same benchmark binary, so all focused comparisons used one executable.
+
+On Apple M1 Max with Go 1.26.0, ten two-second equality runs covered 2/4/8
+children, 0/50/100% physical duplication, and concrete/wildcard queries. The
+eight-child zero-duplicate control was approximately 1.01 us/op in both modes,
+performed no mask checks, and remained at zero bytes and allocations. At 50%
+duplication the warm concrete path improved from approximately 940 to 918
+ns/op; at 100% it improved from approximately 299 to 283 ns/op. The wildcard
+path was effectively equal at approximately 283 ns/op. All warm cases remained
+at 0 B/op and 0 allocs/op.
+
+Ten two-second lifecycle runs measured baseline/integrated medians of 5.00/1.51
+us for the first cold search and 4.55/1.17 us for second-use admission. Stable
+warm search measured approximately 831/837 ns (+0.7%), below the 3% rejection
+threshold, with 0 B/op and 0 allocs/op. `Local()` plus `Close()` was equal at
+approximately 90.6 ns/op, 24 B/op, and one allocation.
+
+The representation matrix confirmed that eight inspected aliases reduce one
+query from eight physical operations to one. Three 300 ms calibration runs
+measured Ordered at 64.2/9.78 us and 32,298/6,940 B, Between at 86.8/12.8 us
+and 32,299/6,940 B, and CompareBy at 63.4/9.74 us and 30,729/6,940 B.
+Separately constructed rules retained their baseline operation and allocation
+counts, while nested aliases received the same elimination as flat aliases.
+
+The production gate measured `Index.Search` at a 32.43 us median, 40,852 B,
+and 28 allocations; warm `Local.Search` at 555.3 ns, zero bytes, and zero
+allocations; and parallel Local batches at 429.9 ns/search. Retained Local
+memory was 2,968 B cold, 90,960 B warm, and 107,824 B adaptive. Production
+build measured a 32.17 ms median, 5,966,073 B, and 33,157 allocations; retained
+index memory was approximately 1,321,456 B. The full 10K/100K/1M scale matrix
+preserved its allocation classes. Ordinary and race tests passed.
+
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkIdentityDecisionSearch/' \
+  -benchmem -benchtime=2s -count=10 .
+go test -run '^$' -bench '^BenchmarkIdentityDecisionLifecycle/' \
+  -benchmem -benchtime=2s -count=10 .
+go test -run '^$' -bench '^BenchmarkIdentityDecisionOperations/' \
+  -benchmem -benchtime=2s -count=10 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShape(Build|RetainedMemory)$' \
+  -benchmem -benchtime=5x -count=5 .
+```
+
 ## 2026-08-29: validate Local plans when they change
 
 CPU profiles against `v0.8.1` localized the remaining production-shaped warm

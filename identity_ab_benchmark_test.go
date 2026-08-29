@@ -1,6 +1,7 @@
 package ruleix
 
 import (
+	"cmp"
 	"fmt"
 	"testing"
 )
@@ -214,5 +215,101 @@ func BenchmarkIdentityDecisionLifecycle(b *testing.B) {
 				})
 			}
 		})
+	}
+}
+
+// BenchmarkIdentityDecisionOperations compares the non-equality identity
+// proofs that are compiled away before execution. Each case deliberately uses
+// several inspected aliases of one schema Rule; Nested also proves that alias
+// elimination survives All flattening. The independent control uses distinct
+// Rule instances and must retain every operand in both modes.
+//
+// Latest local calibration (Apple M1 Max, Go 1.26.0, 300ms, count=3): eight
+// aliases reduced Ordered from 64.2 to 9.78 us/op and 32,298 to 6,940 B/op,
+// Between from 86.8 to 12.8 us/op and 32,299 to 6,940 B/op, and CompareBy
+// from 63.4 to 9.74 us/op and 30,729 to 6,940 B/op. Independent controls
+// retained the same allocation classes and had overlapping timings. Reproduce
+// the complete decision matrix with:
+//
+// \tgo test -run '^$' -bench '^BenchmarkIdentityDecisionOperations/' \
+// \t  -benchmem -benchtime=2s -count=10 .
+func BenchmarkIdentityDecisionOperations(b *testing.B) {
+	type operation struct {
+		name string
+		make func() Rule[identityMatrixConstraint]
+	}
+	operations := []operation{
+		{"Ordered", func() Rule[identityMatrixConstraint] {
+			return GreaterOrEqual(func(v identityMatrixConstraint) (int, bool) {
+				return v.values[0], v.present[0]
+			}, cmp.Compare[int])
+		}},
+		{"Between", func() Rule[identityMatrixConstraint] {
+			return Between(
+				func(v identityMatrixConstraint) (int, bool) { return v.values[0], v.present[0] },
+				func(v identityMatrixConstraint) (int, bool) { return v.until, v.present[0] },
+				cmp.Compare[int])
+		}},
+		{"CompareBy", func() Rule[identityMatrixConstraint] {
+			return CompareBy(
+				func(v identityMatrixConstraint) (int, bool) { return v.values[0], v.present[0] },
+				func(v identityMatrixConstraint) (Operator, bool) { return v.op, v.present[0] },
+				cmp.Compare[int])
+		}},
+	}
+	entries := make([]identityMatrixConstraint, 4096)
+	ids := make([]int, len(entries))
+	for i := range entries {
+		entries[i] = identityMatrixConstraint{
+			values:  [8]int{i % 64},
+			present: [8]bool{true},
+			until:   48,
+			op:      OperatorGTE,
+		}
+		ids[i] = i
+	}
+	query := identityMatrixConstraint{values: [8]int{16}, present: [8]bool{true}, until: 48, op: OperatorGTE}
+
+	for _, operation := range operations {
+		for _, children := range []int{2, 4, 8} {
+			for _, shape := range []string{"Aliases", "Nested", "Independent"} {
+				name := fmt.Sprintf("%s/Children%d/%s", operation.name, children, shape)
+				b.Run(name, func(b *testing.B) {
+					var inspectors [8]Inspector
+					rules := make([]Rule[identityMatrixConstraint], children)
+					shared := operation.make()
+					for i := range rules {
+						rule := shared
+						if shape == "Independent" {
+							rule = operation.make()
+						}
+						rules[i] = Inspect(&inspectors[i], rule)
+					}
+					schema := All(rules...)
+					if shape == "Nested" {
+						schema = All(All(rules[:children/2]...), All(rules[children/2:]...))
+					}
+					for _, mode := range []identityExecutionMode{identityBaseline, identityIntegrated} {
+						modeName := "Baseline"
+						if mode == identityIntegrated {
+							modeName = "Integrated"
+						}
+						b.Run(modeName, func(b *testing.B) {
+							harness := buildIdentityABIndex(b, mode, schema, entries, ids)
+							matches := make([]int, 0, len(ids))
+							b.ReportAllocs()
+							b.ResetTimer()
+							for range b.N {
+								matches = matches[:0]
+								harness.index.Search(query, &matches)
+							}
+							b.StopTimer()
+							b.ReportMetric(float64(harness.counters.materializations)/float64(b.N), "materializations/op")
+							b.ReportMetric(float64(harness.counters.skippedOperands)/float64(b.N), "skipped/op")
+						})
+					}
+				})
+			}
+		}
 	}
 }

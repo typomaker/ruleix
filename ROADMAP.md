@@ -77,66 +77,8 @@ noisy results and rerun with a longer benchtime before deciding.
 
 ## Implementation plan
 
-The differential cutover and cleanup gate is complete; its evidence is recorded
-in `ROADMAP_HISTORY.md`. The map-backed and partially representation-retained
-source-ID prototypes in history reject those intermediate implementations, not
-the integrated identity design below: their infrastructure cost was measured
-before unconditional operand elimination, inspector fan-out, removal of the
-old linear path, and map-free compiled ordinals were present together.
-
-### 1. Run one integrated physical-source identity experiment
-
-Performance is decided once, after the complete experimental executor exists.
-Intermediate milestones have correctness and structural gates only; do not
-reject or retain production pieces from their standalone timings. Keep the
-baseline and integrated variants callable from one benchmark binary until the
-final decision so machine drift cannot be mistaken for a 3--6% effect.
-
-#### E. Measure the complete design in one decision run
-
-- Benchmark sibling `Baseline` and `Integrated` variants for every combination
-  of 2, 4, and 8 children; 0%, partial, and 100% duplication; equality with and
-  without wildcards; ordered, `Between`, `CompareBy`; nested groups; and
-  multiple inspected aliases. Include a non-duplicate control whose compiled
-  hot path contains no mask check.
-- Split lifecycle costs into distinct benchmarks: `Index.Search`; `Local()` and
-  `Close()` without search; first `Search` on pre-created cold locals; second-use
-  admission; and stable warm `Local.Search`. Also report build time and
-  allocations, retained bytes per index, retained bytes per cold/warm/adaptive
-  local, and test-only operation counts.
-- Run focused A/B benchmarks with `-benchtime=2s -count=10` and analyze paired
-  samples with `benchstat`. Alternate variant order and repeat any delta near
-  the 3% boundary with `-benchtime=5s -count=15`. Record raw commands, hardware,
-  Go version, medians, confidence intervals, bytes, allocations, and operation
-  counts beside each benchmark and in history.
-- Run the complete production gate from this roadmap for both modes in the same
-  binary, including parallel, scale, retained-memory, build, wildcard-heavy,
-  range-heavy, large-result, high-churn, inaccurate-estimate, and lossy cases.
-
-**Accept the integrated executor when**
-
-- Differential, fuzz, ordinary, and race tests pass; every skipped operation
-  has a collision-checked immutable source identity or complete canonical
-  operation proof; all `Inspect` observations match the baseline.
-- Full and partial duplicate workloads show a repeatable end-to-end latency or
-  retained-byte win explained by lower physical-operation counters. Warm
-  `Local.Search` remains at 0 B/op and 0 allocs/op.
-- Zero-duplicate controls execute no mask checks and remain within 3% latency
-  of baseline. Production `Index.Search`, warm/parallel `Local`, build,
-  retained-memory, scale, and lossy gates have no material regression or new
-  unexplained allocation class.
-
-**Reject the integrated executor when**
-
-- The completed map-free design still fails the gates above. Remove all
-  experimental production code together, retain the A/B harness when it is
-  useful as a regression benchmark, and record results as rejection of this
-  exact integrated architecture. Do not generalize the decision to a design
-  that was not executable in the recorded comparison.
-
-**Result**
-
-One reproducible experiment determines whether the combined savings from
-build-time operand elimination, representation-native source identity, a
-constant-time checked mask, and inspector fan-out outweigh their total cost.
-No incomplete layer is accepted or rejected on its standalone performance.
+The integrated physical-source identity experiment is complete and accepted.
+Its design, decision matrix, and production-gate evidence are recorded in
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). There is currently no active
+implementation step; add the next bounded experiment here before changing the
+executor again.
