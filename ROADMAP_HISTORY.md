@@ -1,5 +1,43 @@
 # Roadmap history
 
+## 2026-08-30: compile cached Local execution capabilities
+
+The immutable `All` execution description now compiles each child's outer
+cached-bitmap provider during `Build`. Stable warm Local plans call that slot
+directly instead of repeating a generic interface capability assertion for
+every child on every search. Inspector wrappers remain outermost so their
+observations are preserved; unprepared internal test rules retain the existing
+dynamic fallback.
+
+On Apple M1 Max with Go 1.26.0, a seven-run production-shaped warm-Local
+comparison measured a 536.2 ns/op median with zero bytes and allocations,
+versus the 565.4 ns/op pre-change baseline: 5.2% lower latency. Parallel
+100-search batches measured a 431.9 ns/search median versus the previous 456.7
+ns/search reference, a 5.4% reduction. Equality-only Local measured 702.7
+ns/op with zero bytes and allocations. The uncached Index median was 32.836 us
+with the unchanged 40,851--40,852 B/op and 28 allocations.
+
+Ordinary and race tests passed, as did the complete 10K/100K/1M scale matrix.
+Retained Local memory remained in the existing class: 2,968 B cold, 90,960 B
+warm, 107,835 B adaptive, and approximately 73,931 B adversarial.
+
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=2s -count=7 .
+go test -run '^$' -bench '^BenchmarkProductionShapeEqualityOnlySearch/Local$' \
+  -benchmem -benchtime=500ms -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-30: pass the final combined cutover gate
 
 The combined operation-cost `All` executor passed its final correctness and

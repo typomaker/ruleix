@@ -6,6 +6,7 @@ package ruleix
 // an interface (or accidentally materializing) for every candidate ID.
 type executionCapability[T any] struct {
 	posting      planningBitmapProvider[T]
+	cached       cachedBitmapProvider[T]
 	directID     ruleIDMatcher[T]
 	directIDWork uint64
 	filter       candidateFilter[T]
@@ -14,6 +15,10 @@ type executionCapability[T any] struct {
 func describeExecutionCapability[T any](rule Rule[T]) executionCapability[T] {
 	operationRule := unwrapExecutionRule(rule)
 	result := executionCapability[T]{}
+	// Preserve the outer rule here: cache-capable inspector wrappers delegate
+	// through their observer, while the immutable operation slots below may be
+	// safely resolved from the unwrapped representation.
+	result.cached, _ = rule.(cachedBitmapProvider[T])
 	result.posting, _ = operationRule.(planningBitmapProvider[T])
 	result.filter, _ = operationRule.(candidateFilter[T])
 	if nested, ok := operationRule.(*allRule[T]); ok {

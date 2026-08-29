@@ -18,7 +18,7 @@ reference point, not a success claim:
 | Path | Latency | Temporary memory | Allocations |
 | --- | ---: | ---: | ---: |
 | `Index.Search` | 32.383 us/op | 40,851--40,852 B/op | 28 allocs/op |
-| warm `Local.Search` | 565.2 ns/op | 0 B/op | 0 allocs/op |
+| warm `Local.Search` | 536.2 ns/op | 0 B/op | 0 allocs/op |
 
 The rewrite is successful only when it materially reduces `Index.Search`
 temporary bytes or latency on production-shaped and focused workloads while

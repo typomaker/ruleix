@@ -507,7 +507,7 @@ func (r *allRule[T]) rankChildren(
 			if rankedChildren[i].card != ^uint64(0) {
 				continue
 			}
-			if provider, ok := child.(cachedBitmapProvider[T]); ok {
+			if provider := r.executionCapability(i).cached; provider != nil {
 				if bits, found := provider.lookupCachedBitmap(v, pool); found {
 					rankedChildren[i].bits = bits
 					rankedChildren[i].card = bits.GetCardinality()
@@ -553,8 +553,7 @@ func (r *allRule[T]) reuseLocalPlan(
 	if len(r.planningProviders) == 0 && r.planningPrepared {
 		for rank, childIdx := range plan.order {
 			ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
-			child := r.children[childIdx]
-			if provider, ok := child.(cachedBitmapProvider[T]); ok {
+			if provider := r.executionCapability(childIdx).cached; provider != nil {
 				if bits, found := provider.lookupCachedBitmap(v, pool); found {
 					ranked.bits = bits
 					ranked.card = bits.GetCardinality()
@@ -635,8 +634,8 @@ func (r *allRule[T]) populatePlanningLocalPlan(
 
 func (r *allRule[T]) cachedLocalPlanChild(v T, pool *bitmapPool, childIdx int) rankedBitmap {
 	ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
-	provider, ok := r.children[childIdx].(cachedBitmapProvider[T])
-	if !ok {
+	provider := r.executionCapability(childIdx).cached
+	if provider == nil {
 		return ranked
 	}
 	bits, found := provider.lookupCachedBitmap(v, pool)

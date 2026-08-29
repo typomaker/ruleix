@@ -44,6 +44,21 @@ func TestExecutionCapabilityUnwrapsDirectIDOperationsTruthfully(t *testing.T) {
 	require.Nil(t, describeExecutionCapability[int](unsupported).directID)
 }
 
+func TestExecutionCapabilityCompilesOuterCachedBitmapProvider(t *testing.T) {
+	leaf := &cachedEstimateRule{
+		costlyEstimateRule: &costlyEstimateRule{child: &countingRule{ids: []uint32{1}}},
+		bits:               roaring.BitmapOf(1),
+	}
+	metrics := &inspectorRuntime{}
+	wrapped := &inspectedRuntimeRule[int]{child: leaf, metrics: metrics}
+
+	capability := describeExecutionCapability[int](wrapped)
+	require.Equal(t, cachedBitmapProvider[int](wrapped), capability.cached)
+	bits, found := capability.cached.lookupCachedBitmap(0, newLocalBitmapPool(0))
+	require.True(t, found)
+	require.Equal(t, []uint32{1}, bits.ToArray())
+}
+
 func TestEqualityDirectIDWorkIsBoundedButLargeCandidateSetsStayOnBitmapPath(t *testing.T) {
 	equality := &eqRule[int, int]{wildcard: roaring.BitmapOf(1)}
 	capability := describeExecutionCapability[int](equality)
