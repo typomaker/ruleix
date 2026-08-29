@@ -174,6 +174,9 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	ix.pool.observeRuntime = false
 	interner := newBitmapInterner()
 	internRuleWith(interner, ix.observedRoot)
+	if compilePhysicalAliases {
+		compileAllEqualityClasses(ix.observedRoot)
+	}
 	for _, exclusion := range ix.observedExclusions {
 		if rule, ok := exclusion.(bitmapInternable); ok {
 			// Exclude nodes are no longer reachable from the positive tree.

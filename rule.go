@@ -132,6 +132,19 @@ type equalityResultComponents[T any] interface {
 	lookupEqualityResultComponents(T) (wildcard, posting *roaring.Bitmap, deduplicable bool)
 }
 
+// equalityClassCompiler exposes representation-native slots only while Build
+// assigns dense query-result classes. The compiler's maps are discarded; each
+// immutable equality representation retains only the ordinal selected for its
+// wildcard/posting pair.
+type equalityClassCompiler interface {
+	visitEqualitySourceClasses(func(equalitySourcePair, func(uint32)))
+}
+
+type equalitySourcePair struct {
+	wildcard physicalSourceID
+	posting  physicalSourceID
+}
+
 type exclusionRule[T any] interface {
 	exclude(T, *roaring.Bitmap, *bitmapPool)
 	isExcluded(T, uint32) bool

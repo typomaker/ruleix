@@ -24,10 +24,12 @@ const allDirectExclusionScanLimit = 16
 func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} }
 
 type allRule[T any] struct {
-	children          []Rule[T]
-	execution         []executionCapability[T]
-	planningProviders []planningBitmapProvider[T]
-	directIDComplete  bool
+	children                []Rule[T]
+	execution               []executionCapability[T]
+	planningProviders       []planningBitmapProvider[T]
+	directIDComplete        bool
+	equalityClassCount      uint32
+	compiledEqualityClasses bool
 	// sharedWildcardGroups is allocated only when Build finds equality children
 	// whose interned, non-empty wildcard bitmap is identical. Ordinary All
 	// searches therefore do not pay for duplicate-result tracking.
@@ -128,7 +130,9 @@ func (r *allRule[T]) prepareSearch() {
 		}
 	}
 	r.prepareSharedWildcardGroups()
-	r.prepareDuplicateEqualityResults()
+	if !r.compiledEqualityClasses {
+		r.prepareDuplicateEqualityResults()
+	}
 	r.planningPrepared = true
 }
 

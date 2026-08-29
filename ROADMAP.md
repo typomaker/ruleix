@@ -92,14 +92,6 @@ reject or retain production pieces from their standalone timings. Keep the
 baseline and integrated variants callable from one benchmark binary until the
 final decision so machine drift cannot be mistaken for a 3--6% effect.
 
-#### B. Compile the complete identity representation
-
-- For query-dependent equality wildcard/posting pairs, assign dense duplicate
-  class ordinals directly in the compiled operand. Temporary maps are allowed
-  during `Build` but must be discarded before the immutable `Index` is
-  published. Retain no global pointer-ID map, per-`All` class map, sparse-ID
-  mask, or query-dependent identity state.
-
 #### C. Execute the integrated design without transitional overhead
 
 - Unique operands and unconditional aliases execute with no identity branch:

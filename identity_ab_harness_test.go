@@ -130,3 +130,53 @@ func TestIdentityABNestedAllAccountsLinearEqualityDedup(t *testing.T) {
 	harness.index.pool.put(bits)
 	require.NotZero(t, harness.counters.linearEqualityDedupRuns)
 }
+
+func TestIntegratedIdentityCompilesDenseEqualityClassOrdinals(t *testing.T) {
+	for _, children := range []int{2, 4, 8} {
+		t.Run(fmt.Sprint(children), func(t *testing.T) {
+			schema, constraints, ids := identityABFixture(children, false)
+			harness := buildIdentityABIndex(t, identityIntegrated, schema, constraints, ids)
+			root := harness.index.root.(*allRule[identityABConstraint])
+			require.True(t, root.compiledEqualityClasses)
+			require.Equal(t, uint32(17), root.equalityClassCount)
+			require.Nil(t, root.duplicateBitmapIDs)
+			require.Nil(t, root.duplicateEqualityProviders)
+
+			classes := make(map[uint32]struct{}, root.equalityClassCount)
+			for _, child := range root.children {
+				equality := child.(*eqRule[identityABConstraint, int])
+				require.NotZero(t, equality.wildcardClass)
+				classes[equality.wildcardClass] = struct{}{}
+				for i := range equality.values.sets {
+					require.NotZero(t, equality.values.sets[i].class)
+					classes[equality.values.sets[i].class] = struct{}{}
+				}
+			}
+			require.Len(t, classes, int(root.equalityClassCount))
+			for ordinal := uint32(1); ordinal <= root.equalityClassCount; ordinal++ {
+				require.Contains(t, classes, ordinal)
+			}
+		})
+	}
+}
+
+func TestIntegratedIdentityCompilesMoreThan64EqualityClasses(t *testing.T) {
+	type constraint struct{ left, right int }
+	schema := All(
+		Include(func(value constraint) (int, bool) { return value.left, true }),
+		Include(func(value constraint) (int, bool) { return value.right, true }),
+	)
+	constraints := make([]constraint, 0, 65*40)
+	ids := make([]int, 0, cap(constraints))
+	for value := range 65 {
+		for range 40 {
+			ids = append(ids, len(ids))
+			constraints = append(constraints, constraint{left: value, right: value})
+		}
+	}
+	harness := buildIdentityABIndex(t, identityIntegrated, schema, constraints, ids)
+	root := harness.index.root.(*allRule[constraint])
+	require.Equal(t, uint32(66), root.equalityClassCount) // 65 postings plus the wildcard-only result.
+	require.Greater(t, root.equalityClassCount, uint32(64))
+	require.Nil(t, root.duplicateBitmapIDs)
+}

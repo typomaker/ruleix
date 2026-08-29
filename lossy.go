@@ -506,6 +506,7 @@ type lossyEqualityRule[T any, V comparable] struct {
 	get            Getter[T, V]
 	wildcard       *roaring.Bitmap
 	wildcardSource physicalSourceID
+	wildcardClass  uint32
 	shift          uint
 	hasher         scalarHasher[V]
 	buckets        map[uint64]lossyEqualityPosting
@@ -514,6 +515,7 @@ type lossyEqualityRule[T any, V comparable] struct {
 type lossyEqualityPosting struct {
 	bits   *roaring.Bitmap
 	source physicalSourceID
+	class  uint32
 }
 
 func (r *lossyEqualityRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
@@ -659,6 +661,20 @@ func (r *lossyEqualityRule[T, V]) internBitmaps(i *bitmapInterner) {
 	for k, posting := range r.buckets {
 		posting.source = i.internSource(&posting.bits)
 		r.buckets[k] = posting
+	}
+}
+func (r *lossyEqualityRule[T, V]) visitEqualitySourceClasses(visit func(equalitySourcePair, func(uint32))) {
+	visit(equalitySourcePair{wildcard: r.wildcardSource}, func(class uint32) { r.wildcardClass = class })
+	for key, posting := range r.buckets {
+		if posting.source == 0 {
+			continue
+		}
+		bucket := key
+		visit(equalitySourcePair{wildcard: r.wildcardSource, posting: posting.source}, func(class uint32) {
+			updated := r.buckets[bucket]
+			updated.class = class
+			r.buckets[bucket] = updated
+		})
 	}
 }
 

@@ -1,5 +1,22 @@
 # Roadmap history
 
+## 2026-08-29: compile dense equality result classes
+
+The integrated identity compiler now assigns dense, `All`-local ordinals to
+collision-checked equality wildcard/posting source pairs that occur in more
+than one physical child. Exact general, unary, binary, and lossy equality
+representations retain the ordinal directly beside their native wildcard or
+posting metadata. Build-only occurrence maps and assignment callbacks are
+discarded before the immutable index is published; the integrated tree retains
+neither the baseline pointer-ID map nor a per-`All` class map.
+
+Structural tests cover 2, 4, and 8 fully duplicated children, verify contiguous
+ordinals and absence of baseline lookup state, and exercise 66 duplicate
+classes so the later executor's pooled multiword mask path has compiled input.
+The baseline continues to compile its existing pointer-backed linear lookup,
+keeping both representations callable from the same A/B harness. Ordinary and
+race suites pass. Query-time mask execution remains active in the roadmap.
+
 ## 2026-08-29: compile canonical ordered/range operation IDs
 
 Ordered, `Between`, and `CompareBy` canonical descriptors now carry complete

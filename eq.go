@@ -205,6 +205,7 @@ type equalitySet struct {
 	small  []uint32
 	bits   *roaring.Bitmap
 	source physicalSourceID
+	class  uint32
 }
 
 func newEqualitySet(id uint32) *equalitySet { return &equalitySet{single: id} }
@@ -356,6 +357,7 @@ type eqRule[T any, V comparable] struct {
 	get            Getter[T, V]
 	wildcard       *roaring.Bitmap
 	wildcardSource physicalSourceID
+	wildcardClass  uint32
 	values         equalityIndex[V]
 }
 
@@ -513,6 +515,16 @@ func (r *eqRule[T, V]) internBitmaps(interner *bitmapInterner) {
 		r.values.sets[i].internBitmaps(interner)
 	}
 }
+func (r *eqRule[T, V]) visitEqualitySourceClasses(visit func(equalitySourcePair, func(uint32))) {
+	visit(equalitySourcePair{wildcard: r.wildcardSource}, func(class uint32) { r.wildcardClass = class })
+	for i := range r.values.sets {
+		set := &r.values.sets[i]
+		if set.source != 0 {
+			visit(equalitySourcePair{wildcard: r.wildcardSource, posting: set.source},
+				func(class uint32) { set.class = class })
+		}
+	}
+}
 
 // unaryEqRule and binaryEqRule are immutable build-time specializations for
 // low-cardinality equality filters. Besides avoiding a map lookup, they discard
@@ -522,6 +534,7 @@ type unaryEqRule[T any, V comparable] struct {
 	get            Getter[T, V]
 	wildcard       *roaring.Bitmap
 	wildcardSource physicalSourceID
+	wildcardClass  uint32
 	key            V
 	set            equalitySet
 }
@@ -619,12 +632,20 @@ func (r *unaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
 	r.wildcardSource = interner.internSource(&r.wildcard)
 	r.set.internBitmaps(interner)
 }
+func (r *unaryEqRule[T, V]) visitEqualitySourceClasses(visit func(equalitySourcePair, func(uint32))) {
+	visit(equalitySourcePair{wildcard: r.wildcardSource}, func(class uint32) { r.wildcardClass = class })
+	if r.set.source != 0 {
+		visit(equalitySourcePair{wildcard: r.wildcardSource, posting: r.set.source},
+			func(class uint32) { r.set.class = class })
+	}
+}
 
 type binaryEqRule[T any, V comparable] struct {
 	nodeID         nodeID
 	get            Getter[T, V]
 	wildcard       *roaring.Bitmap
 	wildcardSource physicalSourceID
+	wildcardClass  uint32
 	keys           [2]V
 	sets           [2]equalitySet
 }
@@ -732,6 +753,16 @@ func (r *binaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
 	r.wildcardSource = interner.internSource(&r.wildcard)
 	for i := range r.sets {
 		r.sets[i].internBitmaps(interner)
+	}
+}
+func (r *binaryEqRule[T, V]) visitEqualitySourceClasses(visit func(equalitySourcePair, func(uint32))) {
+	visit(equalitySourcePair{wildcard: r.wildcardSource}, func(class uint32) { r.wildcardClass = class })
+	for i := range r.sets {
+		set := &r.sets[i]
+		if set.source != 0 {
+			visit(equalitySourcePair{wildcard: r.wildcardSource, posting: set.source},
+				func(class uint32) { set.class = class })
+		}
 	}
 }
 
