@@ -1,5 +1,28 @@
 # Roadmap history
 
+## 2026-08-29: add the integrated identity correctness matrix
+
+The step-D A/B gate now exercises equality identity masks with 2, 4, and 8
+children, 0%, partial, and full physical duplication, concrete and wildcard
+queries, duplicate external IDs, and class counts on both sides of the 64-bit
+inline-mask boundary. Baseline and Integrated searches must return the same
+first-insertion-ordered result slice, while test-only counters prove that fully
+duplicated broad cases eliminate physical work. A seeded fuzz target extends
+the same comparison across generated query values and mask widths.
+
+Canonical ordered, `Between`, and `CompareBy` aliases now have one differential
+test proving that Integrated executes a shared operation once, separately
+constructed coincident operations remain independent, result order agrees with
+Baseline, and every aliased `Inspect` snapshot is preserved by fan-out. The
+matrix complements the existing forced-fingerprint-collision, nested-`All`,
+cache epoch/replacement, lossy, exclusion, and external-ID correctness tests.
+
+The broader observed matrix also exposed an empty-result range-pruning panic:
+after an earlier intersection emptied the destination, the next probe called a
+Roaring extremum method that requires a non-empty bitmap. Empty operands now
+short-circuit as disjoint, with a focused regression test. Ordinary and race
+suites pass. Performance remains deliberately undecided until roadmap step E.
+
 ## 2026-08-29: execute integrated physical identities without transitional overhead
 
 The integrated executor now reads each query-selected equality class directly

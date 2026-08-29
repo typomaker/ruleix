@@ -92,24 +92,6 @@ reject or retain production pieces from their standalone timings. Keep the
 baseline and integrated variants callable from one benchmark binary until the
 final decision so machine drift cannot be mistaken for a 3--6% effect.
 
-#### D. Pass correctness before collecting performance evidence
-
-- Add table tests for 0, partial, and full duplication with 2, 4, 8, 64, and
-  more than 64 classes; equality wildcard/concrete combinations; forced
-  fingerprint collisions; nested `All`; cache replacement and epoch changes;
-  similar non-equivalent rules; duplicate external IDs; and empty, selective,
-  broad, and exclusion-heavy results.
-- Cover equality, ordered, `Between`, and `CompareBy` aliases. For range forms,
-  prove both that canonical aliases execute once and that coincident results
-  from distinct operations execute independently.
-- Compare baseline and integrated result order and every `Inspect` snapshot
-  over the generated differential matrix and fuzz corpus. Assert operation
-  counters as well as results so tests detect an optimization that is correct
-  only because it silently performed duplicate work.
-- Run `go test ./...` and `go test -race ./...`. Fix correctness failures before
-  benchmarking, but do not use intermediate latency to remove individual parts
-  of the integrated design.
-
 #### E. Measure the complete design in one decision run
 
 - Benchmark sibling `Baseline` and `Integrated` variants for every combination

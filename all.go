@@ -1091,6 +1091,13 @@ func shouldPruneBitmapRanges(pool *bitmapPool) bool {
 }
 
 func bitmapRangesDisjoint(first, second *roaring.Bitmap) bool {
+	// An earlier intersection may empty the retained destination before the
+	// observed executor reaches its next range-pruning probe. Roaring's extrema
+	// methods panic for an empty bitmap; emptiness itself is already a complete
+	// disjointness proof.
+	if first.IsEmpty() || second.IsEmpty() {
+		return true
+	}
 	return first.Maximum() < second.Minimum() || second.Maximum() < first.Minimum()
 }
 
