@@ -3268,3 +3268,30 @@ Reproduce with:
 go test -run '^$' -bench '^BenchmarkLocalDuplicateEquality/' \
   -benchmem -benchtime=500ms -count=3 .
 ```
+
+## 2026-08-29: reject small warm-result boundary specialization
+
+Result assembly was measured independently for warm `Local.Search` results of
+cardinality 0, 1, 8, and 4,095. The retained `Bitmap.Iterate` path already
+preserves insertion order with zero bytes and allocations. A representation-
+safe prototype returned empty results directly and decoded one or two IDs with
+Roaring `Minimum`/`Maximum` before falling back to the existing iterator.
+
+On Apple M1 Max with Go 1.26.0, the prototype improved the empty median from
+27.19 to 26.09 ns/op and singleton from 39.60 to 36.32 ns/op. The eight-result
+case remained effectively equal at 58.47 ns/op, but the 4,095-result control
+repeatably moved from 9.925 to approximately 10.22 us/op, crossing the 3%
+latency rejection threshold. Every case remained at 0 B/op and 0 allocs/op.
+The production-shaped matrix stayed within its existing range at 566.5 ns/op
+for warm `Local.Search`, 33.521 us/op, 40,851 B/op, and 28 allocations/op for
+`Index.Search`, and 458.4 ns/search for parallel local batches. Because the
+focused singleton gain is not material to the production path and the wide
+control regressed, the runtime specialization was removed. The cardinality
+matrix remains as a regression and decision benchmark.
+
+Reproduce the retained baseline with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality$' \
+  -benchmem -benchtime=1s -count=5 .
+```

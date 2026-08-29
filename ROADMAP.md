@@ -82,18 +82,10 @@ noisy results and rerun with a longer benchtime before deciding.
 ## Implementation plan
 
 The integrated physical-source identity experiment, structural equality-class
-build rewrite, and uncached bitmap-lifetime audit are complete. Their designs,
-decision matrices, and production-gate evidence are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The remaining work concerns a
-possible warm-result specialization.
-
-### Step 4: specialize small warm-Local results
-
-Only after the uncached path is stable, measure whether result iteration is
-still a material warm-`Local` CPU bottleneck. If so, add a representation-safe
-fast path for empty, singleton, or otherwise small results. Preserve result
-order and require `0 B/op`, `0 allocs/op`, and no repeatable latency regression
-for every existing warm-`Local` case.
+build rewrite, uncached bitmap-lifetime audit, and warm-result specialization
+decision are complete. Their designs, decision matrices, and production-gate
+evidence are recorded in
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
 
 ### Step 5: final combined cutover gate
 
