@@ -81,27 +81,12 @@ noisy results and rerun with a longer benchtime before deciding.
 
 ## Implementation plan
 
-The integrated physical-source identity experiment and the structural
-equality-class build rewrite are complete and accepted. Their designs,
+The integrated physical-source identity experiment, structural equality-class
+build rewrite, and uncached bitmap-lifetime audit are complete. Their designs,
 decision matrices, and production-gate evidence are recorded in
 [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). The remaining work concerns
-query-time bitmap lifetime, followed by a possible warm-result specialization.
-
-### Step 2: reduce uncached search materialization
-
-Treat range filtering and shared wildcards as one bitmap-lifetime problem:
-
-1. Audit `Between.filterCandidates`, `collectSharedWildcards`, and their
-   intermediate `And`/`Or` operations for cloned bitmap and array containers.
-2. Introduce one bounded, reusable materialization workspace per search when
-   ownership rules permit it; never mutate immutable index bitmaps.
-3. Avoid materializing an intermediate result when the same restriction can be
-   applied directly to the current candidate set.
-
-The target is a repeatable reduction in uncached `Index.Search` bytes or
-latency. Validate range-heavy, wildcard-heavy, mixed, empty, and large-result
-cases separately so that a win does not merely move allocation traffic between
-representations.
+cardinality-gated direct-ID filtering, followed by a possible warm-result
+specialization.
 
 ### Step 3: add cardinality-gated direct-ID filtering
 

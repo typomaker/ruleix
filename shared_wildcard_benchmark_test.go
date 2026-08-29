@@ -60,6 +60,43 @@ func BenchmarkSharedWildcardAll(b *testing.B) {
 	}
 }
 
+// BenchmarkSharedWildcardConcreteRestriction isolates the Step 2 lifetime
+// change: a concrete posting can restrict the current group result directly,
+// instead of first being copied into another scratch bitmap. Apple M1 Max / Go
+// 1.26.0 medians:
+//
+//	TemporaryMaterialization  2,977 ns/op, 5,272 B/op, 16 allocs/op
+//	DirectRestriction         2,465 ns/op, 2,600 B/op,  8 allocs/op
+//
+// Reproduce with: go test -run '^$' -bench
+// '^BenchmarkSharedWildcardConcreteRestriction$' -benchmem -benchtime=1s
+// -count=5 .
+func BenchmarkSharedWildcardConcreteRestriction(b *testing.B) {
+	_, concrete := sharedWildcardPostings(100_000, 25, 2)
+	for _, benchmark := range []struct {
+		name        string
+		materialize bool
+	}{
+		{name: "TemporaryMaterialization", materialize: true},
+		{name: "DirectRestriction"},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				result := concrete[0].Clone()
+				if benchmark.materialize {
+					temporary := roaring.New()
+					temporary.Or(concrete[1])
+					result.And(temporary)
+				} else {
+					result.And(concrete[1])
+				}
+				sharedWildcardBenchmarkResult = result.GetCardinality()
+			}
+		})
+	}
+}
+
 func sharedWildcardPostings(
 	universe uint64,
 	wildcardPercent uint64,

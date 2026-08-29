@@ -1131,10 +1131,10 @@ func (r *allRule[T]) collectSharedWildcards( //nolint:gocognit
 			if !ok {
 				continue
 			}
-			concrete := pool.get()
-			other.addConcreteMatches(v, concrete)
-			bits.And(concrete)
-			pool.put(concrete)
+			other.intersectConcreteMatches(v, bits, pool)
+			if bits.IsEmpty() {
+				break
+			}
 		}
 		bits.Or(first.sharedWildcard())
 		card := bits.GetCardinality()

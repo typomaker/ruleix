@@ -330,6 +330,24 @@ func (s *equalitySet) addTo(dst *roaring.Bitmap) {
 	dst.Add(s.single)
 }
 
+// intersectEqualitySet keeps immutable bitmap postings on the direct And
+// path. Only compact array/singleton postings need a temporary bitmap because
+// Roaring cannot intersect a bitmap with those native representations.
+func intersectEqualitySet(set *equalitySet, dst *roaring.Bitmap, pool *bitmapPool) {
+	if set == nil {
+		dst.Clear()
+		return
+	}
+	if set.bits != nil {
+		dst.And(set.bits)
+		return
+	}
+	concrete := pool.get()
+	set.addTo(concrete)
+	dst.And(concrete)
+	pool.put(concrete)
+}
+
 func (s *equalitySet) contains(id uint32) bool {
 	if s.bits != nil {
 		return s.bits.Contains(id)
@@ -491,6 +509,14 @@ func (r *eqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 		}
 	}
 }
+func (r *eqRule[T, V]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	value, ok := r.get(v)
+	if !ok {
+		dst.Clear()
+		return
+	}
+	intersectEqualitySet(r.values.get(value), dst, pool)
+}
 func (*eqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
 func (r *eqRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {
@@ -647,6 +673,9 @@ func (r *unaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 		set.addTo(dst)
 	}
 }
+func (r *unaryEqRule[T, V]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	intersectEqualitySet(r.matchingSet(getOptional(r.get, v)), dst, pool)
+}
 func (*unaryEqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
 func (*unaryEqRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
 func (r *unaryEqRule[T, V]) prepareSearch() {
@@ -777,6 +806,9 @@ func (r *binaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
 		set.addTo(dst)
 	}
+}
+func (r *binaryEqRule[T, V]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+	intersectEqualitySet(r.matchingSet(getOptional(r.get, v)), dst, pool)
 }
 func (*binaryEqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
 func (*binaryEqRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}

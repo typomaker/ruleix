@@ -3065,6 +3065,48 @@ go test -run '^$' -bench '^BenchmarkLocalDuplicateEquality/' \
   -benchmem -benchtime=500ms -count=3 .
 ```
 
+## 2026-08-29: reduce uncached shared-wildcard materialization
+
+The range and shared-wildcard lifetime audit found that candidate filtering
+already applies ordered and `Between` restrictions directly through
+`AndAny`, and its internal Roaring container clones dominate their allocation
+traffic. Reusing the destination in `Between.searchBitmaps` changed focused
+bytes only from 57,325 to 57,317 B/op and provided no repeatable latency win,
+so that experiment was removed.
+
+The retained change removes a real intermediate from shared equality wildcard
+groups. After the first concrete posting is materialized, bitmap-backed
+postings now restrict that result directly; singleton and compact-array
+postings use the existing bounded pooled fallback. Immutable index bitmaps are
+never mutated. The focused A/B median fell from 2.977 to 2.465 us (-17.2%),
+from 5,272 to 2,600 B/op, and from 16 to 8 allocations. This path is disabled
+for `Local`, so its cache behavior and zero-allocation warm path are unchanged.
+
+The complete Apple M1 Max / Go 1.26.0 gate measured production medians of
+33.325 us, 40,851 B, and 28 allocations for `Index.Search`; 563.3 ns, zero
+bytes, and zero allocations for warm `Local.Search`; and 459.2 ns/search for
+parallel local batches. The 10K/100K/1M scale matrix, including wildcard-heavy,
+range-heavy, empty/small, large-result, and nested-`All` cases, passed without a
+new allocation class. Retained memory medians were 2,968 B/cold Local,
+90,960 B/warm Local, 107,861 B/adaptive Local, and 73,968 B/adversarial Local.
+
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkSharedWildcardConcreteRestriction$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-29: reject map-backed dense equality source classes
 
 A build-scoped bitmap-ID prototype extended the collision-checked interner to

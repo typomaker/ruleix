@@ -122,6 +122,7 @@ type candidateFilter[T any] interface {
 type sharedWildcardEquality[T any] interface {
 	sharedWildcard() *roaring.Bitmap
 	addConcreteMatches(T, *roaring.Bitmap)
+	intersectConcreteMatches(T, *roaring.Bitmap, *bitmapPool)
 }
 
 // equalityResultComponents exposes the immutable wildcard and concrete
