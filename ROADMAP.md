@@ -77,39 +77,6 @@ noisy results and rerun with a longer benchtime before deciding.
 
 ## Implementation plan
 
-Complete the steps in order. A later step may rely only on capabilities that
-survived the earlier benchmark gate.
-
-### 1. Differential cutover and cleanup
-
-**Implement**
-
-- Keep a test-only recursive materialize-all reference executor. Compare it
-  with the adaptive executor over generated schemas and queries covering every
-  representation, nested combinators, wrappers, wildcard sharing, exclusions,
-  lossy rules, duplicate IDs, empty results, and broad results.
-- Add fuzzing for result equivalence and preserve deterministic insertion order.
-- Run the race detector and the complete benchmark gate. Compare final results
-  with both the parent commit and the reference measurements at the top of this
-  file.
-- Remove the old cardinality-only decision path, unused shadow code, unread
-  statistics, obsolete interfaces, and compatibility branches only after the
-  new production executor passes all gates.
-- Move each completed or rejected step to `ROADMAP_HISTORY.md` with commands,
-  hardware, medians, bytes, allocations, and the decision rationale.
-
-**Accept when**
-
-- Differential, fuzz, ordinary, and race tests pass.
-- Warm `Local.Search` remains at 0 B/op and 0 allocs/op.
-- Production-shaped `Index.Search` materially improves latency or temporary
-  bytes without increasing allocation count, and focused workloads explain the
-  improvement.
-- Large-result, parallel, retained-memory, build-time, and lossy-quality gates
-  show no material regression.
-
-**Result**
-
-One production executor remains. Its capabilities, cost model, learned hints,
-and memory budgets are all exercised by code and benchmarks; there is no
-shadow architecture or roadmap claim stronger than the measured result.
+There are no active implementation steps. The differential cutover and cleanup
+gate is complete; its evidence is recorded in `ROADMAP_HISTORY.md`. Add a new
+measured proposal here before starting another executor optimization.

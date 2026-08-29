@@ -8,6 +8,48 @@ historical document) with the date, outcome, and enough benchmark or design
 evidence to avoid repeating the work. Release-facing changes still belong in
 [`CHANGELOG.md`](CHANGELOG.md).
 
+## 2026-08-29: complete differential cutover and cleanup
+
+The adaptive executor now has a fuzz target backed by the test-only recursive
+materialize-all oracle. Its generated schema covers equality, ordered,
+`Between`, `CompareBy`, nested `All`, inspection and lossy wrappers, exclusions,
+wildcards, empty and broad queries, and duplicate external IDs. Exact searches
+must match the oracle in first-insertion order for both `Index` and repeated
+`Local` execution. Lossy execution must retain every exact result in the same
+relative order while permitting its documented false positives. The
+deterministic differential test was extended with `CompareBy` as well.
+
+Twenty seconds of fuzzing completed 432,766 executions without failure. The
+ordinary and race suites passed. On Apple M1 Max with Go 1.26.0, five
+one-second production-shaped runs measured a 31.121 us/op `Index.Search`
+median at 40,852--40,853 B/op and 28 allocations; warm `Local.Search` measured
+581.2 ns/op at zero bytes and allocations. Parallel batches measured a 461.8
+ns/search median. The complete 10K/100K/1M scale matrix passed, and retained
+memory measured 2,968 B cold, 91,003 B warm, 107,845 B adaptive, and
+73,968--74,053 B adversarial. No remaining shadow/cardinality compatibility
+path was found: the cardinality interfaces still present are consumed by the
+operation-cost planner or inspection and therefore remain production code.
+
+This closes the active roadmap. One production executor remains, and the
+accepted production result still materially improves the original 41.5--42.1
+us/op, 73,571--73,572 B/op, 31-allocation reference while preserving the warm
+zero-allocation contract. Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^FuzzAllAdaptiveExecutorMatchesMaterializeAllOracle$' \
+  -fuzz '^FuzzAllAdaptiveExecutorMatchesMaterializeAllOracle$' -fuzztime=20s .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-29: finish byte-bounded Local state and canonicalize exact aliases
 
 `Local` now maintains separate byte accounts for child bitmap payloads, exact
