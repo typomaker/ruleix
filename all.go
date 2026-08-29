@@ -542,7 +542,7 @@ func (r *allRule[T]) reuseLocalPlan(
 	rankedChildren []rankedBitmap,
 ) (result, reused bool) {
 	plan := r.localPlan(pool)
-	if plan == nil || !validLocalPlanOrder(plan.order, len(r.children)) {
+	if plan == nil || !plan.valid {
 		return false, false
 	}
 	if len(r.planningProviders) == 0 && r.planningPrepared {
@@ -676,6 +676,9 @@ func (r *allRule[T]) rememberLocalPlan(pool *bitmapPool, rankedChildren []ranked
 	for i, ranked := range rankedChildren {
 		plan.order[i] = ranked.childIdx
 	}
+	// The plan is written only here. Validate the permutation once when it
+	// changes instead of repeating the quadratic proof on every warm search.
+	plan.valid = validLocalPlanOrder(plan.order, len(r.children))
 	plan.firstCard = rankedChildren[0].card
 }
 

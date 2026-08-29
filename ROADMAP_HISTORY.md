@@ -1,5 +1,49 @@
 # Roadmap history
 
+## 2026-08-29: validate Local plans when they change
+
+CPU profiles against `v0.8.1` localized the remaining production-shaped warm
+Local regression to `validLocalPlanOrder`. The root production `All` has 18
+children, so the stable hot path repeated 18 bounds checks and 153 pairwise
+duplicate checks on every search. A 15-second profile attributed 0.69 of 16.65
+sampled seconds (4.14%) to that validation. The tag measured 578.2 ns/op in the
+same profile run, while main measured 596.9 ns/op.
+
+`localAllPlan` now records whether its order was valid when `rememberLocalPlan`
+wrote or updated it. Reuse checks that immutable flag in constant time. The
+existing invalid-plan test now constructs the bad order through the write path,
+proving it is rejected without relying on repeated hot-path validation.
+
+Fifteen five-second production-shaped runs measured a 571.9 ns/op median,
+zero bytes, and zero allocations, versus 584.8 ns/op before the change and
+566.8 ns/op for `v0.8.1`. A fresh 15-second CPU profile measured 569.9 ns/op
+and no longer reported `validLocalPlanOrder` among hot nodes. Production
+`Index.Search` remained at a 33.051 us median, 40,851--40,852 B, and 28
+allocations; parallel Local measured 460.6 ns/search. The complete scale matrix
+retained its allocation classes. Placing the validity bit beside the existing
+byte-sized result cursor preserved retained-memory medians of 2,968 B cold,
+90,960 B warm, and 107,824 B adaptive per Local.
+
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/Local$' \
+  -benchmem -benchtime=5s -count=15 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/Local$' \
+  -benchtime=15s -count=1 -cpuprofile=/tmp/ruleix-local.cpu .
+go tool pprof -top /tmp/ruleix-local.cpu
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-29: remove integrated identity work from stable warm Locals
 
 The first step-E lifecycle matrix found that dense equality identity lookup was

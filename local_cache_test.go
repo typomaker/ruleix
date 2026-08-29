@@ -510,9 +510,8 @@ func TestLocalAllPlanHonorsSharedByteBudget(t *testing.T) {
 func TestLocalRejectsInvalidCachedPlan(t *testing.T) {
 	pool := newLocalBitmapPool(0)
 	rule := &allRule[int]{children: []Rule[int]{&countingRule{}, &countingRule{}}}
-	pool.allPlans = map[any]*localAllPlan{
-		rule: {order: []int{0, 0}, firstCard: 1},
-	}
+	rule.rememberLocalPlan(pool, []rankedBitmap{{childIdx: 0, card: 1}, {childIdx: 0, card: 1}})
+	require.False(t, pool.allPlans[rule].valid)
 	ranked := make([]rankedBitmap, 2)
 	_, reused := rule.reuseLocalPlan(0, pool, ranked)
 	require.False(t, reused)

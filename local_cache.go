@@ -19,6 +19,7 @@ type localAllPlan struct {
 	// scratch result instead of cloning the first posting on every search.
 	results [2]localAllResult
 	next    uint8
+	valid   bool
 }
 
 type localAllResult struct {
