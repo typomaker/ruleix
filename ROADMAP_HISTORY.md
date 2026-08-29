@@ -1,5 +1,16 @@
 # Roadmap history
 
+## 2026-08-29: compile canonical ordered/range operation IDs
+
+Ordered, `Between`, and `CompareBy` canonical descriptors now carry complete
+build-scoped operation IDs: representation owner, bound role or stored
+operator, direction, inclusivity, wildcard policy, comparator policy, and a
+stable pointer-backed query-bound identity. The IDs remain proofs for exact
+same-schema aliases only. Independently constructed opaque getters and
+comparators cannot alias even when they produce coincident results for every
+entry in one build. Focused tests cover each encoded policy and the independent
+opaque-rule boundary.
+
 ## 2026-08-29: compile unconditional `All` aliases into physical operands
 
 - Added a build-time physical-operand compiler that removes only aliases of

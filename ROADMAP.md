@@ -94,12 +94,6 @@ final decision so machine drift cannot be mistaken for a 3--6% effect.
 
 #### B. Compile the complete identity representation
 
-- Give every provably identical ordered/range operation a canonical operation
-  ID containing representation ownership, bound role, direction, inclusivity,
-  wildcard policy, comparator policy, and stable query-bound identity. Use it
-  only for unconditional aliases of the same proven operation. Never merge
-  independently opaque getters/comparators or ranges that merely happen to
-  materialize equal results for one query.
 - For query-dependent equality wildcard/posting pairs, assign dense duplicate
   class ordinals directly in the compiled operand. Temporary maps are allowed
   during `Build` but must be discarded before the immutable `Index` is

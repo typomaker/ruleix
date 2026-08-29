@@ -76,6 +76,57 @@ func TestBuildCanonicalizesRepeatedExactAllChildren(t *testing.T) {
 	}
 }
 
+func TestCanonicalRangeOperationIDsContainCompletePolicy(t *testing.T) {
+	getter := func(v canonicalConstraint) (int, bool) { return v.value, true }
+	until := func(v canonicalConstraint) (int, bool) { return v.until, true }
+
+	ordered := Greater(getter, cmp.Compare[int]).(*orderedRule[canonicalConstraint, int])
+	orderedDescriptor := ordered.canonicalDescriptor()
+	require.Equal(t, uint8(1), orderedDescriptor.operationCount)
+	require.Equal(t, canonicalOperationID{
+		representation: canonicalOrdered,
+		owner:          ordered, queryBound: ordered, role: canonicalWholeValue,
+		direction: greaterThan, inclusive: false,
+		wildcard: canonicalMissingStoredMatches, comparator: canonicalOpaqueComparator,
+	}, orderedDescriptor.operations[0])
+
+	between := Between(getter, until, cmp.Compare[int]).(*betweenRule[canonicalConstraint, int])
+	betweenDescriptor := between.canonicalDescriptor()
+	require.Equal(t, uint8(2), betweenDescriptor.operationCount)
+	require.Equal(t, canonicalLowerBound, betweenDescriptor.operations[0].role)
+	require.Equal(t, canonicalBetween, betweenDescriptor.operations[0].representation)
+	require.Equal(t, greaterThan, betweenDescriptor.operations[0].direction)
+	require.True(t, betweenDescriptor.operations[0].inclusive)
+	require.Same(t, between.from, betweenDescriptor.operations[0].queryBound)
+	require.Equal(t, canonicalUpperBound, betweenDescriptor.operations[1].role)
+	require.Equal(t, canonicalBetween, betweenDescriptor.operations[1].representation)
+	require.Equal(t, lessThan, betweenDescriptor.operations[1].direction)
+	require.True(t, betweenDescriptor.operations[1].inclusive)
+	require.Same(t, between.until, betweenDescriptor.operations[1].queryBound)
+
+	compareBy := CompareBy(
+		getter,
+		func(v canonicalConstraint) (Operator, bool) { return v.operator, true },
+		cmp.Compare[int],
+	).(*compareByRule[canonicalConstraint, int])
+	compareDescriptor := compareBy.canonicalDescriptor()
+	require.Equal(t, uint8(5), compareDescriptor.operationCount)
+	for operator := OperatorEQ; operator <= OperatorGTE; operator++ {
+		require.Equal(t, canonicalCompareBy, compareDescriptor.operations[operator].representation)
+		require.Equal(t, operator, compareDescriptor.operations[operator].operator)
+		require.Equal(t, canonicalStoredOperator, compareDescriptor.operations[operator].role)
+		require.Same(t, compareBy, compareDescriptor.operations[operator].owner)
+		require.Same(t, compareBy, compareDescriptor.operations[operator].queryBound)
+	}
+}
+
+func TestCanonicalOperationIDsNeverAliasIndependentOpaqueRules(t *testing.T) {
+	getter := func(v canonicalConstraint) (int, bool) { return v.value, true }
+	first := GreaterOrEqual(getter, cmp.Compare[int]).(*orderedRule[canonicalConstraint, int])
+	second := GreaterOrEqual(getter, cmp.Compare[int]).(*orderedRule[canonicalConstraint, int])
+	require.NotEqual(t, first.canonicalDescriptor(), second.canonicalDescriptor())
+}
+
 func TestBuildCanonicalizesRepeatedChildrenThroughNestedAll(t *testing.T) {
 	shared := Include(func(v canonicalConstraint) (int, bool) { return v.value, true })
 	constraints, ids := canonicalEntries()

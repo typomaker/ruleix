@@ -211,7 +211,17 @@ func (*orderedRule[T, V]) inspectionStrategy() string { return "ordered" }
 
 func (*orderedRule[T, V]) rule() {}
 func (r *orderedRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
-	return canonicalRuleDescriptor{representation: canonicalOrdered, schema: r}
+	return canonicalRuleDescriptor{
+		representation: canonicalOrdered,
+		schema:         r,
+		operations: [5]canonicalOperationID{{
+			representation: canonicalOrdered,
+			owner:          r, queryBound: r, role: canonicalWholeValue,
+			direction: r.dir, inclusive: r.inclusive,
+			wildcard: canonicalMissingStoredMatches, comparator: canonicalOpaqueComparator,
+		}},
+		operationCount: 1,
+	}
 }
 func (r *orderedRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()

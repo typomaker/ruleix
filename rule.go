@@ -246,6 +246,44 @@ const (
 	canonicalCompareBy
 )
 
+type canonicalBoundRole uint8
+
+const (
+	canonicalWholeValue canonicalBoundRole = iota
+	canonicalLowerBound
+	canonicalUpperBound
+	canonicalStoredOperator
+)
+
+type canonicalWildcardPolicy uint8
+
+const (
+	canonicalMissingStoredMatches canonicalWildcardPolicy = iota
+)
+
+type canonicalComparatorPolicy uint8
+
+const (
+	canonicalNoComparator canonicalComparatorPolicy = iota
+	canonicalOpaqueComparator
+)
+
+// canonicalOperationID is a build-scoped proof, not a content fingerprint.
+// owner and queryBound are pointer-backed schema objects, so independently
+// opaque getters and comparators can never become aliases merely because they
+// return the same values for the entries in one Build.
+type canonicalOperationID struct {
+	representation canonicalRepresentation
+	owner          any
+	queryBound     any
+	role           canonicalBoundRole
+	operator       Operator
+	direction      direction
+	inclusive      bool
+	wildcard       canonicalWildcardPolicy
+	comparator     canonicalComparatorPolicy
+}
+
 // canonicalRuleDescriptor is deliberately build-scoped and identity-based.
 // The representation tag records the complete operator/wildcard/comparator
 // policy selected by the constructor; schema is the exact pointer-backed rule
@@ -254,6 +292,8 @@ const (
 type canonicalRuleDescriptor struct {
 	representation canonicalRepresentation
 	schema         any
+	operations     [5]canonicalOperationID
+	operationCount uint8
 }
 
 type canonicalBuildRule interface {

@@ -43,7 +43,23 @@ func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
 
 func (*compareByRule[T, V]) rule() {}
 func (r *compareByRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
-	return canonicalRuleDescriptor{representation: canonicalCompareBy, schema: r}
+	descriptor := canonicalRuleDescriptor{
+		representation: canonicalCompareBy,
+		schema:         r,
+		operationCount: uint8(len(r.indexes)),
+	}
+	directions := [...]direction{greaterThan, lessThan, lessThan, greaterThan, greaterThan}
+	inclusive := [...]bool{true, false, true, false, true}
+	for operator := range descriptor.operations {
+		descriptor.operations[operator] = canonicalOperationID{
+			representation: canonicalCompareBy,
+			owner:          r, queryBound: r, role: canonicalStoredOperator,
+			operator:  Operator(operator),
+			direction: directions[operator], inclusive: inclusive[operator],
+			wildcard: canonicalMissingStoredMatches, comparator: canonicalOpaqueComparator,
+		}
+	}
+	return descriptor
 }
 func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
