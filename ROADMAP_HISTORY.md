@@ -1,5 +1,33 @@
 # Roadmap history
 
+## 2026-08-29: build the physical-identity A/B harness
+
+The internal `BenchmarkPhysicalIdentityAB` now builds the baseline and
+integrated execution modes from the same schema and data in one benchmark
+binary, runs both Baseline-first and Integrated-first sibling orders, compares
+their exact result slices, and reports test-only materialization, intersection,
+`Contains`, skipped-operand, mask-test, and physical-search counters. The mode
+remains entirely internal and publishes no planner API.
+
+The duplicate contract is now explicit. The public root `All` case goes through
+`searchAllMatches` and asserts that the baseline linear equality scan did not
+run. A separate direct nested-path test exercises `allRule.searchRanked` and
+asserts that the same scan did run. This prevents the previous Local benchmark
+description from crediting the root executor with work performed only by a
+nested bitmap-returning `All`.
+
+A short structural calibration on Apple M1 Max with Go 1.26.0 reported
+Baseline/Integrated at 1331/1335 ns for two children, 2215/2218 ns for four,
+and 4123/4110 ns for eight. Both modes currently replay the retained executor,
+so these numbers are not performance evidence for the identity design. The
+complete experiment must extend the Integrated switch before its decision run.
+Reproduce both variants with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkPhysicalIdentityAB/' \
+  -benchmem -benchtime=2s -count=10 .
+```
+
 This document records completed roadmap work and concluded experiments. The
 active [`ROADMAP.md`](ROADMAP.md) contains only work that may still be done.
 

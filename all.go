@@ -37,6 +37,20 @@ type allRule[T any] struct {
 	// Tests may search an internal rule before prepareSearch. Runtime indexes
 	// set this flag and can distinguish an exact schema from an unprepared one.
 	planningPrepared bool
+	// executionCounters is nil in ordinary indexes. The internal A/B harness
+	// attaches it to make executor work observable without adding a public mode
+	// or API.
+	executionCounters *allExecutionCounters
+}
+
+type allExecutionCounters struct {
+	materializations          uint64
+	intersections             uint64
+	containsChecks            uint64
+	skippedOperands           uint64
+	maskTests                 uint64
+	physicalInspectorSearches uint64
+	linearEqualityDedupRuns   uint64
 }
 
 func (*allRule[T]) rule() {}
@@ -327,6 +341,9 @@ func (r *allRule[T]) searchRanked(
 		return
 	}
 	if r.duplicateBitmapIDs != nil {
+		if r.executionCounters != nil {
+			r.executionCounters.linearEqualityDedupRuns++
+		}
 		rankedChildren = r.deduplicateEqualityResults(v, rankedChildren)
 	}
 	// Local plans prioritize reuse and must keep their zero-allocation hot path.
@@ -786,6 +803,10 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 		}
 		if bits == nil {
 			bits = pool.get()
+			if r.executionCounters != nil {
+				r.executionCounters.materializations++
+				r.executionCounters.physicalInspectorSearches++
+			}
 			r.children[rankedChildren[i].childIdx].search(v, bits, pool)
 			card := bits.GetCardinality()
 			if card == 0 {
@@ -835,6 +856,9 @@ func (r *allRule[T]) intersectRankedInOrderObserved(
 			return false
 		}
 		dst.And(bits)
+		if r.executionCounters != nil {
+			r.executionCounters.intersections++
+		}
 		if dst.IsEmpty() {
 			for j := range rankedChildren {
 				if rankedChildren[j].owned {
@@ -872,6 +896,9 @@ func (r *allRule[T]) validateCandidateBitmap(
 	dst.Iterate(func(id uint32) bool {
 		for _, ranked := range remaining {
 			if ranked.bits != nil {
+				if r.executionCounters != nil {
+					r.executionCounters.containsChecks++
+				}
 				observeCandidateCheck(r.children[ranked.childIdx], pool)
 				if !ranked.bits.Contains(id) {
 					return true
@@ -1119,6 +1146,9 @@ func (r *allRule[T]) deduplicateEqualityResults( //nolint:gocognit,nestif
 			}
 		}
 		if duplicate {
+			if r.executionCounters != nil {
+				r.executionCounters.skippedOperands++
+			}
 			continue
 		}
 		rankedChildren[write] = rankedChildren[read]

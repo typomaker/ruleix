@@ -92,24 +92,6 @@ reject or retain production pieces from their standalone timings. Keep the
 baseline and integrated variants callable from one benchmark binary until the
 final decision so machine drift cannot be mistaken for a 3--6% effect.
 
-#### A. Build a reproducible A/B harness
-
-- Keep the current executor unchanged as the baseline. Add an internal,
-  test-selectable execution mode that builds and searches the same schema and
-  data through the integrated identity executor without a public option or API.
-  Both variants must run as sibling sub-benchmarks in one process, alternate
-  order across repetitions, return identical result slices, and expose
-  test-only counters for materializations, intersections, `Contains` checks,
-  skipped operands, mask tests, and physical inspector executions.
-- Correct the duplicate benchmark contract: exercise the public root `All`
-  path through `searchAllMatches`, and assert from counters whether the baseline
-  linear equality deduplication actually ran. Keep separate nested-`All` cases
-  for `allRule.searchRanked`; never label one path as the other's baseline.
-- Commit the complete experimental implementation or a test-only replay of it
-  before measuring. A reproduction command must execute both variants; a
-  history-only description and a command that can run only the retained
-  baseline are not sufficient evidence.
-
 #### B. Compile the complete identity representation
 
 - During collision-checked bitmap interning, assign a build-scoped `uint32`
