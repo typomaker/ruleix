@@ -224,3 +224,25 @@ func TestIntegratedIdentityUniqueOperandsHaveNoMaskCheck(t *testing.T) {
 	harness.index.pool.put(bits)
 	require.Zero(t, harness.counters.maskTests)
 }
+
+func TestIntegratedIdentityWarmLocalSkipsClassLookups(t *testing.T) {
+	schema, constraints, ids := identityABFixture(8, false)
+	harness := buildIdentityABIndex(t, identityIntegrated, schema, constraints, ids)
+	query := identityABConstraint{}
+	for child := range 8 {
+		query.values[child] = 1
+	}
+	local := harness.index.Local()
+	defer local.Close()
+	var matches []int
+	for range 4 {
+		matches = matches[:0]
+		local.Search(query, &matches)
+	}
+
+	before := harness.counters.maskTests
+	matches = matches[:0]
+	local.Search(query, &matches)
+	require.Equal(t, before, harness.counters.maskTests,
+		"stable cached operands must bypass equality-class lookup")
+}

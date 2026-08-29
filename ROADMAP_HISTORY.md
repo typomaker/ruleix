@@ -1,5 +1,62 @@
 # Roadmap history
 
+## 2026-08-29: remove integrated identity work from stable warm Locals
+
+The first step-E lifecycle matrix found that dense equality identity lookup was
+still running after child results had reached stable Local caches. An Apple M1
+Max calibration measured the 8-child Integrated warm path at 1,002 ns/op versus
+878.1 ns/op for Baseline, despite both remaining at zero bytes and allocations.
+A five-second CPU profile attributed 0.99 of 6.53 sampled seconds to
+`deduplicateEqualityClasses`, including repeated provider resolution, getter,
+and posting-map lookup. Inspection of the Local state also proved that the
+root-result cache was not a viable bypass: skipped logical children never
+reached admission, so its complete input key could not be retained.
+
+Identity deduplication now remains active for `Index.Search` and cold Local
+operands, but yields to the ordinary child caches once the first ranked Local
+operand is cached. A post-change five-second CPU profile no longer contains
+`deduplicateEqualityClasses` or `lookupEqualityClass` in its reported nodes.
+Three 500 ms lifecycle runs measured Baseline versus Integrated medians of
+5,483 versus 1,630 ns/op for the first cold search, 5,264 versus 1,299 ns/op for
+second-use admission, and 880.7 versus 875.6 ns/op for stable warm search.
+Stable warm remained at zero bytes and allocations. This is a repair found
+during step E, not yet the final accept/reject decision for the complete
+matrix.
+
+The post-fix 8-child warm decision controls also converged: Baseline versus
+Integrated medians were 1,022 versus 1,024 ns/op for concrete zero-duplicate,
+952.8 versus 951.0 ns/op for concrete 50%-duplicate, and 322.2 versus 322.1
+ns/op for concrete full-duplicate queries. Wildcard pairs were likewise within
+noise. Every case stayed allocation-free, and the zero-duplicate compiled hot
+path reported no mask checks.
+
+The production gate passed with medians of 33.373 us, 40,851--40,852 B, and 28
+allocations for `Index.Search`; 587.4 ns, zero bytes, and zero allocations for
+warm `Local.Search`; and 463.9 ns/search for parallel batches. Retained memory
+was 2,968 B per cold Local, 90,960 B per warm Local, and 107,824 B for the
+adaptive case. Ordinary, race, and the complete 10K/100K/1M scale matrix passed
+without a new allocation class.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkIdentityDecisionLifecycle/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkIdentityDecisionLifecycle$/^Integrated$/^Warm$' \
+  -benchtime=5s -count=1 -cpuprofile=/tmp/ruleix-identity-integrated.cpu .
+go tool pprof -top /tmp/ruleix-identity-integrated.cpu
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-29: add the integrated identity correctness matrix
 
 The step-D A/B gate now exercises equality identity masks with 2, 4, and 8

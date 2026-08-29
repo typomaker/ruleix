@@ -400,7 +400,13 @@ func searchAllMatches[C any, ID comparable](
 		*dst = result
 		return
 	}
-	if root.equalityClassCount != 0 {
+	// Dense identity lookup pays for itself while operands are cold. Once the
+	// first ranked Local operand is cached, let the ordinary child caches admit
+	// the remaining logical operands; stable warm searches then avoid both the
+	// class lookup and physical materialization work.
+	useEqualityClasses := root.equalityClassCount != 0 &&
+		(pool.local == nil || rankedChildren[0].bits == nil)
+	if useEqualityClasses {
 		checked := inlineChecked[:]
 		if buffer != nil {
 			words := int((root.equalityClassCount + 63) / 64)
