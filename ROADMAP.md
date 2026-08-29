@@ -1,18 +1,15 @@
 # Roadmap
 
-This file is the active implementation plan for reducing search work and
-temporary bitmap materialization. Completed work and rejected experiments
-belong in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md); release-facing behavior
-belongs in [`CHANGELOG.md`](CHANGELOG.md). Do not keep completed, superseded,
-or unrelated proposals here.
+This file is the active implementation plan. Completed work and rejected
+experiments belong in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md);
+release-facing behavior belongs in [`CHANGELOG.md`](CHANGELOG.md). Do not keep
+completed, superseded, or unrelated proposals here.
 
 ## Objective
 
-Finish the operation-cost `All` executor by proving that every retained local
-state has a byte bound. Shared learning was removed after it failed its
-cold-start evidence gate. The deterministic planner, adaptive operation loop,
-and representation-specific operation audit are complete; their measured
-results are recorded in
+The operation-cost `All` executor and its final combined cutover gate are
+complete. The accepted design, retained-state bounds, rejected experiments,
+and benchmark evidence are recorded in
 [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
 
 The current Apple M1 Max production-shaped cutover measurements are the
@@ -20,8 +17,8 @@ reference point, not a success claim:
 
 | Path | Latency | Temporary memory | Allocations |
 | --- | ---: | ---: | ---: |
-| `Index.Search` | 41.5--42.1 us/op | 73,571--73,572 B/op | 31 allocs/op |
-| warm `Local.Search` | 569.0--570.2 ns/op | 0 B/op | 0 allocs/op |
+| `Index.Search` | 32.383 us/op | 40,851--40,852 B/op | 28 allocs/op |
+| warm `Local.Search` | 565.2 ns/op | 0 B/op | 0 allocs/op |
 
 The rewrite is successful only when it materially reduces `Index.Search`
 temporary bytes or latency on production-shaped and focused workloads while
@@ -81,22 +78,5 @@ noisy results and rerun with a longer benchtime before deciding.
 
 ## Implementation plan
 
-The integrated physical-source identity experiment, structural equality-class
-build rewrite, uncached bitmap-lifetime audit, and warm-result specialization
-decision are complete. Their designs, decision matrices, and production-gate
-evidence are recorded in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
-
-### Step 5: final combined cutover gate
-
-Run the complete correctness and benchmark gate after combining the accepted
-steps. Compare against both the parent commit and `v0.8.1`, including:
-
-- `Index.Build` latency, bytes, and allocations;
-- uncached `Index.Search` across condition mix and posting cardinality;
-- warm `Local.Search` for empty, singleton, small, and large results;
-- parallel local batches and retained local memory.
-
-Record every accepted result and every retained/rejected experiment in
-`ROADMAP_HISTORY.md`. Update the reference table above with the final local
-medians only after the combined implementation passes this gate.
+No implementation steps remain. Add a new measured proposal here before
+starting another executor optimization.

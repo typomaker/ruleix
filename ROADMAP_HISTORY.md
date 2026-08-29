@@ -1,5 +1,62 @@
 # Roadmap history
 
+## 2026-08-30: pass the final combined cutover gate
+
+The combined operation-cost `All` executor passed its final correctness and
+performance gate on Apple M1 Max with Go 1.26.0. Ordinary and race tests
+passed. A seven-run, three-second confirmation measured uncached
+`Index.Search` at a 32.383 us/op median, 40,851--40,852 B/op, and 28
+allocations, versus 33.163 us/op at the parent commit: 2.35% lower latency with
+the same allocation class. The initial five-run comparison against `v0.8.1`
+measured 43.453 us/op and 73,394 B/op there, so the combined cutover reduced
+latency by 25.5% and temporary bytes by 44.3% while retaining 28 allocations.
+
+Production-shaped `Index.Build` measured a 34.783 ms median, 5,020,775--
+5,025,063 B/op, and 30,202 allocations. The parent measured 34.942 ms,
+5,016,755--5,020,795 B/op, and 30,202 allocations; `v0.8.1` measured 34.892
+ms, 5,002,196--5,002,209 B/op, and 30,203 allocations. The small byte increase
+against the tag is 0.37%, allocation count decreased by one, and latency was
+stable.
+
+Warm `Local.Search` measured 565.2 ns/op with zero bytes and allocations,
+versus 566.5 ns/op at the parent and 567.1 ns/op at `v0.8.1`. Parallel batches
+measured 456.7 ns/search. Empty, singleton, eight-result, and 4,095-result warm
+searches measured medians of 27.65 ns, 39.68 ns, 58.12 ns, and 9.913 us; every
+case remained at zero bytes and allocations. Retained Local memory was 2,968 B
+cold, 90,965 B warm, and 107,840 B adaptive, compared with 2,968 B, 95,184 B,
+and 107,616 B at `v0.8.1`. The bounded adaptive state therefore added 224 B
+while warm retained memory fell by 4,219 B.
+
+The complete 10K/100K/1M scale matrix passed across empty/small, selective,
+wildcard-heavy, large-result, nested-`All`, and range-heavy queries without a
+new allocation class. Focused empty-intersection, wildcard, range-pruning,
+nested-`All`, inaccurate/adversarial estimate, and direct-ID cardinality cases
+also passed. The accepted direct-ID path retained its focused wins: at 8 and
+128 candidates, adaptive medians ranged from 629.7 ns to 5.112 us versus
+4.699--29.429 us for forced bitmap execution; the 4,096-candidate guard kept
+the adaptive path at 8.851/38.347 us versus 21.075/43.902 us.
+
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/Index$' \
+  -benchmem -benchtime=3s -count=7 .
+go test -run '^$' \
+  -bench '^BenchmarkProductionShape(Build|ParallelLocalBatch100|LocalRetainedMemory)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality/' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' \
+  -bench '^(BenchmarkAllLeadingIntersection|BenchmarkAllLateRangePruning|BenchmarkNestedAllCheapEmptyCheck|BenchmarkWildcardHeavySearch|BenchmarkAllDirectIDFiltering)/' \
+  -benchmem -benchtime=500ms -count=3 .
+```
+
 ## 2026-08-29: add cardinality-gated equality ID filtering
 
 Equality representations now advertise a bounded direct-ID lookup cost to the
