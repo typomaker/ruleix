@@ -1,5 +1,31 @@
 # Roadmap history
 
+## 2026-08-30: reject small-result bitmap decoding
+
+A bounded experiment replaced the final Roaring callback with `ManyIterator`
+and a 16-ID stack buffer for small results. Roaring's iterator escaped through
+its interface: the eight-result focused case regressed from 0 B/op and 0
+allocations to 192 B/op and 2 allocations, and latency rose from the 58.47
+ns/op reference to a 101.8 ns/op median. This variant was rejected immediately.
+
+A narrower revision special-cased empty and singleton results without an
+iterator. Focused medians were 25.74 ns/op empty and 37.08 ns/op singleton,
+both at zero bytes and allocations, versus references of 27.19 and 39.60 ns/op.
+However, the production-shaped warm-Local median moved only from a same-session
+536.1 ns/op baseline to 529.2 ns/op in seven one-second runs (1.3%), and a
+longer confirmation was noisy rather than repeatable. The gain was too small
+to satisfy the production-shaped acceptance gate, so the revision was also
+removed. The existing callback decoder remains unchanged.
+
+Reproduce the focused and production-shaped comparisons with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/Local$' \
+  -benchmem -benchtime=1s -count=7 .
+```
+
 ## 2026-08-30: compile cached Local execution capabilities
 
 The immutable `All` execution description now compiles each child's outer
