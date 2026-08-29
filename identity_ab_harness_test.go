@@ -108,6 +108,8 @@ func TestIdentityABModesUsePublicRootAllContract(t *testing.T) {
 				baseline = append([]int(nil), got...)
 			} else {
 				require.Equal(t, baseline, got)
+				require.Equal(t, uint64(4), harness.counters.maskTests)
+				require.Equal(t, uint64(3), harness.counters.skippedOperands)
 			}
 			require.Zero(t, harness.counters.linearEqualityDedupRuns,
 				"root All must execute through searchAllMatches, not allRule.searchRanked")
@@ -179,4 +181,46 @@ func TestIntegratedIdentityCompilesMoreThan64EqualityClasses(t *testing.T) {
 	require.Equal(t, uint32(66), root.equalityClassCount) // 65 postings plus the wildcard-only result.
 	require.Greater(t, root.equalityClassCount, uint32(64))
 	require.Nil(t, root.duplicateBitmapIDs)
+
+	bits := harness.index.pool.get()
+	root.search(constraint{left: 64, right: 64}, bits, harness.index.pool)
+	require.Equal(t, uint64(40), bits.GetCardinality())
+	harness.index.pool.put(bits)
+	require.Equal(t, uint64(2), harness.counters.maskTests)
+	require.Equal(t, uint64(1), harness.counters.skippedOperands)
+}
+
+func TestIntegratedIdentityChecksDenseClassOnce(t *testing.T) {
+	schema, constraints, ids := identityABFixture(4, false)
+	harness := buildIdentityABIndex(t, identityIntegrated, schema, constraints, ids)
+	root := harness.index.root.(*allRule[identityABConstraint])
+	query := identityABConstraint{}
+	for child := range 4 {
+		query.values[child] = 1
+	}
+
+	bits := harness.index.pool.get()
+	root.search(query, bits, harness.index.pool)
+	require.Equal(t, uint64(256), bits.GetCardinality())
+	harness.index.pool.put(bits)
+	require.Equal(t, uint64(4), harness.counters.maskTests)
+	require.Equal(t, uint64(3), harness.counters.skippedOperands)
+	require.Zero(t, harness.counters.linearEqualityDedupRuns)
+}
+
+func TestIntegratedIdentityUniqueOperandsHaveNoMaskCheck(t *testing.T) {
+	type constraint struct{ left, right int }
+	schema := All(
+		Include(func(value constraint) (int, bool) { return value.left, true }),
+		Include(func(value constraint) (int, bool) { return value.right, true }),
+	)
+	constraints := []constraint{{left: 1, right: 1}, {left: 1, right: 2}, {left: 2, right: 1}}
+	harness := buildIdentityABIndex(t, identityIntegrated, schema, constraints, []int{0, 1, 2})
+	root := harness.index.root.(*allRule[constraint])
+
+	bits := harness.index.pool.get()
+	root.search(constraint{left: 1, right: 1}, bits, harness.index.pool)
+	require.Equal(t, uint64(1), bits.GetCardinality())
+	harness.index.pool.put(bits)
+	require.Zero(t, harness.counters.maskTests)
 }

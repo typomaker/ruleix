@@ -114,6 +114,7 @@ type rankedBitmap struct {
 
 type rankedBitmapBuffer struct {
 	items []rankedBitmap
+	mask  []uint64
 }
 
 func newBitmapPool() *bitmapPool {
@@ -208,5 +209,7 @@ func (p *bitmapPool) getRanked(n int) *rankedBitmapBuffer {
 func (p *bitmapPool) putRanked(buffer *rankedBitmapBuffer) {
 	clear(buffer.items)
 	buffer.items = buffer.items[:0]
+	clear(buffer.mask)
+	buffer.mask = buffer.mask[:0]
 	p.rankedPool.Put(buffer)
 }

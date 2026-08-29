@@ -11,11 +11,12 @@ import (
 // Counters are reported beside timing so later integrated work must explain
 // any win by reduced physical operations.
 //
-// Latest local calibration (Apple M1 Max, Go 1.26.0, 100ms, count=1), children
-// 2/4/8: Baseline 1331/2215/4123 ns/op and Integrated 1335/2218/4110 ns/op;
-// both modes reported 536 B/op, 2 allocs/op and respectively 2/4/8 physical
-// searches plus 1/3/7 intersections. This is structural evidence only; no
-// performance decision is made until the integrated executor is complete.
+// Latest local calibration (Apple M1 Max, Go 1.26.0, 2s, count=10), children
+// 2/4/8: Baseline medians 1331/2226/4090 ns/op at 536 B/op and 2 allocs/op;
+// Integrated medians 834/922/1087 ns/op at 0 B/op and 0 allocs/op. Baseline
+// performs 2/4/8 physical searches and 1/3/7 intersections; Integrated performs
+// one physical search, 2/4/8 mask tests, and skips 1/3/7 operands. This is
+// structural evidence only; the complete performance decision remains step E.
 // Reproduce with:
 //
 //	go test -run '^$' -bench '^BenchmarkPhysicalIdentityAB/' \

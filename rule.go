@@ -140,6 +140,12 @@ type equalityClassCompiler interface {
 	visitEqualitySourceClasses(func(equalitySourcePair, func(uint32)))
 }
 
+// equalityClassProvider returns the dense All-local class selected by the
+// query. Zero means that this result is unique and needs no execution check.
+type equalityClassProvider[T any] interface {
+	lookupEqualityClass(T) uint32
+}
+
 type equalitySourcePair struct {
 	wildcard physicalSourceID
 	posting  physicalSourceID

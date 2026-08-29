@@ -335,12 +335,22 @@ func (r *allRule[T]) searchObservedAliases(
 	// Most All groups are small. Keeping their ranking storage on the stack
 	// avoids a service allocation without adding shared mutable state.
 	var inline [8]rankedBitmap
-	if len(r.children) <= len(inline) {
-		r.searchRanked(v, dst, pool, inline[:len(r.children)], metrics, aliases)
+	if len(r.children) <= len(inline) && r.equalityClassCount <= 64 {
+		var checked [1]uint64
+		r.searchRanked(v, dst, pool, inline[:len(r.children)], metrics, aliases, checked[:])
 		return
 	}
 	buffer := pool.getRanked(len(r.children))
-	r.searchRanked(v, dst, pool, buffer.items, metrics, aliases)
+	words := int((r.equalityClassCount + 63) / 64)
+	if words > 0 {
+		if cap(buffer.mask) < words {
+			buffer.mask = make([]uint64, words)
+		} else {
+			buffer.mask = buffer.mask[:words]
+			clear(buffer.mask)
+		}
+	}
+	r.searchRanked(v, dst, pool, buffer.items, metrics, aliases, buffer.mask)
 	pool.putRanked(buffer)
 }
 
@@ -351,6 +361,7 @@ func (r *allRule[T]) searchRanked(
 	rankedChildren []rankedBitmap,
 	metrics *inspectorRuntime,
 	metricAliases []*inspectorRuntime,
+	checkedClasses []uint64,
 ) {
 	if !r.rankChildren(v, pool, rankedChildren) {
 		return
@@ -363,6 +374,8 @@ func (r *allRule[T]) searchRanked(
 			r.executionCounters.linearEqualityDedupRuns++
 		}
 		rankedChildren = r.deduplicateEqualityResults(v, rankedChildren)
+	} else if r.equalityClassCount != 0 {
+		rankedChildren = r.deduplicateEqualityClasses(v, rankedChildren, checkedClasses)
 	}
 	// Local plans prioritize reuse and must keep their zero-allocation hot path.
 	// For uncached Index searches, exact postings can be compared by complete
@@ -392,6 +405,45 @@ func (r *allRule[T]) searchRanked(
 		pool.put(first)
 	}
 	r.releaseRanked(pool, rankedChildren[1:])
+}
+
+func resolveEqualityClassProvider[T any](rule Rule[T]) equalityClassProvider[T] {
+	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
+		return resolveEqualityClassProvider(observed.child)
+	}
+	provider, _ := rule.(equalityClassProvider[T])
+	return provider
+}
+
+func (r *allRule[T]) deduplicateEqualityClasses(
+	v T,
+	rankedChildren []rankedBitmap,
+	checked []uint64,
+) []rankedBitmap {
+	write := 0
+	for read := range rankedChildren {
+		provider := resolveEqualityClassProvider(r.children[rankedChildren[read].childIdx])
+		class := uint32(0)
+		if provider != nil {
+			class = provider.lookupEqualityClass(v)
+		}
+		if class != 0 {
+			word, bit := (class-1)/64, uint64(1)<<((class-1)%64)
+			if r.executionCounters != nil {
+				r.executionCounters.maskTests++
+			}
+			if checked[word]&bit != 0 {
+				if r.executionCounters != nil {
+					r.executionCounters.skippedOperands++
+				}
+				continue
+			}
+			checked[word] |= bit
+		}
+		rankedChildren[write] = rankedChildren[read]
+		write++
+	}
+	return rankedChildren[:write]
 }
 
 func sharedWildcardOf[T any](rule Rule[T]) (sharedWildcardEquality[T], bool) {

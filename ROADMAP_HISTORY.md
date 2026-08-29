@@ -1,5 +1,42 @@
 # Roadmap history
 
+## 2026-08-29: execute integrated physical identities without transitional overhead
+
+The integrated executor now reads each query-selected equality class directly
+from the general, unary, binary, or lossy representation. Classes up to 64 use
+one stack mask; larger class sets reuse zeroed words retained in the existing
+pooled ranking buffer. A selected class performs one indexed bit test/set, and
+class zero performs no mask check. The integrated path no longer retains or
+runs the baseline pointer map and inline equality-key scan.
+
+Focused execution tests prove that four equal operands produce four mask tests
+and three skips, unique selected operands produce no mask tests, and a selected
+ordinal above 64 uses the pooled multiword path correctly. Existing physical
+operand compilation continues to remove unconditional equality and canonical
+range aliases before planning, while its inspector fan-out and exact-cache
+identity/epoch behavior remain shared by the executor. Ordinary and race suites
+pass. Per the experiment protocol, performance remains undecided until the
+complete correctness matrix in roadmap step D is implemented and passes.
+
+The required structural A/B calibration on Apple M1 Max with Go 1.26.0 used
+`-benchtime=2s -count=10`. For 2/4/8 duplicate children, Baseline medians were
+1331/2226/4090 ns/op at 536 B/op and two allocations, while Integrated medians
+were 834/922/1087 ns/op at zero bytes and allocations. Integrated reduced
+physical searches from 2/4/8 to one and intersections from 1/3/7 to zero. These
+focused numbers explain executor operation counts but are not step E acceptance
+evidence.
+
+The intermediate production gate retained 40,851--40,852 B/op and 28
+allocations for `Index.Search`, and warm `Local.Search` retained zero bytes and
+allocations. Its medians were 33.206 us/op and 767.4 ns/op; parallel Local was
+589.9 ns/search. A same-session parent run measured 33.498 us/op, 651.1 ns/op,
+and 466.3 ns/search respectively, so the integrated mask currently carries a
+warm/parallel latency cost on this non-decision matrix. Retained Local bytes
+remained 2,968 cold, 90,960 warm, 107,824 adaptive, and 73,931--74,011
+adversarial. The complete scale matrix, ordinary tests, and race tests passed.
+The roadmap explicitly defers acceptance or removal of individual integrated
+pieces until the complete executor's step E decision run.
+
 ## 2026-08-29: compile dense equality result classes
 
 The integrated identity compiler now assigns dense, `All`-local ordinals to

@@ -384,9 +384,10 @@ func searchAllMatches[C any, ID comparable](
 ) {
 	result := *dst
 	var inline [8]rankedBitmap
+	var inlineChecked [1]uint64
 	var rankedChildren []rankedBitmap
 	var buffer *rankedBitmapBuffer
-	if len(root.children) > len(inline) {
+	if len(root.children) > len(inline) || root.equalityClassCount > 64 {
 		buffer = pool.getRanked(len(root.children))
 		rankedChildren = buffer.items
 	} else {
@@ -398,6 +399,20 @@ func searchAllMatches[C any, ID comparable](
 		}
 		*dst = result
 		return
+	}
+	if root.equalityClassCount != 0 {
+		checked := inlineChecked[:]
+		if buffer != nil {
+			words := int((root.equalityClassCount + 63) / 64)
+			if cap(buffer.mask) < words {
+				buffer.mask = make([]uint64, words)
+			} else {
+				buffer.mask = buffer.mask[:words]
+				clear(buffer.mask)
+			}
+			checked = buffer.mask
+		}
+		rankedChildren = root.deduplicateEqualityClasses(value, rankedChildren, checked)
 	}
 	initiallyBroad := rankedChildren[0].card > allCandidateScanLimit
 	var candidates *roaring.Bitmap

@@ -92,26 +92,6 @@ reject or retain production pieces from their standalone timings. Keep the
 baseline and integrated variants callable from one benchmark binary until the
 final decision so machine drift cannot be mistaken for a 3--6% effect.
 
-#### C. Execute the integrated design without transitional overhead
-
-- Unique operands and unconditional aliases execute with no identity branch:
-  unique operands remain ordinary compiled operations, while unconditional
-  aliases no longer exist in the executable operand slice.
-- Conditional equality operands use one dense ordinal and one stack `uint64`
-  checked mask for up to 64 classes. Larger groups reuse bounded zeroed words
-  from existing pooled scratch storage. The operation performs at most one
-  bit test/set and no loop, map lookup, pointer lookup, or packed-key search.
-- Remove the old inline equality-key linear scan from the integrated variant;
-  do not pay for both mechanisms. Preserve it unchanged in the baseline mode.
-- Execute a shared physical operand once and fan its observations out to every
-  attached `Inspect` and exact-details site. Confirm that insertion, planning,
-  materialization, intersection, candidate validation, cache hit/miss, and
-  result-cardinality observations preserve their logical multiplicity without
-  repeating the physical search operation.
-- Preserve existing exact-intersection cache input identities and epochs.
-  Cached or temporary results inherit operation identity only when construction
-  proved it; equal contents from unrelated operations never become aliases.
-
 #### D. Pass correctness before collecting performance evidence
 
 - Add table tests for 0, partial, and full duplication with 2, 4, 8, 64, and

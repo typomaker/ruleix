@@ -473,6 +473,16 @@ func (r *eqRule[T, V]) lookupEqualityResultComponents(v T) (*roaring.Bitmap, *ro
 	posting, deduplicable := equalitySetBitmap(set)
 	return r.wildcard, posting, set == nil || deduplicable
 }
+func (r *eqRule[T, V]) lookupEqualityClass(v T) uint32 {
+	value, ok := r.get(v)
+	if !ok {
+		return r.wildcardClass
+	}
+	if set := r.values.get(value); set != nil {
+		return set.class
+	}
+	return r.wildcardClass
+}
 func (r *eqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 	value, ok := r.get(v)
 	if ok {
@@ -617,6 +627,12 @@ func (r *unaryEqRule[T, V]) lookupEqualityResultComponents(v T) (*roaring.Bitmap
 	posting, deduplicable := equalitySetBitmap(set)
 	return r.wildcard, posting, set == nil || deduplicable
 }
+func (r *unaryEqRule[T, V]) lookupEqualityClass(v T) uint32 {
+	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
+		return set.class
+	}
+	return r.wildcardClass
+}
 func (r *unaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
 		set.addTo(dst)
@@ -735,6 +751,12 @@ func (r *binaryEqRule[T, V]) lookupEqualityResultComponents(v T) (*roaring.Bitma
 	set := r.matchingSet(getOptional(r.get, v))
 	posting, deduplicable := equalitySetBitmap(set)
 	return r.wildcard, posting, set == nil || deduplicable
+}
+func (r *binaryEqRule[T, V]) lookupEqualityClass(v T) uint32 {
+	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
+		return set.class
+	}
+	return r.wildcardClass
 }
 func (r *binaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 	if set := r.matchingSet(getOptional(r.get, v)); set != nil {

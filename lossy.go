@@ -615,6 +615,17 @@ func (r *lossyEqualityRule[T, V]) estimateCardinality(v T) uint64 {
 func (r *lossyEqualityRule[T, V]) estimateCheapCardinality(v T) uint64 {
 	return r.estimateCardinality(v)
 }
+func (r *lossyEqualityRule[T, V]) lookupEqualityClass(v T) uint32 {
+	value, ok := r.get(v)
+	if !ok {
+		return r.wildcardClass
+	}
+	hash, ok := r.hasher.hash(value)
+	if !ok {
+		return r.wildcardClass
+	}
+	return r.buckets[hash>>r.shift].class
+}
 func (r *lossyEqualityRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
 	bits, found := r.lookupCachedBitmap(v, pool)
 	if !found {

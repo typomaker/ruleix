@@ -203,10 +203,12 @@ func TestAllChecksInternedEqualityPostingOnce(t *testing.T) {
 	index, err := New[constraint, int](schema).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	root := index.root.(*allRule[constraint])
-	require.Len(t, root.duplicateBitmapIDs, 2) // empty wildcard and concrete posting
+	require.Equal(t, uint32(2), root.equalityClassCount) // empty wildcard and concrete posting
+	require.Nil(t, root.duplicateBitmapIDs)
 
 	ranked := []rankedBitmap{{childIdx: 0}, {childIdx: 1}}
-	ranked = root.deduplicateEqualityResults(constraint{left: &one, right: &one}, ranked)
+	var checked [1]uint64
+	ranked = root.deduplicateEqualityClasses(constraint{left: &one, right: &one}, ranked, checked[:])
 	require.Len(t, ranked, 1)
 
 	var matches []int
@@ -236,12 +238,14 @@ func TestAllDeduplicatesOnlyMatchingWildcardPostingPair(t *testing.T) {
 	root := index.root.(*allRule[constraint])
 
 	ranked := []rankedBitmap{{childIdx: 0}, {childIdx: 1}}
-	got := root.deduplicateEqualityResults(constraint{left: &one, right: &one}, append([]rankedBitmap(nil), ranked...))
+	var checked [1]uint64
+	got := root.deduplicateEqualityClasses(constraint{left: &one, right: &one}, append([]rankedBitmap(nil), ranked...), checked[:])
 	require.Len(t, got, 2, "different concrete postings must remain distinct")
 
 	// Querying an absent value selects the same [empty wildcard, no posting]
 	// pair in both children, so the second rule is redundant.
 	missing := 3
-	got = root.deduplicateEqualityResults(constraint{left: &missing, right: &missing}, ranked)
+	checked = [1]uint64{}
+	got = root.deduplicateEqualityClasses(constraint{left: &missing, right: &missing}, ranked, checked[:])
 	require.Len(t, got, 1)
 }
