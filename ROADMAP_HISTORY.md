@@ -2702,6 +2702,65 @@ go test -run '^$' -bench '^BenchmarkLocalDuplicateEquality/' \
   -benchmem -benchtime=500ms -count=3 .
 ```
 
+## 2026-08-29: physical source identity fallback decision
+
+The physical bitmap/range identity step is closed without retaining its
+proposed runtime ID and checked-mask architecture. Both the map-backed and the
+representation-retained equality prototypes documented around this entry
+failed the focused gate: they regressed warm latency by roughly 5--6% and
+added four cold allocations.
+Equality is the only representation in which independently compiled children
+naturally resolve to one interned immutable bitmap. Ordered, `Between`, and
+`CompareBy` operations own distinct query-dependent materializations, and
+opaque getter/comparator identity is not a sufficient structural proof for
+merging them. Extending the rejected machinery to those operations therefore
+cannot establish a broader safe runtime win.
+
+The fallback required by the step is retained instead. Repeated uses of the
+same exact schema `Rule` are canonicalized during Build, before ranking and
+cache construction, across equality, ordered, `Between`, and `CompareBy`
+representations. Nested `All` groups are flattened, similar independently
+constructed rules stay distinct, and separate `Inspect` wrappers bind to the
+one canonical node. This elimination adds no query-time identity check and no
+retained query-dependent state. The existing collision-checked bitmap interner
+and specialized equality-component duplicate path remain independent of this
+schema-instance optimization.
+
+The retained same-instance 8-child equality measurement is 215.9 ns/op for
+`Index.Search` and 203.2 ns/op for warm `Local.Search`, both at zero measured
+bytes and allocations, versus 1.880 us, 152 B, two allocations and 384.0 ns,
+zero bytes, zero allocations for independently compiled controls. Retained
+memory is 65,664 B/index and 1,549 B/warm Local versus 107,931 B/index and
+4,421 B/warm Local for the independent control. The focused structural tests
+cover all four representations, nested groups, similar non-equivalent rules,
+and separately inspected aliases.
+
+The final production gate on Apple M1 Max with Go 1.26.0 measured medians of
+33.120 us, 40,852 B, and 28 allocations for `Index.Search`; 586.3 ns, zero
+bytes, and zero allocations for warm `Local.Search`; and 425.3 ns/search for
+parallel batches. Retained memory was 2,968 B per cold Local, 91,003 B per warm
+Local, and 107,845 B for the adaptive case. Ordinary, race, and the complete
+10K/100K/1M production-scale matrices passed without a new allocation class.
+
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkCanonicalAllAliases/' \
+  -benchmem -benchtime=500ms -count=5 .
+go test -run '^$' -bench '^BenchmarkCanonicalAllRetainedMemory/' \
+  -benchtime=3x -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-29: reject representation-retained equality source IDs
 
 The follow-up to the map-backed source-class experiment assigned a
