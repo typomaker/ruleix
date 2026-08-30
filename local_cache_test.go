@@ -463,6 +463,96 @@ func TestLocalAllResultCacheInvalidatesWhenChildCacheChanges(t *testing.T) {
 	require.True(t, plan.results[0].bits != nil || plan.results[1].bits != nil)
 }
 
+func TestLocalAllResultCacheMatchesExactQueryBeforeChildLookup(t *testing.T) {
+	type constraint struct{ left, right int }
+	var leftCalls, rightCalls int
+	schema := All(
+		Include(func(value constraint) (int, bool) {
+			leftCalls++
+			return value.left, true
+		}),
+		Include(func(value constraint) (int, bool) {
+			rightCalls++
+			return value.right, true
+		}),
+	)
+	constraints := make([]constraint, 10_000)
+	ids := make([]int, len(constraints))
+	for id := range constraints {
+		constraints[id] = constraint{left: 2, right: 2}
+		if id < 5_000 {
+			constraints[id].left = 1
+		}
+		if id >= 4_955 {
+			constraints[id].right = 1
+		}
+		ids[id] = id
+	}
+	index, err := New[constraint, int](schema).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	local := index.Local()
+	t.Cleanup(local.Close)
+	query := constraint{left: 1, right: 1}
+	var matches []int
+	for range 3 {
+		matches = matches[:0]
+		local.Search(query, &matches)
+	}
+	require.Len(t, matches, 45)
+
+	leftCalls, rightCalls = 0, 0
+	matches = matches[:0]
+	local.Search(query, &matches)
+
+	require.Len(t, matches, 45)
+	require.Equal(t, 1, leftCalls)
+	require.Equal(t, 1, rightCalls)
+
+	changed := constraint{left: 1, right: 2}
+	var want []int
+	matches = matches[:0]
+	index.Search(changed, &want)
+	local.Search(changed, &matches)
+	require.Equal(t, want, matches)
+}
+
+func TestLocalQueryKeysUseOperationEquality(t *testing.T) {
+	type query struct {
+		equality int
+		ordered  int
+		from     int
+		until    int
+		value    int
+		operator Operator
+	}
+	base := query{equality: 1, ordered: 2, from: 3, until: 4, value: 5, operator: OperatorGT}
+	providers := []localQueryKeyProvider[query]{
+		&eqRule[query, int]{get: func(value query) (int, bool) { return value.equality, true }},
+		&orderedRule[query, int]{
+			get: func(value query) (int, bool) { return value.ordered, true }, compare: cmp.Compare[int],
+		},
+		&betweenRule[query, int]{
+			from:    &orderedRule[query, int]{get: func(value query) (int, bool) { return value.from, true }},
+			until:   &orderedRule[query, int]{get: func(value query) (int, bool) { return value.until, true }},
+			compare: cmp.Compare[int],
+		},
+		&compareByRule[query, int]{
+			value:    func(value query) (int, bool) { return value.value, true },
+			operator: func(value query) (Operator, bool) { return value.operator, true },
+			compare:  cmp.Compare[int],
+		},
+	}
+	for _, provider := range providers {
+		key, retained := provider.localQueryKey(base)
+		require.Positive(t, retained)
+		require.True(t, provider.localQueryKeyMatches(base, key))
+	}
+
+	compareKey, _ := providers[3].localQueryKey(base)
+	base.operator = OperatorLTE
+	require.True(t, providers[3].localQueryKeyMatches(base, compareKey), "query-side CompareBy operator is ignored")
+}
+
 func TestLocalAllResultCacheHonorsSharedByteBudget(t *testing.T) {
 	pool := newLocalBitmapPool(1)
 	pool.observeRuntime = false
@@ -475,12 +565,12 @@ func TestLocalAllResultCacheHonorsSharedByteBudget(t *testing.T) {
 	for id := uint32(0); large.GetSizeInBytes() <= maxLocalAllResultBytes; id += 2 {
 		large.Add(id)
 	}
-	rule.storeLocalResult(pool, ranked, large)
+	rule.storeLocalResult(pool, ranked, large, 0)
 	require.Zero(t, pool.allResultBytes)
 	require.Nil(t, plan.results[0].bits)
 
 	small := roaring.BitmapOf(1, 2, 3)
-	rule.storeLocalResult(pool, ranked, small)
+	rule.storeLocalResult(pool, ranked, small, 0)
 	require.Positive(t, pool.allResultBytes)
 	require.LessOrEqual(t, pool.allResultBytes, uint64(maxLocalAllResultBytes))
 	require.True(t, plan.results[0].idsSet)
@@ -498,7 +588,7 @@ func TestLocalAllResultCacheKeepsWideResultsOnBitmapPath(t *testing.T) {
 	wide := roaring.New()
 	wide.AddRange(0, maxLocalAllResultIDs+1)
 
-	rule.storeLocalResult(pool, ranked, wide)
+	rule.storeLocalResult(pool, ranked, wide, 0)
 
 	require.NotNil(t, plan.results[0].bits)
 	require.False(t, plan.results[0].idsSet)

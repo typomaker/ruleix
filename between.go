@@ -1,6 +1,10 @@
 package ruleix
 
-import "github.com/RoaringBitmap/roaring/v2"
+import (
+	"unsafe"
+
+	"github.com/RoaringBitmap/roaring/v2"
+)
 
 // Between matches an interval fully covered by a stored interval:
 // stored.from <= query.from AND query.until <= stored.until. Either missing stored
@@ -27,6 +31,11 @@ type betweenRule[T any, V any] struct {
 	from    *orderedRule[T, V]
 	until   *orderedRule[T, V]
 	compare Compare[V]
+}
+
+type betweenLocalQueryKey[V any] struct {
+	from, until       V
+	hasFrom, hasUntil bool
 }
 
 func (r *betweenRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
@@ -174,6 +183,23 @@ func (r *betweenRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.
 		}
 	}
 	return nil, false
+}
+func (r *betweenRule[T, V]) localQueryKey(v T) (any, uint64) {
+	from, hasFrom := r.from.get(v)
+	until, hasUntil := r.until.get(v)
+	key := betweenLocalQueryKey[V]{from: from, until: until, hasFrom: hasFrom, hasUntil: hasUntil}
+	return key, uint64(16 + unsafe.Sizeof(key))
+}
+func (r *betweenRule[T, V]) localQueryKeyMatches(v T, key any) bool {
+	want, ok := key.(betweenLocalQueryKey[V])
+	if !ok {
+		return false
+	}
+	from, hasFrom := r.from.get(v)
+	until, hasUntil := r.until.get(v)
+	return want.hasFrom == hasFrom && want.hasUntil == hasUntil &&
+		(!hasFrom || r.compare(want.from, from) == 0) &&
+		(!hasUntil || r.compare(want.until, until) == 0)
 }
 func (r *betweenRule[T, V]) isCardinalityZero(v T) bool {
 	return r.from.isCardinalityZero(v) || r.until.isCardinalityZero(v)

@@ -716,10 +716,54 @@ func (r *allRule[T]) loadLocalResult(
 	return nil
 }
 
+func (r *allRule[T]) loadLocalQueryResult(pool *bitmapPool, value T) *localAllResult {
+	if pool.local == nil || pool.observeRuntime {
+		return nil
+	}
+	plan := pool.allPlans[r]
+	if plan == nil {
+		return nil
+	}
+	for i := range plan.results {
+		result := &plan.results[i]
+		if !result.idsSet || result.epoch != pool.cacheEpoch || len(result.keys) != len(r.children) {
+			continue
+		}
+		match := true
+		for child := range r.children {
+			provider := r.executionCapability(child).queryKey
+			if provider == nil || !provider.localQueryKeyMatches(value, result.keys[child]) {
+				match = false
+				break
+			}
+		}
+		if match {
+			return result
+		}
+	}
+	return nil
+}
+
+func (r *allRule[T]) captureLocalQueryKeys(value T) ([]any, uint64, bool) {
+	keys := make([]any, len(r.children))
+	var bytes uint64
+	for child := range r.children {
+		provider := r.executionCapability(child).queryKey
+		if provider == nil {
+			return nil, 0, false
+		}
+		key, retained := provider.localQueryKey(value)
+		keys[child] = key
+		bytes = saturatingAdd(bytes, retained)
+	}
+	return keys, bytes, true
+}
+
 func (r *allRule[T]) storeLocalResult(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 	bits *roaring.Bitmap,
+	value T,
 ) {
 	if pool.local == nil || pool.observeRuntime {
 		return
@@ -734,6 +778,7 @@ func (r *allRule[T]) storeLocalResult(
 		return
 	}
 	entry := &plan.results[plan.next]
+	keys, keyBytes, keysSet := r.captureLocalQueryKeys(value)
 	bitmapBytes := bits.GetSizeInBytes()
 	inputCapacity := len(rankedChildren)
 	if cap(entry.inputs) > inputCapacity {
@@ -748,7 +793,7 @@ func (r *allRule[T]) storeLocalResult(
 			idCapacity = cap(entry.ids)
 		}
 	}
-	entryBytes := bitmapBytes + inputBytes + uint64(idCapacity)*4
+	entryBytes := saturatingAdd(bitmapBytes+inputBytes+uint64(idCapacity)*4, keyBytes)
 	available := uint64(maxLocalAllResultBytes) - min(pool.allResultBytes, uint64(maxLocalAllResultBytes))
 	available = saturatingAdd(available, entry.bytes)
 	if entryBytes > available {
@@ -770,6 +815,11 @@ func (r *allRule[T]) storeLocalResult(
 		entry.bits.Clear()
 	}
 	entry.bits.Or(bits)
+	if keysSet {
+		entry.keys = keys
+	} else {
+		entry.keys = nil
+	}
 	entry.idsSet = cardinality <= maxLocalAllResultIDs
 	if entry.idsSet {
 		if cap(entry.ids) < int(cardinality) {

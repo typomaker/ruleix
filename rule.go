@@ -83,6 +83,14 @@ type cachedBitmapProvider[T any] interface {
 	lookupCachedBitmap(T, *bitmapPool) (*roaring.Bitmap, bool)
 }
 
+// localQueryKeyProvider captures and validates the exact getter output that
+// determines one operation's result. Implementations may use a hash only as a
+// prefilter; localQueryKeyMatches must remain collision-safe.
+type localQueryKeyProvider[T any] interface {
+	localQueryKey(T) (key any, retainedBytes uint64)
+	localQueryKeyMatches(T, any) bool
+}
+
 // planningBitmapProvider exposes an immutable posting list found while All is
 // ranking its children. The bitmap remains owned by the rule and may only be
 // read by the search path.

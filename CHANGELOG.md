@@ -18,6 +18,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Warm exact `All` cache hits with at most 64 matches reuse compact internal
   IDs, avoiding bitmap copying and enumeration while preserving zero measured
   allocations.
+- Repeated root `All` queries validate cached getter outputs before child
+  lookup and ranking, allowing exact compact results to return directly.
 
 ## [0.8.1] - 2026-08-25
 

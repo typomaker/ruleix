@@ -1,5 +1,47 @@
 # Roadmap history
 
+## 2026-08-30: validate exact query keys before child lookup
+
+Root `All` result-cache entries now retain the exact getter outputs that
+determine each supported child operation. Before ranking, an ordinary Local
+compares the current equality, ordered, `Between`, and `CompareBy` inputs with
+the two recent entries using each operation's own equality semantics. A full
+match returns compact cached IDs immediately, eliminating child cache lookup,
+cardinality ranking, and bitmap-identity validation. There is no hash-only
+acceptance path, so collisions cannot affect correctness. Unsupported schemas,
+sampled inspector contexts, exclusions, stale epochs, and non-compact results
+fall back to the existing executor.
+
+Seven interleaved one-second runs of prebuilt parent and candidate binaries on
+Apple M1 Max with Go 1.26.0 measured production-shaped warm-Local medians of
+404.5 and 228.1 ns/op, a 43.6% reduction; the candidate won all seven pairs and
+both versions remained at 0 B/op and 0 allocations. The normal five-run gate
+measured a 235.3 ns/op Local median. `Index.Search` retained 40,851--40,852
+B/op and 28 allocations with a 33.403 us/op median. Parallel Local batches
+improved from the 354.2 ns/search parent result to 209.8 ns/search.
+
+Ordinary and race tests passed with the full 10K/100K/1M scale matrix and
+focused exact-key, query-change, cache-invalidation, exclusion, wildcard,
+large-result, nested-`All`, and result-cardinality checks. Retained memory was
+2,973 B cold, 92,208 B warm, 109,072 B adaptive, and 74,123 B adversarial. The
+800 B warm increase is charged to the existing shared 64 KiB exact-result
+budget and stores two complete production query keys.
+
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-30: cache compact IDs for small exact `All` results
 
 Warm exact-intersection cache entries now retain up to 64 internal IDs beside

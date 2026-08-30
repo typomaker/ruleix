@@ -3,6 +3,7 @@ package ruleix
 import (
 	"fmt"
 	"slices"
+	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
@@ -419,6 +420,13 @@ func (r *eqRule[T, V]) estimateCheapCardinality(v T) uint64 { return r.estimateC
 func (r *eqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
 	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
 }
+func (r *eqRule[T, V]) localQueryKey(v T) (any, uint64) {
+	return getOptional(r.get, v), uint64(16 + unsafe.Sizeof(optionalValue[V]{}))
+}
+func (r *eqRule[T, V]) localQueryKeyMatches(v T, key any) bool {
+	want, ok := key.(optionalValue[V])
+	return ok && want == getOptional(r.get, v)
+}
 func (r *eqRule[T, V]) isCardinalityZero(v T) bool {
 	if !r.wildcard.IsEmpty() {
 		return false
@@ -615,6 +623,13 @@ func (r *unaryEqRule[T, V]) estimateCheapCardinality(v T) uint64 {
 func (r *unaryEqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
 	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
 }
+func (r *unaryEqRule[T, V]) localQueryKey(v T) (any, uint64) {
+	return getOptional(r.get, v), uint64(16 + unsafe.Sizeof(optionalValue[V]{}))
+}
+func (r *unaryEqRule[T, V]) localQueryKeyMatches(v T, key any) bool {
+	want, ok := key.(optionalValue[V])
+	return ok && want == getOptional(r.get, v)
+}
 func (r *unaryEqRule[T, V]) isCardinalityZero(v T) bool {
 	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
 }
@@ -747,6 +762,13 @@ func (r *binaryEqRule[T, V]) estimateCheapCardinality(v T) uint64 {
 }
 func (r *binaryEqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
 	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
+}
+func (r *binaryEqRule[T, V]) localQueryKey(v T) (any, uint64) {
+	return getOptional(r.get, v), uint64(16 + unsafe.Sizeof(optionalValue[V]{}))
+}
+func (r *binaryEqRule[T, V]) localQueryKeyMatches(v T, key any) bool {
+	want, ok := key.(optionalValue[V])
+	return ok && want == getOptional(r.get, v)
 }
 func (r *binaryEqRule[T, V]) isCardinalityZero(v T) bool {
 	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil

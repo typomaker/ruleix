@@ -383,6 +383,15 @@ func searchAllMatches[C any, ID comparable](
 	metrics *inspectorRuntime,
 ) {
 	result := *dst
+	if len(exclusions) == 0 {
+		if cached := root.loadLocalQueryResult(pool, value); cached != nil {
+			for _, id := range cached.ids {
+				result = append(result, values[id])
+			}
+			*dst = result
+			return
+		}
+	}
 	var inline [8]rankedBitmap
 	var inlineChecked [1]uint64
 	var rankedChildren []rankedBitmap
@@ -441,7 +450,7 @@ func searchAllMatches[C any, ID comparable](
 		return
 	}
 	if candidates != nil && cachedResult == nil {
-		root.storeLocalResult(pool, rankedChildren, candidates)
+		root.storeLocalResult(pool, rankedChildren, candidates, value)
 	}
 
 	excluded := buildAllExclusions(exclusions, value, rankedChildren[0].card, pool)

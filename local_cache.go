@@ -25,6 +25,7 @@ type localAllPlan struct {
 type localAllResult struct {
 	inputs []*roaring.Bitmap
 	ids    []uint32
+	keys   []any
 	epoch  uint64
 	bits   *roaring.Bitmap
 	bytes  uint64

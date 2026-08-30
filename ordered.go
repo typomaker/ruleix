@@ -3,6 +3,7 @@ package ruleix
 import (
 	"fmt"
 	"math"
+	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
@@ -84,6 +85,11 @@ type orderedRule[T any, V any] struct {
 	inclusive bool
 	wildcard  *roaring.Bitmap
 	index     orderedIndex[V]
+}
+
+type orderedLocalQueryKey[V any] struct {
+	value V
+	ok    bool
 }
 
 func (r *orderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
@@ -280,6 +286,18 @@ func (r *orderedRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.
 		return nil, false
 	}
 	return comparedValueCacheLookup(cache, value, r.compare)
+}
+func (r *orderedRule[T, V]) localQueryKey(v T) (any, uint64) {
+	value, ok := r.get(v)
+	return orderedLocalQueryKey[V]{value: value, ok: ok}, uint64(16 + unsafe.Sizeof(orderedLocalQueryKey[V]{}))
+}
+func (r *orderedRule[T, V]) localQueryKeyMatches(v T, key any) bool {
+	want, ok := key.(orderedLocalQueryKey[V])
+	if !ok {
+		return false
+	}
+	value, present := r.get(v)
+	return want.ok == present && (!present || r.compare(want.value, value) == 0)
 }
 func (r *orderedRule[T, V]) isCardinalityZero(v T) bool {
 	return r.estimateCardinality(v) == 0

@@ -10,6 +10,7 @@ type executionCapability[T any] struct {
 	directID     ruleIDMatcher[T]
 	directIDWork uint64
 	filter       candidateFilter[T]
+	queryKey     localQueryKeyProvider[T]
 }
 
 func describeExecutionCapability[T any](rule Rule[T]) executionCapability[T] {
@@ -21,6 +22,7 @@ func describeExecutionCapability[T any](rule Rule[T]) executionCapability[T] {
 	result.cached, _ = rule.(cachedBitmapProvider[T])
 	result.posting, _ = operationRule.(planningBitmapProvider[T])
 	result.filter, _ = operationRule.(candidateFilter[T])
+	result.queryKey, _ = operationRule.(localQueryKeyProvider[T])
 	if nested, ok := operationRule.(*allRule[T]); ok {
 		if nested.planningPrepared {
 			for i := range nested.children {
