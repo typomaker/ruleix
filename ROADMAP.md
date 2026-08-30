@@ -34,6 +34,16 @@ record its code, measurements, and rejection reason in
 from the last accepted parent. Do not combine two unmeasured ideas in one
 candidate.
 
+Before removing any candidate that regresses a measured workload, capture
+comparable CPU profiles for the separately prebuilt parent and candidate under
+the same workload, CPU setting, and duration. Attribute the additional time to
+specific functions or call sites and use focused profiles, microbenchmarks, or
+assembly inspection when the top-level profiles do not isolate the cause.
+Record the evidence and distinguish a confirmed cause from a remaining
+hypothesis. An unexplained regression may still be rejected, but profiling it
+is a mandatory part of completing the experiment and must happen while the
+candidate is still reproducible.
+
 ### L1. Refresh the baseline and identify the new hot path
 
 - Build benchmark binaries for the same commit and run the production-shaped
@@ -149,3 +159,8 @@ Preserve the exact commands, raw medians, paired win count, bytes/op,
 allocations/op, retained-memory totals, machine, and Go version in
 `ROADMAP_HISTORY.md`. A later step may rely only on an earlier result that has
 passed this gate and been committed.
+
+When a candidate regresses any decision workload, also preserve the parent and
+candidate profile commands, comparable profile attribution, and any focused
+evidence used to explain the delta. Do not remove the reproducible candidate
+until that diagnosis has been captured.

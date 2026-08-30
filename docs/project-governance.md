@@ -18,6 +18,12 @@ updated only when a new canonical entry point is required.
 - When adding or changing a benchmark, include a nearby comment with the latest
   local results and enough run parameters to make future measurements
   comparable. Update the relevant canonical document in `docs/` as well.
+- Before removing a performance experiment that regresses its target or a gate
+  workload, profile the reproducible parent and candidate under comparable
+  conditions. Use focused profiles, microbenchmarks, or assembly inspection if
+  needed to localize the delta. Record confirmed causes as measured findings
+  and unresolved explanations as hypotheses; a regression may be rejected
+  without a conclusive cause, but not without the profiling attempt.
 
 ## Documentation ownership
 
