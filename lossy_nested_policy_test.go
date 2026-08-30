@@ -24,7 +24,6 @@ type nestedLossySnapshot struct {
 	strategy    string
 	usage       uint64
 	limit       uint64
-	effective   uint64
 	granularity uint64
 	hasLimit    bool
 	hasGrain    bool
@@ -36,12 +35,10 @@ func snapshotNestedLossy(t *testing.T, inspector Inspector) nestedLossySnapshot 
 	usage, ok := snapshot.MemoryUsage()
 	require.True(t, ok)
 	limit, hasLimit := snapshot.MemoryLimit()
-	effective, hasEffective := snapshot.EffectiveMemoryLimit()
-	require.Equal(t, hasLimit, hasEffective)
 	granularity, hasGrain := snapshot.Granularity()
 	return nestedLossySnapshot{
 		mode: snapshot.Mode(), strategy: snapshot.Strategy(), usage: usage,
-		limit: limit, effective: effective, granularity: granularity, hasLimit: hasLimit, hasGrain: hasGrain,
+		limit: limit, granularity: granularity, hasLimit: hasLimit, hasGrain: hasGrain,
 	}
 }
 
@@ -207,7 +204,7 @@ func TestNestedLossyBoundaryAndPolicyPathMatrix(t *testing.T) {
 	require.Contains(t, err.Error(), "MemoryLimit")
 }
 
-func TestInspectReportsConfiguredAndAncestorEffectiveLossyLimits(t *testing.T) {
+func TestInspectReportsAncestorConstrainedLossyLimit(t *testing.T) {
 	constraints, ids := nestedLossyData(257)
 	for i := range ids {
 		ids[i] = i
@@ -231,11 +228,9 @@ func TestInspectReportsConfiguredAndAncestorEffectiveLossyLimits(t *testing.T) {
 
 	innerSnapshot := snapshotNestedLossy(t, inner)
 	outerSnapshot := snapshotNestedLossy(t, outer)
-	require.Equal(t, innerLimit, innerSnapshot.limit)
-	require.Less(t, innerSnapshot.effective, innerSnapshot.limit)
-	require.GreaterOrEqual(t, innerSnapshot.effective, innerSnapshot.usage)
+	require.Equal(t, outerLimit, innerSnapshot.limit)
+	require.GreaterOrEqual(t, innerSnapshot.limit, innerSnapshot.usage)
 	require.Equal(t, outerLimit, outerSnapshot.limit)
-	require.Equal(t, outerLimit, outerSnapshot.effective)
 }
 
 func TestNestedLossyAccountingOverflowReportsStablePolicyPath(t *testing.T) {

@@ -13,8 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   combined representation exceeds its hard limit, then applies deterministic
   discrete downgrades by bytes released, current usage, and schema order.
 - Nested `Lossy` policies enforce both local and ancestor memory caps;
-  inspection snapshots distinguish the configured `MemoryLimit` from the
-  ancestor-constrained `EffectiveMemoryLimit` and report accounted subtree
+  inspection snapshots report the effective `MemoryLimit`, accounted subtree
   usage, selected mode, and granularity from one immutable build generation.
 - Removed shared `All` planner profiles after they failed to demonstrate a
   cold-start benefit; `Local` planning remains deterministic and per-context.

@@ -201,10 +201,10 @@ lossy result ⊇ exact result
 сохраняет собственные accounting и `Inspect`. Детали стратегий и формулы memory accounting описаны в
 [lossy-index.md](lossy-index.md).
 
-Снапшот политики различает локально настроенный `MemoryLimit` и
-`EffectiveMemoryLimit`, доступный после ограничений предков. Оба значения и
-accounted usage принадлежат одной неизменяемой build-generation; выбранный
-exact/lossy mode и granularity публикуются вместе с ними.
+Снапшот политики публикует через `MemoryLimit` фактически доступный лимит после
+локального ограничения и ограничений предков. Он и accounted usage принадлежат
+одной неизменяемой build-generation; выбранный exact/lossy mode и granularity
+публикуются вместе с ними.
 
 Структура `Lossy`-политик валидируется один раз перед чтением записей. Ошибки
 некорректной вложенной политики и ошибки планирования используют один

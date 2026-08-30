@@ -383,8 +383,7 @@ func materializeLossyPolicy[T any](plan *lossyPolicyPlan[T], leaves []lossyAllLe
 		if err != nil {
 			return nil, inspectionDetails{}, err
 		}
-		details.MemoryLimitBytes, details.MemoryLimitAvailable = plan.limit, true
-		details.EffectiveMemoryLimitBytes, details.EffectiveMemoryLimitAvailable = plan.effective, true
+		details.MemoryLimitBytes, details.MemoryLimitAvailable = plan.effective, true
 		if rootInspectorBelongsToPolicy(plan.children[0]) {
 			child = applyLossyPolicyDetailsToRootInspector(child, details)
 		}

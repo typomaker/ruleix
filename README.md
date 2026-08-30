@@ -332,10 +332,10 @@ once. Its first matching insertion determines result order.
 ### Rule diagnostics
 
 `Inspect` can mark one rule and report the representation selected during
-`Build`. For a `Lossy` policy it exposes accounted subtree usage, the locally
-configured `MemoryLimit`, the `EffectiveMemoryLimit` available after ancestor
-caps, selected exact/lossy mode, item and distinct-value counts, and bucket
-granularity when applicable. Optional metrics return an availability flag.
+`Build`. For a `Lossy` policy it exposes accounted subtree usage, the effective
+`MemoryLimit` after ancestor caps, selected exact/lossy mode, item and
+distinct-value counts, and bucket granularity when applicable. Optional
+metrics return an availability flag.
 Call `Snapshot` once to capture one successful
 build generation and its observed runtime counters. Runtime counters are
 low-priority samples: shared `Index` searches and 63 of every 64 `Local`

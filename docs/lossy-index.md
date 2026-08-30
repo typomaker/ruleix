@@ -87,14 +87,12 @@ exceed the budget.
 ```go
 MemoryUsage() (uint64, bool)
 MemoryLimit() (uint64, bool)
-EffectiveMemoryLimit() (uint64, bool)
 ```
 
-All three values are bytes. `MemoryLimit` is the policy's locally configured
-cap. `EffectiveMemoryLimit` is the maximum available to that subtree after
-accounting for every ancestor cap and the selected representations of its
-siblings; it equals `MemoryLimit` when no ancestor constrains it. `MemoryUsage`
-is the selected subtree's deterministic Ruleix accounting
+Both values are bytes. `MemoryLimit` is the maximum available to that subtree
+after accounting for its local configuration, every ancestor cap, and the
+selected representations of its siblings. `MemoryUsage` is the selected
+subtree's deterministic Ruleix accounting
 value, not a sample from `runtime.MemStats`, a heap profile, or an estimate
 derived from the Go allocator. Given the same input, policy, and selected
 strategy, it must be identical across repeated builds, supported architectures,

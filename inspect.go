@@ -62,18 +62,11 @@ func (s InspectorSnapshot) MemoryUsage() (uint64, bool) {
 	return d.MemoryUsageBytes, d.MemoryUsageAvailable
 }
 
-// MemoryLimit reports the configured representation byte limit.
+// MemoryLimit reports the effective representation byte limit after applying
+// every ancestor policy limit.
 func (s InspectorSnapshot) MemoryLimit() (uint64, bool) {
 	d := s.buildSnapshot().details()
 	return d.MemoryLimitBytes, d.MemoryLimitAvailable
-}
-
-// EffectiveMemoryLimit reports the representation byte limit available to the
-// inspected Lossy policy after applying every ancestor policy limit. It equals
-// MemoryLimit for a policy that is not further constrained by an ancestor.
-func (s InspectorSnapshot) EffectiveMemoryLimit() (uint64, bool) {
-	d := s.buildSnapshot().details()
-	return d.EffectiveMemoryLimitBytes, d.EffectiveMemoryLimitAvailable
 }
 
 // ItemCount reports indexed wildcard and concrete posting items.
@@ -146,8 +139,6 @@ type inspectionDetails struct {
 	MemoryUsageAvailable                bool
 	MemoryLimitBytes                    uint64
 	MemoryLimitAvailable                bool
-	EffectiveMemoryLimitBytes           uint64
-	EffectiveMemoryLimitAvailable       bool
 	Items                               uint64
 	ItemsAvailable                      bool
 	DistinctValues                      uint64

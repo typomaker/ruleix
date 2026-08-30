@@ -479,7 +479,7 @@ func TestNestedLossyPoliciesRespectInnerAndOuterCaps(t *testing.T) {
 			require.LessOrEqual(t, outerUsage, tc.outer)
 			innerLimit, ok := inner.Snapshot().MemoryLimit()
 			require.True(t, ok)
-			require.Equal(t, tc.inner, innerLimit)
+			require.Equal(t, min(tc.inner, tc.outer), innerLimit)
 
 			var got []int
 			index.Search(lossyConstraint{name: "nested-17", present: true}, &got)

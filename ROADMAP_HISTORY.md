@@ -2,13 +2,11 @@
 
 ## 2026-08-30: finalize Lossy diagnostics and documentation
 
-`InspectorSnapshot` now reports the locally configured `MemoryLimit` separately
-from `EffectiveMemoryLimit`, the maximum available to that policy subtree after
-all ancestor caps and selected sibling representations are accounted. The
-effective value equals the configured value when no ancestor constrains it.
-Both limits, accounted subtree usage, exact/lossy mode, and granularity belong
-to the same immutable successful build snapshot; failed rebuilds publish none
-of them.
+`InspectorSnapshot.MemoryLimit` now reports the maximum actually available to
+that policy subtree after its local cap, all ancestor caps, and selected sibling
+representations are accounted. The effective limit, accounted subtree usage,
+exact/lossy mode, and granularity belong to the same immutable successful build
+snapshot; failed rebuilds publish none of them.
 
 The effective limit is derived only after deterministic planning has completed
 and does not expose or retain mutable planner state. Focused coverage checks a
@@ -18,10 +16,9 @@ architecture documents, and the changelog now use the same hierarchy terms,
 selective downgrade order, rebuild behavior, and impossible-budget contract.
 
 This closes the selective aggregate and nested-policy roadmap. The public
-configuration remains only `MemoryLimit`; the inspection model gained the
-read-only `EffectiveMemoryLimit` accessor because a single limit value cannot
-truthfully describe both the caller's local configuration and an ancestor's
-smaller available budget.
+configuration and inspection API retain one `MemoryLimit`; inspection reports
+the effective value because it describes the built representation's real
+constraint, while the configured local cap remains planner-internal state.
 
 The required gate passed on Apple M1 Max with Go 1.26.0. Three 100 ms runs
 measured medians of 4.327 ms for four-child exact planning, 44.321 ms for the
