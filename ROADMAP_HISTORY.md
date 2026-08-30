@@ -1,5 +1,61 @@
 # Roadmap history
 
+## 2026-08-30: reject two-entry query-key validation
+
+L2 tested a two-bit viable-entry mask across schema order. Equality, ordered,
+`Between`, and `CompareBy` operations each exposed an internal pair matcher
+that read its getter once and compared that value with both result-cache keys.
+The root initialized the mask from compact-result presence and cache epochs,
+cleared entries child by child, stopped at zero, preferred entry zero when both
+matched, and retained the old entry-ordered matcher loop for unsupported
+children. Focused tests covered one getter pass, first- and second-entry hits,
+equal keys, early miss, stale epochs, `CompareBy` operator handling, and the
+unsupported-child fallback. The prototype passed `go test ./...` and kept the
+production benchmark at 0 B/op and 0 allocs/op.
+
+The latency gate rejected it before the wider candidate gate. Seven
+interleaved one-second runs of separately prebuilt L1-parent and candidate
+binaries measured parent values of
+`235.7/227.6/230.6/227.7/226.7/229.1/226.8` ns/op and candidate values of
+`269.3/267.8/271.7/267.0/273.8/265.7/265.9` ns/op. Medians were 227.7 and
+267.8 ns/op respectively: the candidate regressed by 17.6% and won zero of
+seven pairs, far outside the required 5% improvement and five paired wins.
+
+The extra pair-matcher interface dispatch, viable-mask bookkeeping, and two
+key type assertions per child cost more than the getter calls they removed.
+The implementation and its focused tests were removed. L3 therefore keeps L1
+as its parent; L1 already attributes 62.1% cumulative CPU to the generic
+per-child matcher call site, satisfying L3's 10% profiling threshold.
+
+The complete post-removal gate passed. Fixed-session medians were 34.348 us
+for `Index.Search`, 227.9 ns for warm `Local.Search`, and 243.6 ns/search for
+the parallel batch. Warm Local and all cardinality cases remained at 0 B/op
+and 0 allocs/op; cardinality medians were 26.97 ns empty, 39.84 ns singleton,
+58.34 ns for eight results, and 10.022 us for 4,095 results. Retained Local
+memory returned exactly to 2,968 B cold, 92,208 B warm, 109,072 B adaptive,
+and 74,032--74,043 B adversarial. The full production-scale family, ordinary
+tests, and race tests passed without a changed allocation class.
+
+Environment: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Commands:
+
+```sh
+git worktree add --detach /tmp/ruleix-l2-parent <L1-commit>
+go test -c -o /tmp/ruleix-l2-candidate.test .
+(cd /tmp/ruleix-l2-parent && go test -c -o /tmp/ruleix-l2-parent.test .)
+# Alternate parent and candidate seven times:
+GOMAXPROCS=1 /tmp/ruleix-l2-{parent,candidate}.test -test.run '^$' \
+  -test.bench '^BenchmarkProductionShapeSearch/Local$' \
+  -test.benchmem -test.benchtime=1s -test.count=1
+go test ./...
+go test -race ./...
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' -benchmem -benchtime=500ms -count=3 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality/' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' -benchtime=3x -count=3 .
+git diff --check
+```
+
 ## 2026-08-30: refresh the warm-Local baseline and CPU profile
 
 L1 refreshed the exact-query-key checkpoint without changing executor

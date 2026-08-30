@@ -55,33 +55,12 @@ query-key validation is large enough to measure the next experiment. If exact
 validation is below 15% cumulative CPU, skip L2 and choose the largest measured
 non-benchmark hot path instead.
 
-### L2. Validate both cached query keys in one pass
-
-- Add an internal two-entry matcher for supported equality, ordered,
-  `Between`, and `CompareBy` leaves. Each matcher must read its query getter
-  once and compare the value with both cached entries using the operation's
-  existing exact equality semantics.
-- Carry a two-bit viable-entry mask through schema order and stop as soon as it
-  becomes zero. Preserve the existing entry preference when both keys match.
-- Keep sampled inspection, exclusions, stale epochs, unsupported operations,
-  non-compact results, and cache misses on their current fallback paths.
-- Add focused getter-count tests for first-entry hit, second-entry hit, both
-  entries equal, early miss, query change, cache invalidation, `CompareBy`
-  operator handling, and mixed supported/unsupported schemas.
-- Compare a prebuilt candidate with its parent in seven interleaved one-second
-  production-shaped runs, then run the complete gate below.
-
-Acceptance: production-shaped warm Local improves by at least 5% with at least
-five of seven paired wins, remains at 0 B/op and 0 allocations, changes retained
-warm Local memory by no more than 1%, and causes no repeatable regression above
-3% in parallel, cardinality, scale, or fallback workloads. Otherwise reject L2
-and use the L1 parent for L3.
-
 ### L3. Fuse exact-key validation for the complete `All` schema
 
-- Re-profile the accepted L2 implementation, or the L1 parent if L2 was
-  rejected. Proceed only if per-child capability dispatch or generic matcher
-  calls account for at least 10% cumulative warm-Local CPU.
+- Use the L1 parent: the two-entry viable-mask experiment was rejected and is
+  recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Its profile attributes
+  62.1% cumulative warm-Local CPU to the per-child generic matcher call site,
+  above this step's 10% threshold.
 - Compile an immutable root validator during `Build` that evaluates the same
   two-entry viable mask without repeating per-search capability discovery.
 - Keep inspector wrappers and unsupported children as explicit boundaries; do
@@ -145,7 +124,7 @@ failed alternatives before closing the Local queue.
 
 ### Local queue verification gate
 
-For L2--L5, run focused tests plus the following after every candidate and
+For L3--L5, run focused tests plus the following after every candidate and
 again after removing any rejected implementation:
 
 ```sh
