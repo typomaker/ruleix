@@ -149,10 +149,16 @@ implementations cannot occur because `Rule` is sealed.
 Independently budgeted children of `All` are valid and each owns its entire
 limit. One `Lossy` around `All` owns the combined accounted storage of all leaf
 representations; structural `All` overhead remains excluded. Nested `Lossy`
-decorators are rejected during `Build`; they do not form multiple tiers or
-combine budgets. `Inspect` may wrap `Lossy` or be wrapped by it, and both forms
-refer to the selected representation. Other option types, soft limits, and
-caller-selected false-positive targets require separate contracts.
+decorators form a hierarchy of hard caps. Planning applies descendant caps
+bottom-up and then lets an ancestor advance any leaf in its subtree to a
+coarser discrete representation. An ancestor can therefore force a nested
+policy below its configured limit, but cannot relax that limit. Direct nesting
+uses the smaller cap regardless of order; sibling policies retain independent
+local caps while also contributing to their ancestor's accounted total.
+Ordinary nested `All` nodes flatten only within the nearest policy boundary.
+If a subtree's minimum viable total exceeds its cap, `Build` fails with the
+policy path. `Inspect` boundaries remain attached to their corresponding
+subtrees and never report accounted usage above the applicable cap.
 
 ## Build-time planning
 

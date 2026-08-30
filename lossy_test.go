@@ -436,8 +436,67 @@ func TestLossyPolicyValidation(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "exactly one")
 	_, err = New[lossyConstraint, int](Lossy(All(Lossy(Include(get), MemoryLimit(100))), MemoryLimit(100))).Build(empty)
+	require.NoError(t, err)
+}
+
+func TestNestedLossyPoliciesRespectInnerAndOuterCaps(t *testing.T) {
+	get := func(v lossyConstraint) (string, bool) { return v.name, v.present }
+	constraints := make([]lossyConstraint, 512)
+	ids := make([]int, len(constraints))
+	for i := range constraints {
+		constraints[i] = lossyConstraint{name: fmt.Sprintf("nested-%d", i), present: true}
+		ids[i] = i
+	}
+	var exact Inspector
+	_, err := New[lossyConstraint, int](Inspect(&exact, Lossy(Include(get), MemoryLimit(math.MaxUint64)))).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	exactUsage, ok := exact.Snapshot().MemoryUsage()
+	require.True(t, ok)
+	require.Greater(t, exactUsage, uint64(1))
+
+	for _, tc := range []struct {
+		name         string
+		inner, outer uint64
+	}{
+		{name: "inner-smaller", inner: exactUsage - 1, outer: exactUsage + 1},
+		{name: "outer-smaller", inner: exactUsage + 1, outer: exactUsage - 1},
+		{name: "equal", inner: exactUsage - 1, outer: exactUsage - 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var inner, outer Inspector
+			schema := Inspect(&outer, Lossy(
+				Inspect(&inner, Lossy(Include(get), MemoryLimit(tc.inner))),
+				MemoryLimit(tc.outer),
+			))
+			index, err := New[lossyConstraint, int](schema).Build(Zip(constraints, ids))
+			require.NoError(t, err)
+			innerUsage, ok := inner.Snapshot().MemoryUsage()
+			require.True(t, ok)
+			require.LessOrEqual(t, innerUsage, min(tc.inner, tc.outer))
+			outerUsage, ok := outer.Snapshot().MemoryUsage()
+			require.True(t, ok)
+			require.Equal(t, innerUsage, outerUsage)
+			require.LessOrEqual(t, outerUsage, tc.outer)
+			innerLimit, ok := inner.Snapshot().MemoryLimit()
+			require.True(t, ok)
+			require.Equal(t, tc.inner, innerLimit)
+
+			var got []int
+			index.Search(lossyConstraint{name: "nested-17", present: true}, &got)
+			require.Contains(t, got, 17)
+		})
+	}
+}
+
+func TestNestedLossyImpossibleBudgetReportsPolicyPath(t *testing.T) {
+	get := func(v lossyConstraint) (string, bool) { return v.name, v.present }
+	constraints := []lossyConstraint{{name: "one", present: true}}
+	_, err := New[lossyConstraint, int](Lossy(All(
+		Lossy(Include(get), MemoryLimit(1)),
+	), MemoryLimit(math.MaxUint64))).Build(Zip(constraints, []int{1}))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "nested Lossy")
+	require.Contains(t, err.Error(), "Lossy/child/All[0]")
+	require.Contains(t, err.Error(), "cannot fit")
 }
 
 //nolint:lll // Full exact and lossy constructors are kept adjacent for comparison.

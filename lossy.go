@@ -126,53 +126,16 @@ func (r *inspectionDetailsRule[T]) inspectionStrategy() string           { retur
 func (r *inspectionDetailsRule[T]) inspectionMode() RuleMode             { return inspectionModeOf(r.child) }
 func (r *inspectionDetailsRule[T]) inspectionDetails() inspectionDetails { return r.details }
 
-//nolint:gocognit // Recursive policy validation is clearest as one exhaustive type switch.
-func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
+// compileLossyRules finds the outermost policy boundaries. Each boundary is
+// planned as one tree so nested caps participate in ancestor allocation.
+func compileLossyRules[T any](rule Rule[T]) (Rule[T], error) {
 	switch typed := rule.(type) {
 	case *lossyRule[T]:
-		if inside {
-			return nil, fmt.Errorf("ruleix: nested Lossy policies are not supported")
-		}
-		if err := typed.validatePolicy(); err != nil {
-			return nil, err
-		}
-		if _, ok := typed.child.(*lossyRule[T]); ok {
-			return nil, fmt.Errorf("ruleix: nested Lossy policies are not supported")
-		}
-		child := typed.child
-		var inspected *inspectRule[T]
-		if value, ok := child.(*inspectRule[T]); ok {
-			inspected = value
-			child = value.child
-		}
-		if composite, ok := child.(*allRule[T]); ok {
-			compiled, details, err := compileLossyAll(composite, typed.limit)
-			if err != nil {
-				return nil, err
-			}
-			wrapped := Rule[T](&inspectionDetailsRule[T]{child: compiled, details: details})
-			if inspected != nil {
-				return &inspectRule[T]{dst: inspected.dst, child: wrapped}, nil
-			}
-			return wrapped, nil
-		}
-		compiler, ok := child.(lossyCompiler[T])
-		if !ok {
-			return nil, fmt.Errorf("ruleix: Lossy does not support this rule representation")
-		}
-		compiled, err := compiler.compileLossy(typed.limit)
-		if err != nil {
-			return nil, err
-		}
-		details := lossyinspectionDetails(compiled, typed.limit)
-		if inspected != nil {
-			return &inspectRule[T]{dst: inspected.dst, child: &inspectionDetailsRule[T]{child: compiled, details: details}}, nil
-		}
-		return &inspectionDetailsRule[T]{child: compiled, details: details}, nil
+		return compileLossyPolicyTree(typed)
 	case *allRule[T]:
 		children := make([]Rule[T], len(typed.children))
 		for i, child := range typed.children {
-			compiled, err := compileLossyRules(child, inside)
+			compiled, err := compileLossyRules(child)
 			if err != nil {
 				return nil, err
 			}
@@ -180,7 +143,7 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 		}
 		return &allRule[T]{children: children}, nil
 	case *inspectRule[T]:
-		child, err := compileLossyRules(typed.child, inside)
+		child, err := compileLossyRules(typed.child)
 		if err != nil {
 			return nil, err
 		}
@@ -188,6 +151,225 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 	default:
 		return rule, nil
 	}
+}
+
+type lossyPolicyPlanKind uint8
+
+const (
+	lossyPlanLeaf lossyPolicyPlanKind = iota
+	lossyPlanAll
+	lossyPlanInspect
+	lossyPlanPolicy
+)
+
+type lossyPolicyPlan[T any] struct {
+	kind       lossyPolicyPlanKind
+	original   Rule[T]
+	children   []*lossyPolicyPlan[T]
+	leaf       int
+	first, end int
+	limit      uint64
+	path       string
+}
+
+func compileLossyPolicyTree[T any](rule *lossyRule[T]) (Rule[T], error) {
+	leaves := make([]lossyAllLeaf[T], 0, 8)
+	root, err := analyzeLossyPolicy(rule, "Lossy", &leaves)
+	if err != nil {
+		return nil, err
+	}
+	for i := range leaves {
+		leaves[i].compiled = leaves[i].ladder[0].compiled
+	}
+	if err := enforceLossyPolicyCaps(root, leaves); err != nil {
+		return nil, err
+	}
+	compiled, _, err := materializeLossyPolicy(root, leaves)
+	return compiled, err
+}
+
+// analyzeLossyPolicy preserves policy and inspection boundaries. Ordinary All
+// nodes only contribute structure; their leaves share the nearest policy.
+func analyzeLossyPolicy[T any](rule Rule[T], path string, leaves *[]lossyAllLeaf[T]) (*lossyPolicyPlan[T], error) {
+	plan := &lossyPolicyPlan[T]{original: rule, first: len(*leaves), leaf: -1, path: path}
+	switch typed := rule.(type) {
+	case *lossyRule[T]:
+		if err := typed.validatePolicy(); err != nil {
+			return nil, fmt.Errorf("ruleix: %s: %w", path, err)
+		}
+		plan.kind, plan.limit = lossyPlanPolicy, typed.limit
+		child, err := analyzeLossyPolicy(typed.child, path+"/child", leaves)
+		if err != nil {
+			return nil, err
+		}
+		plan.children = []*lossyPolicyPlan[T]{child}
+	case *allRule[T]:
+		plan.kind = lossyPlanAll
+		plan.children = make([]*lossyPolicyPlan[T], len(typed.children))
+		for i, child := range typed.children {
+			compiled, err := analyzeLossyPolicy(child, fmt.Sprintf("%s/All[%d]", path, i), leaves)
+			if err != nil {
+				return nil, err
+			}
+			plan.children[i] = compiled
+		}
+	case *inspectRule[T]:
+		plan.kind = lossyPlanInspect
+		child, err := analyzeLossyPolicy(typed.child, path+"/Inspect", leaves)
+		if err != nil {
+			return nil, err
+		}
+		plan.children = []*lossyPolicyPlan[T]{child}
+	default:
+		factory, ok := rule.(lossyAllCompiler[T])
+		if !ok {
+			return nil, fmt.Errorf("ruleix: %s: Lossy does not support this rule representation", path)
+		}
+		planner := factory.newLossyAllPlanner()
+		ladder, err := planner.representationLadder()
+		if err != nil {
+			return nil, fmt.Errorf("ruleix: %s: %w", path, err)
+		}
+		if len(ladder) == 0 || !ladder[0].details.MemoryUsageAvailable {
+			return nil, fmt.Errorf("ruleix: %s: Lossy rule has no viable accounted representation", path)
+		}
+		plan.kind, plan.leaf = lossyPlanLeaf, len(*leaves)
+		*leaves = append(*leaves, lossyAllLeaf[T]{planner: planner, ladder: ladder, exact: ladder[0].details.MemoryUsageBytes})
+	}
+	plan.end = len(*leaves)
+	return plan, nil
+}
+
+func enforceLossyPolicyCaps[T any](plan *lossyPolicyPlan[T], leaves []lossyAllLeaf[T]) error {
+	for _, child := range plan.children {
+		if err := enforceLossyPolicyCaps(child, leaves); err != nil {
+			return err
+		}
+	}
+	if plan.kind != lossyPlanPolicy {
+		return nil
+	}
+	minimum, ok := lossyLeafRangeMinimum(leaves, plan.first, plan.end)
+	if !ok {
+		return fmt.Errorf("ruleix: %s: memory accounting overflow", plan.path)
+	}
+	if minimum > plan.limit {
+		return fmt.Errorf("ruleix: %s cannot fit the memory limit", plan.path)
+	}
+	usage, ok := lossyLeafRangeUsage(leaves, plan.first, plan.end)
+	if !ok {
+		return fmt.Errorf("ruleix: %s: memory accounting overflow", plan.path)
+	}
+	for usage > plan.limit {
+		best := selectLossyAllDowngrade(leaves[plan.first:plan.end])
+		if best < 0 {
+			return fmt.Errorf("ruleix: %s cannot fit the memory limit", plan.path)
+		}
+		best += plan.first
+		current := leaves[best].ladder[leaves[best].selected].details.MemoryUsageBytes
+		leaves[best].selected++
+		next := leaves[best].ladder[leaves[best].selected]
+		leaves[best].compiled = next.compiled
+		usage -= current - next.details.MemoryUsageBytes
+	}
+	return nil
+}
+
+func lossyLeafRangeUsage[T any](leaves []lossyAllLeaf[T], first, end int) (uint64, bool) {
+	var total uint64
+	for i := first; i < end; i++ {
+		usage := leaves[i].ladder[leaves[i].selected].details.MemoryUsageBytes
+		var ok bool
+		total, ok = addLossyMemory(total, usage)
+		if !ok {
+			return 0, false
+		}
+	}
+	return total, true
+}
+
+func lossyLeafRangeMinimum[T any](leaves []lossyAllLeaf[T], first, end int) (uint64, bool) {
+	var total uint64
+	for i := first; i < end; i++ {
+		ladder := leaves[i].ladder
+		var ok bool
+		total, ok = addLossyMemory(total, ladder[len(ladder)-1].details.MemoryUsageBytes)
+		if !ok {
+			return 0, false
+		}
+	}
+	return total, true
+}
+
+func materializeLossyPolicy[T any](plan *lossyPolicyPlan[T], leaves []lossyAllLeaf[T]) (Rule[T], inspectionDetails, error) {
+	switch plan.kind {
+	case lossyPlanLeaf:
+		leaf := leaves[plan.leaf]
+		return leaf.compiled, inspectionDetailsOf(leaf.compiled), nil
+	case lossyPlanAll:
+		children := make([]Rule[T], len(plan.children))
+		var aggregate inspectionDetails
+		for i, childPlan := range plan.children {
+			child, details, err := materializeLossyPolicy(childPlan, leaves)
+			if err != nil {
+				return nil, inspectionDetails{}, err
+			}
+			children[i] = child
+			aggregateLossyDetails(&aggregate, details)
+		}
+		return &allRule[T]{children: children}, aggregate, nil
+	case lossyPlanInspect:
+		child, details, err := materializeLossyPolicy(plan.children[0], leaves)
+		if err != nil {
+			return nil, inspectionDetails{}, err
+		}
+		return &inspectRule[T]{dst: plan.original.(*inspectRule[T]).dst, child: &inspectionDetailsRule[T]{child: child, details: details}}, details, nil
+	case lossyPlanPolicy:
+		child, details, err := materializeLossyPolicy(plan.children[0], leaves)
+		if err != nil {
+			return nil, inspectionDetails{}, err
+		}
+		details.MemoryLimitBytes, details.MemoryLimitAvailable = plan.limit, true
+		if rootInspectorBelongsToPolicy(plan.children[0]) {
+			child = applyLossyPolicyDetailsToRootInspector(child, details)
+		}
+		return &inspectionDetailsRule[T]{child: child, details: details}, details, nil
+	default:
+		return nil, inspectionDetails{}, fmt.Errorf("ruleix: invalid Lossy policy plan")
+	}
+}
+
+func rootInspectorBelongsToPolicy[T any](plan *lossyPolicyPlan[T]) bool {
+	for plan.kind == lossyPlanInspect {
+		plan = plan.children[0]
+	}
+	return plan.kind != lossyPlanPolicy
+}
+
+// Inspect directly inside Lossy owns the same policy view as Inspect outside
+// it. Stop at the first non-inspection node so nested policy ownership remains
+// intact.
+func applyLossyPolicyDetailsToRootInspector[T any](rule Rule[T], details inspectionDetails) Rule[T] {
+	inspected, ok := rule.(*inspectRule[T])
+	if !ok {
+		return rule
+	}
+	child := inspected.child
+	if wrapped, ok := child.(*inspectionDetailsRule[T]); ok {
+		child = &inspectionDetailsRule[T]{child: wrapped.child, details: details}
+	}
+	return &inspectRule[T]{dst: inspected.dst, child: child}
+}
+
+func aggregateLossyDetails(dst *inspectionDetails, value inspectionDetails) {
+	dst.MemoryUsageBytes += value.MemoryUsageBytes
+	dst.Items += value.Items
+	dst.DistinctValues += value.DistinctValues
+	dst.GranularityValue += value.GranularityValue
+	dst.MemoryUsageAvailable = dst.MemoryUsageAvailable || value.MemoryUsageAvailable
+	dst.ItemsAvailable = dst.ItemsAvailable || value.ItemsAvailable
+	dst.DistinctValuesAvailable = dst.DistinctValuesAvailable || value.DistinctValuesAvailable
+	dst.GranularityAvailable = dst.GranularityAvailable || value.GranularityAvailable
 }
 
 type lossyAllLeaf[T any] struct {

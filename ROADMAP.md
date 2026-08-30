@@ -59,25 +59,6 @@ corresponding exact result.
 
 ## Implementation plan
 
-### 5. Introduce a hierarchical budget model for nested `Lossy`
-
-- Replace the current boolean `inside` rejection state with an explicit policy
-  tree containing local caps, aggregate children, and leaf candidate ladders.
-- Compute each subtree's all-exact usage, minimum viable usage, and locally
-  capped best plan bottom-up.
-- Allocate pressure top-down: treat a nested policy as a bounded subtree whose
-  plan can advance to coarser states when required by an ancestor.
-- Preserve ordinary nested-`All` flattening only inside the nearest policy
-  boundary; do not lose local caps or `Inspect` ownership when flattening.
-- Define direct nesting such as `Lossy(Lossy(rule, 30MB), 100MB)` as an
-  effective `30MB` cap, and the reverse limits as an effective `30MB` cap
-  forced by the outer policy. Reject duplicate `MemoryLimit` options on the
-  same `Lossy` node as before.
-
-Acceptance: nested policies build whenever all subtree minima fit their
-effective limits, fail with a path-specific error otherwise, and no child or
-ancestor inspection reports usage above its effective cap.
-
 ### 6. Complete nested-policy correctness and determinism coverage
 
 - Test direct `Lossy(Lossy(...))`, `Lossy(All(...Lossy(...)))`, nested lossy

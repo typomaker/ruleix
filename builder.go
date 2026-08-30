@@ -125,7 +125,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	}
 	ix := &Index[C, ID]{root: state, values: values, pool: newBitmapPool()}
 	var err error
-	ix.root, err = compileLossyRules(ix.root, false)
+	ix.root, err = compileLossyRules(ix.root)
 	if err != nil {
 		return nil, buildStatistics{}, err
 	}

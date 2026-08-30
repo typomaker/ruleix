@@ -1,5 +1,49 @@
 # Roadmap history
 
+## 2026-08-30: introduce hierarchical budgets for nested Lossy policies
+
+Nested `Lossy` decorators now compile as an explicit policy tree instead of
+being rejected by a boolean recursion guard. Analysis preserves local policy,
+ordinary `All`, and `Inspect` boundaries while assigning each supported leaf
+one exact-to-minimum representation ladder. Planning enforces descendant caps
+bottom-up, then applies ancestor pressure with the existing deterministic
+released-bytes selector. A parent can advance a nested leaf to a coarser state
+but can never undo the child's local cap.
+
+Direct nesting therefore observes the smaller limit in either order. Nested
+groups retain their search shape and inspection ownership, while ordinary
+`All` nodes share the nearest policy's allocation pool. Minimum-viability and
+accounting-overflow failures identify the policy path. Focused coverage checks
+inner-smaller, outer-smaller, and equal direct limits, local and ancestor
+inspection accounting, exact-match inclusion, and an impossible nested cap.
+
+The public API and retained representation accounting are unchanged.
+
+The required gate ran on Apple M1 Max with Go 1.26.0. Three 100 ms runs
+against parent `69a0a0a` showed unchanged allocation classes and noisy but
+comparable medians: 4-child equality exact planning was 4.407 ms versus
+4.347 ms, 4-child 50% planning was 44.332 ms versus 44.645 ms, ordered
+2-child 75% planning was 46.531 ms versus 46.344 ms, and streaming build was
+40.679 ms versus 39.441 ms. Search representations are unchanged; candidate
+medians remained one for equality and 8.5 for ordered cases, with no observed
+false negatives or new false-positive class. The complete one-iteration
+10K/100K/1M scale matrix stayed within every accounted limit; at 1M entries,
+accounted equality usage was 127.6/38.5/30.6 MB and ordered usage was
+130.5/35.7/24.0 MB for 100/50/25% budgets respectively. The 1M ordered 25%
+case measured 8.75 candidates/query and a 0.0000003 false-positive rate; all
+other scale cases reported the existing exact candidate counts and zero
+observed false positives.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^(BenchmarkLossyAllPlanning|BenchmarkLossyAllOrderedPlanning|BenchmarkLossyAllSearchQuality|BenchmarkLossyAllSearchRuntime|BenchmarkLossyStreamingBuild)$' -benchmem -benchtime=100ms -count=3 .
+go test -run '^$' -bench '^(BenchmarkLossyScalePlanning|BenchmarkLossyScaleSearch)/Entries(10000|100000|1000000)/' -benchmem -benchtime=1x -count=1 .
+go test ./...
+go test -race ./...
+git diff --check
+```
+
 ## 2026-08-30: measure selective planning quality and build cost
 
 Added `BenchmarkLossySelectionMatrix`, a 120-case gate over 2, 4, 8, and 16
