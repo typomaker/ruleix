@@ -59,21 +59,6 @@ corresponding exact result.
 
 ## Implementation plan
 
-### 2. Expose ordered discrete representation ladders internally
-
-- Replace repeated arbitrary-limit probing in aggregate planning with an
-  internal planner contract that can enumerate or advance through a leaf's
-  candidates from exact to minimum viable representation.
-- For every candidate retain accounted bytes, deterministic precision metadata,
-  and the compiled rule needed for final materialization.
-- Deduplicate candidates with identical accounted size and behavior so a
-  downgrade step always releases memory or reaches the terminal minimum.
-- Keep the single-rule public behavior and API unchanged.
-
-Acceptance: equality and ordered unit tests cover monotonic candidate ordering,
-exact and minimum endpoints, stable enumeration, unsupported scalar errors,
-and accounting overflow.
-
 ### 3. Implement selective aggregate downgrade planning
 
 - Calculate the aggregate exact usage and return the all-exact plan immediately

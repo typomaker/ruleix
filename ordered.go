@@ -100,6 +100,7 @@ func (r *orderedRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
 
 type orderedLossyAllPlanner[T any, V any] struct {
 	representations []Rule[T]
+	ladder          []lossyRepresentation[T]
 	exact           Rule[T]
 	prepare         func() []Rule[T]
 	err             error
@@ -189,28 +190,23 @@ func (r *orderedRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 }
 
 func (p *orderedLossyAllPlanner[T, V]) compile(limit uint64) (Rule[T], error) {
-	if inspectionDetailsOf(p.exact).MemoryUsageBytes <= limit {
-		return p.exact, nil
+	ladder, err := p.representationLadder()
+	if err != nil {
+		return nil, err
 	}
+	return selectLossyRepresentation(ladder, limit, "ruleix: Lossy ordered comparison cannot fit the memory limit")
+}
+
+func (p *orderedLossyAllPlanner[T, V]) representationLadder() ([]lossyRepresentation[T], error) {
 	if p.err != nil {
 		return nil, p.err
 	}
-	if p.representations == nil {
+	if p.ladder == nil {
 		p.representations = p.prepare()
 		p.prepare = nil
+		p.ladder = buildLossyRepresentationLadder(p.exact, p.representations)
 	}
-	var selected Rule[T]
-	for _, candidate := range p.representations {
-		if inspectionDetailsOf(candidate).MemoryUsageBytes <= limit {
-			selected = candidate
-		} else {
-			break
-		}
-	}
-	if selected == nil {
-		return nil, fmt.Errorf("ruleix: Lossy ordered comparison cannot fit the memory limit")
-	}
-	return selected, nil
+	return p.ladder, nil
 }
 
 func (*orderedRule[T, V]) inspectionStrategy() string { return "ordered" }

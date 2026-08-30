@@ -1,5 +1,29 @@
 # Roadmap history
 
+## 2026-08-30: expose discrete lossy representation ladders
+
+Equality and ordered leaf planners now expose their finite representation
+candidates directly in deterministic exact-to-minimum order. Each candidate
+retains its compiled rule and complete inspection metadata, including accounted
+bytes and granularity. Adjacent equivalent levels are deduplicated, and every
+successive level strictly releases accounted memory.
+
+Aggregate planning now consumes those ladders for exact and minimum endpoints
+and for proportional-policy upgrades; it no longer discovers representations
+through arbitrary-limit binary searches. The public single-rule `Lossy` API
+and its limit-selection behavior remain unchanged. Focused tests cover stable
+enumeration, monotonic accounting, exact/minimum endpoints, unsupported scalar
+diagnostics, and checked accounting overflow.
+
+Reproduce with:
+
+```sh
+go test -run 'TestLossy(LeafRepresentation|AllPlanner|AllMinimumBudget)Fixtures|TestLossyLeafRepresentationUnsupportedScalarErrors|TestLossyMemoryAccountingOverflow' .
+go test ./...
+go test -race ./...
+git diff --check
+```
+
 ## 2026-08-30: freeze lossy planner behavior with migration fixtures
 
 Added table-driven equality and ordered leaf fixtures that discover every

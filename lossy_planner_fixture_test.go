@@ -46,11 +46,19 @@ func TestLossyLeafRepresentationFixtures(t *testing.T) {
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
+			ladder, err := fixture.planner.representationLadder()
+			require.NoError(t, err)
+			repeated, err := fixture.planner.representationLadder()
+			require.NoError(t, err)
+			require.Equal(t, ladder, repeated)
+			require.Greater(t, len(ladder), 2)
+
 			exact, err := fixture.planner.compile(math.MaxUint64)
 			require.NoError(t, err)
 			exactDetails := inspectionDetailsOf(exact)
 			require.Equal(t, RuleModeExact, inspectionModeOf(exact))
 			require.NotZero(t, exactDetails.MemoryUsageBytes)
+			require.Equal(t, exactDetails, ladder[0].details)
 
 			minimumLimit, minimum, err := minimumLossyAllLimit(fixture.planner, exactDetails.MemoryUsageBytes)
 			require.NoError(t, err)
@@ -61,35 +69,43 @@ func TestLossyLeafRepresentationFixtures(t *testing.T) {
 				_, err = fixture.planner.compile(minimumLimit - 1)
 				require.Error(t, err)
 			}
-
-			// Probe every byte limit to expose all discrete representations selected
-			// by the current leaf contract. A future ladder implementation can use
-			// this same fixture without preserving arbitrary-limit probing itself.
-			var levels []inspectionDetails
-			var previous uint64 = math.MaxUint64
-			for limit := exactDetails.MemoryUsageBytes; ; limit-- {
-				candidate, candidateErr := fixture.planner.compile(limit)
-				if candidateErr == nil {
-					details := inspectionDetailsOf(candidate)
-					require.LessOrEqual(t, details.MemoryUsageBytes, limit)
-					if details.MemoryUsageBytes != previous {
-						levels = append(levels, details)
-						previous = details.MemoryUsageBytes
-					}
+			require.Equal(t, minimumDetails, ladder[len(ladder)-1].details)
+			for i, level := range ladder {
+				selected, selectedErr := fixture.planner.compile(level.details.MemoryUsageBytes)
+				require.NoError(t, selectedErr)
+				require.Equal(t, level.details, inspectionDetailsOf(selected))
+				if i == 0 {
+					continue
 				}
-				if limit == minimumLimit {
-					break
-				}
-			}
-			require.Greater(t, len(levels), 2)
-			require.Equal(t, exactDetails.MemoryUsageBytes, levels[0].MemoryUsageBytes)
-			require.Equal(t, minimumDetails.MemoryUsageBytes, levels[len(levels)-1].MemoryUsageBytes)
-			for i := 1; i < len(levels); i++ {
-				require.Less(t, levels[i].MemoryUsageBytes, levels[i-1].MemoryUsageBytes)
-				require.True(t, levels[i].GranularityAvailable)
+				require.Less(t, level.details.MemoryUsageBytes, ladder[i-1].details.MemoryUsageBytes)
+				require.True(t, level.details.GranularityAvailable)
 			}
 		})
 	}
+}
+
+func TestLossyLeafRepresentationUnsupportedScalarErrors(t *testing.T) {
+	type unsupported struct{ value int }
+	type constraint struct{ value unsupported }
+	get := func(v constraint) (unsupported, bool) { return v.value, true }
+	data := []constraint{{value: unsupported{value: 1}}}
+
+	_, err := New[constraint, int](Lossy(Include(get), MemoryLimit(1024))).Build(Zip(data, []int{1}))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "supported scalar")
+	_, err = New[constraint, int](Lossy(GreaterOrEqual(get, func(a, b unsupported) int {
+		return cmp.Compare(a.value, b.value)
+	}), MemoryLimit(1024))).Build(Zip(data, []int{1}))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "supported scalar")
+}
+
+func TestLossyMemoryAccountingOverflow(t *testing.T) {
+	total, ok := addLossyMemory(math.MaxUint64-1, 1)
+	require.True(t, ok)
+	require.Equal(t, uint64(math.MaxUint64), total)
+	_, ok = addLossyMemory(total, 1)
+	require.False(t, ok)
 }
 
 type lossyAggregateFixture struct {

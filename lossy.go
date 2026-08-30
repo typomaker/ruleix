@@ -77,15 +77,20 @@ func (r *lossyRule[T]) collectBuildStatistics(s []nodeBuildStatistics) {
 
 type lossyCompiler[T any] interface{ compileLossy(uint64) (Rule[T], error) }
 
-type lossyAllPlanner[T any] interface{ compile(uint64) (Rule[T], error) }
+type lossyRepresentation[T any] struct {
+	compiled Rule[T]
+	details  inspectionDetails
+}
+
+// lossyAllPlanner exposes a finite exact-to-minimum representation ladder.
+// compile keeps the existing single-leaf limit behavior; aggregate planning
+// consumes the ladder directly instead of probing arbitrary byte limits.
+type lossyAllPlanner[T any] interface {
+	compile(uint64) (Rule[T], error)
+	representationLadder() ([]lossyRepresentation[T], error)
+}
 
 type lossyAllCompiler[T any] interface{ newLossyAllPlanner() lossyAllPlanner[T] }
-
-type defaultLossyAllPlanner[T any] struct{ compiler lossyCompiler[T] }
-
-func (p defaultLossyAllPlanner[T]) compile(limit uint64) (Rule[T], error) {
-	return p.compiler.compileLossy(limit)
-}
 
 type inspectionDetailsRule[T any] struct {
 	child          Rule[T]
@@ -189,6 +194,7 @@ func compileLossyRules[T any](rule Rule[T], inside bool) (Rule[T], error) {
 
 type lossyAllLeaf[T any] struct {
 	planner      lossyAllPlanner[T]
+	ladder       []lossyRepresentation[T]
 	exact        uint64
 	minimum      uint64
 	limit        uint64
@@ -211,10 +217,11 @@ func compileLossyAll[T any](rule *allRule[T], limit uint64) (*allRule[T], inspec
 	}
 	var total uint64
 	for _, leaf := range leaves {
-		if math.MaxUint64-total < leaf.exact {
+		var ok bool
+		total, ok = addLossyMemory(total, leaf.exact)
+		if !ok {
 			return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All memory accounting overflow")
 		}
-		total += leaf.exact
 	}
 	if total <= limit {
 		for i := range leaves {
@@ -229,10 +236,11 @@ func compileLossyAll[T any](rule *allRule[T], limit uint64) (*allRule[T], inspec
 				return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All child %d: %w", i+1, err)
 			}
 			leaves[i].minimum, leaves[i].limit, leaves[i].compiled = minimum, minimum, compiled
-			if math.MaxUint64-minimumTotal < minimum {
+			var ok bool
+			minimumTotal, ok = addLossyMemory(minimumTotal, minimum)
+			if !ok {
 				return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All memory accounting overflow")
 			}
-			minimumTotal += minimum
 		}
 		if minimumTotal > limit {
 			return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy All cannot fit the memory limit")
@@ -275,6 +283,13 @@ func compileLossyAll[T any](rule *allRule[T], limit uint64) (*allRule[T], inspec
 	return compiled.(*allRule[T]), details, nil
 }
 
+func addLossyMemory(total, usage uint64) (uint64, bool) {
+	if math.MaxUint64-total < usage {
+		return 0, false
+	}
+	return total + usage, true
+}
+
 func collectLossyAllLeaves[T any](rule Rule[T], leaves *[]lossyAllLeaf[T]) error {
 	switch typed := rule.(type) {
 	case *allRule[T]:
@@ -289,23 +304,27 @@ func collectLossyAllLeaves[T any](rule Rule[T], leaves *[]lossyAllLeaf[T]) error
 	case *lossyRule[T]:
 		return fmt.Errorf("ruleix: nested Lossy policies are not supported")
 	default:
-		compiler, ok := rule.(lossyCompiler[T])
+		_, ok := rule.(lossyCompiler[T])
 		if !ok {
 			return fmt.Errorf("ruleix: Lossy All does not support a child rule representation")
 		}
-		planner := lossyAllPlanner[T](defaultLossyAllPlanner[T]{compiler: compiler})
-		if factory, ok := rule.(lossyAllCompiler[T]); ok {
-			planner = factory.newLossyAllPlanner()
+		factory, ok := rule.(lossyAllCompiler[T])
+		if !ok {
+			return fmt.Errorf("ruleix: Lossy All child does not expose representation candidates")
 		}
-		exact, err := planner.compile(math.MaxUint64)
+		planner := factory.newLossyAllPlanner()
+		ladder, err := planner.representationLadder()
 		if err != nil {
 			return err
 		}
-		details := inspectionDetailsOf(exact)
+		if len(ladder) == 0 {
+			return fmt.Errorf("ruleix: Lossy All child has no viable representation")
+		}
+		details := ladder[0].details
 		if !details.MemoryUsageAvailable {
 			return fmt.Errorf("ruleix: Lossy All child has no memory accounting")
 		}
-		*leaves = append(*leaves, lossyAllLeaf[T]{planner: planner, exact: details.MemoryUsageBytes})
+		*leaves = append(*leaves, lossyAllLeaf[T]{planner: planner, ladder: ladder, exact: details.MemoryUsageBytes})
 		return nil
 	}
 }
@@ -349,21 +368,15 @@ func materializeLossyAll[T any](
 }
 
 func minimumLossyAllLimit[T any](planner lossyAllPlanner[T], exact uint64) (uint64, Rule[T], error) {
-	low, high := uint64(0), exact
-	compiled, err := planner.compile(high)
+	ladder, err := planner.representationLadder()
 	if err != nil {
 		return 0, nil, err
 	}
-	for low < high {
-		mid := low + (high-low)/2
-		candidate, candidateErr := planner.compile(mid)
-		if candidateErr != nil {
-			low = mid + 1
-			continue
-		}
-		high, compiled = mid, candidate
+	if len(ladder) == 0 || ladder[0].details.MemoryUsageBytes != exact {
+		return 0, nil, fmt.Errorf("ruleix: invalid Lossy representation ladder")
 	}
-	return low, compiled, nil
+	minimum := ladder[len(ladder)-1]
+	return minimum.details.MemoryUsageBytes, minimum.compiled, nil
 }
 
 func redistributeLossyAllBudget[T any](leaves []lossyAllLeaf[T], available uint64) {
@@ -398,27 +411,56 @@ func prepareLossyAllUpgrade[T any](leaf *lossyAllLeaf[T], usage uint64) {
 		return
 	}
 	leaf.upgradeKnown = true
-	low, high := usage+1, leaf.exact
-	for low < high {
-		mid := low + (high-low)/2
-		candidate, err := leaf.planner.compile(mid)
-		if err != nil || inspectionDetailsOf(candidate).MemoryUsageBytes <= usage {
-			low = mid + 1
-		} else {
-			high = mid
+	for i := len(leaf.ladder) - 1; i >= 0; i-- {
+		candidateUsage := leaf.ladder[i].details.MemoryUsageBytes
+		if candidateUsage <= usage {
+			continue
+		}
+		leaf.upgradeLimit = candidateUsage
+		leaf.upgradeCost = candidateUsage - usage
+		leaf.upgrade = leaf.ladder[i].compiled
+		return
+	}
+}
+
+func selectLossyRepresentation[T any](ladder []lossyRepresentation[T], limit uint64, failure string) (Rule[T], error) {
+	for _, candidate := range ladder {
+		if candidate.details.MemoryUsageBytes <= limit {
+			return candidate.compiled, nil
 		}
 	}
-	candidate, err := leaf.planner.compile(low)
-	if err != nil {
-		return
+	return nil, fmt.Errorf("%s", failure)
+}
+
+// buildLossyRepresentationLadder converts the leaf builders' natural
+// coarse-to-fine order into the aggregate planner's exact-to-minimum order.
+// Adjacent candidates are deduplicated only when both accounted size and the
+// exposed precision metadata describe the same representation behavior.
+func buildLossyRepresentationLadder[T any](exact Rule[T], coarseToFine []Rule[T]) []lossyRepresentation[T] {
+	result := make([]lossyRepresentation[T], 0, len(coarseToFine)+1)
+	appendCandidate := func(compiled Rule[T]) {
+		details := inspectionDetailsOf(compiled)
+		if len(result) != 0 {
+			previous := result[len(result)-1]
+			if previous.details.MemoryUsageBytes == details.MemoryUsageBytes &&
+				previous.details.GranularityAvailable == details.GranularityAvailable &&
+				previous.details.GranularityValue == details.GranularityValue &&
+				inspectionModeOf(previous.compiled) == inspectionModeOf(compiled) &&
+				inspectionStrategyOf(previous.compiled) == inspectionStrategyOf(compiled) {
+				return
+			}
+		}
+		result = append(result, lossyRepresentation[T]{compiled: compiled, details: details})
 	}
-	candidateUsage := inspectionDetailsOf(candidate).MemoryUsageBytes
-	if candidateUsage <= usage {
-		return
+	appendCandidate(exact)
+	for i := len(coarseToFine) - 1; i >= 0; i-- {
+		candidate := coarseToFine[i]
+		if inspectionDetailsOf(candidate).MemoryUsageBytes >= result[len(result)-1].details.MemoryUsageBytes {
+			continue
+		}
+		appendCandidate(candidate)
 	}
-	leaf.upgradeLimit = low
-	leaf.upgradeCost = candidateUsage - usage
-	leaf.upgrade = candidate
+	return result
 }
 
 func lossyinspectionDetails[T any](rule Rule[T], limit uint64) inspectionDetails {
