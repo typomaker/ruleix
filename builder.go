@@ -422,11 +422,14 @@ func searchAllMatches[C any, ID comparable](
 	}
 	initiallyBroad := rankedChildren[0].card > allCandidateScanLimit
 	var candidates *roaring.Bitmap
+	var cachedResult *localAllResult
 	if initiallyBroad {
-		candidates = pool.get()
+		cachedResult = root.loadLocalResult(pool, rankedChildren)
+		if cachedResult == nil {
+			candidates = pool.get()
+		}
 	}
-	cachedResult := candidates != nil && root.loadLocalResult(pool, rankedChildren, candidates)
-	if !cachedResult && !prepareRankedAllCandidates(root, value, pool, rankedChildren, candidates, metrics) {
+	if cachedResult == nil && !prepareRankedAllCandidates(root, value, pool, rankedChildren, candidates, metrics) {
 		if candidates != nil {
 			pool.put(candidates)
 		}
@@ -437,7 +440,7 @@ func searchAllMatches[C any, ID comparable](
 		*dst = result
 		return
 	}
-	if candidates != nil && !cachedResult {
+	if candidates != nil && cachedResult == nil {
 		root.storeLocalResult(pool, rankedChildren, candidates)
 	}
 
@@ -445,12 +448,24 @@ func searchAllMatches[C any, ID comparable](
 	broad := rankedChildren[0].card > allCandidateScanLimit
 	//nolint:nestif // Broad result assembly keeps ownership and exclusion handling together.
 	if broad {
-		if candidates != nil {
-			if excluded != nil {
-				candidates.AndNot(excluded)
+		if candidates != nil || cachedResult != nil {
+			if cachedResult != nil && cachedResult.idsSet && excluded == nil {
+				for _, id := range cachedResult.ids {
+					result = append(result, values[id])
+				}
+			} else {
+				if cachedResult != nil {
+					candidates = pool.get()
+					candidates.Or(cachedResult.bits)
+				}
+				if excluded != nil {
+					candidates.AndNot(excluded)
+				}
+				result = appendBitmapValues(candidates, values, result)
 			}
-			result = appendBitmapValues(candidates, values, result)
-			pool.put(candidates)
+			if candidates != nil {
+				pool.put(candidates)
+			}
 		} else {
 			result = appendBitmapAllMatches(rankedChildren, excluded, values, pool, result)
 		}

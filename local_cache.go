@@ -24,9 +24,11 @@ type localAllPlan struct {
 
 type localAllResult struct {
 	inputs []*roaring.Bitmap
+	ids    []uint32
 	epoch  uint64
 	bits   *roaring.Bitmap
 	bytes  uint64
+	idsSet bool
 }
 
 func (p *localAllPlan) resetResults(pool *bitmapPool) {

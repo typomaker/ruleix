@@ -92,6 +92,12 @@ const maxPooledBitmapBytes = 64 << 10
 // result payloads depend on query cardinality and need a separate byte budget.
 const maxLocalAllResultBytes = 64 << 10
 
+// maxLocalAllResultIDs bounds the compact representation used to bypass
+// bitmap copying and enumeration on exact warm-result cache hits. Wider
+// results keep the existing Roaring path, where the slice's retained memory
+// and linear copy cost would be less attractive.
+const maxLocalAllResultIDs = 64
+
 // maxLocalAllPlanBytes bounds the map entries and child-order slices retained
 // by one Local. The accounting deliberately charges the complete slice
 // capacity plus a conservative map-entry allowance, rather than only the

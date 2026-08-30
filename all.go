@@ -689,14 +689,13 @@ func (r *allRule[T]) rememberLocalPlan(pool *bitmapPool, rankedChildren []ranked
 func (r *allRule[T]) loadLocalResult(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
-	dst *roaring.Bitmap,
-) bool {
+) *localAllResult {
 	if pool.local == nil || pool.observeRuntime {
-		return false
+		return nil
 	}
 	plan := pool.allPlans[r]
 	if plan == nil {
-		return false
+		return nil
 	}
 	for i := range plan.results {
 		result := &plan.results[i]
@@ -711,11 +710,10 @@ func (r *allRule[T]) loadLocalResult(
 			}
 		}
 		if match {
-			dst.Or(result.bits)
-			return true
+			return result
 		}
 	}
-	return false
+	return nil
 }
 
 func (r *allRule[T]) storeLocalResult(
@@ -742,7 +740,15 @@ func (r *allRule[T]) storeLocalResult(
 		inputCapacity = cap(entry.inputs)
 	}
 	inputBytes := uint64(inputCapacity) * 8
-	entryBytes := bitmapBytes + inputBytes
+	idCapacity := 0
+	cardinality := bits.GetCardinality()
+	if cardinality <= maxLocalAllResultIDs {
+		idCapacity = int(cardinality)
+		if cap(entry.ids) > idCapacity {
+			idCapacity = cap(entry.ids)
+		}
+	}
+	entryBytes := bitmapBytes + inputBytes + uint64(idCapacity)*4
 	available := uint64(maxLocalAllResultBytes) - min(pool.allResultBytes, uint64(maxLocalAllResultBytes))
 	available = saturatingAdd(available, entry.bytes)
 	if entryBytes > available {
@@ -764,6 +770,20 @@ func (r *allRule[T]) storeLocalResult(
 		entry.bits.Clear()
 	}
 	entry.bits.Or(bits)
+	entry.idsSet = cardinality <= maxLocalAllResultIDs
+	if entry.idsSet {
+		if cap(entry.ids) < int(cardinality) {
+			entry.ids = make([]uint32, 0, cardinality)
+		} else {
+			entry.ids = entry.ids[:0]
+		}
+		bits.Iterate(func(id uint32) bool {
+			entry.ids = append(entry.ids, id)
+			return true
+		})
+	} else {
+		entry.ids = nil
+	}
 	entry.epoch = pool.cacheEpoch
 	entry.bytes = entryBytes
 	pool.allResultBytes += entryBytes

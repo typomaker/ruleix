@@ -15,6 +15,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `CompareBy` postings instead of materializing the complete operator union.
 - Per-`Local` exact `All` intersection caches share an accounted 64 KiB byte
   budget, preventing broad repeated queries from retaining oversized results.
+- Warm exact `All` cache hits with at most 64 matches reuse compact internal
+  IDs, avoiding bitmap copying and enumeration while preserving zero measured
+  allocations.
 
 ## [0.8.1] - 2026-08-25
 

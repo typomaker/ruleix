@@ -464,8 +464,7 @@ func TestLocalAllResultCacheInvalidatesWhenChildCacheChanges(t *testing.T) {
 }
 
 func TestLocalAllResultCacheHonorsSharedByteBudget(t *testing.T) {
-	pool := newBitmapPool()
-	pool.local = make([]localNodeCache, 1)
+	pool := newLocalBitmapPool(1)
 	pool.observeRuntime = false
 	rule := &allRule[int]{}
 	plan := &localAllPlan{order: []int{0}}
@@ -484,8 +483,26 @@ func TestLocalAllResultCacheHonorsSharedByteBudget(t *testing.T) {
 	rule.storeLocalResult(pool, ranked, small)
 	require.Positive(t, pool.allResultBytes)
 	require.LessOrEqual(t, pool.allResultBytes, uint64(maxLocalAllResultBytes))
+	require.True(t, plan.results[0].idsSet)
+	require.Equal(t, []uint32{1, 2, 3}, plan.results[0].ids)
 	plan.resetResults(pool)
 	require.Zero(t, pool.allResultBytes)
+}
+
+func TestLocalAllResultCacheKeepsWideResultsOnBitmapPath(t *testing.T) {
+	pool := newLocalBitmapPool(1)
+	rule := &allRule[int]{}
+	plan := &localAllPlan{order: []int{0}}
+	pool.allPlans = map[any]*localAllPlan{rule: plan}
+	ranked := []rankedBitmap{{bits: roaring.BitmapOf(1), childIdx: 0}}
+	wide := roaring.New()
+	wide.AddRange(0, maxLocalAllResultIDs+1)
+
+	rule.storeLocalResult(pool, ranked, wide)
+
+	require.NotNil(t, plan.results[0].bits)
+	require.False(t, plan.results[0].idsSet)
+	require.Nil(t, plan.results[0].ids)
 }
 
 func TestLocalAllPlanHonorsSharedByteBudget(t *testing.T) {

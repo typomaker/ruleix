@@ -1,5 +1,44 @@
 # Roadmap history
 
+## 2026-08-30: cache compact IDs for small exact `All` results
+
+Warm exact-intersection cache entries now retain up to 64 internal IDs beside
+their bitmap. An exact cache hit without exclusions appends external values
+directly from that compact slice, avoiding both a scratch-bitmap copy and
+Roaring result enumeration. Wider results and searches with exclusions retain
+the previous bitmap path. Slice capacity is charged to the existing shared
+64 KiB result-cache budget.
+
+Seven interleaved one-second runs of prebuilt parent and candidate binaries on
+Apple M1 Max with Go 1.26.0 measured production-shaped warm-Local medians of
+546.8 and 407.4 ns/op respectively, a 25.5% reduction; the candidate won all
+seven pairs and both versions remained at 0 B/op and 0 allocations. The normal
+five-run production gate measured a 408.0 ns/op Local median. `Index.Search`
+kept 40,852 B/op and 28 allocations with a 33.170 us/op median, while parallel
+Local batches improved to a 354.2 ns/search median.
+
+The complete 10K/100K/1M production-scale matrix, ordinary tests, race tests,
+and focused cache, exclusion, wildcard, large-result, and nested cases passed.
+Retained memory measured 2,968 B cold, 91,408 B warm, 108,283 B adaptive, and
+74,005 B adversarial. The warm increase from the 90,960 B parent reference is
+448 B per Local (about 0.5%), covering the two cached 45-ID production results
+and their slice storage.
+
+Reproduce with:
+
+```sh
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' \
+  -benchmem -benchtime=1s -count=5 .
+go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' \
+  -benchmem -benchtime=500ms -count=3 .
+go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' \
+  -benchtime=3x -count=3 .
+```
+
 ## 2026-08-30: reject compiled warm-Local plan routing
 
 CPU profiling attributed about 53% cumulative time to `reuseLocalPlan`, so the
