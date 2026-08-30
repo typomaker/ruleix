@@ -46,6 +46,28 @@ func (r *lossyRule[T]) validate(v T) error {
 	}
 	return r.child.validate(v)
 }
+
+// validateLossyPolicies reports malformed policies with the same stable schema
+// paths used by planning errors. It runs once before entry validation so nested
+// policy structure does not add per-entry build work.
+func validateLossyPolicies[T any](rule Rule[T], path string) error {
+	switch typed := rule.(type) {
+	case *lossyRule[T]:
+		if err := typed.validatePolicy(); err != nil {
+			return fmt.Errorf("ruleix: %s: %w", path, err)
+		}
+		return validateLossyPolicies(typed.child, path+"/child")
+	case *allRule[T]:
+		for i, child := range typed.children {
+			if err := validateLossyPolicies(child, fmt.Sprintf("%s/All[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+	case *inspectRule[T]:
+		return validateLossyPolicies(typed.child, path+"/Inspect")
+	}
+	return nil
+}
 func (r *lossyRule[T]) validatePolicy() error {
 	if r.limit != 0 {
 		return nil

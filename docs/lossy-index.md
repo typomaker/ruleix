@@ -159,6 +159,10 @@ Ordinary nested `All` nodes flatten only within the nearest policy boundary.
 If a subtree's minimum viable total exceeds its cap, `Build` fails with the
 policy path. `Inspect` boundaries remain attached to their corresponding
 subtrees and never report accounted usage above the applicable cap.
+Missing, repeated, zero, or otherwise malformed options in a nested policy are
+validated before entries are consumed and report the same stable policy path;
+tests and callers should rely on that path and error category rather than an
+unstable representation byte total.
 
 ## Build-time planning
 

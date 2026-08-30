@@ -59,23 +59,6 @@ corresponding exact result.
 
 ## Implementation plan
 
-### 6. Complete nested-policy correctness and determinism coverage
-
-- Test direct `Lossy(Lossy(...))`, `Lossy(All(...Lossy(...)))`, nested lossy
-  groups, multiple siblings with local caps, and at least three policy levels.
-- Cover inner-limit-smaller, outer-limit-smaller, equal-limit, exact-fit,
-  one-byte-under, minimum-fit, and impossible configurations.
-- Compare every approximate query result with an exact index over varied and
-  randomized data, including absent getters, wildcards, range boundaries,
-  duplicate values, and duplicate external IDs.
-- Rebuild identical inputs repeatedly and assert stable selected strategies,
-  granularities, memory accounting, and diagnostics.
-- Add overflow and malformed-policy tests that identify the failing policy
-  path without relying on unstable byte totals in the error string.
-
-Acceptance: race-enabled and randomized tests find no false negatives,
-nondeterministic plans, limit violations, or inspection-boundary loss.
-
 ### 7. Finalize diagnostics and documentation
 
 - Make `Inspect` report local configured limit, effective limit when constrained

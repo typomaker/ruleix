@@ -1,5 +1,54 @@
 # Roadmap history
 
+## 2026-08-30: complete nested-policy correctness and determinism coverage
+
+Nested-policy coverage now exercises direct `Lossy(Lossy(...))`, an `All`
+containing a local policy, nested groups, independently capped siblings, and
+three policy levels. Boundary fixtures cover exact fit, one byte below exact,
+minimum fit, impossible minimums, inner/outer/equal caps, and synthetic
+accounting overflow. Repeated builds compare modes, strategies, accounted
+usage, configured limits, granularities, and availability flags across every
+inspected boundary.
+
+The randomized differential matrix uses equality and both ordered directions,
+absent stored and query getters, wildcard rows, duplicate values, range-edge
+queries, and duplicate external IDs. Every approximate result is checked as a
+superset of the exact result, while every local and ancestor accounted total
+is checked against its cap.
+
+The new malformed-policy fixture exposed that entry validation reported a
+nested option failure without its policy path. Policy options are now
+validated once before entries are consumed, using the same deterministic
+`Lossy/child/All[i]/...` paths as planning and overflow errors. This preserves
+the existing per-entry value validation cost while making diagnostics stable.
+
+Verification commands and results:
+
+```sh
+go test -run '^(TestLossyPolicyValidation|TestNestedLossy)' .
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^(BenchmarkLossyAllPlanning|BenchmarkLossyAllOrderedPlanning|BenchmarkLossyAllSearchQuality|BenchmarkLossyAllSearchRuntime|BenchmarkLossyStreamingBuild)$' -benchmem -benchtime=100ms -count=3 .
+go test -run '^$' -bench '^(BenchmarkLossyScalePlanning|BenchmarkLossyScaleSearch)/Entries(10000|100000|1000000)/' -benchmem -benchtime=1x -count=1 .
+git diff --check
+```
+
+All tests passed on Apple M1 Max with Go 1.26.0. Against the immediately
+preceding recorded nested-policy run, the three-run medians remained in the
+same allocation classes: 4-child exact planning was 4.453 ms, 4-child 50%
+planning was 45.305 ms, ordered 2-child 75% planning was 46.727 ms, and
+streaming build was 40.241 ms. The corresponding preceding medians were
+4.407 ms, 44.332 ms, 46.531 ms, and 40.679 ms; this diagnostics-only build
+change showed no material systematic shift.
+
+The complete scale matrix stayed within every accounted limit and retained the
+same quality classes. At one million entries, equality accounted usage was
+127.6/38.5/30.6 MB and ordered usage was 130.5/35.7/24.0 MB for 100/50/25%
+budgets. Candidate counts remained one for equality and 8.5 for ordered, apart
+from the established ordered 25% case at 8.75 candidates/query and a
+0.0000003 observed false-positive rate. No false negative, race, cap
+violation, nondeterministic snapshot, or inspection-boundary loss was found.
+
 ## 2026-08-30: introduce hierarchical budgets for nested Lossy policies
 
 Nested `Lossy` decorators now compile as an explicit policy tree instead of

@@ -93,6 +93,9 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	}
 	ids := &nodeIDAllocator{}
 	state := schema.newState(ids, hints)
+	if err := validateLossyPolicies(state, "Lossy"); err != nil {
+		return nil, buildStatistics{}, err
+	}
 	uniqueIDCapacity := 0
 	if hints != nil {
 		uniqueIDCapacity = capacityHint(hints.uniqueIDs)
