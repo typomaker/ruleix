@@ -1,5 +1,47 @@
 # Roadmap history
 
+## 2026-08-30: measure selective planning quality and build cost
+
+Added `BenchmarkLossySelectionMatrix`, a 120-case gate over 2, 4, 8, and 16
+children; balanced and single-heavy distributions; equality, ordered, and
+mixed schemas; and limits one byte below exact, 75%, 50%, 25%, and minimum
+viable. Every case builds an exact reference, checks the lossy aggregate's
+accounted bytes against its hard limit, and reports build time and allocations,
+incremental peak-live build memory, retained accounted bytes, downgraded
+leaves, candidates per query, and observed false-positive rate.
+
+On Apple M1 Max with Go 1.26.0, 10K entries and one iteration per case, builds
+ranged from 15.3 ms to 779.1 ms and the largest observed incremental peak-live
+sample was 188.1 MB. Every below-exact case downgraded one leaf. In the
+16-child single-heavy equality case, the selective policy retained 15 exact
+leaves at 50% and measured 5.859 candidates/query with a 0.000486 false-positive
+rate; at 25%, where all 16 leaves had to become lossy, it measured 625
+candidates/query and 0.06241. No benchmark case exceeded its limit or omitted
+an exact result.
+
+The same benchmark was applied to proportional parent `17df8c0`. Its 16-child
+single-heavy equality cases measured 1.359 candidates/query at 50% while
+downgrading seven leaves, and 15.48 at 25% while downgrading all 16. A marginal
+quality-per-byte prototype using equality collision estimates and ordered
+bucket resolution was then tested. It failed to improve the pressure points:
+at equality 50% it downgraded all 16 leaves for 5.609 candidates/query, at 25%
+it remained at 625, and mixed 50% regressed from 1.516 to 10.92. The prototype
+was removed. The released-bytes selector is retained because it uniquely meets
+the objective of leaving small exact leaves unchanged, while its measured
+absolute 50% false-positive rate remains below 0.05%; minimum-budget collapse
+is explicitly represented by the matrix rather than hidden.
+
+Reproduce with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossySelectionMatrix/' -benchmem -benchtime=1x -count=1 .
+go test -run '^$' -bench '^(BenchmarkLossyAllPlanning|BenchmarkLossyAllOrderedPlanning|BenchmarkLossyAllSearchQuality|BenchmarkLossyAllSearchRuntime|BenchmarkLossyStreamingBuild)$' -benchmem -benchtime=100ms -count=3 .
+go test -run '^$' -bench '^(BenchmarkLossyScalePlanning|BenchmarkLossyScaleSearch)/Entries(10000|100000|1000000)/' -benchmem -benchtime=1x -count=1 .
+go test ./...
+go test -race ./...
+git diff --check
+```
+
 ## 2026-08-30: implement selective aggregate downgrade planning
 
 Aggregate `Lossy(All(...))` planning now starts with every leaf's exact

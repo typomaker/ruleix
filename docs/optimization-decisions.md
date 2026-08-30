@@ -49,6 +49,7 @@ focused-сценариях разных кардинальностей, `go test
 | Total-cost source selection только для uncached Index | Focused mixed case: 3,919 → 2,439 µs, 20 612 → 12 393 B; production Index слегка улучшился, Local остался на прежнем пути. | Cost model полезен для uncached materialization, но исключён из чувствительного warm Local loop. |
 | Прямое ограничение concrete postings в shared-wildcard группе | Focused A/B: 2,977 → 2,465 µs (−17,2%), 5 272 → 2 600 B/op, 16 → 8 allocs. | Убирает реальный intermediate только в uncached path; Local и immutable postings не затронуты. |
 | Lossy exact-or-superset representations | Бюджет проверяется детерминированным accounting; fixture-матрица проверяет exact/minimum уровни и отсутствие false negatives. | Даёт ограничение retained memory с формальным контрактом `lossy result ⊇ exact result`. |
+| Селективное понижение lossy-листьев по максимальному освобождению памяти | В 16-child single-heavy equality при 50% сохраняет 15 exact-листьев; 5,859 candidates/query и 0,000486 observed false-positive rate. Полная 120-case матрица не нарушила лимит и не дала false negatives. | Реализует целевую exact-leaf retention; абсолютное качество принято, несмотря на более низкую candidate amplification у пропорционального baseline. |
 
 Исходные измерения первых двух строк находятся также в
 [`BENCHMARK_OPTIMIZATIONS.md`](../BENCHMARK_OPTIMIZATIONS.md). Интегральное
@@ -71,6 +72,7 @@ focused-сценариях разных кардинальностей, `go test
 | Unconditional ordered-source streaming | Не прошло матрицу кардинальностей: стоимость обхода широкого ordered source превышала материализацию/фильтрацию. | Представление выбирается по стоимости и кардинальности, а не принудительно. |
 | Bounded equality-intersection prototype | Production-варианты оказались существенно медленнее baseline. | Cheap cardinality lookup уже давал нужный порядок; дополнительная intersection стадия создавала лишнюю работу. |
 | Post-intersection candidate scan с отдельным широким порогом | Вариант с лимитом 256 ID был decisively worse. | Direct validation остаётся выгодной только для малого, измеренного диапазона. |
+| Marginal lossy score по collision rate / bucket resolution | В 16-child single-heavy equality при 50% понизил все 16 листьев и дал 5,609 candidates/query вместо 5,859 у released-bytes; при 25% осталось 625 candidates/query. Mixed 50% ухудшился с 1,516 до 10,92 candidates/query. | Эвристика не устранила проблемную amplification и потеряла главное свойство — сохранение малых exact-листьев; прототип удалён. |
 
 ## Как добавлять новое решение
 

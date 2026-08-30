@@ -59,26 +59,6 @@ corresponding exact result.
 
 ## Implementation plan
 
-### 4. Measure selection quality and build cost
-
-- Extend lossy planning benchmarks with 2, 4, 8, and 16 children; balanced and
-  single-heavy size distributions; equality, ordered, and mixed schemas; and
-  budgets immediately below exact, at 75%, 50%, 25%, and minimum viable size.
-- Report planning time, build allocations, peak temporary build memory,
-  accounted retained bytes, number of downgraded leaves, candidates per query,
-  and observed false-positive rate.
-- Compare the selective policy with the parent proportional allocator. If
-  maximizing released bytes causes a material search-quality regression,
-  prototype a deterministic marginal score using released bytes and an
-  operator-specific precision-loss estimate, then document and test the chosen
-  score before proceeding.
-- Reject unbounded candidate retention or a policy that improves retained
-  memory only by creating unacceptable build-time or search-quality costs.
-
-Acceptance: selective planning preserves the hard limit and conservative
-correctness across the matrix, demonstrates the intended exact-leaf retention,
-and has a recorded, reproducible quality/build-cost tradeoff.
-
 ### 5. Introduce a hierarchical budget model for nested `Lossy`
 
 - Replace the current boolean `inside` rejection state with an explicit policy

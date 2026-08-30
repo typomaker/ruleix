@@ -3,15 +3,17 @@ package ruleix
 import (
 	"cmp"
 	"fmt"
+	"runtime"
+	"runtime/debug"
 	"testing"
 )
 
 const lossyAllBenchmarkEntries = 10_000
 
 type lossyAllBenchmarkConstraint struct {
-	values     [8]string
-	thresholds [8]int
-	present    [8]bool
+	values     [16]string
+	thresholds [16]int
+	present    [16]bool
 }
 
 func lossyAllOrderedBenchmarkSchema(children int) Rule[lossyAllBenchmarkConstraint] {
@@ -52,6 +54,185 @@ func lossyAllBenchmarkSchema(children int) Rule[lossyAllBenchmarkConstraint] {
 		})
 	}
 	return All(rules...)
+}
+
+type lossySelectionBenchmarkDistribution string
+
+const (
+	lossySelectionBalanced    lossySelectionBenchmarkDistribution = "Balanced"
+	lossySelectionSingleHeavy lossySelectionBenchmarkDistribution = "SingleHeavy"
+)
+
+func lossySelectionBenchmarkData(entries, children int, distribution lossySelectionBenchmarkDistribution) ([]lossyAllBenchmarkConstraint, []int) {
+	constraints := make([]lossyAllBenchmarkConstraint, entries)
+	ids := make([]int, entries)
+	for row := range constraints {
+		ids[row] = row
+		for field := range children {
+			distinct := entries
+			if distribution == lossySelectionSingleHeavy && field != 0 {
+				distinct = 16
+			}
+			value := (row*(field*2+3) + field) % distinct
+			constraints[row].values[field] = fmt.Sprintf("f%d-v%d", field, value)
+			constraints[row].thresholds[field] = value
+			constraints[row].present[field] = true
+		}
+	}
+	return constraints, ids
+}
+
+func lossySelectionBenchmarkSchema(operator string, children int, inspectors []Inspector) Rule[lossyAllBenchmarkConstraint] {
+	rules := make([]Rule[lossyAllBenchmarkConstraint], children)
+	for field := range rules {
+		field := field
+		var rule Rule[lossyAllBenchmarkConstraint]
+		ordered := operator == "Ordered" || operator == "Mixed" && field%2 == 1
+		if ordered {
+			rule = GreaterOrEqual(func(value lossyAllBenchmarkConstraint) (int, bool) {
+				return value.thresholds[field], value.present[field]
+			}, cmp.Compare[int])
+		} else {
+			rule = Include(func(value lossyAllBenchmarkConstraint) (string, bool) {
+				return value.values[field], value.present[field]
+			})
+		}
+		if inspectors != nil {
+			rule = Inspect(&inspectors[field], rule)
+		}
+		rules[field] = rule
+	}
+	return All(rules...)
+}
+
+func lossySelectionBenchmarkMinimum(b testing.TB, constraints []lossyAllBenchmarkConstraint, schema Rule[lossyAllBenchmarkConstraint]) uint64 {
+	b.Helper()
+	state := schema.newState(&nodeIDAllocator{}, &buildStatistics{})
+	for id, constraint := range constraints {
+		state.insert(constraint, uint32(id))
+	}
+	leaves := make([]lossyAllLeaf[lossyAllBenchmarkConstraint], 0, 16)
+	if err := collectLossyAllLeaves(state, &leaves); err != nil {
+		b.Fatal(err)
+	}
+	var minimum uint64
+	for _, leaf := range leaves {
+		ladder, err := leaf.planner.representationLadder()
+		if err != nil {
+			b.Fatal(err)
+		}
+		minimum, _ = addLossyMemory(minimum, ladder[len(ladder)-1].details.MemoryUsageBytes)
+	}
+	return minimum
+}
+
+// BenchmarkLossySelectionMatrix measures the complete selective-planning gate.
+// Latest local result (Apple M1 Max, Go 1.26.0, 10k entries, one iteration):
+// 120 cases took 15.3--779.1 ms/build with at most 188.1 MB peak-live memory.
+// The 16-child single-heavy equality 50% case retained 15 exact leaves and
+// measured 5.859 candidates/query at 0.000486 observed false-positive rate.
+// See ROADMAP_HISTORY.md for the proportional-parent comparison.
+//
+// Reproduce:
+//
+//	go test -run '^$' -bench '^BenchmarkLossySelectionMatrix/' -benchmem -benchtime=1x -count=1 .
+//
+//nolint:gocognit // Keeping the dimensions together makes benchmark names reproducible.
+func BenchmarkLossySelectionMatrix(b *testing.B) {
+	const entries = lossyAllBenchmarkEntries
+	for _, children := range []int{2, 4, 8, 16} {
+		for _, distribution := range []lossySelectionBenchmarkDistribution{lossySelectionBalanced, lossySelectionSingleHeavy} {
+			constraints, ids := lossySelectionBenchmarkData(entries, children, distribution)
+			queries := constraints[:64]
+			for _, operator := range []string{"Equality", "Ordered", "Mixed"} {
+				exactSchema := lossySelectionBenchmarkSchema(operator, children, nil)
+				exactBytes := lossyAllBenchmarkExactBytesForSchema(b, constraints, ids, exactSchema)
+				minimumBytes := lossySelectionBenchmarkMinimum(b, constraints, exactSchema)
+				exactIndex, err := New[lossyAllBenchmarkConstraint, int](exactSchema).Build(Zip(constraints, ids))
+				if err != nil {
+					b.Fatal(err)
+				}
+				var exactMatches []int
+				var exactTotal uint64
+				for _, query := range queries {
+					exactMatches = exactMatches[:0]
+					exactIndex.Search(query, &exactMatches)
+					exactTotal += uint64(len(exactMatches))
+				}
+				budgets := []struct {
+					name  string
+					limit uint64
+				}{
+					{name: "BelowExact", limit: exactBytes - 1},
+					{name: "Budget75", limit: exactBytes * 75 / 100},
+					{name: "Budget50", limit: exactBytes * 50 / 100},
+					{name: "Budget25", limit: max(exactBytes*25/100, minimumBytes)},
+					{name: "Minimum", limit: minimumBytes},
+				}
+				for _, budget := range budgets {
+					name := fmt.Sprintf("Children%d/%s/%s/%s", children, distribution, operator, budget.name)
+					b.Run(name, func(b *testing.B) {
+						inspectors := make([]Inspector, children)
+						var aggregate Inspector
+						schema := Inspect(&aggregate, Lossy(lossySelectionBenchmarkSchema(operator, children, inspectors), MemoryLimit(budget.limit)))
+
+						runtime.GC()
+						var before, after runtime.MemStats
+						runtime.ReadMemStats(&before)
+						previousGC := debug.SetGCPercent(-1)
+						probe, err := New[lossyAllBenchmarkConstraint, int](schema).Build(Zip(constraints, ids))
+						debug.SetGCPercent(previousGC)
+						runtime.ReadMemStats(&after)
+						if err != nil {
+							b.Fatal(err)
+						}
+
+						accounted, ok := aggregate.Snapshot().MemoryUsage()
+						if !ok || accounted > budget.limit {
+							b.Fatalf("accounted bytes %d exceed limit %d", accounted, budget.limit)
+						}
+						downgraded := 0
+						for i := range inspectors {
+							if inspectors[i].Snapshot().Mode() == RuleModeLossy {
+								downgraded++
+							}
+						}
+						var matches []int
+						var totalMatches uint64
+						for _, query := range queries {
+							matches = matches[:0]
+							probe.Search(query, &matches)
+							totalMatches += uint64(len(matches))
+						}
+						falsePositives := totalMatches - exactTotal
+						possibleFalsePositives := uint64(len(queries)*entries) - exactTotal
+						peak := uint64(0)
+						if after.HeapAlloc > before.HeapAlloc {
+							peak = after.HeapAlloc - before.HeapAlloc
+						}
+
+						builder := New[lossyAllBenchmarkConstraint, int](schema)
+						b.ReportAllocs()
+						b.ResetTimer()
+						for range b.N {
+							index, buildErr := builder.Build(Zip(constraints, ids))
+							if buildErr != nil {
+								b.Fatal(buildErr)
+							}
+							lossyAllBenchmarkIndex = index
+						}
+						b.ReportMetric(float64(accounted), "accounted-B/index")
+						b.ReportMetric(float64(downgraded), "downgraded-leaves")
+						b.ReportMetric(float64(peak), "peak-live-B/build")
+						b.ReportMetric(float64(totalMatches)/float64(len(queries)), "candidates/query")
+						if possibleFalsePositives != 0 {
+							b.ReportMetric(float64(falsePositives)/float64(possibleFalsePositives), "false-positive-rate")
+						}
+					})
+				}
+			}
+		}
+	}
 }
 
 func BenchmarkLossyAllPlanning(b *testing.B) {
