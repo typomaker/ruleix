@@ -1,5 +1,80 @@
 # Roadmap history
 
+## 2026-08-30: reject the compiled root query validator
+
+L3 compiled one immutable root-level exact-key validator during `Build` for a
+complete supported `All` schema. Equality, ordered, `Between`, and `CompareBy`
+leaves contributed typed closures to a chain in reverse schema order. Each
+leaf read its getter once, compared both viable cache-entry keys, cleared a
+two-bit mask, and stopped the chain at zero. Inspector wrappers and unsupported
+children remained explicit boundaries and used the existing entry-ordered
+fallback. A focused test covered a first-entry hit, one getter call per leaf,
+and the inspector boundary. `go test ./...` passed and the candidate retained
+0 B/op and 0 allocs/op in the decision workload.
+
+The latency gate rejected the candidate. Seven interleaved one-second runs of
+separately prebuilt parent and candidate binaries measured parent values of
+`227.8/228.0/230.6/228.0/228.2/228.3/227.8` ns/op and candidate values of
+`261.1/262.8/261.5/260.5/260.7/259.5/279.0` ns/op. Medians were 228.0 and
+261.1 ns/op: a 14.5% regression with zero candidate wins, instead of the
+required 5% improvement and five paired wins.
+
+Comparable 15-second single-CPU profiles reproduced 231.7 ns/op for the
+parent and 264.2 ns/op for the candidate. The parent spent 75.7% cumulative
+CPU in `loadLocalQueryResult`; the generic leaf matchers appeared as separate
+costs, including 21.1% for `Between`, 8.2% for UUID equality, and 7.1% for the
+array-valued `CompareBy`. The candidate still spent 76.7% cumulative CPU in
+`loadLocalQueryResult`, now with the closure chain itself accounting for 71.2%
+cumulatively. Its nested typed closures accumulated call overhead at every
+leaf: representative cumulative costs were 71.2% at the outer `Between`
+closure, 52.9% at the next `CompareBy`, and 44.7% at UUID equality. The
+confirmed cause is therefore the non-inlined indirect closure chain: removing
+per-child interface dispatch did not fuse the generated machine code and cost
+more than the saved duplicate getter reads. The implementation and focused
+test were removed. L4 continues from the unchanged L1 parent.
+
+The complete post-removal gate passed. Fixed-session medians were 34.815 us
+for `Index.Search`, 228.6 ns for warm `Local.Search`, and 239.8 ns/search for
+the parallel batch. Warm Local and every cardinality case remained at 0 B/op
+and 0 allocs/op; cardinality medians were 27.36 ns empty, 39.79 ns singleton,
+58.42 ns for eight results, and 9.951 us for 4,095 results. Retained Local
+memory returned exactly to 2,968 B cold, 92,208 B warm, 109,072 B adaptive,
+and 74,032--74,043 B adversarial. The full production-scale family, ordinary
+tests, race tests, and `git diff --check` passed without a changed allocation
+class.
+
+Environment: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Commands:
+
+```sh
+git worktree add --detach /tmp/ruleix-l3-parent <L1-commit>
+go test -c -o /tmp/ruleix-l3-candidate.test .
+(cd /tmp/ruleix-l3-parent && go test -c -o /tmp/ruleix-l3-parent.test .)
+# Alternate parent and candidate seven times:
+GOMAXPROCS=1 /tmp/ruleix-l3-{parent,candidate}.test -test.run '^$' \
+  -test.bench '^BenchmarkProductionShapeSearch/Local$' \
+  -test.benchmem -test.benchtime=1s -test.count=1
+GOMAXPROCS=1 /tmp/ruleix-l3-parent.test -test.run '^$' \
+  -test.bench '^BenchmarkProductionShapeSearch/Local$' \
+  -test.benchmem -test.benchtime=15s -test.count=1 \
+  -test.cpuprofile=/tmp/ruleix-l3-parent.cpu
+GOMAXPROCS=1 /tmp/ruleix-l3-candidate.test -test.run '^$' \
+  -test.bench '^BenchmarkProductionShapeSearch/Local$' \
+  -test.benchmem -test.benchtime=15s -test.count=1 \
+  -test.cpuprofile=/tmp/ruleix-l3-candidate.cpu
+go tool pprof -top -cum -nodecount=20 \
+  /tmp/ruleix-l3-parent.test /tmp/ruleix-l3-parent.cpu
+go tool pprof -top -cum -nodecount=20 \
+  /tmp/ruleix-l3-candidate.test /tmp/ruleix-l3-candidate.cpu
+go test ./...
+go test -race ./...
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' -benchmem -benchtime=500ms -count=3 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality/' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' -benchtime=3x -count=3 .
+git diff --check
+```
+
 ## 2026-08-30: reject two-entry query-key validation
 
 L2 tested a two-bit viable-entry mask across schema order. Equality, ordered,

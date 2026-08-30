@@ -61,6 +61,7 @@ focused-сценариях разных кардинальностей, `go test
 
 | Эксперимент | Результат | Почему отклонён |
 | --- | --- | --- |
+| Скомпилированная цепочка валидатора exact query key | L1 parent 228,0 → candidate 261,1 ns/op (+14,5%); 0/7 paired wins; профиль: 71,2% cumulative CPU в цепочке closures. | Go не встроил разнородные typed closures: косвенный вызов на каждом leaf заменил interface dispatch, но не создал fused machine code и оказался дороже. Кандидат удалён. |
 | Compiled warm-Local plan routing | End-to-end warm Local улучшился лишь на 0,34%; кандидат выиграл 4 из 7 пар, drift был больше эффекта. | Внутренний профиль улучшился, но пользовательский сценарий — нет; дополнительный routing удалён. |
 | Small-result `ManyIterator` decoding | 8 результатов: 58,47 → 101,8 ns/op, появились 192 B/op и 2 allocs. Empty/singleton вариант дал только нестабильные 1,3% на production. | Нарушен zero-allocation класс либо выигрыш не прошёл production gate. |
 | Eager total-cost ranking для каждого запроса | Index 43,575 → 45,377 µs; warm Local 566,0 → 591,5 ns (+4,5%). | Дополнительный scoring pass дороже пользы; cost model оставлен только для uncached Index. |

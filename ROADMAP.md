@@ -65,32 +65,11 @@ query-key validation is large enough to measure the next experiment. If exact
 validation is below 15% cumulative CPU, skip L2 and choose the largest measured
 non-benchmark hot path instead.
 
-### L3. Fuse exact-key validation for the complete `All` schema
-
-- Use the L1 parent: the two-entry viable-mask experiment was rejected and is
-  recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Its profile attributes
-  62.1% cumulative warm-Local CPU to the per-child generic matcher call site,
-  above this step's 10% threshold.
-- Compile an immutable root validator during `Build` that evaluates the same
-  two-entry viable mask without repeating per-search capability discovery.
-- Keep inspector wrappers and unsupported children as explicit boundaries; do
-  not generate unsafe code, add a public planner API, or specialize only the
-  production benchmark schema.
-- Test empty and nested `All`, 1/8/16/32 supported children, mixed supported
-  and unsupported leaves, sampled inspectors, stale cache epochs, and
-  concurrent searches.
-- Run strict interleaved A/B against the latest accepted parent, not against
-  the pre-L2 baseline.
-
-Acceptance: the incremental gain over that parent is at least 5%, warm Local
-stays at 0 B/op and 0 allocations, `Index.Build` latency and retained index
-bytes do not regress by more than 3%, and every standard Local gate remains
-within its threshold. If dispatch is below the profiling threshold or the A/B
-gate fails, record and reject L3 before L4.
-
 ### L4. Tune compact exact-result retention by measured cardinality
 
-- Re-profile the latest accepted parent. Proceed only if bitmap copying or
+- Use the unchanged L1 parent: both L2 and L3 were rejected and are recorded
+  in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
+- Re-profile that latest accepted parent. Proceed only if bitmap copying or
   enumeration remains material for exact-cache hits above the current 64-ID
   compact limit.
 - Benchmark compact limits of 64, 96, 128, and 256 IDs across empty, singleton,
