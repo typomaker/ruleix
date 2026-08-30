@@ -1,5 +1,26 @@
 # Project documentation governance
 
+This document is the canonical source for project and agent workflow rules.
+`AGENTS.md` should remain a short entry point linking here instead of
+duplicating detailed rules. New workflow rules should normally be added to
+this document or another focused document under `docs/`, with `AGENTS.md`
+updated only when a new canonical entry point is required.
+
+## Agent workflow
+
+- After fully completing each assigned task, create a Git commit containing all
+  changes related to that task.
+- Before committing, run the appropriate checks and `git diff --check`.
+- Do not include unrelated user changes in the commit.
+- Document every change, report, verification, and experiment in `docs/` as
+  part of the same task. Update an existing document when possible; create a
+  focused document when no suitable canonical document exists.
+- When adding or changing a benchmark, include a nearby comment with the latest
+  local results and enough run parameters to make future measurements
+  comparable. Update the relevant canonical document in `docs/` as well.
+
+## Documentation ownership
+
 The `docs/` directory is the canonical source of truth for Ruleix. Code,
 benchmarks, and task reports must not be the only record of a completed change,
 verification, or experiment.
