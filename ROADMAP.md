@@ -59,25 +59,6 @@ corresponding exact result.
 
 ## Implementation plan
 
-### 1. Freeze current behavior and define planner fixtures
-
-- Add table-driven fixtures that expose every exact and lossy representation
-  level available to equality and ordered leaves: accounted bytes, precision
-  or bucket granularity, and whether compilation succeeds at a given limit.
-- Add regression cases for 16-child `All` schemas in which one large leaf
-  causes the exact total to exceed the aggregate limit while the other 15
-  leaves can remain exact.
-- Record the current proportional allocation outcome only as a migration
-  baseline; assert conservative-result correctness and hard memory accounting,
-  not the old allocation itself.
-- Add skewed, equal-size, minimum-budget, nested-`All`, wildcard-heavy, and
-  representation-tie fixtures before changing the planner.
-
-Acceptance: the fixtures fail if memory accounting exceeds the configured
-limit or an exact match is omitted, and they make the intended difference
-between the old proportional allocator and the new selective allocator
-observable.
-
 ### 2. Expose ordered discrete representation ladders internally
 
 - Replace repeated arbitrary-limit probing in aggregate planning with an

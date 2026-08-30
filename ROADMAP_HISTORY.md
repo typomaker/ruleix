@@ -1,5 +1,30 @@
 # Roadmap history
 
+## 2026-08-30: freeze lossy planner behavior with migration fixtures
+
+Added table-driven equality and ordered leaf fixtures that discover every
+currently selectable representation between the exact and minimum endpoints.
+They record accounted bytes and granularity, verify that each selected
+representation fits its compilation limit, and verify that the byte below the
+minimum fails.
+
+Aggregate fixtures now cover 16-child single-heavy and equal-size schemas,
+ordinary nested `All`, wildcard-heavy data, deterministic representation ties,
+and exact minimum/one-byte-under limits. Every successful aggregate build is
+checked against its hard retained-memory limit and queried against an exact
+index to ensure that no exact result is omitted. The verbose focused test logs
+the proportional allocator's selected lossy leaf indexes as a migration
+baseline without asserting that allocation as future behavior.
+
+Reproduce with:
+
+```sh
+go test -run 'TestLossy(LeafRepresentation|AllPlanner|AllMinimumBudget)Fixtures' -v .
+go test ./...
+go test -race ./...
+git diff --check
+```
+
 ## 2026-08-30: validate exact query keys before child lookup
 
 Root `All` result-cache entries now retain the exact getter outputs that
