@@ -110,8 +110,8 @@ release-comparison прогону:
 | Показатель | Последний зафиксированный результат | Контекст |
 | --- | ---: | --- |
 | `Index.Search` | 32,383 µs/op, 40 851–40 852 B/op, 28 allocs/op | Финальный combined executor gate, 7×3 s. |
-| warm `Local.Search` | 228,1 ns/op, 0 B/op, 0 allocs/op | Exact-query-key fast path, 7 interleaved runs. |
-| parallel `Local` | 209,8 ns/search | Тот же exact-query-key checkpoint. |
+| warm `Local.Search` | 227,5 ns/op, 0 B/op, 0 allocs/op | L1 same-commit refresh, 7 interleaved runs, `GOMAXPROCS=1`. |
+| parallel `Local` | 241,9 ns/search | L1 fixed-session gate with `GOMAXPROCS=1`; not directly comparable to the earlier default-CPU 209,8 ns/search. |
 | warm Local retained | 92 208 B | Два полных production query keys и compact results внутри bounded cache. |
 
 Эти числа нельзя напрямую объявлять результатом следующего релиза: перед тегом

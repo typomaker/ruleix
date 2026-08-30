@@ -21,14 +21,13 @@ documented in [`CHANGELOG.md`](CHANGELOG.md), [`README.md`](README.md), and
 
 ## Warm-Local optimization queue
 
-The current reference is the exact-query-key result-cache implementation: an
-interleaved parent/candidate comparison measured 228.1 ns/op for
+The current reference is the exact-query-key result-cache implementation: a
+same-commit interleaved refresh measured 227.5 ns/op for
 `BenchmarkProductionShapeSearch/Local`, with 0 B/op and 0 allocations. Refresh
-that reference before the first experiment because machine state and preceding
-accepted changes may move it.
+it again before L2's parent/candidate comparison if machine state moves.
 
 Every step is conditional on the previous step. The parent for an experiment
-is always the latest accepted commit, never the original 228.1 ns reference.
+is always the latest accepted commit, never an older recorded reference.
 If an experiment fails its gate, remove it from the active implementation,
 record its code, measurements, and rejection reason in
 [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md), and run the next applicable step

@@ -1,5 +1,73 @@
 # Roadmap history
 
+## 2026-08-30: refresh the warm-Local baseline and CPU profile
+
+L1 refreshed the exact-query-key checkpoint without changing executor
+behavior. Two separately named copies of the same prebuilt test binary were
+run alternately for seven one-second production-shaped Local measurements with
+`GOMAXPROCS=1`. Their raw ns/op sequences were
+`227.5/227.4/227.6/227.3/227.2/230.0/228.0` and
+`227.8/227.6/230.5/227.3/228.3/228.6/227.9`, for medians of 227.5 and
+227.9 ns/op. All fourteen runs stayed at 0 B/op and 0 allocs/op. The duplicate
+binaries differ by 0.18% at the median, so 227.5 ns/op replaces the stale
+228.1 ns/op working reference.
+
+A new focused benchmark warms the two production queries in alternating order
+and then reports the exact-cache entries independently. Seven one-second runs
+measured a 202.9 ns/op first-entry median and a 202.1 ns/op second-entry median,
+both with zero bytes and allocations. The lack of a repeatable second-entry
+penalty confirms that the alternating production benchmark does not hide a
+material entry-order asymmetry.
+
+A 15-second single-CPU profile (16.94 sampled CPU seconds) attributes 75.9%
+cumulative CPU to `allRule.loadLocalQueryResult`, including 62.1% at the
+per-child query-key matcher call site. Appending the 45 compact cached IDs
+accounts for 15.8% cumulative CPU. Fallback child lookup is absent because
+every measured search is an exact-cache hit. The benchmark loop and query copy
+account for 2.2%. Exact validation is therefore well above L2's 15% threshold,
+and L2 is the next applicable experiment.
+
+The ordinary fixed-session gate measured medians of 35.580 us, 40,805 B, and
+28 allocations for `Index.Search`; 227.9 ns, zero bytes, and zero allocations
+for warm `Local.Search`; and 241.9 ns/search for the parallel batch with
+`GOMAXPROCS=1`. Cardinality medians were 27.31 ns empty, 39.79 ns singleton,
+58.41 ns for eight results, and 9.958 us for 4,095 results, all allocation-free.
+Retained Local memory was 2,968 B cold, 92,208 B warm, 109,072 B adaptive, and
+74,043 B adversarial.
+
+The production-scale time medians for Small/Selective/WildcardHeavy/
+LargeResult/NestedAll/RangeHeavy were, respectively, 212.7 ns/55.374 us/
+53.083 us/45.500 us/49.359 us/116.805 us at 10K; 1.107 us/73.727 us/
+54.764 us/305.573 us/55.287 us/292.520 us at 100K; and 112.389 us/
+620.564 us/432.786 us/2.607 ms/444.266 us/3.439 ms at 1M. Allocation classes
+were unchanged; the raw output is reproducible from the commands below.
+
+Environment: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Commands:
+
+```sh
+go test -c -o /tmp/ruleix-l1-a.test .
+cp /tmp/ruleix-l1-a.test /tmp/ruleix-l1-b.test
+# Alternate a.test and b.test seven times:
+GOMAXPROCS=1 /tmp/ruleix-l1-a.test -test.run '^$' \
+  -test.bench '^BenchmarkProductionShapeSearch/Local$' \
+  -test.benchmem -test.benchtime=1s -test.count=1
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeExactCacheEntryHit/' \
+  -benchmem -benchtime=1s -count=7 .
+GOMAXPROCS=1 /tmp/ruleix-l1-a.test -test.run '^$' \
+  -test.bench '^BenchmarkProductionShapeSearch/Local$' \
+  -test.benchtime=15s -test.count=1 -test.cpuprofile=/tmp/ruleix-l1-local.cpu
+GOMAXPROCS=1 go tool pprof -top -cum /tmp/ruleix-l1-a.test /tmp/ruleix-l1-local.cpu
+go test ./...
+go test -race ./...
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' -benchmem -benchtime=500ms -count=3 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality/' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' -benchtime=3x -count=3 .
+git diff --check
+```
+
 ## 2026-08-30: finalize Lossy diagnostics and documentation
 
 `InspectorSnapshot.MemoryLimit` now reports the maximum actually available to

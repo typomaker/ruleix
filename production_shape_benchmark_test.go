@@ -295,10 +295,11 @@ func productionBenchmarkQuery(day int) productionBenchmarkConstraint {
 	}
 }
 
-// BenchmarkProductionShapeSearch last local run (Apple M1 Max):
+// BenchmarkProductionShapeSearch last local run (Apple M1 Max, Go 1.26.0,
+// GOMAXPROCS=1):
 // go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' -benchmem -benchtime=1s -count=5 .
-// Medians: Index 39,728 ns/op, 73,394 B/op, 28 allocs/op;
-// Local 550.3 ns/op, 0 B/op, 0 allocs/op.
+// Medians: Index 35,580 ns/op, 40,805 B/op, 28 allocs/op;
+// Local 227.9 ns/op, 0 B/op, 0 allocs/op.
 func BenchmarkProductionShapeSearch(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
@@ -330,6 +331,48 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 				} else {
 					index.Search(query, &matches)
 				}
+			}
+		})
+	}
+}
+
+// BenchmarkProductionShapeExactCacheEntryHit isolates lookup of each of the
+// two exact-query cache entries. The warm-up alternates the production queries
+// so query 100 occupies the first entry and query 101 the second entry.
+//
+// Reproduce with:
+//
+//	go test -run '^$' -bench '^BenchmarkProductionShapeExactCacheEntryHit/' -benchmem -benchtime=1s -count=7 .
+func BenchmarkProductionShapeExactCacheEntryHit(b *testing.B) {
+	constraints, ids := productionBenchmarkData()
+	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+		productionBenchmarkSchema(),
+	).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	queries := [...]productionBenchmarkConstraint{
+		productionBenchmarkQuery(100),
+		productionBenchmarkQuery(101),
+	}
+	for entry, query := range queries {
+		name := "FirstEntry"
+		if entry == 1 {
+			name = "SecondEntry"
+		}
+		b.Run(name, func(b *testing.B) {
+			local := index.Local()
+			b.Cleanup(local.Close)
+			matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
+			for warm := range 4 {
+				matches = matches[:0]
+				local.Search(queries[warm%len(queries)], &matches)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				matches = matches[:0]
+				local.Search(query, &matches)
 			}
 		})
 	}
