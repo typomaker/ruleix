@@ -82,14 +82,19 @@ exceed the budget.
 
 ### Stable memory accounting
 
-`Inspector` will expose the selected representation through:
+`InspectorSnapshot` exposes the selected representation through:
 
 ```go
-MemoryUsage() uint64
-MemoryLimit() uint64
+MemoryUsage() (uint64, bool)
+MemoryLimit() (uint64, bool)
+EffectiveMemoryLimit() (uint64, bool)
 ```
 
-Both values are bytes. `MemoryUsage` is a deterministic Ruleix accounting
+All three values are bytes. `MemoryLimit` is the policy's locally configured
+cap. `EffectiveMemoryLimit` is the maximum available to that subtree after
+accounting for every ancestor cap and the selected representations of its
+siblings; it equals `MemoryLimit` when no ancestor constrains it. `MemoryUsage`
+is the selected subtree's deterministic Ruleix accounting
 value, not a sample from `runtime.MemStats`, a heap profile, or an estimate
 derived from the Go allocator. Given the same input, policy, and selected
 strategy, it must be identical across repeated builds, supported architectures,
@@ -133,8 +138,8 @@ usable.
 - canonical encoding rejects an input value, or an accounting calculation
   overflows;
 - the policy is invalid, including a missing, duplicate, or zero memory limit;
-- a child of a composite `Lossy(All(...))` is unsupported or cannot fit its
-  deterministic share of the composite budget.
+- a child of a composite `Lossy(All(...))` is unsupported or the sum of minimum
+  viable representations cannot fit an applicable policy budget.
 
 The error identifies the decorated operator and the reason, but strategy names
 and minimum byte counts are diagnostic rather than stable strings. A failed
@@ -163,6 +168,18 @@ Missing, repeated, zero, or otherwise malformed options in a nested policy are
 validated before entries are consumed and report the same stable policy path;
 tests and callers should rely on that path and error category rather than an
 unstable representation byte total.
+
+Aggregate planning begins with every supported leaf exact. If the total does
+not fit, it advances one leaf by one discrete representation level and
+recomputes the total. The deterministic selector maximizes bytes released,
+breaks ties by larger current leaf usage, and finally uses stable schema order.
+Selection stops immediately when the aggregate fits, so no unrelated leaf is
+downgraded. Ordinary nested `All` nodes participate in the same allocation
+pool without losing their search shape or inspection boundary.
+
+Every `Build` plans only from its current input and publishes a new immutable
+index. Adding data or changing a schema affects the next build; published
+indexes never replan in place, and concurrent `Index.Search` remains lock-free.
 
 ## Build-time planning
 

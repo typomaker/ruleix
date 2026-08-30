@@ -7,104 +7,20 @@ completed, superseded, or unrelated proposals here.
 
 ## Objective
 
-Change aggregate `Lossy(All(...), MemoryLimit(n))` planning so memory pressure
-does not proportionally degrade every leaf. Keep leaves exact while the
-aggregate exact representation fits, and, once it does not, spend the smallest
-necessary loss of precision on discrete representation downgrades. Prefer
-downgrading the leaves responsible for the largest retained-memory pressure and
-leave smaller exact leaves unchanged whenever a feasible plan permits it.
+Measure and improve warm `Local` execution from the latest accepted exact
+query-key cache implementation. Each experiment must use the immediately
+preceding accepted revision as its parent and preserve zero-allocation warm
+searches, bounded retained memory, deterministic results, and concurrent search
+safety.
 
-After the aggregate policy is stable, allow `Lossy` policies to nest. A nested
-limit is a local upper bound; every ancestor limit remains a hard upper bound
-for its complete subtree. An ancestor may force a nested subtree below its
-local limit, but may never grant it more memory than that limit.
+The completed selective aggregate and nested `Lossy` policy plan, including
+verification results and rejected scoring experiments, is recorded in
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Its release-facing behavior is
+documented in [`CHANGELOG.md`](CHANGELOG.md), [`README.md`](README.md), and
+[`docs/lossy-index.md`](docs/lossy-index.md).
 
-The work is successful only if every selected representation is deterministic,
-the accounted retained memory of every policy subtree respects its effective
-limit, and every approximate result remains a conservative superset of the
-corresponding exact result.
+## Warm-Local optimization queue
 
-## Required semantics
-
-- `Lossy(rule, MemoryLimit(n))` continues to mean a hard limit on accounted
-  retained representation bytes, not an equal per-child allocation.
-- Build every supported leaf's exact candidate first. If the sum fits the
-  applicable limit, keep every leaf exact.
-- A representation may change only at a supported discrete precision level.
-  Do not invent a byte-level precision coefficient that the representation
-  cannot realize.
-- Under pressure, select one downgrade at a time and recompute aggregate use.
-  The initial deterministic policy is: maximize bytes released; break ties by
-  larger current leaf usage, then stable schema order. Keep the selector
-  isolated so later measurements can replace this heuristic with a measured
-  quality-per-byte score without changing budget semantics.
-- Stop as soon as the aggregate fits. Leaves not required to satisfy the limit
-  remain exact.
-- If one pass through all leaves is insufficient, continue selecting further
-  downgrade steps from all leaves that still have a coarser representation.
-- Fail `Build` when the sum of all minimum viable representations exceeds the
-  applicable limit. Never silently exceed a limit or drop a rule.
-- Flatten ordinary nested `All` nodes for allocation decisions while retaining
-  their search structure and inspection boundaries.
-- For nested policies, the effective limit of a subtree is the smaller of its
-  local `MemoryLimit` and the budget made available by its parent. A parent may
-  further downgrade a compiled child policy but may not relax the child's
-  local cap.
-- Preserve wildcard behavior, exact-match inclusion, first-insertion result
-  order, duplicate external-ID behavior, immutable published indexes, and
-  lock-free concurrent `Index.Search`.
-- Planning depends only on the current `Build` input. Adding data or changing a
-  schema takes effect on the next build; no mutable in-place replanning is
-  introduced by this work.
-
-## Implementation plan
-
-### 7. Finalize diagnostics and documentation
-
-- Make `Inspect` report local configured limit, effective limit when constrained
-  by an ancestor, accounted subtree usage, selected mode, and granularity
-  without exposing mutable planner state.
-- Update `README.md` and `docs/lossy-index.md` with selective downgrade
-  semantics, the deterministic tie-break order, rebuild behavior, nested-limit
-  examples, and impossible-budget errors.
-- Add a release-facing `CHANGELOG.md` entry and move completed implementation
-  decisions, benchmark results, and rejected scoring experiments to
-  `ROADMAP_HISTORY.md`.
-- Keep the public API unchanged unless implementation proves that configured
-  and effective limits cannot be explained through the existing inspection
-  model. Any new public option such as priority or minimum precision requires a
-  separate measured proposal.
-
-Acceptance: documentation, inspection snapshots, implementation, and tests use
-the same terminology and describe the same limit hierarchy.
-
-## Required verification gate
-
-Before accepting each implementation step, run its focused tests plus:
-
-```sh
-go test ./...
-go test -race ./...
-git diff --check
-```
-
-Before accepting planner changes in steps 3--7, also run the lossy planning,
-quality, search, streaming-build, and production-scale benchmark families with
-repeatable commands and compare medians with the parent commit. Every new or
-changed benchmark must include a nearby comment containing its latest local
-result, machine and Go version, dataset and budget parameters, and complete
-reproduction command, as required by `AGENTS.md`.
-
-Treat any false negative, accounted-byte limit violation, nondeterministic
-selection, unbounded temporary-memory growth, or new race as a failed gate.
-Record noisy measurements and rejected heuristics in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md) rather than silently changing the
-selection policy.
-
-## Follow-up warm-Local optimization queue
-
-Start this queue only after the active `Lossy` plan above is complete, or in an
-isolated branch whose benchmark baseline contains all accepted earlier work.
 The current reference is the exact-query-key result-cache implementation: an
 interleaved parent/candidate comparison measured 228.1 ns/op for
 `BenchmarkProductionShapeSearch/Local`, with 0 B/op and 0 allocations. Refresh

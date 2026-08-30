@@ -1,5 +1,52 @@
 # Roadmap history
 
+## 2026-08-30: finalize Lossy diagnostics and documentation
+
+`InspectorSnapshot` now reports the locally configured `MemoryLimit` separately
+from `EffectiveMemoryLimit`, the maximum available to that policy subtree after
+all ancestor caps and selected sibling representations are accounted. The
+effective value equals the configured value when no ancestor constrains it.
+Both limits, accounted subtree usage, exact/lossy mode, and granularity belong
+to the same immutable successful build snapshot; failed rebuilds publish none
+of them.
+
+The effective limit is derived only after deterministic planning has completed
+and does not expose or retain mutable planner state. Focused coverage checks a
+direct nested policy whose outer cap forces the inner policy below its local
+cap, plus repeated nested-policy snapshots. `README.md`, the lossy design and
+architecture documents, and the changelog now use the same hierarchy terms,
+selective downgrade order, rebuild behavior, and impossible-budget contract.
+
+This closes the selective aggregate and nested-policy roadmap. The public
+configuration remains only `MemoryLimit`; the inspection model gained the
+read-only `EffectiveMemoryLimit` accessor because a single limit value cannot
+truthfully describe both the caller's local configuration and an ancestor's
+smaller available budget.
+
+The required gate passed on Apple M1 Max with Go 1.26.0. Three 100 ms runs
+measured medians of 4.327 ms for four-child exact planning, 44.321 ms for the
+four-child 50% plan, 46.590 ms for two-child ordered 75% planning, and 40.135 ms
+for streaming build. The immediately preceding recorded medians were 4.453 ms,
+45.305 ms, 46.727 ms, and 40.241 ms respectively; allocation classes remained
+unchanged and the diagnostics-only pass showed no material regression. The
+quality cases retained one candidate/query and zero observed false positives.
+
+The one-iteration scale gate respected every limit. At one million entries,
+accounted equality usage was 127.6/38.5/30.6 MB for 100/50/25% budgets. No
+false negative, accounting violation, nondeterministic snapshot, or race was
+found.
+
+Verification commands:
+
+```sh
+go test -run '^(TestInspect|TestNestedLossy)' .
+go test ./...
+go test -race ./...
+go test -run '^$' -bench '^(BenchmarkLossyAllPlanning|BenchmarkLossyAllOrderedPlanning|BenchmarkLossyAllSearchQuality|BenchmarkLossyAllSearchRuntime|BenchmarkLossyStreamingBuild)$' -benchmem -benchtime=100ms -count=3 .
+go test -run '^$' -bench '^(BenchmarkLossyScalePlanning|BenchmarkLossyScaleSearch)/Entries(10000|100000|1000000)/' -benchmem -benchtime=1x -count=1 .
+git diff --check
+```
+
 ## 2026-08-30: complete nested-policy correctness and determinism coverage
 
 Nested-policy coverage now exercises direct `Lossy(Lossy(...))`, an `All`

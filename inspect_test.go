@@ -23,6 +23,7 @@ type snapshotAPI interface {
 	RuleCount() uint64
 	MemoryUsage() (uint64, bool)
 	MemoryLimit() (uint64, bool)
+	EffectiveMemoryLimit() (uint64, bool)
 	ItemCount() (uint64, bool)
 	DistinctValueCount() (uint64, bool)
 	Granularity() (uint64, bool)

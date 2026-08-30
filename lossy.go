@@ -191,6 +191,7 @@ type lossyPolicyPlan[T any] struct {
 	leaf       int
 	first, end int
 	limit      uint64
+	effective  uint64
 	path       string
 }
 
@@ -206,8 +207,39 @@ func compileLossyPolicyTree[T any](rule *lossyRule[T]) (Rule[T], error) {
 	if err := enforceLossyPolicyCaps(root, leaves); err != nil {
 		return nil, err
 	}
+	assignEffectiveLossyPolicyLimits(root, leaves, nil)
 	compiled, _, err := materializeLossyPolicy(root, leaves)
 	return compiled, err
+}
+
+type lossyAncestorLimit struct {
+	first, end int
+	limit      uint64
+}
+
+// assignEffectiveLossyPolicyLimits derives the maximum retained usage each
+// policy subtree could have under the selected sibling representations while
+// still satisfying every ancestor cap. It records diagnostics only; planning
+// remains complete and immutable before this pass runs.
+func assignEffectiveLossyPolicyLimits[T any](
+	plan *lossyPolicyPlan[T],
+	leaves []lossyAllLeaf[T],
+	ancestors []lossyAncestorLimit,
+) {
+	if plan.kind == lossyPlanPolicy {
+		plan.effective = plan.limit
+		subtreeUsage, _ := lossyLeafRangeUsage(leaves, plan.first, plan.end)
+		for _, ancestor := range ancestors {
+			ancestorUsage, _ := lossyLeafRangeUsage(leaves, ancestor.first, ancestor.end)
+			outsideUsage := ancestorUsage - subtreeUsage
+			available := ancestor.limit - outsideUsage
+			plan.effective = min(plan.effective, available)
+		}
+		ancestors = append(ancestors, lossyAncestorLimit{first: plan.first, end: plan.end, limit: plan.effective})
+	}
+	for _, child := range plan.children {
+		assignEffectiveLossyPolicyLimits(child, leaves, ancestors)
+	}
 }
 
 // analyzeLossyPolicy preserves policy and inspection boundaries. Ordinary All
@@ -352,6 +384,7 @@ func materializeLossyPolicy[T any](plan *lossyPolicyPlan[T], leaves []lossyAllLe
 			return nil, inspectionDetails{}, err
 		}
 		details.MemoryLimitBytes, details.MemoryLimitAvailable = plan.limit, true
+		details.EffectiveMemoryLimitBytes, details.EffectiveMemoryLimitAvailable = plan.effective, true
 		if rootInspectorBelongsToPolicy(plan.children[0]) {
 			child = applyLossyPolicyDetailsToRootInspector(child, details)
 		}

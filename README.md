@@ -163,9 +163,11 @@ ruleix.Lossy(
 ```
 
 One limit can cover an entire conjunction. The build keeps every child exact
-when their combined accounted size fits; otherwise each child receives its
-minimum viable representation before the remaining pooled bytes are divided
-and redistributed among children that can improve:
+when their combined accounted size fits. Under pressure it applies one
+supported discrete downgrade at a time, preferring the step that releases the
+most bytes, then the larger current leaf, then schema order, and stops as soon
+as the total fits. Smaller leaves therefore remain exact when they do not need
+to change:
 
 ```go
 ruleix.Lossy(
@@ -173,6 +175,13 @@ ruleix.Lossy(
 	ruleix.MemoryLimit(20<<20),
 )
 ```
+
+`Lossy` policies may nest. A nested limit is a local cap, while every ancestor
+also caps its complete subtree; an ancestor may force a coarser representation
+but cannot grant more than the local limit. Planning is repeated from the
+current input on every `Build`. If all minimum viable representations still
+exceed any applicable limit, `Build` returns an error and does not publish the
+failed index or its diagnostics.
 
 All getters return `(value, ok)`. In a stored constraint, `ok == false` is a
 wildcard. In a search value it only matches stored wildcards. For `Exclude`,
@@ -323,9 +332,11 @@ once. Its first matching insertion determines result order.
 ### Rule diagnostics
 
 `Inspect` can mark one rule and report the representation selected during
-`Build`. For a `Lossy` rule it also exposes accounted memory usage and limit,
-item and distinct-value counts, and lossy bucket granularity. Optional metrics
-return an availability flag. Call `Snapshot` once to capture one successful
+`Build`. For a `Lossy` policy it exposes accounted subtree usage, the locally
+configured `MemoryLimit`, the `EffectiveMemoryLimit` available after ancestor
+caps, selected exact/lossy mode, item and distinct-value counts, and bucket
+granularity when applicable. Optional metrics return an availability flag.
+Call `Snapshot` once to capture one successful
 build generation and its observed runtime counters. Runtime counters are
 low-priority samples: shared `Index` searches and 63 of every 64 `Local`
 contexts execute the plain tree without instrumentation. The selected Local
