@@ -162,16 +162,34 @@ func TestLossyAllPlannerFixtures(t *testing.T) {
 			require.True(t, ok)
 			require.LessOrEqual(t, usage, limit)
 
-			lossyLeaves := 0
 			var lossyIndexes []int
 			for i := range inspectors {
 				if inspectors[i].Snapshot().Mode() == RuleModeLossy {
-					lossyLeaves++
 					lossyIndexes = append(lossyIndexes, i)
 				}
 			}
-			t.Logf("proportional migration baseline: lossy leaves=%v at limit=%d exact=%d retained=%d", lossyIndexes, limit, exactUsage, usage)
-			require.Positive(t, lossyLeaves)
+			require.Equal(t, []int{0}, lossyIndexes, "one-byte pressure must downgrade only the deterministic best leaf")
+
+			selected := make([]struct {
+				mode        RuleMode
+				usage       uint64
+				granularity uint64
+			}, len(inspectors))
+			for i := range inspectors {
+				selected[i].mode = inspectors[i].Snapshot().Mode()
+				selected[i].usage, _ = inspectors[i].Snapshot().MemoryUsage()
+				selected[i].granularity, _ = inspectors[i].Snapshot().Granularity()
+			}
+			_, repeatedRule, repeatedInspectors := makeLossyAggregateFixtureRules(fixture)
+			_, err = New[lossyPlannerFixtureConstraint, int](Lossy(repeatedRule, MemoryLimit(limit))).Build(Zip(constraints, ids))
+			require.NoError(t, err)
+			for i := range repeatedInspectors {
+				repeatedUsage, _ := repeatedInspectors[i].Snapshot().MemoryUsage()
+				repeatedGranularity, _ := repeatedInspectors[i].Snapshot().Granularity()
+				require.Equal(t, selected[i].mode, repeatedInspectors[i].Snapshot().Mode())
+				require.Equal(t, selected[i].usage, repeatedUsage)
+				require.Equal(t, selected[i].granularity, repeatedGranularity)
+			}
 
 			for i := 0; i < len(constraints); i += 29 {
 				var want, got []int

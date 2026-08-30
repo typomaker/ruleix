@@ -1,5 +1,43 @@
 # Roadmap history
 
+## 2026-08-30: implement selective aggregate downgrade planning
+
+Aggregate `Lossy(All(...))` planning now starts with every leaf's exact
+representation and applies discrete downgrade steps only until the combined
+accounted size fits. The isolated deterministic selector maximizes bytes
+released, then prefers the larger current leaf, with stable schema order as
+the final tie-break. The proportional minimum-plus-headroom allocator and its
+smallest-upgrade redistribution pass have been removed.
+
+The 16-child single-heavy, equal-size, nested-`All`, and wildcard fixtures all
+select exactly one lossy leaf when the limit is one byte below the exact total.
+Repeated builds assert identical per-leaf mode, accounted bytes, and
+granularity. Exact-fit, minimum-fit, one-byte-under-minimum, hard-limit, and
+exact-result-superset coverage remains in place.
+
+On Apple M1 Max with Go 1.26.0, three 100 ms runs of the 10K-entry,
+eight-equality-child 50% planning case measured a candidate median of 86.3 ms,
+88.4 MB, and 1.880M allocations per build versus the proportional parent's
+96.8 ms, 95.7 MB, and 2.008M allocations. The four-child 50% quality case
+retained 1.000 candidates/query and zero observed false positives in both
+versions. Selective exact-leaf retention changed some search paths from zero
+to two small result allocations; step 4 will measure that quality/build-cost
+tradeoff across its complete matrix. The complete 10K/100K/1M scale gate
+respected every accounted limit; its worst observed quality point was the
+1M-entry ordered 25% case at 8.750 candidates/query and a 0.0000003 observed
+false-positive rate.
+
+Reproduce with:
+
+```sh
+go test -run 'TestLossy(LeafRepresentation|AllPlanner|AllMinimumBudget)Fixtures|TestLossyAll(RetainsExactChildrenWhenCompositeFits|RedistributesBudgetForMinimumViableChildren)|TestLossyMemoryAccountingOverflow' .
+go test -run '^$' -bench '^(BenchmarkLossyAllPlanning|BenchmarkLossyAllOrderedPlanning|BenchmarkLossyAllSearchQuality|BenchmarkLossyAllSearchRuntime|BenchmarkLossyStreamingBuild)$' -benchmem -benchtime=100ms -count=3 .
+go test -run '^$' -bench '^(BenchmarkLossyScalePlanning|BenchmarkLossyScaleSearch)/Entries(10000|100000|1000000)/' -benchmem -benchtime=1x -count=1 .
+go test ./...
+go test -race ./...
+git diff --check
+```
+
 ## 2026-08-30: expose discrete lossy representation ladders
 
 Equality and ordered leaf planners now expose their finite representation

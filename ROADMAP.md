@@ -59,25 +59,6 @@ corresponding exact result.
 
 ## Implementation plan
 
-### 3. Implement selective aggregate downgrade planning
-
-- Calculate the aggregate exact usage and return the all-exact plan immediately
-  when it fits.
-- Otherwise place every leaf's next coarser candidate into a deterministic
-  selector keyed by bytes released, current usage, and schema order.
-- Apply the best downgrade, enqueue that leaf's following downgrade, and repeat
-  until the aggregate fits or no candidate remains.
-- Materialize only the final selected candidate for each leaf where practical;
-  bound temporary build memory if candidate compilation must retain payloads.
-- Remove the proportional headroom allocation and smallest-upgrade
-  redistribution path after parity tests cover all former success and failure
-  cases.
-
-Acceptance: in the 16-child skewed case, only the minimum set of leaves needed
-to meet the limit becomes lossy; unrelated small leaves remain exact. The sum
-of accounted child memory never exceeds the aggregate limit and the same input
-always selects the same representations.
-
 ### 4. Measure selection quality and build cost
 
 - Extend lossy planning benchmarks with 2, 4, 8, and 16 children; balanced and
