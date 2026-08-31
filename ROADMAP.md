@@ -44,27 +44,6 @@ hypothesis. An unexplained regression may still be rejected, but profiling it
 is a mandatory part of completing the experiment and must happen while the
 candidate is still reproducible.
 
-### L1. Refresh the baseline and identify the new hot path
-
-- Build benchmark binaries for the same commit and run the production-shaped
-  Local, parallel Local, result-cardinality, retained-memory, and full
-  production-scale families with fixed CPU, Go version, and benchmark flags.
-- Capture a CPU profile for warm production-shaped Local and separate time
-  spent in exact query-key validation, cached-ID result copying, fallback child
-  lookup, and benchmark/query construction.
-- Add a focused benchmark that alternates the two production queries and
-  reports first-entry and second-entry exact-cache hits. Do not change executor
-  behavior in this step.
-- Record medians and profile attribution in `ROADMAP_HISTORY.md`; update stale
-  reference numbers elsewhere in this roadmap when the new measurements are
-  repeatable.
-
-Acceptance: seven interleaved one-second runs have a stable median, all warm
-Local cases remain at 0 B/op and 0 allocations, and the profile confirms that
-query-key validation is large enough to measure the next experiment. If exact
-validation is below 15% cumulative CPU, skip L2 and choose the largest measured
-non-benchmark hot path instead.
-
 ### L4. Tune compact exact-result retention by measured cardinality
 
 - Use the unchanged L1 parent: both L2 and L3 were rejected and are recorded
