@@ -85,20 +85,18 @@ func TestLossyLeafRepresentationFixtures(t *testing.T) {
 	}
 }
 
-func TestLossyLeafRepresentationUnsupportedScalarErrors(t *testing.T) {
-	type unsupported struct{ value int }
-	type constraint struct{ value unsupported }
-	get := func(v constraint) (unsupported, bool) { return v.value, true }
-	data := []constraint{{value: unsupported{value: 1}}}
+func TestLossyLeafRepresentationSupportsComparableStructs(t *testing.T) {
+	type composite struct{ value int }
+	type constraint struct{ value composite }
+	get := func(v constraint) (composite, bool) { return v.value, true }
+	data := []constraint{{value: composite{value: 1}}}
 
 	_, err := New[constraint, int](Lossy(Include(get), MemoryLimit(1024))).Build(Zip(data, []int{1}))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "supported scalar")
-	_, err = New[constraint, int](Lossy(GreaterOrEqual(get, func(a, b unsupported) int {
+	require.NoError(t, err)
+	_, err = New[constraint, int](Lossy(GreaterOrEqual(get, func(a, b composite) int {
 		return cmp.Compare(a.value, b.value)
 	}), MemoryLimit(1024))).Build(Zip(data, []int{1}))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "supported scalar")
+	require.NoError(t, err)
 }
 
 func TestLossyMemoryAccountingOverflow(t *testing.T) {

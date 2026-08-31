@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- `Lossy` now supports every built-in equality and ordered leaf used by a
+  heterogeneous `All`, including composite comparable equality keys,
+  arbitrary ordered comparators, `Between`, and `CompareBy`. Types without a
+  selective terminal codec use a conservative complete-leaf bitmap, preserving
+  the no-false-negative contract under an aggregate memory limit.
+
 ## [0.8.2] - 2026-08-31
 
 ### Changed

@@ -139,6 +139,31 @@ traffic находится в пределах 0,6%, а удерживаемая
 
 ## Непокрытые переходы
 
+### Production Lossy checkpoint 2026-08-31
+
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, 38 098 constraints. Полная
+production-схема, включая `[16]byte`, `[2]string`, `Between[time.Time]` и
+`CompareBy[[3]int]`, собрана под единым бюджетом 377 122 bytes (50% exact
+accounting). Команда:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLossySearch/' \
+  -benchmem -benchtime=1s -count=5 .
+```
+
+| Path | Median | B/op | allocs/op |
+| --- | ---: | ---: | ---: |
+| `Index.Search` | 31 620 ns/op | 62 410 | 21 |
+| warm `Local.Search` | 1 901 ns/op | 0 | 0 |
+
+Это самостоятельный lossy checkpoint, а не прямое performance-сравнение с
+exact: бюджет меняет candidate amplification и состав представлений. Попытка
+собрать `Between` из двух comparator-bucket детей дала 11,004 мкс,
+18 778 B/op и 6 allocs/op на warm Local против 1,908 мкс и нулевых аллокаций у
+universal minimum. Alloc-space профиль отнёс 85,1% выделений к Roaring
+`bitmapContainer.clone` на bucket union и ещё 13,0% к clone при intersection;
+прототип отклонён.
+
 Для `v0.1.0`–`v0.4.1`, `v0.5.0`→`v0.6.0`, `v0.7.0`→`v0.7.1` и
 `v0.8.0`→`v0.8.1` в репозитории нет полного сопоставимого release-to-release
 набора по нынешней production-shaped методике. Changelog описывает изменения,

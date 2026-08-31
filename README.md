@@ -150,10 +150,12 @@ operator, use `Greater` or `Less` directly.
 | `CompareBy` | the operator stored with the constraint evaluates to true |
 | `All` | every child rule matches |
 
-Memory-sensitive scalar equality and ordered rules can opt into a bounded,
-conservative representation. The exact representation is retained when it
-fits; otherwise results may include false positives but never omit an exact
-match:
+Memory-sensitive equality, ordered, `Between`, and `CompareBy` rules can opt
+into a bounded, conservative representation. The exact representation is
+retained when it fits; otherwise results may include false positives but never
+omit an exact match. Built-in terminal representations also let heterogeneous
+`All` schemas use one aggregate limit; an arbitrary comparator may fall back
+to the leaf's complete candidate bitmap when no more selective encoding fits:
 
 ```go
 ruleix.Lossy(

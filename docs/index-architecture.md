@@ -219,6 +219,16 @@ lossy result ⊇ exact result
 не зависит от размеров выбранных представлений и не добавляет обход дерева на
 каждую входную запись.
 
+Встроенные equality и ordered-листья всегда имеют терминальное conservative
+представление. Equality использует hash buckets для скаляров, `[16]byte` и
+`[2]string`; прочий `comparable` без быстрого codec может перейти к полному
+bitmap листа. Ordered-правила используют `uint64` mapping для чисел и
+comparator-ordered buckets для произвольного `V`. `Between` и `CompareBy` пока
+переходят непосредственно к полному bitmap листа. Этот уровень теряет
+селективность, но сохраняет `lossy result ⊇ exact result` и позволяет общей
+production-схеме участвовать в одном `Lossy(All(...))`. В search path нет
+reflection; структурный обход применяется только при build-time accounting.
+
 ## Параллелизм и жизненный цикл
 
 - `Index` неизменяем после `Build`; `Search` и `Visit` можно вызывать

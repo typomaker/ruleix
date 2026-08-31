@@ -42,6 +42,22 @@ func (r *betweenRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
 
+func (r *betweenRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
+	fromMemory, fromItems, fromDistinct, all := orderedIndexLossyAccounting(&r.from.index, r.from.wildcard)
+	untilMemory, untilItems, untilDistinct, _ := orderedIndexLossyAccounting(&r.until.index, r.until.wildcard)
+	exact := Rule[T](&inspectionDetailsRule[T]{
+		child: r,
+		details: representationDetails(
+			fromMemory+untilMemory,
+			fromItems+untilItems,
+			fromDistinct+untilDistinct,
+			0,
+			false,
+		),
+	})
+	return newUniversalLossyPlanner(exact, r.nodeID, "lossy-between", all)
+}
+
 type betweenCache[V any] struct {
 	entries   [2]betweenCacheEntry[V]
 	seen      *betweenCacheSeen[V]

@@ -337,6 +337,68 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 	}
 }
 
+// BenchmarkProductionShapeLossySearch compares the complete production schema
+// at its exact representation and a 50% aggregate retained-memory budget. The
+// setup builds both indexes outside the timed region and rotates the same two
+// queries used by BenchmarkProductionShapeSearch.
+//
+// Reproduce with:
+//
+//	GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLossySearch/' \
+//	  -benchmem -benchtime=1s -count=5 .
+//
+// Latest local run (Apple M1 Max, Go 1.26.0, GOMAXPROCS=1, 38,098 entries,
+// 377,122-byte budget): Index median 31,620 ns/op, 62,410 B/op, 21 allocs/op;
+// Local median 1,901 ns/op, 0 B/op, 0 allocs/op.
+func BenchmarkProductionShapeLossySearch(b *testing.B) {
+	constraints, ids := productionBenchmarkData()
+	var inspector ruleix.Inspector
+	_, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](ruleix.Inspect(
+		&inspector,
+		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(^uint64(0))),
+	)).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	exactBytes, ok := inspector.Snapshot().MemoryUsage()
+	if !ok {
+		b.Fatal("exact production memory usage is unavailable")
+	}
+	budget := exactBytes / 2
+	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(budget)),
+	).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	queries := [...]productionBenchmarkConstraint{
+		productionBenchmarkQuery(100),
+		productionBenchmarkQuery(101),
+	}
+	for _, local := range []bool{false, true} {
+		name := "Index"
+		if local {
+			name = "Local"
+		}
+		b.Run(name, func(b *testing.B) {
+			searcher := index.Local()
+			b.Cleanup(searcher.Close)
+			matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := range b.N {
+				matches = matches[:0]
+				if local {
+					searcher.Search(queries[i%len(queries)], &matches)
+				} else {
+					index.Search(queries[i%len(queries)], &matches)
+				}
+			}
+			b.ReportMetric(float64(budget), "budget-bytes")
+		})
+	}
+}
+
 // The benchmark drives one search worker. Production code must retain the
 // documented one-Local-per-goroutine rule rather than sharing this holder's
 // Local between concurrent readers.

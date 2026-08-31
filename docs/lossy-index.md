@@ -30,10 +30,10 @@ ruleix.Lossy(
 )
 ```
 
-The same policy should eventually apply to `Include`, `Exclude`, `Between`,
-ordered comparisons, and `CompareBy`. It composes with independently budgeted
-children of `All`, and one policy may also bound an entire `All` when every leaf
-has a supported representation.
+The same policy applies to `Include`, ordered comparisons, `Between`, and
+`CompareBy`. It composes with independently budgeted children of `All`, and one
+policy may also bound an entire `All`. `Exclude` remains outside the current
+lossy representation set.
 
 The initial public configuration should contain only `MemoryLimit(bytes)`. False
 positive rate, hash-function count, bucket count, segment size, prefix length,
@@ -129,25 +129,35 @@ usable.
 
 `Build` fails, without publishing an index or a new inspector snapshot, when:
 
-- exact storage exceeds the budget and no lossy strategy supports that
-  operator and value type;
 - no supported strategy fits the budget, including its minimum viable
   metadata, without risking a false negative;
 - canonical encoding rejects an input value, or an accounting calculation
   overflows;
 - the policy is invalid, including a missing, duplicate, or zero memory limit;
-- a child of a composite `Lossy(All(...))` is unsupported or the sum of minimum
-  viable representations cannot fit an applicable policy budget.
+- the sum of minimum viable child representations cannot fit an applicable
+  composite policy budget.
 
 The error identifies the decorated operator and the reason, but strategy names
 and minimum byte counts are diagnostic rather than stable strings. A failed
 rebuild leaves the previous immutable index and latest successful `Inspect`
 snapshot unchanged, matching the existing builder lifecycle.
 
-Unsupported does not by itself cause failure when the exact representation
-fits: no lossy encoder is needed in that case. This permits callers to apply a
-uniform policy while operator-specific strategies are rolled out. Custom rule
-implementations cannot occur because `Rule` is sealed.
+Every built-in equality and ordered leaf has a conservative terminal
+representation. Equality uses bucketed hashing for supported scalar codecs,
+`[16]byte`, and `[2]string`; another comparable type falls back to the leaf's
+complete ID set when no allocation-free hash codec exists. Ordered comparisons
+use numeric order-preserving keys where available and comparator-ordered
+buckets otherwise. `Between` and `CompareBy` currently use their complete leaf
+ID set as the terminal representation. These universal fallbacks can lose all
+leaf selectivity but cannot produce a false negative, so a heterogeneous
+production `All` can always participate in aggregate planning when its minimum
+bitmap representations fit. Custom rule implementations cannot occur because
+`Rule` is sealed.
+
+No search-time reflection is used. Composite equality accounting reflects over
+keys only during `Build` and charges architecture-independent logical scalar,
+array, struct, and string sizes. Hashing and ordered boundary lookup on the
+published index use specialized functions, Go comparators, and binary search.
 
 Independently budgeted children of `All` are valid and each owns its entire
 limit. One `Lossy` around `All` owns the combined accounted storage of all leaf

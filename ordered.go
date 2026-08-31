@@ -1,7 +1,6 @@
 package ruleix
 
 import (
-	"fmt"
 	"math"
 	"unsafe"
 
@@ -117,9 +116,11 @@ func (r *orderedRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		key  uint64
 		bits *roaring.Bitmap
 	}
+	var comparedValues []orderedItem[V]
 	for _, block := range r.index.blocks {
 		exact += bitmapBytes(block.bits) + 8
 		for _, item := range block.items {
+			comparedValues = append(comparedValues, orderedItem[V]{value: item.value, bits: item.bits})
 			items += item.bits.GetCardinality()
 			distinct++
 			encoded, ok := canonicalScalar(nil, any(item.value))
@@ -139,7 +140,9 @@ func (r *orderedRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	exactRepresentation := Rule[T](&inspectionDetailsRule[T]{child: r, details: representationDetails(exact, items, distinct, 0, false)})
 	planner := &orderedLossyAllPlanner[T, V]{exact: exactRepresentation}
 	if len(values) == 0 && r.index.buildStatistics().uniqueValues != 0 {
-		planner.err = fmt.Errorf("ruleix: Lossy ordered comparison requires a supported scalar value type")
+		planner.prepare = func() []Rule[T] {
+			return buildComparedOrderedRepresentations(r, comparedValues, items, distinct)
+		}
 		return planner
 	}
 	if len(values) == 0 {
@@ -189,6 +192,40 @@ func (r *orderedRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	return planner
 }
 
+func buildComparedOrderedRepresentations[T any, V any](
+	r *orderedRule[T, V],
+	values []orderedItem[V],
+	items, distinct uint64,
+) []Rule[T] {
+	representations := make([]Rule[T], 0, lossyMaxBucketBits+1)
+	for bucketBits := uint(0); bucketBits <= lossyMaxBucketBits; bucketBits++ {
+		wanted := 1 << bucketBits
+		count := min(wanted, len(values))
+		width := (len(values) + count - 1) / count
+		candidate := &lossyComparedOrderedRule[T, V]{
+			nodeID: r.nodeID, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
+			wildcard: r.wildcard, minimum: values[0].value, maximum: values[len(values)-1].value,
+			boundaries: make([]V, 0, count), buckets: make([]*roaring.Bitmap, 0, count),
+		}
+		for first := 0; first < len(values); first += width {
+			last := min(first+width, len(values))
+			bits := roaring.New()
+			for _, value := range values[first:last] {
+				bits.Or(value.bits)
+			}
+			candidate.boundaries = append(candidate.boundaries, values[last-1].value)
+			candidate.buckets = append(candidate.buckets, bits)
+		}
+		usage := uint64(40) + bitmapBytes(r.wildcard) + uint64(len(candidate.buckets))*16
+		for i, bits := range candidate.buckets {
+			usage += bitmapBytes(bits) + comparableValueBytes(any(candidate.boundaries[i]))
+		}
+		details := representationDetails(usage, items, distinct, uint64(len(candidate.buckets)), true)
+		representations = append(representations, &inspectionDetailsRule[T]{child: candidate, details: details})
+	}
+	return representations
+}
+
 func (p *orderedLossyAllPlanner[T, V]) compile(limit uint64) (Rule[T], error) {
 	ladder, err := p.representationLadder()
 	if err != nil {
@@ -207,6 +244,32 @@ func (p *orderedLossyAllPlanner[T, V]) representationLadder() ([]lossyRepresenta
 		p.ladder = buildLossyRepresentationLadder(p.exact, p.representations)
 	}
 	return p.ladder, nil
+}
+
+func orderedIndexLossyAccounting[V any](index *orderedIndex[V], wildcard *roaring.Bitmap) (
+	memory, items, distinct uint64,
+	all *roaring.Bitmap,
+) {
+	memory = uint64(24) + bitmapBytes(wildcard)
+	items = wildcard.GetCardinality()
+	all = wildcard.Clone()
+	if index == nil {
+		return memory, items, 0, all
+	}
+	for _, block := range index.blocks {
+		memory += bitmapBytes(block.bits) + 8
+		all.Or(block.bits)
+		for _, item := range block.items {
+			items += item.bits.GetCardinality()
+			distinct++
+			memory += comparableValueBytes(any(item.value)) + 8 + bitmapBytes(item.bits)
+		}
+	}
+	for _, block := range index.rangeBlocks {
+		memory += 8 + bitmapBytes(block.bits)
+	}
+	memory += uint64(len(index.blockPrefix))*8 + uint64(len(index.routing.blocks))*8
+	return memory, items, distinct, all
 }
 
 func (*orderedRule[T, V]) inspectionStrategy() string { return "ordered" }

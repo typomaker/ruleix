@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/require"
@@ -585,6 +586,82 @@ func TestLossyAllNeverDropsExactMatches(t *testing.T) {
 	require.Equal(t, uint64(16000), actualLimit)
 	require.Equal(t, RuleModeLossy, snapshot.Mode())
 	require.Equal(t, "all", snapshot.Strategy())
+}
+
+func TestLossyCompositeProductionValueTypesNeverDropExactMatches(t *testing.T) {
+	type composite struct{ major, minor, patch int }
+	type constraint struct {
+		uuid        [16]byte
+		ab          [2]string
+		version     composite
+		from, until time.Time
+		op          Operator
+	}
+	base := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	constraints := make([]constraint, 128)
+	ids := make([]int, len(constraints))
+	for i := range constraints {
+		constraints[i] = constraint{
+			uuid: [16]byte{byte(i), byte(i >> 8)}, ab: [2]string{"experiment", fmt.Sprint(i % 7)},
+			version: composite{major: i / 16, minor: i % 16},
+			from:    base.Add(time.Duration(i) * time.Hour), until: base.Add(time.Duration(i+24) * time.Hour),
+			op: OperatorGTE,
+		}
+		ids[i] = i
+	}
+	rules := []Rule[constraint]{
+		Include(func(v constraint) ([16]byte, bool) { return v.uuid, true }),
+		Include(func(v constraint) ([2]string, bool) { return v.ab, true }),
+		GreaterOrEqual(func(v constraint) (composite, bool) { return v.version, true }, func(a, b composite) int {
+			if result := cmp.Compare(a.major, b.major); result != 0 {
+				return result
+			}
+			if result := cmp.Compare(a.minor, b.minor); result != 0 {
+				return result
+			}
+			return cmp.Compare(a.patch, b.patch)
+		}),
+		Between(
+			func(v constraint) (time.Time, bool) { return v.from, true },
+			func(v constraint) (time.Time, bool) { return v.until, true },
+			time.Time.Compare,
+		),
+		CompareBy(
+			func(v constraint) (composite, bool) { return v.version, true },
+			func(v constraint) (Operator, bool) { return v.op, true },
+			func(a, b composite) int {
+				if result := cmp.Compare(a.major, b.major); result != 0 {
+					return result
+				}
+				return cmp.Compare(a.minor, b.minor)
+			},
+		),
+	}
+	for ruleIndex, exactRule := range rules {
+		exact, err := New[constraint, int](exactRule).Build(Zip(constraints, ids))
+		require.NoError(t, err)
+		var inspector Inspector
+		approximate, err := New[constraint, int](Inspect(
+			&inspector,
+			Lossy(rules[ruleIndex], MemoryLimit(512)),
+		)).Build(Zip(constraints, ids))
+		require.NoError(t, err)
+		_, modeAvailable := inspector.Snapshot().MemoryUsage()
+		require.True(t, modeAvailable)
+		for i := range constraints {
+			var want, got []int
+			exact.Search(constraints[i], &want)
+			approximate.Search(constraints[i], &got)
+			gotSet := make(map[int]struct{}, len(got))
+			for _, id := range got {
+				gotSet[id] = struct{}{}
+			}
+			for _, id := range want {
+				_, found := gotSet[id]
+				require.Truef(t, found, "rule %d query %d omitted ID %d", ruleIndex, i, id)
+			}
+		}
+	}
 }
 
 func TestLossyAllRetainsExactChildrenWhenCompositeFits(t *testing.T) {

@@ -1,7 +1,6 @@
 package ruleix
 
 import (
-	"fmt"
 	"slices"
 	"unsafe"
 
@@ -48,22 +47,14 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 			items += equalitySetCardinality(&r.values.sets[n])
 			distinct++
 			addHash(r.values.keys[n], &r.values.sets[n])
-			encoded, ok := canonicalScalar(nil, any(r.values.keys[n]))
-			if !ok {
-				continue
-			}
-			exact += uint64(len(encoded)) + 16 + equalitySetBytes(&r.values.sets[n])
+			exact += comparableValueBytes(any(r.values.keys[n])) + 16 + equalitySetBytes(&r.values.sets[n])
 		}
 	} else {
 		for value, offset := range r.values.offsets {
 			items += equalitySetCardinality(&r.values.sets[offset])
 			distinct++
 			addHash(value, &r.values.sets[offset])
-			encoded, ok := canonicalScalar(nil, any(value))
-			if !ok {
-				continue
-			}
-			exact += uint64(len(encoded)) + 16 + equalitySetBytes(&r.values.sets[offset])
+			exact += comparableValueBytes(any(value)) + 16 + equalitySetBytes(&r.values.sets[offset])
 		}
 	}
 	exactRepresentation := Rule[T](&inspectionDetailsRule[T]{
@@ -72,8 +63,11 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	})
 	planner := &equalityLossyAllPlanner[T, V]{exact: exactRepresentation}
 	if !valid {
-		planner.err = fmt.Errorf("ruleix: Lossy equality requires a supported scalar value type")
-		return planner
+		all := r.wildcard.Clone()
+		for i := range r.values.sets {
+			r.values.sets[i].addTo(all)
+		}
+		return newUniversalLossyPlanner(exactRepresentation, r.nodeID, "lossy-equality", all)
 	}
 	planner.prepare = func() []Rule[T] {
 		representations := make([]Rule[T], lossyMaxBucketBits+1)

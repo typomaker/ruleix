@@ -249,3 +249,43 @@ func TestProductionShapePlatformMatching(t *testing.T) {
 		})
 	}
 }
+
+func TestProductionShapeLossyNeverDropsExactMatches(t *testing.T) {
+	constraints, ids := productionBenchmarkDataN(10_000)
+	exact, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+		productionBenchmarkSchema(),
+	).Build(ruleix.Zip(constraints, ids))
+	require.NoError(t, err)
+
+	var exactUsage ruleix.Inspector
+	_, err = ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](ruleix.Inspect(
+		&exactUsage,
+		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(^uint64(0))),
+	)).Build(ruleix.Zip(constraints, ids))
+	require.NoError(t, err)
+	usage, ok := exactUsage.Snapshot().MemoryUsage()
+	require.True(t, ok)
+
+	var lossyUsage ruleix.Inspector
+	approximate, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](ruleix.Inspect(
+		&lossyUsage,
+		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(usage/2)),
+	)).Build(ruleix.Zip(constraints, ids))
+	require.NoError(t, err)
+	require.Equal(t, ruleix.RuleModeLossy, lossyUsage.Snapshot().Mode())
+
+	for day := range 365 {
+		query := productionBenchmarkQuery(day)
+		var exactMatches, approximateMatches []productionBenchmarkID
+		exact.Search(query, &exactMatches)
+		approximate.Search(query, &approximateMatches)
+		available := make(map[productionBenchmarkID]struct{}, len(approximateMatches))
+		for _, id := range approximateMatches {
+			available[id] = struct{}{}
+		}
+		for _, id := range exactMatches {
+			_, found := available[id]
+			require.Truef(t, found, "day %d omitted exact ID %x", day, id)
+		}
+	}
+}

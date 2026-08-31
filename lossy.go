@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"hash/maphash"
 	"math"
+	"reflect"
+	"sort"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
@@ -709,9 +711,69 @@ func hashScalar(value any) (uint64, bool) {
 		return fnvHashTaggedUint64(canonicalFloat32, uint64(canonicalFloat32Bits(value))), true
 	case float64:
 		return fnvHashTaggedUint64(canonicalFloat64, canonicalFloat64Bits(value)), true
+	case [16]byte:
+		hash := fnvHashByte(fnvOffset64, 0xf0)
+		for _, item := range value {
+			hash = fnvHashByte(hash, item)
+		}
+		return hash, true
+	case [2]string:
+		hash := fnvHashByte(fnvOffset64, 0xf1)
+		for _, item := range value {
+			hash = fnvHashUint64(hash, uint64(len(item)))
+			for i := range len(item) {
+				hash = fnvHashByte(hash, item[i])
+			}
+		}
+		return hash, true
 	default:
 		return 0, false
 	}
+}
+
+func comparableValueBytes(value any) uint64 {
+	if encoded, ok := canonicalScalar(nil, value); ok {
+		return uint64(len(encoded))
+	}
+	var size func(reflect.Value) uint64
+	size = func(current reflect.Value) uint64 {
+		if !current.IsValid() {
+			return 0
+		}
+		switch current.Kind() {
+		case reflect.String:
+			return uint64(len(current.String())) + 9
+		case reflect.Bool:
+			return 2
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.Uintptr, reflect.Float32, reflect.Float64,
+			reflect.Chan, reflect.Pointer, reflect.UnsafePointer:
+			return 9
+		case reflect.Complex64, reflect.Complex128:
+			return 17
+		case reflect.Array:
+			total := uint64(1)
+			for i := range current.Len() {
+				total += size(current.Index(i))
+			}
+			return total
+		case reflect.Struct:
+			total := uint64(1)
+			for i := range current.NumField() {
+				total += size(current.Field(i))
+			}
+			return total
+		case reflect.Interface:
+			if current.IsNil() {
+				return 1
+			}
+			return 9 + uint64(len(current.Elem().Type().String())) + size(current.Elem())
+		default:
+			return 0
+		}
+	}
+	return size(reflect.ValueOf(value))
 }
 
 const (
@@ -732,6 +794,53 @@ func fnvHashUint64(hash, value uint64) uint64 {
 
 func fnvHashTaggedUint64(tag byte, value uint64) uint64 {
 	return fnvHashUint64(fnvHashByte(fnvOffset64, tag), value)
+}
+
+// lossyUniversalRule is the terminal conservative representation for an
+// operator whose comparator cannot be projected onto an order-preserving key.
+// It returns every ID stored in that leaf, so it may lose all selectivity but
+// can never remove an exact match.
+type lossyUniversalRule[T any] struct {
+	nodeID nodeID
+	bits   *roaring.Bitmap
+	name   string
+}
+
+func (r *lossyUniversalRule[T]) runtimeNodeID() nodeID                               { return r.nodeID }
+func (*lossyUniversalRule[T]) rule()                                                 {}
+func (r *lossyUniversalRule[T]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
+func (*lossyUniversalRule[T]) validate(T) error                                      { return nil }
+func (*lossyUniversalRule[T]) insert(T, uint32)                                      {}
+func (r *lossyUniversalRule[T]) cardinality(T, *bitmapPool) uint64                   { return r.bits.GetCardinality() }
+func (r *lossyUniversalRule[T]) estimateCardinality(T) uint64                        { return r.bits.GetCardinality() }
+func (r *lossyUniversalRule[T]) isCardinalityZero(T) bool                            { return r.bits.IsEmpty() }
+func (r *lossyUniversalRule[T]) lookupPlanningBitmap(T) (*roaring.Bitmap, bool)      { return r.bits, true }
+func (r *lossyUniversalRule[T]) matchesID(_ T, id uint32) bool                       { return r.bits.Contains(id) }
+func (r *lossyUniversalRule[T]) search(_ T, dst *roaring.Bitmap, _ *bitmapPool)      { dst.Or(r.bits) }
+func (*lossyUniversalRule[T]) exclude(T, *roaring.Bitmap, *bitmapPool)               {}
+func (*lossyUniversalRule[T]) collectBuildStatistics([]nodeBuildStatistics)          {}
+func (r *lossyUniversalRule[T]) inspectionStrategy() string                          { return r.name }
+func (*lossyUniversalRule[T]) inspectionMode() RuleMode                              { return RuleModeLossy }
+func (r *lossyUniversalRule[T]) prepareSearch()                                      { prepareBitmapForSearch(r.bits) }
+func (r *lossyUniversalRule[T]) internBitmaps(interner *bitmapInterner)              { interner.intern(&r.bits) }
+
+type fixedLossyAllPlanner[T any] struct{ ladder []lossyRepresentation[T] }
+
+func (p fixedLossyAllPlanner[T]) compile(limit uint64) (Rule[T], error) {
+	return selectLossyRepresentation(p.ladder, limit, "ruleix: Lossy rule cannot fit the memory limit")
+}
+
+func (p fixedLossyAllPlanner[T]) representationLadder() ([]lossyRepresentation[T], error) {
+	return p.ladder, nil
+}
+
+func newUniversalLossyPlanner[T any](exact Rule[T], node nodeID, name string, all *roaring.Bitmap) lossyAllPlanner[T] {
+	usage := uint64(24) + bitmapBytes(all)
+	fallback := Rule[T](&inspectionDetailsRule[T]{
+		child:   &lossyUniversalRule[T]{nodeID: node, bits: all, name: name},
+		details: representationDetails(usage, all.GetCardinality(), 1, 1, true),
+	})
+	return fixedLossyAllPlanner[T]{ladder: buildLossyRepresentationLadder(exact, []Rule[T]{fallback})}
 }
 
 type lossyEqualityRule[T any, V comparable] struct {
@@ -936,6 +1045,110 @@ type lossyOrderedRule[T any, V any] struct {
 	wildcard        *roaring.Bitmap
 	min, max, width uint64
 	buckets         []*roaring.Bitmap
+}
+
+type lossyComparedOrderedRule[T any, V any] struct {
+	nodeID     nodeID
+	get        Getter[T, V]
+	compare    Compare[V]
+	dir        direction
+	inclusive  bool
+	wildcard   *roaring.Bitmap
+	minimum    V
+	maximum    V
+	boundaries []V
+	buckets    []*roaring.Bitmap
+}
+
+func (r *lossyComparedOrderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+func (*lossyComparedOrderedRule[T, V]) rule()                   {}
+func (r *lossyComparedOrderedRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] {
+	return r
+}
+func (*lossyComparedOrderedRule[T, V]) validate(T) error { return nil }
+func (*lossyComparedOrderedRule[T, V]) insert(T, uint32) {}
+func (r *lossyComparedOrderedRule[T, V]) matchingBucketRange(v T) (int, int, bool) {
+	value, ok := r.get(v)
+	if !ok || len(r.buckets) == 0 {
+		return 0, 0, false
+	}
+	last := len(r.buckets) - 1
+	if r.dir == greaterThan {
+		minimum := r.compare(value, r.minimum)
+		if minimum < 0 || (!r.inclusive && minimum == 0) {
+			return 0, 0, false
+		}
+		if r.compare(value, r.maximum) >= 0 {
+			return 0, last, true
+		}
+		end := sort.Search(len(r.boundaries), func(i int) bool {
+			return r.compare(r.boundaries[i], value) >= 0
+		})
+		return 0, end, true
+	}
+	maximum := r.compare(value, r.maximum)
+	if maximum > 0 || (!r.inclusive && maximum == 0) {
+		return 0, 0, false
+	}
+	if r.compare(value, r.minimum) <= 0 {
+		return 0, last, true
+	}
+	first := sort.Search(len(r.boundaries), func(i int) bool {
+		return r.compare(r.boundaries[i], value) >= 0
+	})
+	return first, last, true
+}
+func (r *lossyComparedOrderedRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool) {
+	dst.Or(r.wildcard)
+	first, last, ok := r.matchingBucketRange(v)
+	if !ok {
+		return
+	}
+	for i := first; i <= last; i++ {
+		dst.Or(r.buckets[i])
+	}
+}
+func (r *lossyComparedOrderedRule[T, V]) estimateCardinality(v T) uint64 {
+	n := r.wildcard.GetCardinality()
+	first, last, ok := r.matchingBucketRange(v)
+	if !ok {
+		return n
+	}
+	for i := first; i <= last; i++ {
+		n += r.buckets[i].GetCardinality()
+	}
+	return n
+}
+func (r *lossyComparedOrderedRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
+	return r.estimateCardinality(v)
+}
+func (r *lossyComparedOrderedRule[T, V]) isCardinalityZero(v T) bool {
+	return r.estimateCardinality(v) == 0
+}
+func (r *lossyComparedOrderedRule[T, V]) matchesID(v T, id uint32) bool {
+	if r.wildcard.Contains(id) {
+		return true
+	}
+	first, last, ok := r.matchingBucketRange(v)
+	if !ok {
+		return false
+	}
+	for i := first; i <= last; i++ {
+		if r.buckets[i].Contains(id) {
+			return true
+		}
+	}
+	return false
+}
+func (*lossyComparedOrderedRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
+func (*lossyComparedOrderedRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
+func (*lossyComparedOrderedRule[T, V]) inspectionStrategy() string                   { return "lossy-ordered" }
+func (*lossyComparedOrderedRule[T, V]) inspectionMode() RuleMode                     { return RuleModeLossy }
+func (r *lossyComparedOrderedRule[T, V]) prepareSearch() {
+	prepareBitmapForSearch(r.wildcard)
+	for _, bits := range r.buckets {
+		prepareBitmapForSearch(bits)
+	}
 }
 
 func (r *lossyOrderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }

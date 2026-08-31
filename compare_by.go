@@ -47,6 +47,25 @@ func (r *compareByRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
 
+func (r *compareByRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
+	memory := uint64(24) + bitmapBytes(r.wildcard)
+	items := r.wildcard.GetCardinality()
+	var distinct uint64
+	all := r.wildcard.Clone()
+	for _, index := range r.indexes {
+		indexMemory, indexItems, indexDistinct, indexAll := orderedIndexLossyAccounting(index, roaring.New())
+		memory += indexMemory
+		items += indexItems
+		distinct += indexDistinct
+		all.Or(indexAll)
+	}
+	exact := Rule[T](&inspectionDetailsRule[T]{
+		child:   r,
+		details: representationDetails(memory, items, distinct, 0, false),
+	})
+	return newUniversalLossyPlanner(exact, r.nodeID, "lossy-compare-by", all)
+}
+
 func (*compareByRule[T, V]) rule() {}
 func (r *compareByRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
 	descriptor := canonicalRuleDescriptor{
