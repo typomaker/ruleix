@@ -24,6 +24,12 @@ updated only when a new canonical entry point is required.
   needed to localize the delta. Record confirmed causes as measured findings
   and unresolved explanations as hypotheses; a regression may be rejected
   without a conclusive cause, but not without the profiling attempt.
+- When a change reveals a performance regression or degradation, profile the
+  affected workload before completing the task, identify and document the
+  cause when the evidence permits, and attempt a correction when that cause is
+  understood and the correction is practical and in scope. Re-run the same
+  workload after the correction; clearly record unresolved causes or an
+  intentionally accepted regression.
 
 ## Documentation ownership
 

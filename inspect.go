@@ -549,8 +549,8 @@ func removeRuntimeInspectors[T any](rule Rule[T]) Rule[T] {
 	}
 }
 
-// compileAllPhysicalOperands removes only aliases whose build-time state is
-// the exact same pointer-backed operation. Independently compiled operations
+// compileAllPhysicalOperands removes only aliases whose build-time state has
+// the same canonical identity. Independently compiled operations
 // remain separate even when bitmap interning later gives them equal contents.
 // Inspector wrappers are retained as one executable wrapper with fan-out
 // destinations for every logical observation site.
@@ -561,16 +561,20 @@ func compileAllPhysicalOperands[T any](rule Rule[T]) Rule[T] {
 		return typed
 	case *allRule[T]:
 		children := make([]Rule[T], 0, len(typed.children))
-		owners := make(map[Rule[T]]int, len(typed.children))
+		owners := make(map[any]int, len(typed.children))
 		for _, child := range typed.children {
 			child = compileAllPhysicalOperands(child)
 			physical := child
 			if observed, ok := child.(*inspectedRuntimeRule[T]); ok {
 				physical = observed.child
 			}
-			owner, duplicate := owners[physical]
+			identity := any(physical)
+			if canonical, ok := physical.(canonicalBuildRule); ok {
+				identity = canonical.canonicalDescriptor()
+			}
+			owner, duplicate := owners[identity]
 			if !duplicate {
-				owners[physical] = len(children)
+				owners[identity] = len(children)
 				children = append(children, child)
 				continue
 			}

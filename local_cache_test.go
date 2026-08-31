@@ -120,7 +120,7 @@ func TestEqualityExposesOnlyWarmLocalBitmap(t *testing.T) {
 	))
 	require.NoError(t, err)
 	local := index.Local()
-	rule := index.root.(*eqRule[constraint, int])
+	rule := index.root.(*ternaryEqRule[constraint, int])
 	query := constraint{value: 2}
 
 	_, found := rule.lookupCachedBitmap(query, local.pool)

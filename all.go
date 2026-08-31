@@ -210,14 +210,15 @@ func (r *allRule[T]) optimize(total uint64) Rule[T] {
 		return r
 	}
 	children := make([]Rule[T], 0, len(r.children))
-	seen := make(map[Rule[T]]struct{}, len(r.children))
+	seen := make(map[canonicalRuleDescriptor]struct{}, len(r.children))
 	var universal *matchAllRule[T]
 	appendChild := func(child Rule[T]) {
-		if _, canonical := child.(canonicalBuildRule); canonical {
-			if _, duplicate := seen[child]; duplicate {
+		if canonical, ok := child.(canonicalBuildRule); ok {
+			descriptor := canonical.canonicalDescriptor()
+			if _, duplicate := seen[descriptor]; duplicate {
 				return
 			}
-			seen[child] = struct{}{}
+			seen[descriptor] = struct{}{}
 		}
 		children = append(children, child)
 	}

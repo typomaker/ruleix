@@ -94,6 +94,35 @@ func TestBuildSpecializesBinaryEquality(t *testing.T) {
 	}
 }
 
+func TestBuildSpecializesTernaryEquality(t *testing.T) {
+	type constraint struct{ value *int }
+	one, two, three, missing := 1, 2, 3, 4
+	index, err := New[constraint, int](Include(GetterFromPointer(func(value constraint) *int { return value.value }))).Build(Zip(
+		[]constraint{{value: &one}, {value: &two}, {value: &three}, {}},
+		[]int{1, 2, 3, 4},
+	))
+	require.NoError(t, err)
+	require.IsType(t, &ternaryEqRule[constraint, int]{}, index.root)
+
+	for _, tt := range []struct {
+		query constraint
+		want  []int
+	}{
+		{constraint{value: &one}, []int{1, 4}},
+		{constraint{value: &two}, []int{2, 4}},
+		{constraint{value: &three}, []int{3, 4}},
+		{constraint{value: &missing}, []int{4}},
+		{constraint{}, []int{4}},
+	} {
+		var matches []int
+		index.Search(tt.query, &matches)
+		require.Equal(t, tt.want, matches)
+		matches = nil
+		index.Local().Search(tt.query, &matches)
+		require.Equal(t, tt.want, matches)
+	}
+}
+
 func TestBuildOptimizesWildcardBetween(t *testing.T) {
 	type constraint struct{ from, until *int }
 	index, err := New[constraint, int](Between(GetterFromPointer(func(value constraint) *int { return value.from }), GetterFromPointer(func(value constraint) *int { return value.until }), cmp.Compare[int])).Build(Zip([]constraint{{}, {}}, []int{1, 2}))
@@ -139,15 +168,16 @@ func TestAllSharesInternedPartialEqualityWildcards(t *testing.T) {
 		Include(GetterFromPointer(func(value constraint) *int { return value.left })),
 		Include(GetterFromPointer(func(value constraint) *int { return value.right })),
 	)
-	one, two, three := 1, 2, 3
+	one, two, three, four := 1, 2, 3, 4
 	constraints := []constraint{
 		{}, {}, {}, {}, {}, {},
 		{left: &one, right: &one},
 		{left: &one, right: &two},
 		{left: &two, right: &one},
 		{left: &three, right: &three},
+		{left: &four, right: &four},
 	}
-	index, err := New[constraint, int](schema).Build(Zip(constraints, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}))
+	index, err := New[constraint, int](schema).Build(Zip(constraints, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}))
 	require.NoError(t, err)
 	root := index.root.(*allRule[constraint])
 	left := root.children[0].(*eqRule[constraint, int])

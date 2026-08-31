@@ -43,17 +43,18 @@ func TestEqualitySetAddToForCompactRepresentations(t *testing.T) {
 }
 
 func TestEqualityIndexPromotesInlineValuesToMap(t *testing.T) {
-	index := newEqualityIndex[int](3)
+	index := newEqualityIndex[int](4)
 	index.add(10, 1)
 	index.add(20, 2)
+	index.add(30, 3)
 	require.Nil(t, index.offsets)
 
-	index.add(30, 3)
+	index.add(40, 4)
 	require.NotNil(t, index.offsets)
-	for value, id := range map[int]uint32{10: 1, 20: 2, 30: 3} {
+	for value, id := range map[int]uint32{10: 1, 20: 2, 30: 3, 40: 4} {
 		require.True(t, index.get(value).contains(id))
 	}
-	require.Nil(t, index.get(40))
+	require.Nil(t, index.get(50))
 }
 
 func BenchmarkEqualityPostingSearch(b *testing.B) {
