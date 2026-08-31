@@ -1,5 +1,28 @@
 # Roadmap history
 
+## 2026-09-01: compile fixed-byte and recursive equality codecs
+
+Step 3 compiles named byte arrays/UUIDs, recursive arrays, comparable structs,
+complex values, pointer/channel identity, and `time.Time` during `Build` into
+fixed unsafe loads without retaining reflection in search. Struct padding is
+never read; interfaces remain an explicit codec error. A distribution fixture
+found that raw FNV populated only 80 high-16 buckets for 10,000 sequential
+UUIDs, so accepted byte/composite hashes add a SplitMix-style avalanche. Both
+ordinary and named UUID fixtures then occupied more than 8,000 buckets and
+every one of the 16 input bytes affected the hash.
+
+On Apple M1 Max, Go 1.26.0, 10,000 entries, `MemoryLimit(200000)`, 500ms x5,
+warm searches measured 51.88–53.33 ns/op for `[16]byte`, 59.75–61.80 for named
+UUID, 46.71–51.59 for string, 53.84–54.37 for `[3]int`, and 42.51–55.52 for a
+representative struct; all reported 0 B/op and 0 allocs/op. Reproduce with
+`go test -run '^$' -bench '^BenchmarkLossyCompiledCompositeCodec$' -benchmem
+-benchtime=500ms -count=5 .`.
+
+Escape analysis on Go 1.26 conservatively marks the generic value passed to
+the unsafe plan as moved to heap, while the optimized warm call sites above
+measure no allocation. The full correctness, race, Go 1.23.12 compatibility,
+and `git diff --check` gates passed.
+
 ## 2026-09-01: freeze compiled-codec and streaming fixtures
 
 Step 1 of the compiled-codec roadmap added a typed baseline matrix for built-in

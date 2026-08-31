@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Equality lossy indexes now compile allocation-free semantic codecs for named
+  byte arrays/UUIDs, recursive arrays, comparable structs, complex values,
+  pointer identity, and `time.Time`; interfaces remain an explicit build error.
 - `Lossy` now supports every built-in equality and ordered leaf used by a
   heterogeneous `All`, including composite comparable equality keys and
   arbitrary ordered comparators. `Between` and `CompareBy` use selective fused

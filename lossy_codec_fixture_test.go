@@ -1,10 +1,12 @@
 package ruleix
 
 import (
+	"encoding/binary"
 	"errors"
 	"math"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -29,6 +31,7 @@ type fixtureStruct struct {
 	code int32
 	name string
 }
+type fixtureInterfaceStruct struct{ value any }
 
 func TestLossyCodecScalarFixtures(t *testing.T) {
 	testCodecFixture(t, "bool", []bool{false, true}, true)
@@ -43,16 +46,51 @@ func TestLossyCodecScalarFixtures(t *testing.T) {
 	testCodecFixture(t, "named-string", []fixtureNamedString{"", "a", "ab", "b"}, true)
 	testCodecFixture(t, "bytes-16", [][16]byte{{1}, {15: 1}, {1, 2, 3}}, true)
 	testCodecFixture(t, "strings-2", [][2]string{{"a", "bc"}, {"ab", "c"}, {"", "x"}}, true)
+	testCodecFixture(t, "named-bytes-16", []fixtureNamedBytes{{1}, {15: 1}, {1, 2, 3}}, true)
+	testCodecFixture(t, "named-strings-2", []fixtureNamedStrings{{"a", "bc"}, {"ab", "c"}}, true)
+	testCodecFixture(t, "ints-3", [][3]int{{1}, {0, 1}, {0, 0, 1}}, true)
+	testCodecFixture(t, "named-ints-3", []fixtureNamedInts{{1}, {0, 1}, {0, 0, 1}}, true)
+	testCodecFixture(t, "comparable-struct", []fixtureStruct{{flag: true}, {code: 1}, {name: "x"}}, true)
+	testCodecFixture(t, "named-uuid", []fixtureUUID{{1}, {15: 1}, {1, 2, 3}}, true)
+	testCodecFixture(t, "google-uuid", []uuid.UUID{{1}, {15: 1}, {1, 2, 3}}, true)
+	testCodecFixture(t, "time", []time.Time{time.Unix(0, 0), time.Unix(1, 2), time.Unix(1, 2).In(time.FixedZone("x", 60))}, true)
 }
 
 func TestLossyCodecUnsupportedCompositeErrors(t *testing.T) {
-	testUnsupportedCodecFixture(t, "named-bytes-16", fixtureNamedBytes{})
-	testUnsupportedCodecFixture(t, "named-strings-2", fixtureNamedStrings{})
-	testUnsupportedCodecFixture(t, "ints-3", [3]int{})
-	testUnsupportedCodecFixture(t, "named-ints-3", fixtureNamedInts{})
-	testUnsupportedCodecFixture(t, "comparable-struct", fixtureStruct{})
-	testUnsupportedCodecFixture(t, "named-uuid", fixtureUUID{})
-	testUnsupportedCodecFixture(t, "google-uuid", uuid.UUID{})
+	testUnsupportedCodecFixture(t, "interface-field", fixtureInterfaceStruct{})
+}
+
+func TestEqualityCodecUUIDHashesEveryByte(t *testing.T) {
+	codec, err := compileEqualityCodec[fixtureUUID]()
+	require.NoError(t, err)
+	zero := fixtureUUID{}
+	for index := range len(zero) {
+		changed := zero
+		changed[index] = 1
+		require.NotEqual(t, codec.hash(zero), codec.hash(changed), "byte %d was not mixed", index)
+	}
+}
+
+func TestEqualityCodecUUIDCollisionDistribution(t *testing.T) {
+	ordinary, err := compileEqualityCodec[[16]byte]()
+	require.NoError(t, err)
+	named, err := compileEqualityCodec[fixtureUUID]()
+	require.NoError(t, err)
+	ordinaryBuckets, namedBuckets := make(map[uint16]struct{}), make(map[uint16]struct{})
+	for value := range uint64(10_000) {
+		var ordinaryValue [16]byte
+		binary.BigEndian.PutUint64(ordinaryValue[8:], value)
+		namedValue := fixtureUUID(ordinaryValue)
+		ordinaryBuckets[uint16(ordinary.hash(ordinaryValue)>>48)] = struct{}{}
+		namedBuckets[uint16(named.hash(namedValue)>>48)] = struct{}{}
+	}
+	require.Greater(t, len(ordinaryBuckets), 8_000)
+	require.Greater(t, len(namedBuckets), 8_000)
+	delta := len(ordinaryBuckets) - len(namedBuckets)
+	if delta < 0 {
+		delta = -delta
+	}
+	require.Less(t, delta, 500)
 }
 
 func testUnsupportedCodecFixture[V comparable](t *testing.T, name string, value V) {
@@ -226,6 +264,35 @@ func BenchmarkLossyCompiledScalarCodec(b *testing.B) {
 	benchmarkLossyCompiledScalarCodec(b, "Int64", func(value int) int64 { return int64(value) })
 	benchmarkLossyCompiledScalarCodec(b, "NamedInt64", func(value int) fixtureNamedInt {
 		return fixtureNamedInt(value)
+	})
+}
+
+// BenchmarkLossyCompiledCompositeCodec measures the fixed-byte and recursive
+// codec search paths with 10,000 entries and MemoryLimit(200000).
+// Apple M1 Max, Go 1.26.0, 500ms x5: Bytes16 51.88-53.33 ns/op,
+// NamedUUID 59.75-61.80, String 46.71-51.59, IntArray 53.84-54.37, Struct
+// 42.51-55.52; every case reported 0 B/op and 0 allocs/op.
+// Reproduce: go test -run '^$' -bench '^BenchmarkLossyCompiledCompositeCodec$'
+// -benchmem -benchtime=500ms -count=5 .
+func BenchmarkLossyCompiledCompositeCodec(b *testing.B) {
+	benchmarkLossyCompiledScalarCodec(b, "Bytes16", func(value int) [16]byte {
+		var result [16]byte
+		binary.BigEndian.PutUint64(result[8:], uint64(value))
+		return result
+	})
+	benchmarkLossyCompiledScalarCodec(b, "NamedUUID", func(value int) fixtureUUID {
+		var result fixtureUUID
+		binary.BigEndian.PutUint64(result[8:], uint64(value))
+		return result
+	})
+	benchmarkLossyCompiledScalarCodec(b, "String", func(value int) string {
+		return string(rune(value + 1))
+	})
+	benchmarkLossyCompiledScalarCodec(b, "IntArray", func(value int) fixtureNamedInts {
+		return fixtureNamedInts{value, value + 1, value + 2}
+	})
+	benchmarkLossyCompiledScalarCodec(b, "Struct", func(value int) fixtureStruct {
+		return fixtureStruct{flag: value&1 != 0, code: int32(value), name: string(rune(value + 1))}
 	})
 }
 

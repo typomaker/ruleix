@@ -191,21 +191,26 @@ Every `Build` plans only from its current input and publishes a new immutable
 index. Adding data or changing a schema affects the next build; published
 indexes never replan in place, and concurrent `Index.Search` remains lock-free.
 
-## Compiled scalar codecs and planned composite/streaming work
+## Compiled equality codecs and planned streaming work
 
-Equality now separates full-value encoding from precision reduction. During
+Equality separates full-value encoding from precision reduction. During
 `Build`, direct codecs remain for built-in scalars, `[16]byte`, and
 `[2]string`. When the direct type switch misses, reflection inspects the
-static type once and compiles named bool, integer, float, and string values
-from their underlying kind. The published leaf retains only a typed full-hash
-function and immutable precision shift; search retains no `reflect.Value`.
+static type once and compiles named scalars, fixed-byte arrays, recursive
+arrays, and structs from verified element sizes and field offsets. Fixed-byte
+paths specialize 8/16/20/24/32-byte widths and mix every byte; structs never
+hash padding. Complex zero values are canonicalized component-wise; pointers
+and channels use identity. `time.Time` is handled as its comparable fields,
+including location identity. Interfaces are rejected because their dynamic
+type would require search-time inspection. The published leaf retains only a
+typed full-hash function and immutable precision shift; search retains no
+`reflect.Value`.
 
 The scalar fixture requires selective `lossy-grouped-hash` behavior, exact-
 result superset semantics, deterministic repeated/shuffled planning, and zero
 warm `Local.Search` allocations for ordinary and named scalar types.
-Unsupported composite types return an internal typed `equalityCodecError`
-from `Build` instead of silently selecting a complete-leaf bitmap. Recursive
-arrays, structs, and named byte arrays/UUIDs remain the next codec step.
+Unsupported dynamic composites return an internal typed `equalityCodecError`
+from `Build` instead of silently selecting a complete-leaf bitmap.
 
 The companion 32,768-entry named-int64 fixture makes exact-first working state
 materially exceed the future 120% target. This is deterministic Ruleix
@@ -221,6 +226,20 @@ built-in `int64` measured 185.0 ns/op and named `int64` 185.3 ns/op; both report
 '^BenchmarkLossyCompiledScalarCodec$' -benchmem -benchtime=500ms -count=5 .`.
 Escape-analysis inspection uses `go test -gcflags='all=-m=2' -run
 '^TestLossyCodecScalarFixtures$' .`.
+
+Apple M1 Max, Go 1.26.0, 10,000 entries, `MemoryLimit(200000)`, 500ms x5:
+ordinary `[16]byte` measured 51.88–53.33 ns/op, named UUID 59.75–61.80,
+string 46.71–51.59, `[3]int` 53.84–54.37, and a representative struct
+42.51–55.52; all reported 0 B/op and 0 allocs/op. The 10,000-value UUID
+distribution fixture requires more than 8,000 occupied high-16-bit buckets for
+both ordinary and named forms and verifies every byte changes the hash.
+Reproduce with `go test -run '^$' -bench
+'^BenchmarkLossyCompiledCompositeCodec$' -benchmem -benchtime=500ms -count=5 .`.
+Go 1.26 escape diagnostics conservatively report the temporary generic value
+passed to the compiled unsafe plan as moved to heap; the inlined production
+call sites nevertheless report 0 B/op and 0 allocs/op in every warm benchmark.
+This compiler diagnostic remains an audited caveat rather than a claim that
+the closure itself is proven non-escaping.
 
 Equality codecs produce a full `uint64` hash. Precision remains a build-time
 representation choice and is applied afterward. In particular, UUID hashing

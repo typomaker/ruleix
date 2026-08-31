@@ -729,7 +729,7 @@ func hashScalar(value any) (uint64, bool) {
 		for _, item := range value {
 			hash = fnvHashByte(hash, item)
 		}
-		return hash, true
+		return avalancheEqualityHash(hash), true
 	case [2]string:
 		hash := fnvHashByte(fnvOffset64, 0xf1)
 		for _, item := range value {
@@ -738,7 +738,7 @@ func hashScalar(value any) (uint64, bool) {
 				hash = fnvHashByte(hash, item[i])
 			}
 		}
-		return hash, true
+		return avalancheEqualityHash(hash), true
 	default:
 		return 0, false
 	}
@@ -807,6 +807,14 @@ func fnvHashUint64(hash, value uint64) uint64 {
 
 func fnvHashTaggedUint64(tag byte, value uint64) uint64 {
 	return fnvHashUint64(fnvHashByte(fnvOffset64, tag), value)
+}
+
+func avalancheEqualityHash(hash uint64) uint64 {
+	hash ^= hash >> 30
+	hash *= 0xbf58476d1ce4e5b9
+	hash ^= hash >> 27
+	hash *= 0x94d049bb133111eb
+	return hash ^ hash>>31
 }
 
 // lossyUniversalRule is the terminal conservative representation for an

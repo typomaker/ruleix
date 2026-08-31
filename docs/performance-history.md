@@ -137,6 +137,15 @@ allocs/op, но отличается от `v0.8.1` лишь на 0,6% и 0,2% с
 traffic находится в пределах 0,6%, а удерживаемая индексом память выросла на
 0,4%. Полная матрица выше является каноническим release-to-release замером.
 
+### Compiled composite equality codecs 2026-09-01
+
+Apple M1 Max, Go 1.26.0, 10 000 entries, `MemoryLimit(200000)`, 500ms x5.
+Warm `Local.Search`: `[16]byte` 51,88–53,33 ns/op, named UUID 59,75–61,80,
+string 46,71–51,59, `[3]int` 53,84–54,37, struct 42,51–55,52; все варианты
+0 B/op и 0 allocs/op. Команда: `go test -run '^$' -bench
+'^BenchmarkLossyCompiledCompositeCodec$' -benchmem -benchtime=500ms -count=5 .`.
+Это focused checkpoint нового codec path, а не release-to-release сравнение.
+
 ## Непокрытые переходы
 
 ### Production Lossy checkpoint 2026-08-31

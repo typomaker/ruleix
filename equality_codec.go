@@ -45,9 +45,15 @@ func compileEqualityCodec[V comparable]() (equalityCodec[V], error) {
 	if ok {
 		return codec, nil
 	}
+	plan, reason := compileEqualityPointerCodec(typeOf)
+	if plan != nil {
+		return equalityCodec[V]{hash: func(value V) uint64 {
+			return plan(unsafe.Pointer(&value))
+		}}, nil
+	}
 	return equalityCodec[V]{}, &equalityCodecError{
 		typeName: typeOf.String(),
-		reason:   "no safe allocation-free semantic codec is available",
+		reason:   reason,
 	}
 }
 
@@ -103,6 +109,157 @@ func compileNamedScalarCodec[V comparable](typeOf reflect.Type) (equalityCodec[V
 		}}, true
 	default:
 		return equalityCodec[V]{}, false
+	}
+}
+
+// equalityPointerCodec hashes a value stored at ptr. Reflection is used only
+// while compiling this function; published codecs contain fixed offsets and
+// typed loads and therefore need neither reflect.Value nor allocation.
+type equalityPointerCodec func(ptr unsafe.Pointer) uint64
+
+func compileEqualityPointerCodec(typeOf reflect.Type) (equalityPointerCodec, string) {
+	switch typeOf.Kind() {
+	case reflect.Bool:
+		return func(ptr unsafe.Pointer) uint64 {
+			encoded := byte(0)
+			if *(*bool)(ptr) {
+				encoded = 1
+			}
+			return fnvHashByte(fnvHashByte(fnvOffset64, canonicalBool), encoded)
+		}, ""
+	case reflect.String:
+		seed := maphash.MakeSeed()
+		return func(ptr unsafe.Pointer) uint64 { return maphash.String(seed, *(*string)(ptr)) }, ""
+	case reflect.Int:
+		return pointerIntegerCodec[int](canonicalInt), ""
+	case reflect.Int8:
+		return pointerIntegerCodec[int8](canonicalInt8), ""
+	case reflect.Int16:
+		return pointerIntegerCodec[int16](canonicalInt16), ""
+	case reflect.Int32:
+		return pointerIntegerCodec[int32](canonicalInt32), ""
+	case reflect.Int64:
+		return pointerIntegerCodec[int64](canonicalInt64), ""
+	case reflect.Uint:
+		return pointerIntegerCodec[uint](canonicalUint), ""
+	case reflect.Uint8:
+		return pointerIntegerCodec[uint8](canonicalUint8), ""
+	case reflect.Uint16:
+		return pointerIntegerCodec[uint16](canonicalUint16), ""
+	case reflect.Uint32:
+		return pointerIntegerCodec[uint32](canonicalUint32), ""
+	case reflect.Uint64:
+		return pointerIntegerCodec[uint64](canonicalUint64), ""
+	case reflect.Uintptr:
+		return pointerIntegerCodec[uintptr](canonicalUintptr), ""
+	case reflect.Float32:
+		return func(ptr unsafe.Pointer) uint64 {
+			return fnvHashTaggedUint64(canonicalFloat32, uint64(canonicalFloat32Bits(*(*float32)(ptr))))
+		}, ""
+	case reflect.Float64:
+		return func(ptr unsafe.Pointer) uint64 {
+			return fnvHashTaggedUint64(canonicalFloat64, canonicalFloat64Bits(*(*float64)(ptr)))
+		}, ""
+	case reflect.Complex64:
+		return func(ptr unsafe.Pointer) uint64 {
+			value := *(*complex64)(ptr)
+			hash := fnvHashByte(fnvOffset64, 0xe0)
+			hash = fnvHashUint64(hash, uint64(canonicalFloat32Bits(real(value))))
+			return fnvHashUint64(hash, uint64(canonicalFloat32Bits(imag(value))))
+		}, ""
+	case reflect.Complex128:
+		return func(ptr unsafe.Pointer) uint64 {
+			value := *(*complex128)(ptr)
+			hash := fnvHashByte(fnvOffset64, 0xe1)
+			hash = fnvHashUint64(hash, canonicalFloat64Bits(real(value)))
+			return fnvHashUint64(hash, canonicalFloat64Bits(imag(value)))
+		}, ""
+	case reflect.Pointer, reflect.UnsafePointer, reflect.Chan:
+		return func(ptr unsafe.Pointer) uint64 {
+			return fnvHashTaggedUint64(0xe2, uint64(*(*uintptr)(ptr)))
+		}, ""
+	case reflect.Array:
+		if typeOf.Elem().Kind() == reflect.Uint8 {
+			length := typeOf.Len()
+			return func(ptr unsafe.Pointer) uint64 {
+				hash := fnvHashUint64(fnvHashByte(fnvOffset64, 0xf0), uint64(length))
+				return avalancheEqualityHash(hashFixedBytes(hash, ptr, length))
+			}, ""
+		}
+		child, reason := compileEqualityPointerCodec(typeOf.Elem())
+		if child == nil {
+			return nil, fmt.Sprintf("array element %s: %s", typeOf.Elem(), reason)
+		}
+		length, stride := typeOf.Len(), typeOf.Elem().Size()
+		return func(ptr unsafe.Pointer) uint64 {
+			hash := fnvHashUint64(fnvHashByte(fnvOffset64, 0xf1), uint64(length))
+			for index := range length {
+				hash = fnvHashUint64(hash, child(unsafe.Add(ptr, uintptr(index)*stride)))
+			}
+			return avalancheEqualityHash(hash)
+		}, ""
+	case reflect.Struct:
+		children := make([]equalityPointerCodec, typeOf.NumField())
+		offsets := make([]uintptr, typeOf.NumField())
+		for index := range typeOf.NumField() {
+			field := typeOf.Field(index)
+			child, reason := compileEqualityPointerCodec(field.Type)
+			if child == nil {
+				return nil, fmt.Sprintf("field %s (%s): %s", field.Name, field.Type, reason)
+			}
+			children[index], offsets[index] = child, field.Offset
+		}
+		return func(ptr unsafe.Pointer) uint64 {
+			hash := fnvHashUint64(fnvHashByte(fnvOffset64, 0xf2), uint64(len(children)))
+			for index, child := range children {
+				hash = fnvHashUint64(hash, child(unsafe.Add(ptr, offsets[index])))
+			}
+			return avalancheEqualityHash(hash)
+		}, ""
+	case reflect.Interface:
+		return nil, "interfaces require dynamic-type inspection during search"
+	default:
+		return nil, fmt.Sprintf("unsupported underlying kind %s", typeOf.Kind())
+	}
+}
+
+func hashFixedBytes(hash uint64, ptr unsafe.Pointer, length int) uint64 {
+	bytes := unsafe.Slice((*byte)(ptr), length)
+	// Common identifier/digest widths use unrolled eight-byte chunks. The
+	// fallback remains bounded by the array length compiled during Build.
+	switch length {
+	case 8:
+		return fnvHash8(hash, bytes)
+	case 16:
+		return fnvHash8(fnvHash8(hash, bytes[:8]), bytes[8:])
+	case 20:
+		hash = fnvHash8(fnvHash8(hash, bytes[:8]), bytes[8:16])
+		bytes = bytes[16:]
+	case 24:
+		return fnvHash8(fnvHash8(fnvHash8(hash, bytes[:8]), bytes[8:16]), bytes[16:])
+	case 32:
+		return fnvHash8(fnvHash8(fnvHash8(fnvHash8(hash, bytes[:8]), bytes[8:16]), bytes[16:24]), bytes[24:])
+	}
+	for _, value := range bytes {
+		hash = fnvHashByte(hash, value)
+	}
+	return hash
+}
+
+func fnvHash8(hash uint64, bytes []byte) uint64 {
+	hash = fnvHashByte(hash, bytes[0])
+	hash = fnvHashByte(hash, bytes[1])
+	hash = fnvHashByte(hash, bytes[2])
+	hash = fnvHashByte(hash, bytes[3])
+	hash = fnvHashByte(hash, bytes[4])
+	hash = fnvHashByte(hash, bytes[5])
+	hash = fnvHashByte(hash, bytes[6])
+	return fnvHashByte(hash, bytes[7])
+}
+
+func pointerIntegerCodec[I equalityInteger](tag byte) equalityPointerCodec {
+	return func(ptr unsafe.Pointer) uint64 {
+		return fnvHashTaggedUint64(tag, uint64(*(*I)(ptr)))
 	}
 }
 

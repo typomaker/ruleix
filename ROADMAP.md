@@ -89,7 +89,7 @@ Acceptance: named scalar types choose the same strategy as their underlying
 scalar; codec compilation happens once per built leaf; CPU profiles and
 benchmarks show no `reflect.*` work during search.
 
-### 3. Compile fixed-byte and recursive comparable codecs
+### 3. Compile fixed-byte and recursive comparable codecs — completed
 
 - Recognize every named or unnamed `[N]uint8` by underlying `Array` kind,
   length, and `Uint8` element kind. Hash all `N` bytes with specialized fast

@@ -86,8 +86,8 @@ func TestLossyLeafRepresentationFixtures(t *testing.T) {
 	}
 }
 
-func TestLossyEqualityRejectsUnsupportedComparableStructs(t *testing.T) {
-	type composite struct{ value int }
+func TestLossyEqualityRejectsUnsupportedInterfaceFields(t *testing.T) {
+	type composite struct{ value any }
 	type constraint struct{ value composite }
 	get := func(v constraint) (composite, bool) { return v.value, true }
 	data := []constraint{{value: composite{value: 1}}}
@@ -96,9 +96,13 @@ func TestLossyEqualityRejectsUnsupportedComparableStructs(t *testing.T) {
 	var codecErr *equalityCodecError
 	require.Error(t, err)
 	require.True(t, errors.As(err, &codecErr))
-	_, err = New[constraint, int](Lossy(GreaterOrEqual(get, func(a, b composite) int {
+	type orderedComposite struct{ value int }
+	type orderedConstraint struct{ value orderedComposite }
+	orderedGet := func(v orderedConstraint) (orderedComposite, bool) { return v.value, true }
+	orderedData := []orderedConstraint{{value: orderedComposite{value: 1}}}
+	_, err = New[orderedConstraint, int](Lossy(GreaterOrEqual(orderedGet, func(a, b orderedComposite) int {
 		return cmp.Compare(a.value, b.value)
-	}), MemoryLimit(1024))).Build(Zip(data, []int{1}))
+	}), MemoryLimit(1024))).Build(Zip(orderedData, []int{1}))
 	require.NoError(t, err)
 }
 
