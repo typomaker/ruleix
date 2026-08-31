@@ -54,7 +54,7 @@ The target is not a promise about Go heap or RSS.
 
 ## Implementation plan
 
-### 1. Freeze codec, precision, and streaming fixtures
+### 1. Freeze codec, precision, and streaming fixtures — completed
 
 - Add type fixtures for ordinary and named `bool`, signed and unsigned
   integers, floats, strings, `[N]byte`, `[2]string`, `[3]int`, comparable

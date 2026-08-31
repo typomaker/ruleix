@@ -1,5 +1,19 @@
 # Roadmap history
 
+## 2026-09-01: freeze compiled-codec and streaming fixtures
+
+Step 1 of the compiled-codec roadmap added a typed baseline matrix for built-in
+and named scalars, fixed and recursive arrays, comparable structs, a local UUID
+type, and `github.com/google/uuid.UUID`. The fixtures expose exact/retained
+accounting, selected mode and strategy, granularity, candidates per query, and
+warm allocations, and enforce the exact-superset property. Repeated and
+fixed-seed shuffled 32,768-entry UUID builds also freeze deterministic planning
+before irreversible streaming decisions are introduced. The measured
+exact-first accounted state was 5,406,752 bytes against an 8,232-byte retained
+minimum; all warm searches measured zero allocations on Apple M1 Max with Go
+1.26.0. These measurements describe the current fallback baseline, not the
+desired compiled-codec behavior.
+
 ## 2026-08-31: close L5 with a four-entry exact-result working set
 
 L5 profiled the accepted L4 parent on cache-miss and high-churn workloads. A

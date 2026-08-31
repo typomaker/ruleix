@@ -4,6 +4,7 @@ go 1.23
 
 require (
 	github.com/RoaringBitmap/roaring/v2 v2.4.4
+	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.7.0
 )
 

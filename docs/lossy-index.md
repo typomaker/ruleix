@@ -193,6 +193,28 @@ indexes never replan in place, and concurrent `Index.Search` remains lock-free.
 
 ## Planned compiled codecs and streaming build
 
+The pre-codec baseline is frozen by `TestLossyCodecBaselineFixtures`. Its
+513-entry matrix covers ordinary and named bool, signed/unsigned integers,
+floats, strings, `[16]byte`, `[2]string`, `[3]int`, a comparable struct, a
+named UUID, and `github.com/google/uuid.UUID`. Each case records exact and
+retained accounted bytes, strategy, granularity, candidates per query, and
+warm `Local.Search` allocations while checking every approximate result is an
+exact-result superset. Ordinary currently recognized representations use
+`lossy-grouped-hash`; all named types, `[3]int`, structs, and both UUID types
+freeze the current one-bucket `lossy-equality` fallback. Every warm case
+measured 0 allocations on Apple M1 Max with Go 1.26.0.
+
+The companion 32,768-entry named-UUID fixture repeats and shuffles builds with
+a fixed seed. The current exact-first state accounts 5,406,752 bytes versus an
+8,232-byte minimum retained representation (future 120% target: 9,878 bytes),
+and all three builds publish the same mode, strategy, usage, and granularity.
+This is deterministic Ruleix representation accounting: it deliberately does
+not claim to measure Go heap or RSS. Reproduce both fixtures with:
+
+```sh
+go test -run 'TestLossyCodec(BaselineFixtures|FixtureBuildOrderAndWorkingPressure)$' -v
+```
+
 The next lossy iteration will replace coarse universal minima incrementally.
 Build-time reflection may recognize the underlying representation of a named
 Go type: `type UUID [16]byte` appears as an array of length 16 whose element
