@@ -137,6 +137,20 @@ func (r *inspectionDetailsRule[T]) cardinality(v T, p *bitmapPool) uint64 {
 func (r *inspectionDetailsRule[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool) {
 	r.child.search(v, dst, p)
 }
+func (r *inspectionDetailsRule[T]) estimateCachedCardinality(v T, p *bitmapPool) (uint64, bool) {
+	estimator, ok := r.child.(cachedCardinalityEstimator[T])
+	if !ok {
+		return 0, false
+	}
+	return estimator.estimateCachedCardinality(v, p)
+}
+func (r *inspectionDetailsRule[T]) lookupCachedBitmap(v T, p *bitmapPool) (*roaring.Bitmap, bool) {
+	provider, ok := r.child.(cachedBitmapProvider[T])
+	if !ok {
+		return nil, false
+	}
+	return provider.lookupCachedBitmap(v, p)
+}
 func (r *inspectionDetailsRule[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
 	r.child.exclude(v, dst, p)
 }
@@ -1058,6 +1072,118 @@ type lossyComparedOrderedRule[T any, V any] struct {
 	maximum    V
 	boundaries []V
 	buckets    []*roaring.Bitmap
+}
+
+type lossyComparedBuckets[V any] struct {
+	compare    Compare[V]
+	minimum    V
+	maximum    V
+	boundaries []V
+	buckets    []*roaring.Bitmap
+}
+
+func buildLossyComparedBuckets[V any](index *orderedIndex[V], wanted int) lossyComparedBuckets[V] {
+	result := lossyComparedBuckets[V]{compare: index.compare}
+	values := make([]*orderedItem[V], 0, index.buildStatistics().uniqueValues)
+	for block := range index.blocks {
+		values = append(values, index.blocks[block].items...)
+	}
+	if len(values) == 0 {
+		return result
+	}
+	result.minimum, result.maximum = values[0].value, values[len(values)-1].value
+	count := min(max(wanted, 1), len(values))
+	width := (len(values) + count - 1) / count
+	result.boundaries = make([]V, 0, count)
+	result.buckets = make([]*roaring.Bitmap, 0, count)
+	for first := 0; first < len(values); first += width {
+		last := min(first+width, len(values))
+		bits := roaring.New()
+		for _, value := range values[first:last] {
+			bits.Or(value.bits)
+		}
+		result.boundaries = append(result.boundaries, values[last-1].value)
+		result.buckets = append(result.buckets, bits)
+	}
+	return result
+}
+
+func (r *lossyComparedBuckets[V]) matchingRange(value V, dir direction, inclusive bool) (int, int, bool) {
+	if len(r.buckets) == 0 {
+		return 0, 0, false
+	}
+	last := len(r.buckets) - 1
+	if dir == greaterThan {
+		minimum := r.compare(value, r.minimum)
+		if minimum < 0 || (!inclusive && minimum == 0) {
+			return 0, 0, false
+		}
+		if r.compare(value, r.maximum) >= 0 {
+			return 0, last, true
+		}
+		end := sort.Search(len(r.boundaries), func(i int) bool {
+			return r.compare(r.boundaries[i], value) >= 0
+		})
+		return 0, end, true
+	}
+	maximum := r.compare(value, r.maximum)
+	if maximum > 0 || (!inclusive && maximum == 0) {
+		return 0, 0, false
+	}
+	if r.compare(value, r.minimum) <= 0 {
+		return 0, last, true
+	}
+	first := sort.Search(len(r.boundaries), func(i int) bool {
+		return r.compare(r.boundaries[i], value) >= 0
+	})
+	return first, last, true
+}
+
+func (r *lossyComparedBuckets[V]) exactRange(value V) (int, int, bool) {
+	if len(r.buckets) == 0 || r.compare(value, r.minimum) < 0 || r.compare(value, r.maximum) > 0 {
+		return 0, 0, false
+	}
+	bucket := sort.Search(len(r.boundaries), func(i int) bool {
+		return r.compare(r.boundaries[i], value) >= 0
+	})
+	return bucket, bucket, true
+}
+
+func (r *lossyComparedBuckets[V]) addRange(first, last int, dst *roaring.Bitmap) {
+	for i := first; i <= last; i++ {
+		dst.Or(r.buckets[i])
+	}
+}
+
+func (r *lossyComparedBuckets[V]) rangeCardinality(first, last int) uint64 {
+	var result uint64
+	for i := first; i <= last; i++ {
+		result += r.buckets[i].GetCardinality()
+	}
+	return result
+}
+
+func (r *lossyComparedBuckets[V]) rangeContains(first, last int, id uint32) bool {
+	for i := first; i <= last; i++ {
+		if r.buckets[i].Contains(id) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *lossyComparedBuckets[V]) memoryUsage() uint64 {
+	usage := uint64(16 * len(r.buckets))
+	for i, bits := range r.buckets {
+		usage += comparableValueBytes(any(r.boundaries[i])) + bitmapBytes(bits)
+	}
+	return usage
+}
+
+func (r *lossyComparedBuckets[V]) prepareSearch() {
+	for _, bits := range r.buckets {
+		prepareBitmapForSearch(bits)
+	}
 }
 
 func (r *lossyComparedOrderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }

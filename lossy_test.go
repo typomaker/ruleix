@@ -643,7 +643,7 @@ func TestLossyCompositeProductionValueTypesNeverDropExactMatches(t *testing.T) {
 		var inspector Inspector
 		approximate, err := New[constraint, int](Inspect(
 			&inspector,
-			Lossy(rules[ruleIndex], MemoryLimit(512)),
+			Lossy(rules[ruleIndex], MemoryLimit(2048)),
 		)).Build(Zip(constraints, ids))
 		require.NoError(t, err)
 		_, modeAvailable := inspector.Snapshot().MemoryUsage()
@@ -662,6 +662,58 @@ func TestLossyCompositeProductionValueTypesNeverDropExactMatches(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestLossyBetweenOutwardBucketsNeverDropBoundaryMatches(t *testing.T) {
+	type interval struct {
+		from, until int
+		present     bool
+	}
+	from := func(v interval) (int, bool) { return v.from, v.present }
+	until := func(v interval) (int, bool) { return v.until, v.present }
+	exactRule := Between(from, until, cmp.Compare[int])
+	constraints := make([]interval, 1024)
+	ids := make([]int, len(constraints))
+	for i := range constraints {
+		constraints[i] = interval{from: i - 17, until: i + 31, present: i%97 != 0}
+		ids[i] = i
+	}
+	queries := make([]interval, 0, 2200)
+	for value := -50; value < 1050; value++ {
+		queries = append(queries,
+			interval{from: value, until: value, present: true},
+			interval{from: value, until: value + 1, present: true},
+		)
+	}
+	queries = append(queries, interval{})
+	verifyLossySuperset(
+		t, exactRule, Lossy(exactRule, MemoryLimit(8192)), constraints, ids, queries, true,
+	)
+}
+
+func TestLossyCompareByBucketsNeverDropAnyOperatorMatch(t *testing.T) {
+	type comparison struct {
+		value   int
+		op      Operator
+		present bool
+	}
+	value := func(v comparison) (int, bool) { return v.value, v.present }
+	operator := func(v comparison) (Operator, bool) { return v.op, v.present }
+	exactRule := CompareBy(value, operator, cmp.Compare[int])
+	constraints := make([]comparison, 2048)
+	ids := make([]int, len(constraints))
+	for i := range constraints {
+		constraints[i] = comparison{value: i%521 - 260, op: Operator(i % 5), present: i%101 != 0}
+		ids[i] = i
+	}
+	queries := make([]comparison, 0, 602)
+	for query := -300; query <= 300; query++ {
+		queries = append(queries, comparison{value: query, present: true})
+	}
+	queries = append(queries, comparison{})
+	verifyLossySuperset(
+		t, exactRule, Lossy(exactRule, MemoryLimit(8192)), constraints, ids, queries, true,
+	)
 }
 
 func TestLossyAllRetainsExactChildrenWhenCompositeFits(t *testing.T) {

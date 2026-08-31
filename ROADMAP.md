@@ -144,18 +144,20 @@ adding search allocations or planner work to search.
 Acceptance: identical inputs select identical representations, no limit is
 exceeded, and small fields remain exact whenever their downgrade is not needed.
 
-### 6. Replace universal ordered/composite minima deliberately
+### 6. Replace universal ordered/composite minima deliberately — completed
 
 - Retain comparator-ordered boundary buckets for arbitrary standalone ordered
   rules; they require no reflection or `int64` projection during search.
-- Design a fused lossy `Between` representation that evaluates both sides
-  without composing them as a nested `All` and without materializing broad
-  bucket unions. The previously measured nested-`All` prototype must remain
-  rejected unless a new fused design avoids its Roaring clone traffic.
-- Design `CompareBy` candidates that union stored-operator ranges without
-  falling directly to a complete-leaf bitmap.
-- Remove automatic universal fallback operator by operator only after its
-  selective replacement passes correctness, allocation, and production gates.
+- `Between` now evaluates both comparator-bucket sides in one fused node and
+  rounds stored bounds outward. Its local query cache avoids repeating the
+  broad-side unions on the warm path.
+- `CompareBy` now unions operator-specific bucket ranges instead of falling to
+  a complete-leaf bitmap and uses the same local-cache admission machinery as
+  its exact representation.
+- Boundary/operator differential tests enforce the exact-superset contract;
+  the production gate retains zero-allocation warm search. The uncached Index
+  path remains slower than the old universal minimum and is recorded as an
+  accepted selectivity tradeoff in the canonical performance documents.
 
 Acceptance: production `Between[time.Time]` and `CompareBy[[3]int]` retain
 useful selectivity under pressure, preserve zero-allocation warm search, and do

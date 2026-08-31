@@ -153,8 +153,8 @@ GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLossySearch/' \
 
 | Path | Median | B/op | allocs/op |
 | --- | ---: | ---: | ---: |
-| `Index.Search` | 31 620 ns/op | 62 410 | 21 |
-| warm `Local.Search` | 1 901 ns/op | 0 | 0 |
+| `Index.Search` | 70 030 ns/op | 40 222 | 23 |
+| warm `Local.Search` | 1 386 ns/op | 0 | 0 |
 
 Это самостоятельный lossy checkpoint, а не прямое performance-сравнение с
 exact: бюджет меняет candidate amplification и состав представлений. Попытка
@@ -162,7 +162,14 @@ exact: бюджет меняет candidate amplification и состав пре�
 18 778 B/op и 6 allocs/op на warm Local против 1,908 мкс и нулевых аллокаций у
 universal minimum. Alloc-space профиль отнёс 85,1% выделений к Roaring
 `bitmapContainer.clone` на bucket union и ещё 13,0% к clone при intersection;
-прототип отклонён.
+прототип отклонён. Принятое fused-представление сохраняет обе стороны внутри
+одного узла и кеширует готовый результат запроса. До добавления cache
+alloc-space профиль кандидата относил 92,44% из 3,304 GiB к
+`bitmapContainer.clone`; warm Local занимал 26,482 ns/op, 35,231 B/op и 10
+allocs/op. После исправления Local стал быстрее прежнего universal minimum и
+вернулся к нулевым аллокациям. Некешированный `Index.Search` намеренно принят
+более медленным: он выполняет bucket unions ради сохранения селективности,
+одновременно снижая allocation traffic с 62,410 до 40,222 B/op.
 
 Для `v0.1.0`–`v0.4.1`, `v0.5.0`→`v0.6.0`, `v0.7.0`→`v0.7.1` и
 `v0.8.0`→`v0.8.1` в репозитории нет полного сопоставимого release-to-release

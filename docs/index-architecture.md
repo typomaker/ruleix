@@ -223,11 +223,13 @@ lossy result ⊇ exact result
 представление. Equality использует hash buckets для скаляров, `[16]byte` и
 `[2]string`; прочий `comparable` без быстрого codec может перейти к полному
 bitmap листа. Ordered-правила используют `uint64` mapping для чисел и
-comparator-ordered buckets для произвольного `V`. `Between` и `CompareBy` пока
-переходят непосредственно к полному bitmap листа. Этот уровень теряет
-селективность, но сохраняет `lossy result ⊇ exact result` и позволяет общей
-production-схеме участвовать в одном `Lossy(All(...))`. В search path нет
-reflection; структурный обход применяется только при build-time accounting.
+comparator-ordered buckets для произвольного `V`. `Between` компилирует обе
+стороны в одно fused-представление: хранимая нижняя граница округляется вниз к
+началу comparator-bucket, верхняя — вверх к его концу. `CompareBy` сохраняет
+отдельные bucket-индексы пяти операторов и объединяет подходящие диапазоны.
+Оба представления имеют локальный query cache; после прогрева поиск не
+аллоцирует. В search path нет reflection; структурный обход применяется только
+при build-time accounting.
 
 ## Параллелизм и жизненный цикл
 

@@ -147,12 +147,14 @@ representation. Equality uses bucketed hashing for supported scalar codecs,
 `[16]byte`, and `[2]string`; another comparable type falls back to the leaf's
 complete ID set when no allocation-free hash codec exists. Ordered comparisons
 use numeric order-preserving keys where available and comparator-ordered
-buckets otherwise. `Between` and `CompareBy` currently use their complete leaf
-ID set as the terminal representation. These universal fallbacks can lose all
-leaf selectivity but cannot produce a false negative, so a heterogeneous
-production `All` can always participate in aggregate planning when its minimum
-bitmap representations fit. Custom rule implementations cannot occur because
-`Rule` is sealed.
+buckets otherwise. `Between` uses two comparator-bucket indexes inside one
+fused rule. A stored lower bound is rounded toward the bucket minimum and a
+stored upper bound toward the bucket maximum, so an approximate interval only
+expands. `CompareBy` builds comparator buckets independently for `EQ`, `LT`,
+`LTE`, `GT`, and `GTE`, then unions the operator ranges matching the query.
+Both terminal levels retain the exact-or-superset contract without the former
+complete-leaf universal fallback. Custom rule implementations cannot occur
+because `Rule` is sealed.
 
 No search-time reflection is used. Composite equality accounting reflects over
 keys only during `Build` and charges architecture-independent logical scalar,
