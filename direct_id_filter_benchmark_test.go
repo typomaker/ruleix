@@ -78,7 +78,7 @@ func BenchmarkAllDirectIDFiltering(b *testing.B) {
 						func(value directIDBenchmarkConstraint) (int, bool) { return value.thirdValue, value.thirdSet },
 					}
 					for i := range direct {
-						child := Rule[directIDBenchmarkConstraint](Include(getters[i]))
+						child := Include(getters[i])
 						if mode == "Bitmap" {
 							child = &bitmapOnlyBenchmarkRule[directIDBenchmarkConstraint]{child: child}
 						}

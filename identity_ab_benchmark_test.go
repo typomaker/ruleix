@@ -22,6 +22,8 @@ import (
 //
 //	go test -run '^$' -bench '^BenchmarkPhysicalIdentityAB/' \
 //	  -benchmem -benchtime=2s -count=10 .
+//
+//nolint:gocognit // The benchmark matrix deliberately shares one setup path.
 func BenchmarkPhysicalIdentityAB(b *testing.B) {
 	for _, children := range []int{2, 4, 8} {
 		b.Run(fmt.Sprintf("Children%d", children), func(b *testing.B) {
@@ -87,6 +89,8 @@ func BenchmarkPhysicalIdentityAB(b *testing.B) {
 //
 // \tgo test -run '^$' -bench '^BenchmarkIdentityDecisionSearch/' \
 // \t  -benchmem -benchtime=2s -count=10 .
+//
+//nolint:gocognit // The benchmark matrix deliberately shares one setup path.
 func BenchmarkIdentityDecisionSearch(b *testing.B) {
 	for _, children := range []int{2, 4, 8} {
 		for _, duplication := range []int{0, 50, 100} {
@@ -148,6 +152,8 @@ func BenchmarkIdentityDecisionSearch(b *testing.B) {
 //
 // \tgo test -run '^$' -bench '^BenchmarkIdentityDecisionLifecycle/' \
 // \t  -benchmem -benchtime=2s -count=10 .
+//
+//nolint:gocognit // The benchmark matrix deliberately shares one setup path.
 func BenchmarkIdentityDecisionLifecycle(b *testing.B) {
 	schema, constraints, ids := identityABFixture(8, false)
 	query := identityABConstraint{}
@@ -233,6 +239,8 @@ func BenchmarkIdentityDecisionLifecycle(b *testing.B) {
 //
 // \tgo test -run '^$' -bench '^BenchmarkIdentityDecisionOperations/' \
 // \t  -benchmem -benchtime=2s -count=10 .
+//
+//nolint:gocognit // The benchmark matrix deliberately shares one setup path.
 func BenchmarkIdentityDecisionOperations(b *testing.B) {
 	type operation struct {
 		name string

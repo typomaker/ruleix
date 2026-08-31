@@ -31,6 +31,8 @@ var canonicalBenchmarkIndexes []*Index[canonicalConstraint, int]
 // go test -run '^$' -bench '^BenchmarkCanonicalAllRetainedMemory/' -benchtime=3x -count=3 .
 // Eight aliases retained 65,664 B/index and 1,549 B/warm-Local when shared,
 // versus 107,931 B/index and 4,421 B/warm-Local when independent.
+//
+//nolint:gocognit // Keeping the benchmark matrix together makes its cases comparable.
 func BenchmarkCanonicalAllRetainedMemory(b *testing.B) {
 	constraints, ids := canonicalBenchmarkData()
 	query := canonicalConstraint{value: 17}

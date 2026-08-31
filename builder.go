@@ -81,6 +81,7 @@ func buildIndex[C any, ID comparable](
 	return buildIndexPhysicalAliases(schema, entries, collectStatistics, hints, true)
 }
 
+//nolint:gocognit // The build pipeline is intentionally kept in one linear ownership scope.
 func buildIndexPhysicalAliases[C any, ID comparable](
 	schema Rule[C],
 	entries iter.Seq2[C, ID],
@@ -376,6 +377,7 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 	return len(*dst) != before
 }
 
+//nolint:gocognit // The specialized execution branches avoid allocations in hot paths.
 func searchAllMatches[C any, ID comparable](
 	root *allRule[C],
 	values []ID,

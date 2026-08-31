@@ -148,7 +148,10 @@ func materializationPtr[V any](value V) *V { return &value }
 
 func materializationBenchmarkSchema(kind string) Rule[materializationBenchmarkValue] {
 	include := Include(GetterFromPointer(func(v materializationBenchmarkValue) *int { return v.equality }))
-	ordered := GreaterOrEqual(GetterFromPointer(func(v materializationBenchmarkValue) *int { return v.ordered }), cmp.Compare[int])
+	ordered := GreaterOrEqual(
+		GetterFromPointer(func(v materializationBenchmarkValue) *int { return v.ordered }),
+		cmp.Compare[int],
+	)
 	between := Between(
 		GetterFromPointer(func(v materializationBenchmarkValue) *int { return v.from }),
 		GetterFromPointer(func(v materializationBenchmarkValue) *int { return v.until }), cmp.Compare[int],
@@ -199,7 +202,9 @@ func materializationBenchmarkData(entries int) ([]materializationBenchmarkValue,
 
 func TestAllMaterializationBudgetAccounting(t *testing.T) {
 	values, ids := materializationBenchmarkData(1_000)
-	index, err := New[materializationBenchmarkValue, uint32](materializationBenchmarkSchema("Full")).Build(Zip(values, ids))
+	index, err := New[materializationBenchmarkValue, uint32](
+		materializationBenchmarkSchema("Full"),
+	).Build(Zip(values, ids))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +225,11 @@ func TestAllMaterializationBudgetAccounting(t *testing.T) {
 		t.Fatalf("scratch or final result was not accounted: %+v", materialized)
 	}
 	if filtered.candidateFilters == 0 || filtered.materializations >= materialized.materializations {
-		t.Fatalf("candidate filters did not replace materialization: materialized=%+v filtered=%+v", materialized, filtered)
+		t.Fatalf(
+			"candidate filters did not replace materialization: materialized=%+v filtered=%+v",
+			materialized,
+			filtered,
+		)
 	}
 	for _, representation := range []string{"equality", "ordered", "between", "compare-by"} {
 		entry := materialized.representation(representation)
@@ -246,9 +255,14 @@ func BenchmarkAllMaterializationBudget(b *testing.B) {
 		equality: materializationPtr(17), ordered: materializationPtr(5_000),
 		from: materializationPtr(180), until: materializationPtr(190), excluded: materializationPtr(3),
 	}
-	for _, kind := range []string{"Full", "Equality", "Ordered", "Between", "CompareBy", "NestedAll", "Lossy", "Exclusion"} {
+	kinds := []string{
+		"Full", "Equality", "Ordered", "Between", "CompareBy", "NestedAll", "Lossy", "Exclusion",
+	}
+	for _, kind := range kinds {
 		b.Run(kind, func(b *testing.B) {
-			index, err := New[materializationBenchmarkValue, uint32](materializationBenchmarkSchema(kind)).Build(Zip(values, ids))
+			index, err := New[materializationBenchmarkValue, uint32](
+				materializationBenchmarkSchema(kind),
+			).Build(Zip(values, ids))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -302,7 +316,9 @@ func BenchmarkAllMaterializationBudget(b *testing.B) {
 	// The filter variant isolates candidate filtering from complete child
 	// materialization on the same compiled production-sized index.
 	b.Run("FullCandidateFilters", func(b *testing.B) {
-		index, err := New[materializationBenchmarkValue, uint32](materializationBenchmarkSchema("Full")).Build(Zip(values, ids))
+		index, err := New[materializationBenchmarkValue, uint32](
+			materializationBenchmarkSchema("Full"),
+		).Build(Zip(values, ids))
 		if err != nil {
 			b.Fatal(err)
 		}

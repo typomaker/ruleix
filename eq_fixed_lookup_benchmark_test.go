@@ -25,6 +25,7 @@ func BenchmarkFixedEqualityLookupCutover(b *testing.B) {
 	})
 }
 
+//nolint:gocognit // Keeping all representations in one benchmark preserves identical setup.
 func benchmarkFixedEqualityLookupType[V comparable](b *testing.B, name string, key func(int) V) {
 	b.Helper()
 	for size := 4; size <= 8; size++ {

@@ -34,7 +34,8 @@ func TestLossyLeafRepresentationFixtures(t *testing.T) {
 	stateIDs := &nodeIDAllocator{}
 	statistics := &buildStatistics{}
 	equalityState := Include(equality).newState(stateIDs, statistics).(*eqRule[lossyPlannerFixtureConstraint, int64])
-	orderedState := GreaterOrEqual(ordered, cmp.Compare[int64]).newState(stateIDs, statistics).(*orderedRule[lossyPlannerFixtureConstraint, int64])
+	orderedRuleState := GreaterOrEqual(ordered, cmp.Compare[int64]).newState(stateIDs, statistics)
+	orderedState := orderedRuleState.(*orderedRule[lossyPlannerFixtureConstraint, int64])
 	for id, constraint := range constraints {
 		equalityState.insert(constraint, uint32(id))
 		orderedState.insert(constraint, uint32(id))
@@ -143,7 +144,9 @@ func TestLossyAllPlannerFixtures(t *testing.T) {
 			exact, err := New[lossyPlannerFixtureConstraint, int](exactRule).Build(Zip(constraints, ids))
 			require.NoError(t, err)
 
-			_, err = New[lossyPlannerFixtureConstraint, int](Lossy(inspectedRule, MemoryLimit(math.MaxUint64))).Build(Zip(constraints, ids))
+			_, err = New[lossyPlannerFixtureConstraint, int](
+				Lossy(inspectedRule, MemoryLimit(math.MaxUint64)),
+			).Build(Zip(constraints, ids))
 			require.NoError(t, err)
 			var exactUsage uint64
 			for i := range inspectors {
@@ -153,10 +156,12 @@ func TestLossyAllPlannerFixtures(t *testing.T) {
 			}
 			require.Greater(t, exactUsage, uint64(1))
 
-			exactRule, inspectedRule, inspectors = makeLossyAggregateFixtureRules(fixture)
+			_, inspectedRule, inspectors = makeLossyAggregateFixtureRules(fixture)
 			limit := exactUsage - 1
 			var aggregate Inspector
-			approximate, err := New[lossyPlannerFixtureConstraint, int](Inspect(&aggregate, Lossy(inspectedRule, MemoryLimit(limit)))).Build(Zip(constraints, ids))
+			approximate, err := New[lossyPlannerFixtureConstraint, int](
+				Inspect(&aggregate, Lossy(inspectedRule, MemoryLimit(limit))),
+			).Build(Zip(constraints, ids))
 			require.NoError(t, err)
 			usage, ok := aggregate.Snapshot().MemoryUsage()
 			require.True(t, ok)
@@ -168,7 +173,12 @@ func TestLossyAllPlannerFixtures(t *testing.T) {
 					lossyIndexes = append(lossyIndexes, i)
 				}
 			}
-			require.Equal(t, []int{0}, lossyIndexes, "one-byte pressure must downgrade only the deterministic best leaf")
+			require.Equal(
+				t,
+				[]int{0},
+				lossyIndexes,
+				"one-byte pressure must downgrade only the deterministic best leaf",
+			)
 
 			selected := make([]struct {
 				mode        RuleMode
@@ -181,7 +191,9 @@ func TestLossyAllPlannerFixtures(t *testing.T) {
 				selected[i].granularity, _ = inspectors[i].Snapshot().Granularity()
 			}
 			_, repeatedRule, repeatedInspectors := makeLossyAggregateFixtureRules(fixture)
-			_, err = New[lossyPlannerFixtureConstraint, int](Lossy(repeatedRule, MemoryLimit(limit))).Build(Zip(constraints, ids))
+			_, err = New[lossyPlannerFixtureConstraint, int](
+				Lossy(repeatedRule, MemoryLimit(limit)),
+			).Build(Zip(constraints, ids))
 			require.NoError(t, err)
 			for i := range repeatedInspectors {
 				repeatedUsage, _ := repeatedInspectors[i].Snapshot().MemoryUsage()
@@ -249,7 +261,9 @@ func makeLossyAggregateFixtureData(fixture lossyAggregateFixture) []lossyPlanner
 	return constraints
 }
 
-func makeLossyAggregateFixtureRules(fixture lossyAggregateFixture) (Rule[lossyPlannerFixtureConstraint], Rule[lossyPlannerFixtureConstraint], [16]Inspector) {
+func makeLossyAggregateFixtureRules(
+	fixture lossyAggregateFixture,
+) (Rule[lossyPlannerFixtureConstraint], Rule[lossyPlannerFixtureConstraint], [16]Inspector) {
 	exactChildren := make([]Rule[lossyPlannerFixtureConstraint], 16)
 	inspectedChildren := make([]Rule[lossyPlannerFixtureConstraint], 16)
 	inspectors := [16]Inspector{}

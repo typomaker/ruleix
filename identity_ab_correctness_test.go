@@ -119,7 +119,10 @@ func TestIdentityABCanonicalRangeAliasesAndCoincidentOperations(t *testing.T) {
 		make func() Rule[identityMatrixConstraint]
 	}{
 		{"Ordered", func() Rule[identityMatrixConstraint] {
-			return GreaterOrEqual(func(v identityMatrixConstraint) (int, bool) { return v.values[0], v.present[0] }, cmp.Compare[int])
+			return GreaterOrEqual(
+				func(v identityMatrixConstraint) (int, bool) { return v.values[0], v.present[0] },
+				cmp.Compare[int],
+			)
 		}},
 		{"Between", func() Rule[identityMatrixConstraint] {
 			return Between(

@@ -30,7 +30,12 @@ func verifyLossySuperset[T any, ID comparable](
 	approximate, err := New[T, ID](Inspect(&inspector, lossyRule)).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	if requireLossy {
-		require.Equal(t, RuleModeLossy, inspector.Snapshot().Mode(), "property case must exercise a lossy representation")
+		require.Equal(
+			t,
+			RuleModeLossy,
+			inspector.Snapshot().Mode(),
+			"property case must exercise a lossy representation",
+		)
 	}
 	for _, query := range queries {
 		var want, got []ID
@@ -65,7 +70,20 @@ func requireSuperset(t *testing.T, exact, approximate []int) {
 func TestLossyEqualityScalarProperties(t *testing.T) {
 	testLossyEqualityScalar(t, "int8", []int8{math.MinInt8, -1, 0, 1, math.MaxInt8})
 	testLossyEqualityScalar(t, "uint64", []uint64{0, 1, 1 << 32, math.MaxUint64 - 1, math.MaxUint64})
-	testLossyEqualityScalar(t, "float64", []float64{math.NaN(), math.Inf(-1), -math.MaxFloat64, math.Copysign(0, -1), 0, math.SmallestNonzeroFloat64, math.MaxFloat64, math.Inf(1)})
+	testLossyEqualityScalar(
+		t,
+		"float64",
+		[]float64{
+			math.NaN(),
+			math.Inf(-1),
+			-math.MaxFloat64,
+			math.Copysign(0, -1),
+			0,
+			math.SmallestNonzeroFloat64,
+			math.MaxFloat64,
+			math.Inf(1),
+		},
+	)
 	testLossyEqualityScalar(t, "string", []string{"", "a", "customer-17", "\x00", "世界"})
 }
 
@@ -110,9 +128,27 @@ func testLossyEqualityScalar[V comparable](t *testing.T, name string, values []V
 
 //nolint:lll // Boundary sets stay inline so their ordering is immediately visible.
 func TestLossyOrderedOperatorAndBoundaryProperties(t *testing.T) {
-	testLossyOrderedScalar(t, "int64", []int64{math.MinInt64, math.MinInt64 + 1, -1, 0, 1, math.MaxInt64 - 1, math.MaxInt64})
+	testLossyOrderedScalar(
+		t,
+		"int64",
+		[]int64{math.MinInt64, math.MinInt64 + 1, -1, 0, 1, math.MaxInt64 - 1, math.MaxInt64},
+	)
 	testLossyOrderedScalar(t, "uint64", []uint64{0, 1, 1 << 63, math.MaxUint64 - 1, math.MaxUint64})
-	testLossyOrderedScalar(t, "float64", []float64{math.NaN(), math.Inf(-1), -math.MaxFloat64, -math.SmallestNonzeroFloat64, math.Copysign(0, -1), 0, math.SmallestNonzeroFloat64, math.MaxFloat64, math.Inf(1)})
+	testLossyOrderedScalar(
+		t,
+		"float64",
+		[]float64{
+			math.NaN(),
+			math.Inf(-1),
+			-math.MaxFloat64,
+			-math.SmallestNonzeroFloat64,
+			math.Copysign(0, -1),
+			0,
+			math.SmallestNonzeroFloat64,
+			math.MaxFloat64,
+			math.Inf(1),
+		},
+	)
 }
 
 //nolint:lll // Full exact and lossy constructors are kept adjacent for comparison.
@@ -145,7 +181,15 @@ func testLossyOrderedScalar[V cmp.Ordered](t *testing.T, name string, values []V
 		}
 		for _, operator := range operators {
 			t.Run(operator.name, func(t *testing.T) {
-				verifyLossySuperset(t, operator.build(), Lossy(operator.build(), MemoryLimit(1536)), constraints, ids, queries, true)
+				verifyLossySuperset(
+					t,
+					operator.build(),
+					Lossy(operator.build(), MemoryLimit(1536)),
+					constraints,
+					ids,
+					queries,
+					true,
+				)
 			})
 		}
 	})
@@ -164,7 +208,9 @@ func TestLossyEqualityNeverDropsExactMatches(t *testing.T) {
 	exact, err := New[lossyConstraint, int](Include(get)).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	var inspector Inspector
-	approximate, err := New[lossyConstraint, int](Inspect(&inspector, Lossy(Include(get), MemoryLimit(5000)))).Build(Zip(constraints, ids))
+	approximate, err := New[lossyConstraint, int](
+		Inspect(&inspector, Lossy(Include(get), MemoryLimit(5000))),
+	).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	for i := 0; i < len(constraints); i += 37 {
 		var want, got []int
@@ -188,7 +234,9 @@ func TestLossyOrderedNeverDropsExactMatches(t *testing.T) {
 	constraints[0].present = false
 	exact, err := New[lossyConstraint, int](GreaterOrEqual(get, cmp.Compare[int64])).Build(Zip(constraints, ids))
 	require.NoError(t, err)
-	approximate, err := New[lossyConstraint, int](Lossy(GreaterOrEqual(get, cmp.Compare[int64]), MemoryLimit(5000))).Build(Zip(constraints, ids))
+	approximate, err := New[lossyConstraint, int](
+		Lossy(GreaterOrEqual(get, cmp.Compare[int64]), MemoryLimit(5000)),
+	).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	for q := int64(-1100); q <= 1100; q += 53 {
 		query := lossyConstraint{minimum: q, present: true}
@@ -448,7 +496,9 @@ func TestNestedLossyPoliciesRespectInnerAndOuterCaps(t *testing.T) {
 		ids[i] = i
 	}
 	var exact Inspector
-	_, err := New[lossyConstraint, int](Inspect(&exact, Lossy(Include(get), MemoryLimit(math.MaxUint64)))).Build(Zip(constraints, ids))
+	_, err := New[lossyConstraint, int](
+		Inspect(&exact, Lossy(Include(get), MemoryLimit(math.MaxUint64))),
+	).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	exactUsage, ok := exact.Snapshot().MemoryUsage()
 	require.True(t, ok)
@@ -509,7 +559,9 @@ func TestLossyAllNeverDropsExactMatches(t *testing.T) {
 		constraints[i] = lossyConstraint{name: fmt.Sprintf("customer-%d", i), minimum: int64(i - 1000), present: true}
 		ids[i] = i
 	}
-	exact, err := New[lossyConstraint, int](All(Include(name), GreaterOrEqual(minimum, cmp.Compare[int64]))).Build(Zip(constraints, ids))
+	exact, err := New[lossyConstraint, int](
+		All(Include(name), GreaterOrEqual(minimum, cmp.Compare[int64])),
+	).Build(Zip(constraints, ids))
 	require.NoError(t, err)
 	var inspector Inspector
 	approximate, err := New[lossyConstraint, int](Inspect(&inspector, Lossy(

@@ -96,7 +96,10 @@ func TestNestedLossyPolicyShapesRespectEveryLocalCap(t *testing.T) {
 		{
 			name: "direct-lossy-lossy",
 			build: func(leaves *[3]Inspector, outer *Inspector) Rule[nestedLossyConstraint] {
-				return Inspect(outer, Lossy(Lossy(Inspect(&leaves[0], Include(name)), MemoryLimit(exact[0]-1)), MemoryLimit(exact[0]+1)))
+				return Inspect(
+					outer,
+					Lossy(Lossy(Inspect(&leaves[0], Include(name)), MemoryLimit(exact[0]-1)), MemoryLimit(exact[0]+1)),
+				)
 			},
 			limits: [3]uint64{exact[0] - 1}, outer: exact[0] + 1,
 		},
@@ -115,7 +118,12 @@ func TestNestedLossyPolicyShapesRespectEveryLocalCap(t *testing.T) {
 			build: func(leaves *[3]Inspector, outer *Inspector) Rule[nestedLossyConstraint] {
 				return Inspect(outer, Lossy(All(
 					All(Lossy(Inspect(&leaves[0], Include(name)), MemoryLimit(exact[0]-1))),
-					All(Lossy(Inspect(&leaves[1], GreaterOrEqual(minimum, cmp.Compare[int64])), MemoryLimit(exact[1]-1))),
+					All(
+						Lossy(
+							Inspect(&leaves[1], GreaterOrEqual(minimum, cmp.Compare[int64])),
+							MemoryLimit(exact[1]-1),
+						),
+					),
 				), MemoryLimit(exact[0]+exact[1]-3)))
 			},
 			limits: [3]uint64{exact[0] - 1, exact[1] - 1}, outer: exact[0] + exact[1] - 3,
@@ -181,7 +189,10 @@ func TestNestedLossyBoundaryAndPolicyPathMatrix(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var inner, outer Inspector
-			rule := Inspect(&outer, Lossy(Inspect(&inner, Lossy(Include(name), MemoryLimit(tc.innerLimit))), MemoryLimit(tc.outerLimit)))
+			rule := Inspect(
+				&outer,
+				Lossy(Inspect(&inner, Lossy(Include(name), MemoryLimit(tc.innerLimit))), MemoryLimit(tc.outerLimit)),
+			)
 			_, err := New[nestedLossyConstraint, int](rule).Build(Zip(constraints, ids))
 			require.NoError(t, err)
 			require.LessOrEqual(t, snapshotNestedLossy(t, inner).usage, min(tc.innerLimit, tc.outerLimit))
@@ -238,7 +249,13 @@ func TestNestedLossyAccountingOverflowReportsStablePolicyPath(t *testing.T) {
 		{ladder: []lossyRepresentation[int]{{details: representationDetails(math.MaxUint64, 0, 0, 0, false)}}},
 		{ladder: []lossyRepresentation[int]{{details: representationDetails(1, 0, 0, 0, false)}}},
 	}
-	plan := &lossyPolicyPlan[int]{kind: lossyPlanPolicy, first: 0, end: 2, limit: math.MaxUint64, path: "Lossy/child/All[1]/child"}
+	plan := &lossyPolicyPlan[int]{
+		kind:  lossyPlanPolicy,
+		first: 0,
+		end:   2,
+		limit: math.MaxUint64,
+		path:  "Lossy/child/All[1]/child",
+	}
 	err := enforceLossyPolicyCaps(plan, leaves)
 	require.EqualError(t, err, "ruleix: Lossy/child/All[1]/child: memory accounting overflow")
 }
@@ -266,7 +283,9 @@ func TestNestedLossyRandomizedSupersetAndDeterministicDiagnostics(t *testing.T) 
 			require.NoError(t, err)
 
 			var probe Inspector
-			_, err = New[nestedLossyConstraint, int](Inspect(&probe, Lossy(exactRule, MemoryLimit(math.MaxUint64)))).Build(Zip(constraints, ids))
+			_, err = New[nestedLossyConstraint, int](
+				Inspect(&probe, Lossy(exactRule, MemoryLimit(math.MaxUint64))),
+			).Build(Zip(constraints, ids))
 			require.NoError(t, err)
 			exactUsage := snapshotNestedLossy(t, probe).usage
 			limit := exactUsage * 3 / 4
@@ -289,7 +308,12 @@ func TestNestedLossyRandomizedSupersetAndDeterministicDiagnostics(t *testing.T) 
 				for i := range leaves {
 					current = append(current, snapshotNestedLossy(t, leaves[i]))
 				}
-				current = append(current, snapshotNestedLossy(t, inner), snapshotNestedLossy(t, middle), snapshotNestedLossy(t, outer))
+				current = append(
+					current,
+					snapshotNestedLossy(t, inner),
+					snapshotNestedLossy(t, middle),
+					snapshotNestedLossy(t, outer),
+				)
 				require.LessOrEqual(t, current[4].usage, exactUsage)
 				require.LessOrEqual(t, current[5].usage, exactUsage)
 				require.LessOrEqual(t, current[6].usage, limit)

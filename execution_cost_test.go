@@ -94,7 +94,10 @@ func TestValidationComparesUnmaterializedRemainingChild(t *testing.T) {
 
 	require.True(t, rule.shouldValidateRemaining(16, []rankedBitmap{{card: 100_000, childIdx: 1}}))
 	require.False(t, rule.shouldValidateRemaining(1_000, []rankedBitmap{{card: 10, childIdx: 1}}))
-	require.False(t, rule.shouldValidateRemaining(allCandidateScanLimit+1, []rankedBitmap{{card: ^uint64(0), childIdx: 1}}))
+	require.False(
+		t,
+		rule.shouldValidateRemaining(allCandidateScanLimit+1, []rankedBitmap{{card: ^uint64(0), childIdx: 1}}),
+	)
 }
 
 func TestSelectNextBitmapOperationPrefersCheapBroaderPosting(t *testing.T) {

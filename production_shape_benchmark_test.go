@@ -726,6 +726,8 @@ func benchmarkProductionRetainedMemory(
 // go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' -benchmem -benchtime=3x -count=3 .
 // Cold: 2,968; Warm: 91,003; Adaptive: 107,845; Adversarial: 73,984
 // retained-B/local.
+//
+//nolint:gocognit // The retained-memory cases must share identical fixture construction.
 func BenchmarkProductionShapeLocalRetainedMemory(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](

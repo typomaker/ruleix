@@ -74,7 +74,9 @@ func TestAllAdaptiveExecutorMatchesMaterializeAllOracle(t *testing.T) {
 	for _, lossy := range []bool{false, true} {
 		t.Run(fmt.Sprintf("lossy=%t", lossy), func(t *testing.T) {
 			var inspector Inspector
-			index, err := New[allComparisonConstraint, int](allComparisonSchema(lossy, &inspector)).Build(Zip(constraints, ids))
+			index, err := New[allComparisonConstraint, int](
+				allComparisonSchema(lossy, &inspector),
+			).Build(Zip(constraints, ids))
 			require.NoError(t, err)
 			if lossy {
 				require.Equal(t, RuleModeLossy, inspector.Snapshot().Mode())
@@ -127,9 +129,13 @@ func FuzzAllAdaptiveExecutorMatchesMaterializeAllOracle(f *testing.F) {
 		ids[i] = i % 211
 	}
 	var exactInspector, lossyInspector Inspector
-	index, err := New[allComparisonConstraint, int](allComparisonSchema(false, &exactInspector)).Build(Zip(constraints, ids))
+	index, err := New[allComparisonConstraint, int](
+		allComparisonSchema(false, &exactInspector),
+	).Build(Zip(constraints, ids))
 	require.NoError(f, err)
-	lossyIndex, err := New[allComparisonConstraint, int](allComparisonSchema(true, &lossyInspector)).Build(Zip(constraints, ids))
+	lossyIndex, err := New[allComparisonConstraint, int](
+		allComparisonSchema(true, &lossyInspector),
+	).Build(Zip(constraints, ids))
 	require.NoError(f, err)
 
 	for _, seed := range [][]byte{

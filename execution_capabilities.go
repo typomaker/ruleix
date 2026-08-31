@@ -23,7 +23,7 @@ func describeExecutionCapability[T any](rule Rule[T]) executionCapability[T] {
 	result.posting, _ = operationRule.(planningBitmapProvider[T])
 	result.filter, _ = operationRule.(candidateFilter[T])
 	result.queryKey, _ = operationRule.(localQueryKeyProvider[T])
-	if nested, ok := operationRule.(*allRule[T]); ok {
+	if nested, ok := operationRule.(*allRule[T]); ok { //nolint:nestif // Mirrors prepared and fallback rule layouts.
 		if nested.planningPrepared {
 			for i := range nested.children {
 				if !nested.supportsDirectIDMatch(i) {

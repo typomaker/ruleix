@@ -63,7 +63,10 @@ const (
 	lossySelectionSingleHeavy lossySelectionBenchmarkDistribution = "SingleHeavy"
 )
 
-func lossySelectionBenchmarkData(entries, children int, distribution lossySelectionBenchmarkDistribution) ([]lossyAllBenchmarkConstraint, []int) {
+func lossySelectionBenchmarkData(
+	entries, children int,
+	distribution lossySelectionBenchmarkDistribution,
+) ([]lossyAllBenchmarkConstraint, []int) {
 	constraints := make([]lossyAllBenchmarkConstraint, entries)
 	ids := make([]int, entries)
 	for row := range constraints {
@@ -82,7 +85,11 @@ func lossySelectionBenchmarkData(entries, children int, distribution lossySelect
 	return constraints, ids
 }
 
-func lossySelectionBenchmarkSchema(operator string, children int, inspectors []Inspector) Rule[lossyAllBenchmarkConstraint] {
+func lossySelectionBenchmarkSchema(
+	operator string,
+	children int,
+	inspectors []Inspector,
+) Rule[lossyAllBenchmarkConstraint] {
 	rules := make([]Rule[lossyAllBenchmarkConstraint], children)
 	for field := range rules {
 		field := field
@@ -105,7 +112,11 @@ func lossySelectionBenchmarkSchema(operator string, children int, inspectors []I
 	return All(rules...)
 }
 
-func lossySelectionBenchmarkMinimum(b testing.TB, constraints []lossyAllBenchmarkConstraint, schema Rule[lossyAllBenchmarkConstraint]) uint64 {
+func lossySelectionBenchmarkMinimum(
+	b testing.TB,
+	constraints []lossyAllBenchmarkConstraint,
+	schema Rule[lossyAllBenchmarkConstraint],
+) uint64 {
 	b.Helper()
 	state := schema.newState(&nodeIDAllocator{}, &buildStatistics{})
 	for id, constraint := range constraints {
@@ -141,7 +152,11 @@ func lossySelectionBenchmarkMinimum(b testing.TB, constraints []lossyAllBenchmar
 func BenchmarkLossySelectionMatrix(b *testing.B) {
 	const entries = lossyAllBenchmarkEntries
 	for _, children := range []int{2, 4, 8, 16} {
-		for _, distribution := range []lossySelectionBenchmarkDistribution{lossySelectionBalanced, lossySelectionSingleHeavy} {
+		distributions := []lossySelectionBenchmarkDistribution{
+			lossySelectionBalanced,
+			lossySelectionSingleHeavy,
+		}
+		for _, distribution := range distributions {
 			constraints, ids := lossySelectionBenchmarkData(entries, children, distribution)
 			queries := constraints[:64]
 			for _, operator := range []string{"Equality", "Ordered", "Mixed"} {
@@ -174,7 +189,13 @@ func BenchmarkLossySelectionMatrix(b *testing.B) {
 					b.Run(name, func(b *testing.B) {
 						inspectors := make([]Inspector, children)
 						var aggregate Inspector
-						schema := Inspect(&aggregate, Lossy(lossySelectionBenchmarkSchema(operator, children, inspectors), MemoryLimit(budget.limit)))
+						schema := Inspect(
+							&aggregate,
+							Lossy(
+								lossySelectionBenchmarkSchema(operator, children, inspectors),
+								MemoryLimit(budget.limit),
+							),
+						)
 
 						runtime.GC()
 						var before, after runtime.MemStats
@@ -226,7 +247,10 @@ func BenchmarkLossySelectionMatrix(b *testing.B) {
 						b.ReportMetric(float64(peak), "peak-live-B/build")
 						b.ReportMetric(float64(totalMatches)/float64(len(queries)), "candidates/query")
 						if possibleFalsePositives != 0 {
-							b.ReportMetric(float64(falsePositives)/float64(possibleFalsePositives), "false-positive-rate")
+							b.ReportMetric(
+								float64(falsePositives)/float64(possibleFalsePositives),
+								"false-positive-rate",
+							)
 						}
 					})
 				}
@@ -272,10 +296,17 @@ func BenchmarkLossyAllPlanning(b *testing.B) {
 func BenchmarkLossyAllOrderedPlanning(b *testing.B) {
 	constraints, ids := lossyAllBenchmarkData(lossyAllBenchmarkEntries)
 	for _, children := range []int{2, 4} {
-		exactBytes := lossyAllBenchmarkExactBytesForSchema(b, constraints, ids, lossyAllOrderedBenchmarkSchema(children))
+		exactBytes := lossyAllBenchmarkExactBytesForSchema(
+			b,
+			constraints,
+			ids,
+			lossyAllOrderedBenchmarkSchema(children),
+		)
 		b.Run(fmt.Sprintf("Children%d/Budget75", children), func(b *testing.B) {
 			limit := exactBytes * 3 / 4
-			builder := New[lossyAllBenchmarkConstraint, int](Lossy(lossyAllOrderedBenchmarkSchema(children), MemoryLimit(limit)))
+			builder := New[lossyAllBenchmarkConstraint, int](
+				Lossy(lossyAllOrderedBenchmarkSchema(children), MemoryLimit(limit)),
+			)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {

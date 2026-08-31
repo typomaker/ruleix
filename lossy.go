@@ -288,7 +288,11 @@ func analyzeLossyPolicy[T any](rule Rule[T], path string, leaves *[]lossyAllLeaf
 			return nil, fmt.Errorf("ruleix: %s: Lossy rule has no viable accounted representation", path)
 		}
 		plan.kind, plan.leaf = lossyPlanLeaf, len(*leaves)
-		*leaves = append(*leaves, lossyAllLeaf[T]{planner: planner, ladder: ladder, exact: ladder[0].details.MemoryUsageBytes})
+		*leaves = append(*leaves, lossyAllLeaf[T]{
+			planner: planner,
+			ladder:  ladder,
+			exact:   ladder[0].details.MemoryUsageBytes,
+		})
 	}
 	plan.end = len(*leaves)
 	return plan, nil
@@ -355,7 +359,10 @@ func lossyLeafRangeMinimum[T any](leaves []lossyAllLeaf[T], first, end int) (uin
 	return total, true
 }
 
-func materializeLossyPolicy[T any](plan *lossyPolicyPlan[T], leaves []lossyAllLeaf[T]) (Rule[T], inspectionDetails, error) {
+func materializeLossyPolicy[T any](
+	plan *lossyPolicyPlan[T],
+	leaves []lossyAllLeaf[T],
+) (Rule[T], inspectionDetails, error) {
 	switch plan.kind {
 	case lossyPlanLeaf:
 		leaf := leaves[plan.leaf]
@@ -377,7 +384,10 @@ func materializeLossyPolicy[T any](plan *lossyPolicyPlan[T], leaves []lossyAllLe
 		if err != nil {
 			return nil, inspectionDetails{}, err
 		}
-		return &inspectRule[T]{dst: plan.original.(*inspectRule[T]).dst, child: &inspectionDetailsRule[T]{child: child, details: details}}, details, nil
+		return &inspectRule[T]{
+			dst:   plan.original.(*inspectRule[T]).dst,
+			child: &inspectionDetailsRule[T]{child: child, details: details},
+		}, details, nil
 	case lossyPlanPolicy:
 		child, details, err := materializeLossyPolicy(plan.children[0], leaves)
 		if err != nil {

@@ -53,7 +53,7 @@ func attachIdentityABCounters[T any](rule Rule[T], counters *allExecutionCounter
 	}
 }
 
-func configureIdentityExecutionMode[T any](rule Rule[T], mode identityExecutionMode) {
+func configureIdentityExecutionMode[T any](_ Rule[T], mode identityExecutionMode) {
 	// The mode switch is intentionally explicit before the integrated compiler
 	// is added. Keeping both cases callable makes every later milestone extend
 	// this harness instead of replacing its baseline.
