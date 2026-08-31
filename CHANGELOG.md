@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Lossy equality precision now uses four arbitrary bucket-count levels per
+  power-of-two interval. Multiply-high reduction makes memory and collision
+  changes smoother while preserving allocation-free warm search.
+
 - Equality lossy indexes now compile allocation-free semantic codecs for named
   byte arrays/UUIDs, recursive arrays, comparable structs, complex values,
   pointer identity, and `time.Time`; interfaces remain an explicit build error.

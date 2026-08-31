@@ -62,7 +62,8 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		return planner
 	}
 	planner.prepare = func() []Rule[T] {
-		representations := make([]Rule[T], lossyMaxBucketBits+1)
+		bucketCounts := equalityBucketCounts(lossyMaxBucketBits)
+		representations := make([]Rule[T], 0, len(bucketCounts))
 		var sameValuePairs float64
 		for _, value := range hashed {
 			count := equalitySetCardinality(value.set)
@@ -70,20 +71,23 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		}
 		concreteItems := items - r.wildcard.GetCardinality()
 		allDifferentValuePairs := float64(concreteItems)*float64(concreteItems) - sameValuePairs
-		candidate := &lossyEqualityRule[T, V]{
-			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			shift: 64 - lossyMaxBucketBits, codec: codec, buckets: make(map[uint64]lossyEqualityPosting),
-		}
-		for _, value := range hashed {
-			bucket := value.hash >> candidate.shift
-			posting := candidate.buckets[bucket]
-			if posting.bits == nil {
-				posting.bits = roaring.New()
+		// buildLossyRepresentationLadder accepts the builders' natural
+		// coarse-to-fine order and reverses it after the exact level.
+		for index := len(bucketCounts) - 1; index >= 0; index-- {
+			bucketCount := bucketCounts[index]
+			candidate := &lossyEqualityRule[T, V]{
+				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
+				bucketCount: bucketCount, codec: codec, buckets: make(map[uint64]lossyEqualityPosting),
 			}
-			value.set.addTo(posting.bits)
-			candidate.buckets[bucket] = posting
-		}
-		for bucketBits := lossyMaxBucketBits; ; bucketBits-- {
+			for _, value := range hashed {
+				bucket := reduceEqualityHash(value.hash, bucketCount)
+				posting := candidate.buckets[bucket]
+				if posting.bits == nil {
+					posting.bits = roaring.New()
+				}
+				value.set.addTo(posting.bits)
+				candidate.buckets[bucket] = posting
+			}
 			usage := uint64(40) + bitmapBytes(candidate.wildcard)
 			var collidingDifferentValuePairs float64
 			for _, posting := range candidate.buckets {
@@ -97,30 +101,27 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 				details.EstimatedFalsePositiveRateValue = collidingDifferentValuePairs / allDifferentValuePairs
 				details.EstimatedFalsePositiveRateAvailable = true
 			}
-			representations[bucketBits] = &inspectionDetailsRule[T]{child: candidate, details: details}
-			if bucketBits == 0 {
-				break
-			}
-			parent := &lossyEqualityRule[T, V]{
-				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-				shift:   uint(64 - (bucketBits - 1)),
-				codec:   codec,
-				buckets: make(map[uint64]lossyEqualityPosting, (len(candidate.buckets)+1)/2),
-			}
-			for bucket, posting := range candidate.buckets {
-				parentBucket := bucket >> 1
-				parentPosting := parent.buckets[parentBucket]
-				if parentPosting.bits == nil {
-					parentPosting.bits = roaring.New()
-				}
-				parentPosting.bits.Or(posting.bits)
-				parent.buckets[parentBucket] = parentPosting
-			}
-			candidate = parent
+			representations = append(representations, &inspectionDetailsRule[T]{child: candidate, details: details})
 		}
 		return representations
 	}
 	return planner
+}
+
+// equalityBucketCounts returns four precision levels per power-of-two
+// interval. The next interval begins at one half of the upper bound.
+func equalityBucketCounts(maxBits uint) []uint64 {
+	counts := make([]uint64, 0, int(maxBits)*4+1)
+	for bit := maxBits; bit > 0; bit-- {
+		upper := uint64(1) << bit
+		for numerator := uint64(8); numerator >= 5; numerator-- {
+			count := upper / 8 * numerator
+			if len(counts) == 0 || counts[len(counts)-1] != count {
+				counts = append(counts, count)
+			}
+		}
+	}
+	return append(counts, 1)
 }
 
 func (p *equalityLossyAllPlanner[T, V]) compile(limit uint64) (Rule[T], error) {

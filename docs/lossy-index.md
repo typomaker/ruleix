@@ -203,8 +203,12 @@ hash padding. Complex zero values are canonicalized component-wise; pointers
 and channels use identity. `time.Time` is handled as its comparable fields,
 including location identity. Interfaces are rejected because their dynamic
 type would require search-time inspection. The published leaf retains only a
-typed full-hash function and immutable precision shift; search retains no
-`reflect.Value`.
+typed full-hash function and immutable bucket count; search retains no
+`reflect.Value`. Equality precision has four levels per power-of-two interval:
+`8/8`, `7/8`, `6/8`, and `5/8` of its upper bound. Multiply-high reduction
+maps the full hash to non-power-of-two counts without modulo bias. Planning
+uses actual accounted Roaring and logical map-slot bytes and discards levels
+that release no additional retained memory.
 
 The scalar fixture requires selective `lossy-grouped-hash` behavior, exact-
 result superset semantics, deterministic repeated/shuffled planning, and zero

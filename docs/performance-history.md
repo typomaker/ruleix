@@ -217,3 +217,16 @@ allocs/op. После исправления Local стал быстрее пр�
 Решения о конкретных техниках следует переносить также в
 [`optimization-decisions.md`](optimization-decisions.md), чтобы история чисел
 и история архитектурных выводов оставались связанными.
+
+## 2026-09-01: finer equality bucket counts
+
+На Apple M1 Max, macOS arm64, Go 1.26.0, 10 000 entries и
+`MemoryLimit(200000)` fixed-byte поиск занял 55,65–56,94 ns/op, named UUID —
+55,82–56,40 ns/op; оба сохранили 0 B/op и 0 allocs/op. Escape analysis
+подтвердил inline для multiply-high reduction и отсутствие reflection в
+search. Команда:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyCompiledCompositeCodec$' \
+  -benchmem -benchtime=300ms -count=3 .
+```

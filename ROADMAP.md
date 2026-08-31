@@ -110,7 +110,7 @@ Acceptance: `type UUID [16]byte` uses selective hash buckets, hashes both
 64-bit halves, has the same collision distribution as `[16]byte`, and remains
 allocation-free in search.
 
-### 4. Replace power-of-two-only equality precision with finer bucket counts
+### 4. Replace power-of-two-only equality precision with finer bucket counts — completed
 
 - Keep the codec output at full 64-bit precision. Map it to an arbitrary
   immutable `bucketCount` with multiply-high reduction using `bits.Mul64`.

@@ -93,6 +93,41 @@ func TestEqualityCodecUUIDCollisionDistribution(t *testing.T) {
 	require.Less(t, delta, 500)
 }
 
+func TestEqualityBucketCountLadder(t *testing.T) {
+	require.Equal(t, []uint64{65536, 57344, 49152, 40960, 32768}, equalityBucketCounts(16)[:5])
+	require.Equal(t, uint64(1), equalityBucketCounts(16)[len(equalityBucketCounts(16))-1])
+
+	// Multiply-high reduction covers exactly [0, bucketCount) for the extreme
+	// hashes and works for non-power-of-two counts.
+	for _, bucketCount := range []uint64{1, 5, 40960, 57344, 65536} {
+		require.Zero(t, reduceEqualityHash(0, bucketCount))
+		require.Equal(t, bucketCount-1, reduceEqualityHash(math.MaxUint64, bucketCount))
+	}
+}
+
+func TestLossyUUIDUsesFinerBucketCounts(t *testing.T) {
+	const entries = 10_000
+	state := Include(func(value codecFixtureConstraint[fixtureUUID]) (fixtureUUID, bool) {
+		return value.value, value.present
+	}).newState(&nodeIDAllocator{}, &buildStatistics{}).(*eqRule[codecFixtureConstraint[fixtureUUID], fixtureUUID])
+	for i := range entries {
+		var value fixtureUUID
+		binary.BigEndian.PutUint64(value[8:], uint64(i))
+		state.insert(codecFixtureConstraint[fixtureUUID]{value: value, present: true}, uint32(i))
+	}
+	ladder, err := state.newLossyAllPlanner().representationLadder()
+	require.NoError(t, err)
+
+	counts := make([]uint64, 0, len(ladder)-1)
+	for _, level := range ladder[1:] {
+		detailed := level.compiled.(*inspectionDetailsRule[codecFixtureConstraint[fixtureUUID]])
+		counts = append(counts, detailed.child.(*lossyEqualityRule[codecFixtureConstraint[fixtureUUID], fixtureUUID]).bucketCount)
+	}
+	for _, want := range []uint64{65536, 57344, 49152, 40960, 32768} {
+		require.Contains(t, counts, want)
+	}
+}
+
 func testUnsupportedCodecFixture[V comparable](t *testing.T, name string, value V) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
@@ -269,11 +304,11 @@ func BenchmarkLossyCompiledScalarCodec(b *testing.B) {
 
 // BenchmarkLossyCompiledCompositeCodec measures the fixed-byte and recursive
 // codec search paths with 10,000 entries and MemoryLimit(200000).
-// Apple M1 Max, Go 1.26.0, 500ms x5: Bytes16 51.88-53.33 ns/op,
-// NamedUUID 59.75-61.80, String 46.71-51.59, IntArray 53.84-54.37, Struct
-// 42.51-55.52; every case reported 0 B/op and 0 allocs/op.
+// Apple M1 Max, Go 1.26.0, 300ms x3: Bytes16 55.65-56.94 ns/op,
+// NamedUUID 55.82-56.40, String 41.16-54.15, IntArray 53.35-54.13, Struct
+// 45.97-55.66; every case reported 0 B/op and 0 allocs/op.
 // Reproduce: go test -run '^$' -bench '^BenchmarkLossyCompiledCompositeCodec$'
-// -benchmem -benchtime=500ms -count=5 .
+// -benchmem -benchtime=300ms -count=3 .
 func BenchmarkLossyCompiledCompositeCodec(b *testing.B) {
 	benchmarkLossyCompiledScalarCodec(b, "Bytes16", func(value int) [16]byte {
 		var result [16]byte

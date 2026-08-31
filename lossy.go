@@ -3,6 +3,7 @@ package ruleix
 import (
 	"fmt"
 	"math"
+	"math/bits"
 	"reflect"
 	"sort"
 
@@ -870,7 +871,7 @@ type lossyEqualityRule[T any, V comparable] struct {
 	wildcard       *roaring.Bitmap
 	wildcardSource physicalSourceID
 	wildcardClass  uint32
-	shift          uint
+	bucketCount    uint64
 	codec          equalityCodec[V]
 	buckets        map[uint64]lossyEqualityPosting
 }
@@ -894,7 +895,7 @@ func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bo
 		return r.wildcard, true
 	}
 	hash := r.codec.hash(value)
-	bits := r.buckets[hash>>r.shift].bits
+	bits := r.buckets[reduceEqualityHash(hash, r.bucketCount)].bits
 	if bits == nil {
 		return r.wildcard, true
 	}
@@ -929,7 +930,7 @@ func (r *lossyEqualityRule[T, V]) addMatches(value optionalValue[V], dst *roarin
 		return
 	}
 	hash := r.codec.hash(value.value)
-	if bits := r.buckets[hash>>r.shift].bits; bits != nil {
+	if bits := r.buckets[reduceEqualityHash(hash, r.bucketCount)].bits; bits != nil {
 		dst.Or(bits)
 	}
 }
@@ -940,7 +941,7 @@ func (r *lossyEqualityRule[T, V]) estimateCardinality(v T) uint64 {
 		return n
 	}
 	hash := r.codec.hash(value)
-	if bits := r.buckets[hash>>r.shift].bits; bits != nil {
+	if bits := r.buckets[reduceEqualityHash(hash, r.bucketCount)].bits; bits != nil {
 		n += bits.GetCardinality()
 	}
 	return n
@@ -954,7 +955,7 @@ func (r *lossyEqualityRule[T, V]) lookupEqualityClass(v T) uint32 {
 		return r.wildcardClass
 	}
 	hash := r.codec.hash(value)
-	return r.buckets[hash>>r.shift].class
+	return r.buckets[reduceEqualityHash(hash, r.bucketCount)].class
 }
 func (r *lossyEqualityRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
 	bits, found := r.lookupCachedBitmap(v, pool)
@@ -978,10 +979,17 @@ func (r *lossyEqualityRule[T, V]) matchesID(v T, id uint32) bool {
 		return false
 	}
 	hash := r.codec.hash(value)
-	bits := r.buckets[hash>>r.shift].bits
+	bits := r.buckets[reduceEqualityHash(hash, r.bucketCount)].bits
 	return bits != nil && bits.Contains(id)
 }
 func (*lossyEqualityRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
+
+// reduceEqualityHash maps the complete codec hash onto any immutable bucket
+// count without modulo bias. bits.Mul64 returns the high half of hash*count.
+func reduceEqualityHash(hash, bucketCount uint64) uint64 {
+	high, _ := bits.Mul64(hash, bucketCount)
+	return high
+}
 func (r *lossyEqualityRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	return r.estimateCardinality(v)
 }

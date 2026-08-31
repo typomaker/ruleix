@@ -1,5 +1,14 @@
 # Roadmap history
 
+## 2026-09-01: finer equality precision
+
+Equality lossy rules replaced power-of-two hash-prefix shifts with immutable
+arbitrary bucket counts reduced through `bits.Mul64`. The deterministic ladder
+now exposes four sublevels per bit interval (`65536`, `57344`, `49152`,
+`40960`, `32768`, and so on), while actual retained accounting removes levels
+that do not release memory. UUID fixtures verify the intermediate levels,
+multiply-high boundaries, superset behavior, and allocation-free warm search.
+
 ## 2026-09-01: compile fixed-byte and recursive equality codecs
 
 Step 3 compiles named byte arrays/UUIDs, recursive arrays, comparable structs,
