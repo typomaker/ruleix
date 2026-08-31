@@ -42,16 +42,18 @@ func useLegacyThreeValueMap(rule *eqRule[equalitySpecializationConstraint, int])
 }
 
 // BenchmarkEqualitySpecialization compares the former general equality rule
-// with the unary/binary/ternary rules produced by the build optimizer. The
+// with the unary/binary/ternary/quaternary rules produced by the build optimizer. The
 // three-value OldGeneral case recreates the map promotion used before the
 // ternary specialization. RootSearch
 // isolates filter lookup and posting-list materialization; IndexSearch includes
 // conversion of every matched internal ID into the public result slice.
 // Apple M1 Max, Go 1.26, 300ms x5: ternary RootSearch 14.31 ns/op versus the
 // legacy map's 18.94 ns/op; retained rule shape 200 B versus 264 B (map storage
-// excluded from that deterministic metric).
+// excluded from that deterministic metric). Quaternary RootSearch is 14.49
+// ns/op versus 19.33 ns/op; retained shape is 256 B versus 296 B, also
+// excluding the eliminated map storage.
 func BenchmarkEqualitySpecialization(b *testing.B) {
-	for _, values := range []int{1, 2, 3} {
+	for _, values := range []int{1, 2, 3, 4} {
 		b.Run(fmt.Sprintf("Values/%d", values), func(b *testing.B) {
 			oldRule := buildEqualitySpecializationRule(values)
 			candidate := buildEqualitySpecializationRule(values)
@@ -104,7 +106,7 @@ func BenchmarkEqualitySpecialization(b *testing.B) {
 }
 
 func BenchmarkEqualitySpecializationBuild(b *testing.B) {
-	for _, values := range []int{1, 2, 3} {
+	for _, values := range []int{1, 2, 3, 4} {
 		for _, specialize := range []bool{false, true} {
 			name := "OldGeneral"
 			if specialize {
@@ -131,7 +133,7 @@ func BenchmarkEqualitySpecializationBuild(b *testing.B) {
 // two variants and deliberately excluded from the metric.
 func BenchmarkEqualitySpecializationRetained(b *testing.B) {
 	setSize := uint64(unsafe.Sizeof(equalitySet{}))
-	for _, values := range []int{1, 2, 3} {
+	for _, values := range []int{1, 2, 3, 4} {
 		oldRule := buildEqualitySpecializationRule(values)
 		newRule := oldRule.optimize(equalitySpecializationEntries)
 		for _, implementation := range []struct {
@@ -159,6 +161,8 @@ func specializedEqualityRuleSize(rule Rule[equalitySpecializationConstraint]) ui
 	case *binaryEqRule[equalitySpecializationConstraint, int]:
 		return uint64(unsafe.Sizeof(*typed))
 	case *ternaryEqRule[equalitySpecializationConstraint, int]:
+		return uint64(unsafe.Sizeof(*typed))
+	case *quaternaryEqRule[equalitySpecializationConstraint, int]:
 		return uint64(unsafe.Sizeof(*typed))
 	default:
 		panic("unexpected equality specialization")

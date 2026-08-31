@@ -123,6 +123,39 @@ func TestBuildSpecializesTernaryEquality(t *testing.T) {
 	}
 }
 
+func TestBuildSpecializesQuaternaryEquality(t *testing.T) {
+	type constraint struct{ value *int }
+	values := [5]int{1, 2, 3, 4, 5}
+	index, err := New[constraint, int](Include(GetterFromPointer(func(value constraint) *int { return value.value }))).Build(Zip(
+		[]constraint{{value: &values[0]}, {value: &values[1]}, {value: &values[2]}, {value: &values[3]}, {}},
+		[]int{1, 2, 3, 4, 5},
+	))
+	require.NoError(t, err)
+	require.IsType(t, &quaternaryEqRule[constraint, int]{}, index.root)
+
+	for i := range 4 {
+		var matches []int
+		index.Search(constraint{value: &values[i]}, &matches)
+		require.Equal(t, []int{i + 1, 5}, matches)
+	}
+	for _, query := range []constraint{{value: &values[4]}, {}} {
+		var matches []int
+		index.Local().Search(query, &matches)
+		require.Equal(t, []int{5}, matches)
+	}
+}
+
+func TestBuildKeepsFiveValueEqualityMapBacked(t *testing.T) {
+	type constraint struct{ value int }
+	constraints := []constraint{{1}, {2}, {3}, {4}, {5}}
+	index, err := New[constraint, int](Include(func(value constraint) (int, bool) {
+		return value.value, true
+	})).Build(Zip(constraints, []int{1, 2, 3, 4, 5}))
+	require.NoError(t, err)
+	rule := index.root.(*eqRule[constraint, int])
+	require.NotNil(t, rule.values.offsets)
+}
+
 func TestBuildOptimizesWildcardBetween(t *testing.T) {
 	type constraint struct{ from, until *int }
 	index, err := New[constraint, int](Between(GetterFromPointer(func(value constraint) *int { return value.from }), GetterFromPointer(func(value constraint) *int { return value.until }), cmp.Compare[int])).Build(Zip([]constraint{{}, {}}, []int{1, 2}))
@@ -168,7 +201,7 @@ func TestAllSharesInternedPartialEqualityWildcards(t *testing.T) {
 		Include(GetterFromPointer(func(value constraint) *int { return value.left })),
 		Include(GetterFromPointer(func(value constraint) *int { return value.right })),
 	)
-	one, two, three, four := 1, 2, 3, 4
+	one, two, three, four, five := 1, 2, 3, 4, 5
 	constraints := []constraint{
 		{}, {}, {}, {}, {}, {},
 		{left: &one, right: &one},
@@ -176,8 +209,9 @@ func TestAllSharesInternedPartialEqualityWildcards(t *testing.T) {
 		{left: &two, right: &one},
 		{left: &three, right: &three},
 		{left: &four, right: &four},
+		{left: &five, right: &five},
 	}
-	index, err := New[constraint, int](schema).Build(Zip(constraints, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}))
+	index, err := New[constraint, int](schema).Build(Zip(constraints, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}))
 	require.NoError(t, err)
 	root := index.root.(*allRule[constraint])
 	left := root.children[0].(*eqRule[constraint, int])
