@@ -2,7 +2,6 @@ package ruleix
 
 import (
 	"fmt"
-	"hash/maphash"
 	"math"
 	"reflect"
 	"sort"
@@ -864,7 +863,7 @@ type lossyEqualityRule[T any, V comparable] struct {
 	wildcardSource physicalSourceID
 	wildcardClass  uint32
 	shift          uint
-	hasher         scalarHasher[V]
+	codec          equalityCodec[V]
 	buckets        map[uint64]lossyEqualityPosting
 }
 
@@ -876,27 +875,6 @@ type lossyEqualityPosting struct {
 
 func (r *lossyEqualityRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
-type scalarHasher[V comparable] struct {
-	stringSeed maphash.Seed
-	stringHash bool
-}
-
-func newScalarHasher[V comparable]() scalarHasher[V] {
-	var zero V
-	_, stringHash := any(zero).(string)
-	if !stringHash {
-		return scalarHasher[V]{}
-	}
-	return scalarHasher[V]{stringSeed: maphash.MakeSeed(), stringHash: true}
-}
-
-func (h scalarHasher[V]) hash(value V) (uint64, bool) {
-	if h.stringHash {
-		return maphash.String(h.stringSeed, any(value).(string)), true
-	}
-	return hashScalar(any(value))
-}
-
 func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bool) {
 	// A wildcard requires a union with the concrete bucket, so it cannot expose
 	// one of its owned bitmaps as the complete child result.
@@ -907,10 +885,7 @@ func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bo
 	if !ok {
 		return r.wildcard, true
 	}
-	hash, ok := r.hasher.hash(value)
-	if !ok {
-		return r.wildcard, true
-	}
+	hash := r.codec.hash(value)
 	bits := r.buckets[hash>>r.shift].bits
 	if bits == nil {
 		return r.wildcard, true
@@ -945,10 +920,7 @@ func (r *lossyEqualityRule[T, V]) addMatches(value optionalValue[V], dst *roarin
 	if !value.ok {
 		return
 	}
-	hash, ok := r.hasher.hash(value.value)
-	if !ok {
-		return
-	}
+	hash := r.codec.hash(value.value)
 	if bits := r.buckets[hash>>r.shift].bits; bits != nil {
 		dst.Or(bits)
 	}
@@ -959,10 +931,7 @@ func (r *lossyEqualityRule[T, V]) estimateCardinality(v T) uint64 {
 	if !ok {
 		return n
 	}
-	hash, ok := r.hasher.hash(value)
-	if !ok {
-		return n
-	}
+	hash := r.codec.hash(value)
 	if bits := r.buckets[hash>>r.shift].bits; bits != nil {
 		n += bits.GetCardinality()
 	}
@@ -976,10 +945,7 @@ func (r *lossyEqualityRule[T, V]) lookupEqualityClass(v T) uint32 {
 	if !ok {
 		return r.wildcardClass
 	}
-	hash, ok := r.hasher.hash(value)
-	if !ok {
-		return r.wildcardClass
-	}
+	hash := r.codec.hash(value)
 	return r.buckets[hash>>r.shift].class
 }
 func (r *lossyEqualityRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
@@ -1003,10 +969,7 @@ func (r *lossyEqualityRule[T, V]) matchesID(v T, id uint32) bool {
 	if !ok {
 		return false
 	}
-	hash, ok := r.hasher.hash(value)
-	if !ok {
-		return false
-	}
+	hash := r.codec.hash(value)
 	bits := r.buckets[hash>>r.shift].bits
 	return bits != nil && bits.Contains(id)
 }

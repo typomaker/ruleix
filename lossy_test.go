@@ -252,8 +252,9 @@ var lossyPlannerBenchmarkCardinality uint64
 
 func TestLossyAllReusesPlanningBucket(t *testing.T) {
 	query := lossyConstraint{name: "customer-7", present: true}
-	hash, ok := hashScalar(query.name)
-	require.True(t, ok)
+	codec, err := compileEqualityCodec[string]()
+	require.NoError(t, err)
+	hash := codec.hash(query.name)
 	getterCalls := [2]int{}
 	children := make([]Rule[lossyConstraint], 2)
 	for i := range children {
@@ -264,6 +265,7 @@ func TestLossyAllReusesPlanningBucket(t *testing.T) {
 				return v.name, v.present
 			},
 			wildcard: roaring.New(),
+			codec:    codec,
 			buckets:  map[uint64]lossyEqualityPosting{hash: {bits: roaring.BitmapOf(7)}},
 		}
 	}
@@ -277,8 +279,9 @@ func TestLossyAllReusesPlanningBucket(t *testing.T) {
 
 func TestLossyAllLocalPlanReusesPlanningBucket(t *testing.T) {
 	query := lossyConstraint{name: "customer-7", present: true}
-	hash, ok := hashScalar(query.name)
-	require.True(t, ok)
+	codec, err := compileEqualityCodec[string]()
+	require.NoError(t, err)
+	hash := codec.hash(query.name)
 	getterCalls := [2]int{}
 	children := make([]Rule[lossyConstraint], 2)
 	for i := range children {
@@ -289,6 +292,7 @@ func TestLossyAllLocalPlanReusesPlanningBucket(t *testing.T) {
 				return v.name, v.present
 			},
 			wildcard: roaring.New(),
+			codec:    codec,
 			buckets:  map[uint64]lossyEqualityPosting{hash: {bits: roaring.BitmapOf(7)}},
 		}
 	}
@@ -305,12 +309,14 @@ func TestLossyAllLocalPlanReusesPlanningBucket(t *testing.T) {
 
 func TestLossyEqualityLocalCachesRepeatedValue(t *testing.T) {
 	value := "customer-7"
-	hash, ok := hashScalar(any(value))
-	require.True(t, ok)
+	codec, err := compileEqualityCodec[string]()
+	require.NoError(t, err)
+	hash := codec.hash(value)
 	rule := &lossyEqualityRule[lossyConstraint, string]{
 		nodeID:   0,
 		get:      func(v lossyConstraint) (string, bool) { return v.name, v.present },
 		wildcard: roaring.New(),
+		codec:    codec,
 		shift:    56,
 		buckets:  map[uint64]lossyEqualityPosting{hash >> 56: {bits: roaring.BitmapOf(7)}},
 	}
@@ -359,15 +365,17 @@ func BenchmarkLossyAllSelectivePlanning(b *testing.B) {
 	// -benchmem -benchtime=1s -count=5 .
 	const entries = 100_000
 	query := lossyConstraint{name: "customer-7", present: true}
-	hash, ok := hashScalar(query.name)
-	if !ok {
-		b.Fatal("failed to hash benchmark query")
+	codec, err := compileEqualityCodec[string]()
+	if err != nil {
+		b.Fatal(err)
 	}
+	hash := codec.hash(query.name)
 	broad := roaring.New()
 	broad.AddRange(0, entries)
 	selective := &lossyEqualityRule[lossyConstraint, string]{
 		get:      func(v lossyConstraint) (string, bool) { return v.name, v.present },
 		wildcard: roaring.New(),
+		codec:    codec,
 		buckets:  map[uint64]lossyEqualityPosting{hash: {bits: roaring.BitmapOf(7)}},
 	}
 	children := make([]Rule[lossyConstraint], 0, 8)

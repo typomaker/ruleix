@@ -27,20 +27,16 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	exact := uint64(24) + bitmapBytes(r.wildcard)
 	items := r.wildcard.GetCardinality()
 	distinct := uint64(0)
-	hasher := newScalarHasher[V]()
+	codec, codecErr := compileEqualityCodec[V]()
 	type hashedSet struct {
 		hash uint64
 		set  *equalitySet
 	}
 	hashed := make([]hashedSet, 0, len(r.values.sets))
-	valid := true
 	addHash := func(value V, set *equalitySet) {
-		hash, ok := hasher.hash(value)
-		if !ok {
-			valid = false
-			return
+		if codecErr == nil {
+			hashed = append(hashed, hashedSet{hash: codec.hash(value), set: set})
 		}
-		hashed = append(hashed, hashedSet{hash: hash, set: set})
 	}
 	if r.values.offsets == nil {
 		for n := range int(r.values.count) {
@@ -61,13 +57,9 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		child:   r,
 		details: representationDetails(exact, items, distinct, 0, false),
 	})
-	planner := &equalityLossyAllPlanner[T, V]{exact: exactRepresentation}
-	if !valid {
-		all := r.wildcard.Clone()
-		for i := range r.values.sets {
-			r.values.sets[i].addTo(all)
-		}
-		return newUniversalLossyPlanner(exactRepresentation, r.nodeID, "lossy-equality", all)
+	planner := &equalityLossyAllPlanner[T, V]{exact: exactRepresentation, err: codecErr}
+	if codecErr != nil {
+		return planner
 	}
 	planner.prepare = func() []Rule[T] {
 		representations := make([]Rule[T], lossyMaxBucketBits+1)
@@ -80,7 +72,7 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		allDifferentValuePairs := float64(concreteItems)*float64(concreteItems) - sameValuePairs
 		candidate := &lossyEqualityRule[T, V]{
 			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			shift: 64 - lossyMaxBucketBits, hasher: hasher, buckets: make(map[uint64]lossyEqualityPosting),
+			shift: 64 - lossyMaxBucketBits, codec: codec, buckets: make(map[uint64]lossyEqualityPosting),
 		}
 		for _, value := range hashed {
 			bucket := value.hash >> candidate.shift
@@ -112,7 +104,7 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 			parent := &lossyEqualityRule[T, V]{
 				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
 				shift:   uint(64 - (bucketBits - 1)),
-				hasher:  hasher,
+				codec:   codec,
 				buckets: make(map[uint64]lossyEqualityPosting, (len(candidate.buckets)+1)/2),
 			}
 			for bucket, posting := range candidate.buckets {

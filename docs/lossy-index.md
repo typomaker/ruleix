@@ -191,39 +191,36 @@ Every `Build` plans only from its current input and publishes a new immutable
 index. Adding data or changing a schema affects the next build; published
 indexes never replan in place, and concurrent `Index.Search` remains lock-free.
 
-## Planned compiled codecs and streaming build
+## Compiled scalar codecs and planned composite/streaming work
 
-The pre-codec baseline is frozen by `TestLossyCodecBaselineFixtures`. Its
-513-entry matrix covers ordinary and named bool, signed/unsigned integers,
-floats, strings, `[16]byte`, `[2]string`, `[3]int`, a comparable struct, a
-named UUID, and `github.com/google/uuid.UUID`. Each case records exact and
-retained accounted bytes, strategy, granularity, candidates per query, and
-warm `Local.Search` allocations while checking every approximate result is an
-exact-result superset. Ordinary currently recognized representations use
-`lossy-grouped-hash`; all named types, `[3]int`, structs, and both UUID types
-freeze the current one-bucket `lossy-equality` fallback. Every warm case
-measured 0 allocations on Apple M1 Max with Go 1.26.0.
+Equality now separates full-value encoding from precision reduction. During
+`Build`, direct codecs remain for built-in scalars, `[16]byte`, and
+`[2]string`. When the direct type switch misses, reflection inspects the
+static type once and compiles named bool, integer, float, and string values
+from their underlying kind. The published leaf retains only a typed full-hash
+function and immutable precision shift; search retains no `reflect.Value`.
 
-The companion 32,768-entry named-UUID fixture repeats and shuffles builds with
-a fixed seed. The current exact-first state accounts 5,406,752 bytes versus an
-8,232-byte minimum retained representation (future 120% target: 9,878 bytes),
-and all three builds publish the same mode, strategy, usage, and granularity.
-This is deterministic Ruleix representation accounting: it deliberately does
-not claim to measure Go heap or RSS. Reproduce both fixtures with:
+The scalar fixture requires selective `lossy-grouped-hash` behavior, exact-
+result superset semantics, deterministic repeated/shuffled planning, and zero
+warm `Local.Search` allocations for ordinary and named scalar types.
+Unsupported composite types return an internal typed `equalityCodecError`
+from `Build` instead of silently selecting a complete-leaf bitmap. Recursive
+arrays, structs, and named byte arrays/UUIDs remain the next codec step.
+
+The companion 32,768-entry named-int64 fixture makes exact-first working state
+materially exceed the future 120% target. This is deterministic Ruleix
+accounting, not a claim about Go heap or RSS. Reproduce the fixtures with:
 
 ```sh
-go test -run 'TestLossyCodec(BaselineFixtures|FixtureBuildOrderAndWorkingPressure)$' -v
+go test -run 'TestLossyCodec(ScalarFixtures|UnsupportedCompositeErrors|FixtureBuildOrderAndWorkingPressure)$' -v
 ```
 
-The next lossy iteration will replace coarse universal minima incrementally.
-Build-time reflection may recognize the underlying representation of a named
-Go type: `type UUID [16]byte` appears as an array of length 16 whose element
-kind is `uint8`. Reflection will compile a typed codec once; the published
-search rule will not retain or invoke `reflect.Value`. Built-in scalar types
-continue to use direct codecs without reflection, while named scalars, arrays,
-and comparable structs inherit recursively compiled semantic codecs where safe.
-Raw-memory hashing is restricted to layouts such as `[N]byte`; struct padding,
-string headers, and interface runtime layouts are not semantic encodings.
+Apple M1 Max, Go 1.26.0, 10,000 entries, `MemoryLimit(200000)`, 500ms x5:
+built-in `int64` measured 185.0 ns/op and named `int64` 185.3 ns/op; both reported
+0 B/op and 0 allocs/op. Reproduce with `go test -run '^$' -bench
+'^BenchmarkLossyCompiledScalarCodec$' -benchmem -benchtime=500ms -count=5 .`.
+Escape-analysis inspection uses `go test -gcflags='all=-m=2' -run
+'^TestLossyCodecScalarFixtures$' .`.
 
 Equality codecs produce a full `uint64` hash. Precision remains a build-time
 representation choice and is applied afterward. In particular, UUID hashing
@@ -231,8 +228,8 @@ mixes all 16 bytes; it never truncates one 64-bit half. Finer planned levels use
 arbitrary bucket counts and multiply-high reduction rather than only power-of-
 two prefixes. Search therefore performs a compiled hash, one immutable bucket
 reduction, lookup, and bitmap operation without recalculating precision or
-allocating. Types for which no safe codec exists should eventually report a
-codec error instead of silently losing all equality selectivity.
+allocating. Types for which no safe codec exists report a codec error instead
+of silently losing all equality selectivity.
 
 Aggregate planning keeps its accepted selector. Every leaf starts exact; while
 the total exceeds the hard retained limit, the planner chooses the next step

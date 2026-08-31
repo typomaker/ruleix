@@ -70,7 +70,7 @@ Acceptance: every fixture checks the superset property and makes codec
 selection, precision selection, build working usage, and search allocations
 observable without asserting the old universal fallback as desired behavior.
 
-### 2. Introduce an internal build-compiled equality codec contract
+### 2. Introduce an internal build-compiled equality codec contract — completed
 
 - Separate full-value encoding from precision reduction. A compiled equality
   codec produces a full `uint64`; the selected lossy rule stores only the codec

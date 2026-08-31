@@ -1,6 +1,7 @@
 package ruleix
 
 import (
+	"errors"
 	"math"
 	"math/rand"
 	"testing"
@@ -29,30 +30,42 @@ type fixtureStruct struct {
 	name string
 }
 
-// TestLossyCodecBaselineFixtures freezes the exact-first behavior before
-// build-compiled codecs replace the universal fallback. Selective expectations
-// intentionally describe only the current baseline, not the desired codec
-// contract from ROADMAP.md.
-func TestLossyCodecBaselineFixtures(t *testing.T) {
+func TestLossyCodecScalarFixtures(t *testing.T) {
 	testCodecFixture(t, "bool", []bool{false, true}, true)
-	testCodecFixture(t, "named-bool", []fixtureNamedBool{false, true}, false)
+	testCodecFixture(t, "named-bool", []fixtureNamedBool{false, true}, true)
 	testCodecFixture(t, "int64", []int64{-2, -1, 0, 1, 2}, true)
-	testCodecFixture(t, "named-int64", []fixtureNamedInt{-2, -1, 0, 1, 2}, false)
+	testCodecFixture(t, "named-int64", []fixtureNamedInt{-2, -1, 0, 1, 2}, true)
 	testCodecFixture(t, "uint64", []uint64{0, 1, 2, math.MaxUint64}, true)
-	testCodecFixture(t, "named-uint64", []fixtureNamedUint{0, 1, 2, math.MaxUint64}, false)
+	testCodecFixture(t, "named-uint64", []fixtureNamedUint{0, 1, 2, math.MaxUint64}, true)
 	testCodecFixture(t, "float64", []float64{-1.5, math.Copysign(0, -1), 0, 1.5}, true)
-	testCodecFixture(t, "named-float64", []fixtureNamedFloat{-1.5, 0, 1.5}, false)
+	testCodecFixture(t, "named-float64", []fixtureNamedFloat{-1.5, 0, 1.5}, true)
 	testCodecFixture(t, "string", []string{"", "a", "ab", "b"}, true)
-	testCodecFixture(t, "named-string", []fixtureNamedString{"", "a", "ab", "b"}, false)
+	testCodecFixture(t, "named-string", []fixtureNamedString{"", "a", "ab", "b"}, true)
 	testCodecFixture(t, "bytes-16", [][16]byte{{1}, {15: 1}, {1, 2, 3}}, true)
-	testCodecFixture(t, "named-bytes-16", []fixtureNamedBytes{{1}, {15: 1}, {1, 2, 3}}, false)
 	testCodecFixture(t, "strings-2", [][2]string{{"a", "bc"}, {"ab", "c"}, {"", "x"}}, true)
-	testCodecFixture(t, "named-strings-2", []fixtureNamedStrings{{"a", "bc"}, {"ab", "c"}}, false)
-	testCodecFixture(t, "ints-3", [][3]int{{1, 2, 3}, {3, 2, 1}}, false)
-	testCodecFixture(t, "named-ints-3", []fixtureNamedInts{{1, 2, 3}, {3, 2, 1}}, false)
-	testCodecFixture(t, "comparable-struct", []fixtureStruct{{true, 1, "a"}, {false, 2, "b"}}, false)
-	testCodecFixture(t, "named-uuid", []fixtureUUID{{1}, {15: 1}, {1, 2, 3}}, false)
-	testCodecFixture(t, "google-uuid", []uuid.UUID{{1}, {15: 1}, {1, 2, 3}}, false)
+}
+
+func TestLossyCodecUnsupportedCompositeErrors(t *testing.T) {
+	testUnsupportedCodecFixture(t, "named-bytes-16", fixtureNamedBytes{})
+	testUnsupportedCodecFixture(t, "named-strings-2", fixtureNamedStrings{})
+	testUnsupportedCodecFixture(t, "ints-3", [3]int{})
+	testUnsupportedCodecFixture(t, "named-ints-3", fixtureNamedInts{})
+	testUnsupportedCodecFixture(t, "comparable-struct", fixtureStruct{})
+	testUnsupportedCodecFixture(t, "named-uuid", fixtureUUID{})
+	testUnsupportedCodecFixture(t, "google-uuid", uuid.UUID{})
+}
+
+func testUnsupportedCodecFixture[V comparable](t *testing.T, name string, value V) {
+	t.Helper()
+	t.Run(name, func(t *testing.T) {
+		get := func(constraint codecFixtureConstraint[V]) (V, bool) { return constraint.value, true }
+		_, err := New[codecFixtureConstraint[V], int](
+			Lossy(Include(get), MemoryLimit(1024)),
+		).Build(Zip([]codecFixtureConstraint[V]{{value: value}}, []int{1}))
+		var codecErr *equalityCodecError
+		require.Error(t, err)
+		require.True(t, errors.As(err, &codecErr))
+	})
 }
 
 func testCodecFixture[V comparable](t *testing.T, name string, values []V, wantSelective bool) {
@@ -139,16 +152,18 @@ func buildCodecFixtureIndex[V comparable](
 
 func TestLossyCodecFixtureBuildOrderAndWorkingPressure(t *testing.T) {
 	const entries = 32768
-	constraints := make([]codecFixtureConstraint[fixtureUUID], entries)
+	constraints := make([]codecFixtureConstraint[fixtureNamedInt], entries)
 	ids := make([]int, entries)
 	for i := range constraints {
-		constraints[i] = codecFixtureConstraint[fixtureUUID]{value: fixtureUUID{byte(i), byte(i >> 8), byte(i >> 16)}, present: true}
+		constraints[i] = codecFixtureConstraint[fixtureNamedInt]{value: fixtureNamedInt(i), present: true}
 		ids[i] = i
 	}
-	get := func(value codecFixtureConstraint[fixtureUUID]) (fixtureUUID, bool) { return value.value, value.present }
+	get := func(value codecFixtureConstraint[fixtureNamedInt]) (fixtureNamedInt, bool) {
+		return value.value, value.present
+	}
 
 	exactUsage := codecFixtureUsage(t, constraints, ids, get, math.MaxUint64)
-	state := Include(get).newState(&nodeIDAllocator{}, &buildStatistics{}).(*eqRule[codecFixtureConstraint[fixtureUUID], fixtureUUID])
+	state := Include(get).newState(&nodeIDAllocator{}, &buildStatistics{}).(*eqRule[codecFixtureConstraint[fixtureNamedInt], fixtureNamedInt])
 	for i, constraint := range constraints {
 		state.insert(constraint, uint32(i))
 	}
@@ -164,7 +179,7 @@ func TestLossyCodecFixtureBuildOrderAndWorkingPressure(t *testing.T) {
 	require.Equal(t, baseline, repeated)
 
 	permutation := rand.New(rand.NewSource(1)).Perm(entries) // fixed seed: schema-order fixture, not fuzzing.
-	shuffledConstraints := make([]codecFixtureConstraint[fixtureUUID], entries)
+	shuffledConstraints := make([]codecFixtureConstraint[fixtureNamedInt], entries)
 	shuffledIDs := make([]int, entries)
 	for i, source := range permutation {
 		shuffledConstraints[i], shuffledIDs[i] = constraints[source], ids[source]
@@ -198,4 +213,53 @@ func codecFixtureUsage[V comparable](t testing.TB, constraints []codecFixtureCon
 ) uint64 {
 	t.Helper()
 	return codecFixtureSnapshot(t, constraints, ids, get, limit).usage
+}
+
+var codecFixtureBenchmarkResult []int
+
+// BenchmarkLossyCompiledScalarCodec compares the direct and build-compiled
+// scalar paths with the same 10,000-entry workload. Apple M1 Max, Go 1.26.0,
+// 500ms x5: Int64 185.0 ns/op, NamedInt64 185.3 ns/op; both 0 B/op, 0 allocs/op.
+// Reproduce: go test -run '^$' -bench '^BenchmarkLossyCompiledScalarCodec$'
+// -benchmem -benchtime=500ms -count=5 .
+func BenchmarkLossyCompiledScalarCodec(b *testing.B) {
+	benchmarkLossyCompiledScalarCodec(b, "Int64", func(value int) int64 { return int64(value) })
+	benchmarkLossyCompiledScalarCodec(b, "NamedInt64", func(value int) fixtureNamedInt {
+		return fixtureNamedInt(value)
+	})
+}
+
+func benchmarkLossyCompiledScalarCodec[V comparable](b *testing.B, name string, value func(int) V) {
+	b.Helper()
+	b.Run(name, func(b *testing.B) {
+		const entries = 10_000
+		constraints := make([]codecFixtureConstraint[V], entries)
+		ids := make([]int, entries)
+		for i := range constraints {
+			constraints[i] = codecFixtureConstraint[V]{value: value(i), present: true}
+			ids[i] = i
+		}
+		get := func(constraint codecFixtureConstraint[V]) (V, bool) {
+			return constraint.value, constraint.present
+		}
+		index, err := New[codecFixtureConstraint[V], int](
+			Lossy(Include(get), MemoryLimit(200_000)),
+		).Build(Zip(constraints, ids))
+		if err != nil {
+			b.Fatal(err)
+		}
+		local := index.Local()
+		defer local.Close()
+		query := codecFixtureConstraint[V]{value: value(entries / 2), present: true}
+		result := make([]int, 0, 8)
+		local.Search(query, &result)
+		local.Search(query, &result)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for range b.N {
+			result = result[:0]
+			local.Search(query, &result)
+		}
+		codecFixtureBenchmarkResult = result
+	})
 }

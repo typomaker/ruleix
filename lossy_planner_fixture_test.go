@@ -2,6 +2,7 @@ package ruleix
 
 import (
 	"cmp"
+	"errors"
 	"math"
 	"testing"
 
@@ -85,14 +86,16 @@ func TestLossyLeafRepresentationFixtures(t *testing.T) {
 	}
 }
 
-func TestLossyLeafRepresentationSupportsComparableStructs(t *testing.T) {
+func TestLossyEqualityRejectsUnsupportedComparableStructs(t *testing.T) {
 	type composite struct{ value int }
 	type constraint struct{ value composite }
 	get := func(v constraint) (composite, bool) { return v.value, true }
 	data := []constraint{{value: composite{value: 1}}}
 
 	_, err := New[constraint, int](Lossy(Include(get), MemoryLimit(1024))).Build(Zip(data, []int{1}))
-	require.NoError(t, err)
+	var codecErr *equalityCodecError
+	require.Error(t, err)
+	require.True(t, errors.As(err, &codecErr))
 	_, err = New[constraint, int](Lossy(GreaterOrEqual(get, func(a, b composite) int {
 		return cmp.Compare(a.value, b.value)
 	}), MemoryLimit(1024))).Build(Zip(data, []int{1}))
