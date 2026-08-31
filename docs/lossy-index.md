@@ -260,14 +260,17 @@ that releases the most bytes, then the larger current leaf, then schema order.
 The same large leaf may take consecutive finer downgrade steps while other
 leaves remain exact. Planning stops immediately when the total fits.
 
-The later streaming-build phase will keep `MemoryLimit` as the hard accounted
-retained limit and derive a private saturating soft target of
+The streaming-build phase keeps `MemoryLimit` as the hard accounted retained
+limit and derives a private saturating soft target of
 `MemoryLimit + MemoryLimit/5`. At fixed 4096-entry checkpoints, exceeding that
-target will trigger an irreversible downgrade and release of unreachable exact
-state; subsequent entries flow into the selected accumulator. The ordinary
-final planner still brings retained usage down to 100% after iteration. The
-120% figure describes Ruleix working-state accounting, not Go heap or RSS, and
-early one-pass decisions may trade final plan quality for lower build peaks.
+target triggers an irreversible downgrade and releases unreachable exact
+state. Equality leaves conservatively collapse to one mutable universal
+accumulator for the observed prefix and add subsequent IDs directly to it;
+other lossy operators retain their selected prefix representation and a
+universal streaming tail. Final accounting includes that tail and rejects a
+build if it cannot fit the hard retained limit. The 120% figure describes
+Ruleix working-state accounting, not Go heap or RSS, and early one-pass
+decisions may trade final plan quality for lower build peaks.
 Ordered/shuffled input, peak heap, GC pressure, candidate amplification, and
 false-positive rate must be measured before this behavior is accepted.
 

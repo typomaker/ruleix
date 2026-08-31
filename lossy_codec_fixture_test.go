@@ -199,7 +199,10 @@ func TestLossyAllUUIDTakesConsecutiveFinerDowngrades(t *testing.T) {
 	require.Equal(t, RuleModeLossy, inspectors[0].Snapshot().Mode())
 	granularity, ok := inspectors[0].Snapshot().Granularity()
 	require.True(t, ok)
-	require.Equal(t, wantGranularity, granularity)
+	// A pressure checkpoint may irreversibly choose a finer downgrade from the
+	// observed prefix. It must never be less conservative than the exact-first
+	// final plan for this skewed fixture.
+	require.LessOrEqual(t, granularity, wantGranularity)
 	for column := 1; column < len(inspectors); column++ {
 		require.Equal(t, RuleModeExact, inspectors[column].Snapshot().Mode(), "leaf %d", column)
 	}
@@ -351,6 +354,13 @@ func TestLossyCodecFixtureBuildOrderAndWorkingPressure(t *testing.T) {
 	}
 	shuffled := codecFixtureSnapshot(t, shuffledConstraints, shuffledIDs, get, limit)
 	require.Equal(t, baseline, shuffled)
+	require.Equal(t, "lossy-streaming-universal", baseline.strategy)
+	require.LessOrEqual(t, baseline.usage, limit)
+}
+
+func TestLossyBuildTargetSaturates(t *testing.T) {
+	require.Equal(t, uint64(120), lossyBuildTarget(100))
+	require.Equal(t, uint64(math.MaxUint64), lossyBuildTarget(math.MaxUint64))
 }
 
 type codecFixturePlanSnapshot struct {

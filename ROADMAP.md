@@ -163,7 +163,7 @@ Acceptance: production `Between[time.Time]` and `CompareBy[[3]int]` retain
 useful selectivity under pressure, preserve zero-allocation warm search, and do
 not repeat the rejected composed-`Between` regression.
 
-### 7. Add the internal 120% streaming-build headroom
+### 7. Add the internal 120% streaming-build headroom — completed
 
 - Compute a saturating internal target as `limit + limit/5`. Keep it private;
   do not add a public option in this phase.

@@ -105,6 +105,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	internalIDs := make(map[ID]uint32, uniqueIDCapacity)
 	var buildErr error
 	entryIndex := 0
+	streaming := false
 	entries(func(constraint C, id ID) bool {
 		if uint64(len(values)) > math.MaxUint32 {
 			buildErr = fmt.Errorf("ruleix: at most 2^32 rules are supported")
@@ -122,6 +123,22 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		}
 		state.insert(constraint, internalID)
 		entryIndex++
+		if !streaming && entryIndex%lossyBuildPressureInterval == 0 {
+			usage, target, hasTarget, err := lossyBuildPressure(state)
+			if err != nil {
+				buildErr = err
+				return false
+			}
+			if hasTarget && usage > target {
+				state, err = compileLossyRules(state)
+				if err != nil {
+					buildErr = err
+					return false
+				}
+				state = wrapStreamingLossyLeaves(state)
+				streaming = true
+			}
+		}
 		return true
 	})
 	if buildErr != nil {
@@ -130,6 +147,10 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	ix := &Index[C, ID]{root: state, values: values, pool: newBitmapPool()}
 	var err error
 	ix.root, err = compileLossyRules(ix.root)
+	if err != nil {
+		return nil, buildStatistics{}, err
+	}
+	ix.root, _, err = refreshStreamingLossyDetails(ix.root)
 	if err != nil {
 		return nil, buildStatistics{}, err
 	}

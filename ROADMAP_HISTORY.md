@@ -4194,3 +4194,27 @@ Reproduce the retained baseline with:
 go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality$' \
   -benchmem -benchtime=1s -count=5 .
 ```
+# 2026-09-01: internal 120% streaming-build headroom
+
+`Build` now derives a private saturating soft target of
+`MemoryLimit + MemoryLimit/5` and checks deterministic Ruleix working-state
+accounting every 4096 inserted constraints. Crossing the target compiles the
+lossy policy irreversibly and releases its exact prefix state. Equality uses a
+single mutable universal bitmap for the prefix and subsequent IDs; other
+operators combine the selected prefix with a conservative streaming tail.
+Final refreshed accounting includes the tail and preserves the hard retained
+limit. The target excludes input ownership, external IDs, allocator metadata,
+Go heap overhead, and RSS.
+
+The 32,768-entry named-int64 fixture records 950,304 accounted exact-first
+bytes against an 8,280-byte hard limit and 9,936-byte soft target. Repeated and
+fixed-seed shuffled builds select the same streaming strategy, remain within
+the hard limit, and preserve the result-superset contract. Streaming quality,
+heap/GC effects, and order sensitivity remain the explicit measurement work
+of roadmap step 8.
+
+Reproduce with:
+
+```sh
+go test -run 'TestLossy(BuildTargetSaturates|CodecFixtureBuildOrderAndWorkingPressure)$' -v .
+```
