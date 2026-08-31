@@ -154,8 +154,10 @@ Memory-sensitive equality, ordered, `Between`, and `CompareBy` rules can opt
 into a bounded, conservative representation. The exact representation is
 retained when it fits; otherwise results may include false positives but never
 omit an exact match. Built-in terminal representations also let heterogeneous
-`All` schemas use one aggregate limit; an arbitrary comparator may fall back
-to the leaf's complete candidate bitmap when no more selective encoding fits:
+`All` schemas use one aggregate limit. Ordered rules use comparator-defined
+boundary buckets, while equality rules compile a semantic hash codec during
+`Build`; a type that cannot receive a safe codec is rejected instead of
+silently becoming a complete candidate bitmap:
 
 ```go
 ruleix.Lossy(
@@ -184,6 +186,22 @@ but cannot grant more than the local limit. Planning is repeated from the
 current input on every `Build`. If all minimum viable representations still
 exceed any applicable limit, `Build` returns an error and does not publish the
 failed index or its diagnostics.
+
+Equality codecs cover built-in and named scalars, byte arrays such as UUIDs,
+recursive arrays, comparable structs, complex values, pointer and channel
+identity, and `time.Time`. Reflection is limited to codec compilation during
+`Build`; published indexes use a typed full-value hash and an immutable bucket
+count. Four bucket-count levels per power-of-two interval are reduced with
+multiply-high arithmetic, so lossy precision changes more smoothly while warm
+`Local.Search` remains allocation-free. Interfaces are rejected because their
+dynamic values cannot be encoded safely without query-time dispatch.
+
+Build planning is exact-first: the one-pass iterator is fully consumed before
+the retained representation is selected. `MemoryLimit` is a hard limit on
+Ruleix's deterministic retained accounting, not on Go heap or RSS. A measured
+private prototype that downgraded at 120% of the limit is disabled because it
+lost selectivity, scaled worse, and could reject ordered workloads that the
+exact-first planner accepts.
 
 All getters return `(value, ok)`. In a stored constraint, `ok == false` is a
 wildcard. In a search value it only matches stored wildcards. For `Exclude`,

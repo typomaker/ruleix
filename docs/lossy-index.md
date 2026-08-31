@@ -153,9 +153,11 @@ rebuild leaves the previous immutable index and latest successful `Inspect`
 snapshot unchanged, matching the existing builder lifecycle.
 
 Every built-in equality and ordered leaf has a conservative terminal
-representation. Equality uses bucketed hashing for supported scalar codecs,
-`[16]byte`, and `[2]string`; another comparable type falls back to the leaf's
-complete ID set when no allocation-free hash codec exists. Ordered comparisons
+representation. Equality uses bucketed hashing for built-in and named scalars,
+fixed-byte arrays such as UUIDs, recursive arrays, comparable structs, complex
+values, pointer and channel identity, and `time.Time`. A type for which no safe
+allocation-free semantic codec can be compiled fails `Build` with a typed
+codec error instead of silently selecting a complete ID set. Ordered comparisons
 use numeric order-preserving keys where available and comparator-ordered
 buckets otherwise. `Between` uses two comparator-bucket indexes inside one
 fused rule. A stored lower bound is rounded toward the bucket minimum and a
@@ -201,7 +203,7 @@ Every `Build` plans only from its current input and publishes a new immutable
 index. Adding data or changing a schema affects the next build; published
 indexes never replan in place, and concurrent `Index.Search` remains lock-free.
 
-## Compiled equality codecs and planned streaming work
+## Compiled equality codecs and streaming decision
 
 Equality separates full-value encoding from precision reduction. During
 `Build`, direct codecs remain for built-in scalars, `[16]byte`, and
@@ -227,7 +229,7 @@ Unsupported dynamic composites return an internal typed `equalityCodecError`
 from `Build` instead of silently selecting a complete-leaf bitmap.
 
 The companion 32,768-entry named-int64 fixture makes exact-first working state
-materially exceed the future 120% target. This is deterministic Ruleix
+materially exceed the experimental 120% target. This is deterministic Ruleix
 accounting, not a claim about Go heap or RSS. Reproduce the fixtures with:
 
 ```sh
@@ -270,19 +272,17 @@ that releases the most bytes, then the larger current leaf, then schema order.
 The same large leaf may take consecutive finer downgrade steps while other
 leaves remain exact. Planning stops immediately when the total fits.
 
-The streaming-build phase keeps `MemoryLimit` as the hard accounted retained
-limit and derives a private saturating soft target of
-`MemoryLimit + MemoryLimit/5`. At fixed 4096-entry checkpoints, exceeding that
-target triggers an irreversible downgrade and releases unreachable exact
-state. Equality leaves conservatively collapse to one mutable universal
-accumulator for the observed prefix and add subsequent IDs directly to it;
-other lossy operators retain their selected prefix representation and a
-universal streaming tail. Final accounting includes that tail and rejects a
-build if it cannot fit the hard retained limit. The 120% figure describes
-Ruleix working-state accounting, not Go heap or RSS, and early one-pass
-decisions may trade final plan quality for lower build peaks.
-Ordered/shuffled input, peak heap, GC pressure, candidate amplification, and
-false-positive rate must be measured before this behavior is accepted.
+The rejected streaming prototype kept `MemoryLimit` as the hard accounted
+retained limit and derived a private saturating soft target of
+`MemoryLimit + MemoryLimit/5`. At fixed 4096-entry checkpoints it irreversibly
+downgraded exact state into conservative accumulators. Measurements at
+10K/100K and the available 1M scale found complete candidate sets for equality,
+worse latency and allocation scaling, and ordered tails that could exceed a
+budget accepted by exact-first planning. Consequently the public build path
+does not apply this target: it consumes the iterator into exact state and plans
+once afterward. The prototype remains only in the benchmark harness. Neither
+the hard retained limit nor the experimental 120% accounting described Go heap
+or RSS.
 
 The detailed dependency order and acceptance gates are maintained in
 [`ROADMAP.md`](../ROADMAP.md).

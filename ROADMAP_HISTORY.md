@@ -1,5 +1,22 @@
 # Roadmap history
 
+## 2026-09-01: finalize compiled-codec roadmap
+
+Roadmap step 9 reconciled the public and canonical documentation with the
+implemented behavior. Equality codec selection remains internal: safe static
+types are compiled during `Build`, while unsupported dynamic interface values
+fail with a typed codec error. No reflection or unsafe implementation detail is
+part of the public API. Equality precision uses the accepted four-level
+multiply-high ladder, aggregate planning retains the released-bytes selector,
+and `Between`/`CompareBy` use fused selective comparator buckets.
+
+The public build contract remains exact-first. The private 120% one-pass
+prototype is documented as a rejected default after its measured selectivity,
+scaling, and ordered-tail failures; `MemoryLimit` continues to bound only the
+final deterministic retained accounting, not Go heap or RSS. All completed
+steps were removed from the active roadmap, which now records that no
+implementation work remains.
+
 ## 2026-09-01: revalidate aggregate selective downgrade planning
 
 The released-bytes selector remains unchanged after the finer equality ladder.
@@ -4194,7 +4211,7 @@ Reproduce the retained baseline with:
 go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality$' \
   -benchmem -benchtime=1s -count=5 .
 ```
-# 2026-09-01: internal 120% streaming-build headroom
+## 2026-09-01: internal 120% streaming-build headroom
 
 `Build` now derives a private saturating soft target of
 `MemoryLimit + MemoryLimit/5` and checks deterministic Ruleix working-state
@@ -4219,7 +4236,7 @@ Reproduce with:
 go test -run 'TestLossy(BuildTargetSaturates|CodecFixtureBuildOrderAndWorkingPressure)$' -v .
 ```
 
-# 2026-09-01: streaming tradeoff decision
+## 2026-09-01: streaming tradeoff decision
 
 Roadmap step 8 added a test-only A/B harness around the same lossy planner and
 compared exact-first with irreversible streaming at 10K, 100K, and the
