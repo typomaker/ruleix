@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `Local` now retains up to four recent exact root results under the existing
+  64 KiB budget, eliminating repeated materialization and allocations for
+  three- and four-query working sets without changing result semantics.
 - Aggregate `Lossy(All(...))` planning now preserves exact leaves until the
   combined representation exceeds its hard limit, then applies deterministic
   discrete downgrades by bytes released, current usage, and schema order.

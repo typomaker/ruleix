@@ -14,10 +14,10 @@ type localAllPlan struct {
 	order     []int
 	firstCard uint64
 	bytes     uint64
-	// Keep the two most recent exact intersections alongside the learned child
+	// Keep a bounded exact-intersection working set alongside the learned child
 	// order. Repeated Local queries can share their immutable containers with a
 	// scratch result instead of cloning the first posting on every search.
-	results [2]localAllResult
+	results [4]localAllResult
 	next    uint8
 	valid   bool
 }

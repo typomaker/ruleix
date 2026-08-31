@@ -1,5 +1,78 @@
 # Roadmap history
 
+## 2026-08-31: close L5 with a four-entry exact-result working set
+
+L5 profiled the accepted L4 parent on cache-miss and high-churn workloads. A
+five-second three-key churn profile measured 1,489 ns/op, 962 B/op, and seven
+allocations/op. Result enumeration accounted for 12.6% cumulative CPU,
+`storeLocalResult` 15.5%, bitmap intersection 14.9%, and GC/system activity was
+prominent because every replacement rebuilt compact IDs and query keys. A
+five-second short-lived production Local profile measured 456.2 us/op and
+showed range child materialization as its distinct bottleneck: `Between.search`
+was 38.5% cumulative, `orderedIndex.walk` 43.0%, and Roaring union 37.4%.
+
+The accepted bounded optimization expands the root exact-result working set
+from two to four entries while retaining the existing shared 64 KiB byte
+budget. Three alternating compact keys now remain cached instead of repeatedly
+materializing, intersecting, enumerating, and allocating the same results. A
+five-key control exceeds capacity and preserves the bounded replacement path.
+The threshold is therefore four entries; byte admission, deterministic result
+order, cache epochs, and the 256-ID compact-result limit are unchanged.
+
+Seven interleaved one-second runs of separately prebuilt L4 parent and L5
+candidate binaries measured three-key churn parent/candidate sequences of
+`1400/1408/1410/1402/1397/1413/1422` and
+`318.9/317.9/318.0/319.3/319.2/316.8/318.3` ns/op. Medians were 1,408 and
+318.3 ns/op (−77.4%); the candidate won all seven pairs and changed 962 B/op,
+7 allocs/op to 0 B/op, 0 allocs/op. Ordinary production warm Local sequences
+were `227.1/228.0/227.9/227.8/228.6/227.2/262.1` and
+`227.5/228.0/229.6/228.5/232.6/229.5/228.1` ns/op. Their medians were 227.9
+and 228.5 ns/op (+0.26%, one strict candidate win and one tie), within the 3%
+stability gate; both remained allocation-free. The five-key control median was
+1,408 ns/op, 806 B/op, and six allocations/op.
+
+The complete gate passed. Retained Local memory was 2,968 B cold, 92,432 B
+warm, 111,056 B adaptive, and 74,256--74,267 B adversarial; the small fixed
+metadata increase remains inside the existing byte budgets. Ordinary tests,
+race tests, production Index/Local, parallel batch, production-scale,
+cardinality, churn, and retained-memory matrices all passed.
+
+The rejected alternative raised `allCandidateScanLimit` alone from 8 to 16.
+Pilot medians changed cold production Local from 459.6 to 453.1 us/op (−1.4%)
+and churn from 1,416 to 1,409 ns/op (−0.5%), both below the required 10%.
+Comparable five-second warm profiles measured 227.3 ns/op for the parent and
+228.1 ns/op for the candidate. Both attributed the hot path to
+`loadLocalQueryResult` (76.7% and 78.1% cumulative); the candidate did not add
+a distinct hot call site, so the small delta remains measurement noise rather
+than a confirmed threshold cost. The threshold was restored to 8 before the
+four-entry candidate was built.
+
+Environment: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Commands:
+
+```sh
+go test -c -o /tmp/ruleix-l5-parent.test . # at accepted L4
+go test -c -o /tmp/ruleix-l5-candidate.test .
+# Alternate parent and candidate seven times:
+GOMAXPROCS=1 /tmp/ruleix-l5-{parent,candidate}.test -test.run '^$' \
+  -test.bench '^BenchmarkProductionShapeSearch/Local$|^BenchmarkWarmLocalResultChurn' \
+  -test.benchmem -test.benchtime=1s -test.count=1
+GOMAXPROCS=1 /tmp/ruleix-l5-parent.test -test.run '^$' \
+  -test.bench '^BenchmarkWarmLocalResultChurn$' -test.benchtime=5s \
+  -test.cpuprofile=/tmp/ruleix-l5-churn-parent.cpu
+GOMAXPROCS=1 /tmp/ruleix-l5-parent.test -test.run '^$' \
+  -test.bench '^BenchmarkProductionShapeLocalClose$' -test.benchtime=5s \
+  -test.cpuprofile=/tmp/ruleix-l5-cold-parent.cpu
+go test ./...
+go test -race ./...
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' -benchmem -benchtime=500ms -count=3 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality/' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkWarmLocalResultChurn/' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' -benchtime=3x -count=3 .
+git diff --check
+```
+
 ## 2026-08-31: extend compact exact results to 256 IDs
 
 L4 measured compact exact-result limits of 64, 96, 128, and 256 IDs with a

@@ -110,9 +110,10 @@ release-comparison прогону:
 | Показатель | Последний зафиксированный результат | Контекст |
 | --- | ---: | --- |
 | `Index.Search` | 32,383 µs/op, 40 851–40 852 B/op, 28 allocs/op | Финальный combined executor gate, 7×3 s. |
-| warm `Local.Search` | 227,0 ns/op, 0 B/op, 0 allocs/op | L4 candidate, 7 interleaved runs; L1 parent median 226,5 ns/op, `GOMAXPROCS=1`. |
+| warm `Local.Search` | 228,5 ns/op, 0 B/op, 0 allocs/op | L5 candidate, 7 interleaved runs; L4 parent median 227,8 ns/op, `GOMAXPROCS=1`. |
+| three-key Local churn | 318,3 ns/op, 0 B/op, 0 allocs/op | L5 four-slot result working set; parent 1 408 ns/op, 962 B/op, 7 allocs/op. |
 | parallel `Local` | 240,4 ns/search | L4 fixed-session gate with `GOMAXPROCS=1`. |
-| warm Local retained | 92 208 B | Два полных production query keys и compact results внутри bounded cache. |
+| warm Local retained | 92 432 B | Четырёхслотовый L5 working set под прежним общим бюджетом 64 KiB. |
 
 Эти числа нельзя напрямую объявлять результатом следующего релиза: перед тегом
 нужно повторить полную матрицу против `v0.8.1` в одной сессии и заменить этот

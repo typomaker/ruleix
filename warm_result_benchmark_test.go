@@ -77,11 +77,26 @@ func BenchmarkWarmLocalResultCardinality(b *testing.B) {
 	}
 }
 
-// BenchmarkWarmLocalResultChurn alternates three exact keys through the two
-// result-cache slots. The result sizes straddle L4's candidate compact limits,
-// making cache replacement cost and allocations visible beside hit latency.
+// BenchmarkWarmLocalResultChurn covers working sets immediately below and
+// above the four-slot result-cache capacity. The result sizes straddle L4's
+// compact limits, making replacement cost and allocations visible beside hit
+// latency. L5's latest local medians (Apple M1 Max, Go 1.26.0, GOMAXPROCS=1,
+// 1s x 3) are 316.2 ns/op for three keys and 1,408 ns/op for five keys.
 func BenchmarkWarmLocalResultChurn(b *testing.B) {
-	cardinalities := []int{65, 129, 257}
+	for _, cardinalities := range []struct {
+		name   string
+		values []int
+	}{
+		{name: "WorkingSet3", values: []int{65, 129, 257}},
+		{name: "WorkingSet5", values: []int{65, 96, 128, 129, 257}},
+	} {
+		b.Run(cardinalities.name, func(b *testing.B) {
+			benchmarkWarmLocalResultChurn(b, cardinalities.values)
+		})
+	}
+}
+
+func benchmarkWarmLocalResultChurn(b *testing.B, cardinalities []int) {
 	total := 0
 	for _, cardinality := range cardinalities {
 		total += cardinality
