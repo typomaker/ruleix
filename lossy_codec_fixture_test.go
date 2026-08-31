@@ -33,6 +33,10 @@ type fixtureStruct struct {
 }
 type fixtureInterfaceStruct struct{ value any }
 
+type fixtureUUIDAggregateConstraint struct {
+	values [16]fixtureUUID
+}
+
 func TestLossyCodecScalarFixtures(t *testing.T) {
 	testCodecFixture(t, "bool", []bool{false, true}, true)
 	testCodecFixture(t, "named-bool", []fixtureNamedBool{false, true}, true)
@@ -125,6 +129,94 @@ func TestLossyUUIDUsesFinerBucketCounts(t *testing.T) {
 	}
 	for _, want := range []uint64{65536, 57344, 49152, 40960, 32768} {
 		require.Contains(t, counts, want)
+	}
+}
+
+func TestLossyAllUUIDTakesConsecutiveFinerDowngrades(t *testing.T) {
+	const entries = 10_000
+	constraints := make([]fixtureUUIDAggregateConstraint, entries)
+	ids := make([]int, entries)
+	for row := range constraints {
+		ids[row] = row
+		for column := range constraints[row].values {
+			value := uint64(row)
+			if column != 0 {
+				value = uint64(row % 2)
+			}
+			binary.BigEndian.PutUint64(constraints[row].values[column][8:], value)
+		}
+	}
+
+	makeRules := func(inspectors *[16]Inspector) Rule[fixtureUUIDAggregateConstraint] {
+		children := make([]Rule[fixtureUUIDAggregateConstraint], len(inspectors))
+		for column := range children {
+			column := column
+			get := func(value fixtureUUIDAggregateConstraint) (fixtureUUID, bool) {
+				return value.values[column], true
+			}
+			child := Rule[fixtureUUIDAggregateConstraint](Include(get))
+			if inspectors != nil {
+				child = Inspect(&inspectors[column], child)
+			}
+			children[column] = child
+		}
+		return All(children...)
+	}
+
+	state := makeRules(nil).newState(&nodeIDAllocator{}, &buildStatistics{})
+	for row, constraint := range constraints {
+		state.insert(constraint, uint32(row))
+	}
+	leaves := []lossyAllLeaf[fixtureUUIDAggregateConstraint]{}
+	require.NoError(t, collectLossyAllLeaves(state, &leaves))
+	require.Len(t, leaves, 16)
+
+	var total uint64
+	for _, leaf := range leaves {
+		total += leaf.exact
+	}
+	for step := 0; step < 3; step++ {
+		best := selectLossyAllDowngrade(leaves)
+		require.Equal(t, 0, best, "downgrade step %d must keep the 15 small UUID leaves exact", step+1)
+		current := leaves[best].ladder[leaves[best].selected].details.MemoryUsageBytes
+		leaves[best].selected++
+		next := leaves[best].ladder[leaves[best].selected].details.MemoryUsageBytes
+		total -= current - next
+	}
+	wantGranularity := leaves[0].ladder[leaves[0].selected].details.GranularityValue
+
+	exact, err := New[fixtureUUIDAggregateConstraint, int](makeRules(nil)).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	var aggregate Inspector
+	var inspectors [16]Inspector
+	approximate, err := New[fixtureUUIDAggregateConstraint, int](
+		Inspect(&aggregate, Lossy(makeRules(&inspectors), MemoryLimit(total))),
+	).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	usage, ok := aggregate.Snapshot().MemoryUsage()
+	require.True(t, ok)
+	require.LessOrEqual(t, usage, total)
+	require.Equal(t, RuleModeLossy, inspectors[0].Snapshot().Mode())
+	granularity, ok := inspectors[0].Snapshot().Granularity()
+	require.True(t, ok)
+	require.Equal(t, wantGranularity, granularity)
+	for column := 1; column < len(inspectors); column++ {
+		require.Equal(t, RuleModeExact, inspectors[column].Snapshot().Mode(), "leaf %d", column)
+	}
+	var repeatedInspectors [16]Inspector
+	_, err = New[fixtureUUIDAggregateConstraint, int](
+		Lossy(makeRules(&repeatedInspectors), MemoryLimit(total)),
+	).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	for column := range inspectors {
+		require.Equal(t, inspectors[column].Snapshot(), repeatedInspectors[column].Snapshot())
+	}
+
+	for row := 0; row < entries; row += 997 {
+		var want, got []int
+		exact.Search(constraints[row], &want)
+		approximate.Search(constraints[row], &got)
+		requireSupersetComparable(t, want, got)
 	}
 }
 

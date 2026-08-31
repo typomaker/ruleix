@@ -1,5 +1,16 @@
 # Roadmap history
 
+## 2026-09-01: revalidate aggregate selective downgrade planning
+
+The released-bytes selector remains unchanged after the finer equality ladder.
+A 10,000-entry, 16-leaf named-UUID fixture forces the single high-cardinality
+leaf through three consecutive downgrade levels while all 15 two-value leaves
+remain exact. It checks the selected granularity, deterministic repeated-build
+snapshots, the hard aggregate limit, and exact-result superset behavior on
+sampled queries. This closes roadmap step 5 without introducing a
+quality-per-byte score; the existing 120-case selection matrix already records
+candidate amplification and the rejected marginal-score experiment.
+
 ## 2026-09-01: finer equality precision
 
 Equality lossy rules replaced power-of-two hash-prefix shifts with immutable

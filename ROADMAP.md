@@ -128,7 +128,7 @@ Acceptance: memory and candidates per UUID query change smoothly enough that a
 single downgrade no longer necessarily doubles bucket occupancy, without
 adding search allocations or planner work to search.
 
-### 5. Revalidate aggregate selective downgrade planning
+### 5. Revalidate aggregate selective downgrade planning — completed
 
 - Preserve the current per-step selector: maximize bytes released, then larger
   current leaf usage, then schema order.
