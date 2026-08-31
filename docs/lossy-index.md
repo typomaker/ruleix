@@ -189,6 +189,47 @@ Every `Build` plans only from its current input and publishes a new immutable
 index. Adding data or changing a schema affects the next build; published
 indexes never replan in place, and concurrent `Index.Search` remains lock-free.
 
+## Planned compiled codecs and streaming build
+
+The next lossy iteration will replace coarse universal minima incrementally.
+Build-time reflection may recognize the underlying representation of a named
+Go type: `type UUID [16]byte` appears as an array of length 16 whose element
+kind is `uint8`. Reflection will compile a typed codec once; the published
+search rule will not retain or invoke `reflect.Value`. Built-in scalar types
+continue to use direct codecs without reflection, while named scalars, arrays,
+and comparable structs inherit recursively compiled semantic codecs where safe.
+Raw-memory hashing is restricted to layouts such as `[N]byte`; struct padding,
+string headers, and interface runtime layouts are not semantic encodings.
+
+Equality codecs produce a full `uint64` hash. Precision remains a build-time
+representation choice and is applied afterward. In particular, UUID hashing
+mixes all 16 bytes; it never truncates one 64-bit half. Finer planned levels use
+arbitrary bucket counts and multiply-high reduction rather than only power-of-
+two prefixes. Search therefore performs a compiled hash, one immutable bucket
+reduction, lookup, and bitmap operation without recalculating precision or
+allocating. Types for which no safe codec exists should eventually report a
+codec error instead of silently losing all equality selectivity.
+
+Aggregate planning keeps its accepted selector. Every leaf starts exact; while
+the total exceeds the hard retained limit, the planner chooses the next step
+that releases the most bytes, then the larger current leaf, then schema order.
+The same large leaf may take consecutive finer downgrade steps while other
+leaves remain exact. Planning stops immediately when the total fits.
+
+The later streaming-build phase will keep `MemoryLimit` as the hard accounted
+retained limit and derive a private saturating soft target of
+`MemoryLimit + MemoryLimit/5`. At fixed 4096-entry checkpoints, exceeding that
+target will trigger an irreversible downgrade and release of unreachable exact
+state; subsequent entries flow into the selected accumulator. The ordinary
+final planner still brings retained usage down to 100% after iteration. The
+120% figure describes Ruleix working-state accounting, not Go heap or RSS, and
+early one-pass decisions may trade final plan quality for lower build peaks.
+Ordered/shuffled input, peak heap, GC pressure, candidate amplification, and
+false-positive rate must be measured before this behavior is accepted.
+
+The detailed dependency order and acceptance gates are maintained in
+[`ROADMAP.md`](../ROADMAP.md).
+
 ## Build-time planning
 
 Representation selection belongs in `Build` and has three conceptual phases:
