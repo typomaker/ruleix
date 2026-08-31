@@ -96,7 +96,7 @@ const maxLocalAllResultBytes = 64 << 10
 // bitmap copying and enumeration on exact warm-result cache hits. Wider
 // results keep the existing Roaring path, where the slice's retained memory
 // and linear copy cost would be less attractive.
-const maxLocalAllResultIDs = 64
+const maxLocalAllResultIDs = 256
 
 // maxLocalAllPlanBytes bounds the map entries and child-order slices retained
 // by one Local. The accounting deliberately charges the complete slice

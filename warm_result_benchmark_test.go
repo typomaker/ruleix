@@ -8,48 +8,57 @@ import (
 )
 
 type warmResultConstraint struct {
-	group int
+	group  int
+	active bool
 }
 
-// BenchmarkWarmLocalResultCardinality last local baseline (Apple M1 Max, Go 1.26.0):
-// go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality$' -benchmem -benchtime=1s -count=5 .
-// Medians: Empty 27.19 ns/op, Singleton 39.60 ns/op, Small8 58.47 ns/op,
-// Large4095 9,925 ns/op; every case measured 0 B/op and 0 allocs/op.
+// BenchmarkWarmLocalResultCardinality L4 parent baseline is recorded in
+// ROADMAP_HISTORY.md. Keep the boundary cases synchronized with the compact
+// result limits evaluated there so later measurements remain comparable.
 func BenchmarkWarmLocalResultCardinality(b *testing.B) {
 	const largeCardinality = (4 << 10) - 1
-	constraints := make([]warmResultConstraint, 0, 1+8+largeCardinality)
+	cardinalities := []int{1, 8, 45, 64, 65, 96, 97, 128, 129, 256, 257, largeCardinality}
+	total := 0
+	for _, cardinality := range cardinalities {
+		total += cardinality
+	}
+	constraints := make([]warmResultConstraint, 0, total)
 	ids := make([]int, 0, cap(constraints))
 	appendGroup := func(group, count int) {
 		for range count {
-			constraints = append(constraints, warmResultConstraint{group: group})
+			constraints = append(constraints, warmResultConstraint{group: group, active: true})
 			ids = append(ids, len(ids))
 		}
 	}
-	appendGroup(1, 1)
-	appendGroup(2, 8)
-	appendGroup(3, largeCardinality)
-	index, err := ruleix.New[warmResultConstraint, int](
+	for group, cardinality := range cardinalities {
+		appendGroup(group+1, cardinality)
+	}
+	index, err := ruleix.New[warmResultConstraint, int](ruleix.All(
 		ruleix.Include(func(value warmResultConstraint) (int, bool) { return value.group, true }),
-	).Build(ruleix.Zip(constraints, ids))
+		ruleix.Include(func(value warmResultConstraint) (bool, bool) { return value.active, true }),
+	)).Build(ruleix.Zip(constraints, ids))
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	for _, benchmark := range []struct {
+	benchmarks := []struct {
 		name  string
 		group int
 		want  int
-	}{
-		{name: "Empty", group: 0, want: 0},
-		{name: "Singleton", group: 1, want: 1},
-		{name: "Small8", group: 2, want: 8},
-		{name: fmt.Sprintf("Large%d", largeCardinality), group: 3, want: largeCardinality},
-	} {
+	}{{name: "Empty", group: 0, want: 0}}
+	for group, cardinality := range cardinalities {
+		benchmarks = append(benchmarks, struct {
+			name  string
+			group int
+			want  int
+		}{name: fmt.Sprintf("Cardinality%d", cardinality), group: group + 1, want: cardinality})
+	}
+	for _, benchmark := range benchmarks {
 		b.Run(benchmark.name, func(b *testing.B) {
 			local := index.Local()
 			b.Cleanup(local.Close)
 			matches := make([]int, 0, benchmark.want)
-			query := warmResultConstraint{group: benchmark.group}
+			query := warmResultConstraint{group: benchmark.group, active: true}
 			for range 3 {
 				matches = matches[:0]
 				local.Search(query, &matches)
@@ -66,4 +75,46 @@ func BenchmarkWarmLocalResultCardinality(b *testing.B) {
 			benchmarkIntResult = matches
 		})
 	}
+}
+
+// BenchmarkWarmLocalResultChurn alternates three exact keys through the two
+// result-cache slots. The result sizes straddle L4's candidate compact limits,
+// making cache replacement cost and allocations visible beside hit latency.
+func BenchmarkWarmLocalResultChurn(b *testing.B) {
+	cardinalities := []int{65, 129, 257}
+	total := 0
+	for _, cardinality := range cardinalities {
+		total += cardinality
+	}
+	constraints := make([]warmResultConstraint, 0, total)
+	ids := make([]int, 0, total)
+	queries := make([]warmResultConstraint, len(cardinalities))
+	for group, cardinality := range cardinalities {
+		queries[group] = warmResultConstraint{group: group + 1, active: true}
+		for range cardinality {
+			constraints = append(constraints, queries[group])
+			ids = append(ids, len(ids))
+		}
+	}
+	index, err := ruleix.New[warmResultConstraint, int](ruleix.All(
+		ruleix.Include(func(value warmResultConstraint) (int, bool) { return value.group, true }),
+		ruleix.Include(func(value warmResultConstraint) (bool, bool) { return value.active, true }),
+	)).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	local := index.Local()
+	b.Cleanup(local.Close)
+	matches := make([]int, 0, cardinalities[len(cardinalities)-1])
+	for i := range 6 {
+		matches = matches[:0]
+		local.Search(queries[i%len(queries)], &matches)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := range b.N {
+		matches = matches[:0]
+		local.Search(queries[i%len(queries)], &matches)
+	}
+	benchmarkIntResult = matches
 }

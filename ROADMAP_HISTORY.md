@@ -1,5 +1,75 @@
 # Roadmap history
 
+## 2026-08-31: extend compact exact results to 256 IDs
+
+L4 measured compact exact-result limits of 64, 96, 128, and 256 IDs with a
+two-child `All` workload at empty, 1, 8, 45, 64/65, 96/97, 128/129, 256/257,
+and 4,095 matches. The focused benchmark now retains this complete boundary
+matrix. A separate three-key workload continually replaces the two cache
+entries and reports replacement allocations under the shared 64 KiB budget.
+
+The 300 ms pilot medians below selected 256. Values are ns/op except the final
+churn allocation columns; all steady exact hits remained at 0 B/op and 0
+allocs/op. Boundary classes below a limit use compact IDs, while the next class
+demonstrates the unchanged bitmap fallback.
+
+| Limit | 65 | 96 | 97 | 128 | 129 | 256 | 257 | 4,095 | churn B/op | churn allocs/op |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 64 | 280.0 | 354.9 | 355.5 | 430.5 | 432.7 | 734.4 | 739.1 | 9,905 | 770 | 7 |
+| 96 | 62.13 | 78.82 | 356.1 | 428.7 | 431.5 | 736.0 | 737.2 | 9,892 | 866 | 7 |
+| 128 | 62.17 | 78.88 | 79.11 | 101.8 | 432.8 | 734.9 | 738.3 | 9,889 | 866 | 7 |
+| 256 | 62.20 | 78.80 | 79.05 | 102.0 | 102.2 | 168.2 | 736.7 | 9,869 | 962 | 7 |
+
+Seven interleaved one-second runs of separately prebuilt parent and candidate
+binaries confirmed the decision. Parent medians for 65/96/128/256 results were
+281.3/354.2/430.5/736.1 ns/op; candidate medians were
+62.43/78.76/102.0/168.5 ns/op, improvements of 77.8%/77.8%/76.3%/77.1%.
+The candidate won all 28 focused pairs. Raw parent/candidate sequences were:
+
+- 65: `280.4/284.8/281.3/283.1/280.1/283.1/280.3` and
+  `62.66/62.53/62.35/62.43/62.43/62.33/68.51`;
+- 96: `354.1/354.2/354.9/354.2/355.0/354.1/355.1` and
+  `78.76/78.90/78.69/79.35/78.64/79.15/78.64`;
+- 128: `432.3/430.5/430.3/429.5/429.8/430.7/432.5` and
+  `102.1/102.2/102.0/102.0/101.9/102.0/102.1`;
+- 256: `739.2/735.4/735.8/734.7/736.1/736.2/737.5` and
+  `168.1/168.6/168.2/168.6/168.5/168.5/168.4`.
+
+Production-shaped Local parent/candidate sequences were
+`226.2/227.3/226.4/226.5/227.0/226.5/226.6` and
+`227.2/229.5/226.8/227.0/226.9/227.4/226.4` ns/op. Medians were 226.5 and
+227.0 ns/op (+0.22%); the candidate won two pairs, remained inside the 3%
+stability gate, and both sides measured 0 B/op and 0 allocs/op. The accepted
+five-run gate median was 225.5 ns/op; parallel Local was 240.4 ns/search.
+
+Warm production retained memory stayed exactly 92,208 B (0% growth), with
+2,968 B cold, 109,072 B adaptive, and 74,032--74,043 B adversarial. Churn
+retained the parent's seven allocations/op; its 962 B/op reflects the larger
+compact slices charged exactly once to the existing cache budget. Results at
+257 and 4,095 IDs and searches with exclusions continue through the bitmap
+path. Ordinary tests, race tests, the complete production-scale family, and
+`git diff --check` passed.
+
+Environment: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Commands:
+
+```sh
+go test -c -o /tmp/ruleix-l4-parent.test . # with limit 64
+go test -c -o /tmp/ruleix-l4-candidate.test . # with limit 256
+# Alternate parent and candidate seven times:
+GOMAXPROCS=1 /tmp/ruleix-l4-{parent,candidate}.test -test.run '^$' \
+  -test.bench '^BenchmarkProductionShapeSearch/Local$|^BenchmarkWarmLocalResultCardinality/Cardinality(65|96|128|256)$' \
+  -test.benchmem -test.benchtime=1s -test.count=1
+go test ./...
+go test -race ./...
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeParallelLocalBatch100$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionScaleSearch/' -benchmem -benchtime=500ms -count=3 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkWarmLocalResultCardinality/' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkWarmLocalResultChurn$' -benchmem -benchtime=1s -count=5 .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLocalRetainedMemory$' -benchtime=3x -count=3 .
+git diff --check
+```
+
 ## 2026-08-30: reject the compiled root query validator
 
 L3 compiled one immutable root-level exact-key validator during `Build` for a

@@ -44,30 +44,10 @@ hypothesis. An unexplained regression may still be rejected, but profiling it
 is a mandatory part of completing the experiment and must happen while the
 candidate is still reproducible.
 
-### L4. Tune compact exact-result retention by measured cardinality
-
-- Use the unchanged L1 parent: both L2 and L3 were rejected and are recorded
-  in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
-- Re-profile that latest accepted parent. Proceed only if bitmap copying or
-  enumeration remains material for exact-cache hits above the current 64-ID
-  compact limit.
-- Benchmark compact limits of 64, 96, 128, and 256 IDs across empty, singleton,
-  8, 45, 64/65, 96/97, 128/129, 256/257, and 4,095-result workloads. Include
-  high-churn queries that exercise eviction under the existing 64 KiB cache
-  budget.
-- Select a limit from the complete latency/retained-memory matrix; do not tune
-  it from the 45-result production case, which is already compact.
-- Preserve bitmap fallback for wider results and every search with exclusions.
-  Charge slice capacity to the existing cache budget exactly once.
-
-Acceptance: at least one representative result class above 64 IDs improves by
-10% or more, no class regresses by more than 3%, warm retained memory grows by
-no more than 5%, eviction churn does not increase allocations, and the latest
-accepted production-shaped parent remains statistically stable. If no tested
-limit passes all conditions, retain 64 and reject L4.
-
 ### L5. Optimize cold and high-churn Local execution
 
+- Use the accepted 256-ID compact-result limit from L4 as the parent; its full
+  matrix and verification are recorded in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md).
 - Profile cache-miss and alternating-query workloads against the latest
   accepted parent and identify whether ranking, child materialization, bitmap
   intersection, or result enumeration is dominant.
