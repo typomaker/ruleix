@@ -4218,3 +4218,41 @@ Reproduce with:
 ```sh
 go test -run 'TestLossy(BuildTargetSaturates|CodecFixtureBuildOrderAndWorkingPressure)$' -v .
 ```
+
+# 2026-09-01: streaming tradeoff decision
+
+Roadmap step 8 added a test-only A/B harness around the same lossy planner and
+compared exact-first with irreversible streaming at 10K, 100K, and the
+available 1M exact-first scale, in natural and fixed-permutation order. The
+four-leaf equality workload used 1,024 values per leaf and a 65% retained
+budget. At 10K exact-first retained selective results (9.797 candidates/query,
+zero observed false positives); streaming returned all 10,000 candidates and
+a measured false-positive rate of 1.0. At 100K exact-first took 0.433 s and
+252.3 MB/op; streaming took 2.321 s and 1.229 GB/op, again with rate 1.0.
+Natural versus shuffled order did not materially change the selected modes or
+quality. Exact-first completed 1M in 3.359 s, 2.047 GB/op, with 976.6
+candidates/query and zero observed false positives; the 1M streaming run was
+stopped after more than four minutes because the already-profiled scaling
+regression made completion impractical.
+
+An ordered four-leaf probe at 50% and 65% budgets found a stronger contract
+problem: streaming prefix plus conservative universal tails could not fit the
+limit although exact-first completed within it. The reproducible 100K CPU
+profile attributed 50.96% cumulative CPU to equality `representationLadder`,
+40.71% to the pressure-check build callback, and 31.30% flat to runtime
+`madvise`; repeated ladder construction and bitmap unions are confirmed causes,
+not merely hypotheses. Consequently public `Build` remains exact-first. The
+120% target and accumulator stay internal for experiments; a future proposal
+must use operator-specific accumulators or a replayable two-pass/explicit
+build-memory API.
+
+Environment: Apple M1 Max, macOS arm64, Go 1.26.0. Commands:
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyStreamingTradeoff$' \
+  -benchmem -benchtime=1x -count=1 .
+go test -run '^$' \
+  -bench '^BenchmarkLossyStreamingTradeoff$/Entries100000$/Equality$/Ordered$/Streaming$' \
+  -benchtime=1x -count=1 -cpuprofile=/tmp/ruleix-streaming-step8.cpu .
+go tool pprof -top -cum /tmp/ruleix-streaming-step8.cpu
+```

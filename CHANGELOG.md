@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Lossy build planning remains exact-first. The experimental private 120%
+  one-pass streaming downgrade is disabled by default after scale measurements
+  found complete candidate sets, ordered-tail fit failures, and worse build
+  scaling; `MemoryLimit` continues to be the hard retained-accounting limit.
+
 - Lossy equality precision now uses four arbitrary bucket-count levels per
   power-of-two interval. Multiply-high reduction makes memory and collision
   changes smoother while preserving allocation-free warm search.

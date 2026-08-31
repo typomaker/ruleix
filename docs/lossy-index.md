@@ -127,6 +127,16 @@ fits and whose result is a superset of the exact result. `Lossy` therefore
 never forces approximation and does not promise that every positive budget is
 usable.
 
+Build planning is exact-first. The builder consumes the one-pass iterator into
+exact state and selects the retained representation only after iteration. A
+private 120% pressure target and irreversible streaming accumulator were
+implemented and measured, but are not active in the public build path: the
+prototype produced complete candidate sets in the measured equality workload,
+could make an otherwise viable ordered budget fail, and scaled worse because
+pressure checks repeatedly materialized candidate ladders. A future opt-in
+build-memory contract should use a replayable two-pass input or operator-
+specific accumulators; it must not weaken the hard retained `MemoryLimit`.
+
 `Build` fails, without publishing an index or a new inspector snapshot, when:
 
 - no supported strategy fits the budget, including its minimum viable

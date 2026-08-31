@@ -78,7 +78,22 @@ func buildIndex[C any, ID comparable](
 	collectStatistics bool,
 	hints *buildStatistics,
 ) (*Index[C, ID], buildStatistics, error) {
-	return buildIndexPhysicalAliases(schema, entries, collectStatistics, hints, true)
+	return buildIndexPhysicalAliases(schema, entries, collectStatistics, hints, buildOptions{
+		compilePhysicalAliases: true,
+		// One-pass streaming remains an internal experiment: measurements found
+		// unacceptable quality loss and viable exact-first plans that its
+		// conservative ordered tails could not fit.
+		enableStreaming: false,
+	})
+}
+
+// buildOptions is intentionally internal. It lets correctness and benchmark
+// fixtures compare the one-pass streaming policy with exact-first planning
+// without expanding the public build contract.
+type buildOptions struct {
+	compilePhysicalAliases bool
+	enableStreaming        bool
+	observeWorkingUsage    func(usage, target uint64)
 }
 
 //nolint:gocognit // The build pipeline is intentionally kept in one linear ownership scope.
@@ -87,7 +102,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	entries iter.Seq2[C, ID],
 	collectStatistics bool,
 	hints *buildStatistics,
-	compilePhysicalAliases bool,
+	options buildOptions,
 ) (*Index[C, ID], buildStatistics, error) {
 	if entries == nil {
 		return nil, buildStatistics{}, fmt.Errorf("ruleix: nil entry sequence")
@@ -123,13 +138,16 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		}
 		state.insert(constraint, internalID)
 		entryIndex++
-		if !streaming && entryIndex%lossyBuildPressureInterval == 0 {
+		if options.enableStreaming && !streaming && entryIndex%lossyBuildPressureInterval == 0 {
 			usage, target, hasTarget, err := lossyBuildPressure(state)
 			if err != nil {
 				buildErr = err
 				return false
 			}
-			if hasTarget && usage > target {
+			if hasTarget && options.observeWorkingUsage != nil {
+				options.observeWorkingUsage(usage, target)
+			}
+			if hasTarget && options.enableStreaming && usage > target {
 				state, err = compileLossyRules(state)
 				if err != nil {
 					buildErr = err
@@ -143,6 +161,15 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	})
 	if buildErr != nil {
 		return nil, buildStatistics{}, buildErr
+	}
+	if !streaming && options.observeWorkingUsage != nil {
+		usage, target, hasTarget, pressureErr := lossyBuildPressure(state)
+		if pressureErr != nil {
+			return nil, buildStatistics{}, pressureErr
+		}
+		if hasTarget {
+			options.observeWorkingUsage(usage, target)
+		}
 	}
 	ix := &Index[C, ID]{root: state, values: values, pool: newBitmapPool()}
 	var err error
@@ -165,7 +192,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	if err != nil {
 		return nil, buildStatistics{}, err
 	}
-	if compilePhysicalAliases {
+	if options.compilePhysicalAliases {
 		ix.root = compileAllPhysicalOperands(ix.root)
 	}
 	// Removing transparent decorators can expose All simplifications that were
@@ -199,7 +226,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	ix.pool.observeRuntime = false
 	interner := newBitmapInterner()
 	internRuleWith(interner, ix.observedRoot)
-	if compilePhysicalAliases {
+	if options.compilePhysicalAliases {
 		compileAllEqualityClasses(ix.observedRoot)
 	}
 	for _, exclusion := range ix.observedExclusions {

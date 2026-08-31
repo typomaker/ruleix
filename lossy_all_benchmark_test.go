@@ -3,6 +3,7 @@ package ruleix
 import (
 	"cmp"
 	"fmt"
+	"iter"
 	"runtime"
 	"runtime/debug"
 	"testing"
@@ -506,6 +507,198 @@ func BenchmarkLossyStreamingBuild(b *testing.B) {
 			b.Fatalf("built %d rules, want %d", len(index.values), entries)
 		}
 	}
+}
+
+// BenchmarkLossyStreamingTradeoff compares the production one-pass pressure
+// policy with the same lossy planner deferred until the complete exact state is
+// available. Latest local results and complete run parameters are maintained
+// in docs/performance-history.md so this already-large matrix has one canonical
+// measurement record.
+//
+// Reproduce the complete scale matrix with:
+//
+//	go test -run '^$' -bench '^BenchmarkLossyStreamingTradeoff/' -benchmem -benchtime=1x -count=1 .
+//
+// The fixed permutation is bijective for every decimal scale below (its
+// multiplier is coprime to 10), so Ordered and Shuffled consume identical
+// constraints and IDs without retaining a second large input copy.
+//
+//nolint:gocognit // Keeping all dimensions in one benchmark preserves comparable names.
+func BenchmarkLossyStreamingTradeoff(b *testing.B) {
+	for _, entries := range []int{10_000, 100_000, 1_000_000} {
+		constraints, ids := lossyStreamingBenchmarkData(entries)
+		for _, operator := range []struct {
+			name   string
+			schema Rule[lossyAllBenchmarkConstraint]
+		}{
+			{name: "Equality", schema: lossyAllBenchmarkSchema(4)},
+		} {
+			exactBytes := lossyAllBenchmarkExactBytesForSchema(b, constraints, ids, operator.schema)
+			// A 65% retained budget is low enough to cross the 78% soft
+			// working target, while leaving room for four conservative tails.
+			limit := exactBytes * 65 / 100
+			for _, order := range []string{"Ordered", "Shuffled"} {
+				entriesSeq := lossyAllBenchmarkOrder(constraints, ids, order == "Shuffled")
+				for _, policy := range []struct {
+					name      string
+					streaming bool
+				}{
+					{name: "ExactFirst", streaming: false},
+					{name: "Streaming", streaming: true},
+				} {
+					b.Run(fmt.Sprintf("Entries%d/%s/%s/%s", entries, operator.name, order, policy.name), func(b *testing.B) {
+						benchmarkLossyStreamingTradeoffCase(b, operator.schema, entriesSeq, constraints, limit, policy.streaming)
+					})
+				}
+			}
+		}
+	}
+}
+
+func lossyStreamingBenchmarkData(entries int) ([]lossyAllBenchmarkConstraint, []int) {
+	const distinct = 1024
+	var dictionary [4][distinct]string
+	for field := range dictionary {
+		for value := range dictionary[field] {
+			dictionary[field][value] = fmt.Sprintf("f%d-v%d", field, value)
+		}
+	}
+	constraints := make([]lossyAllBenchmarkConstraint, entries)
+	ids := make([]int, entries)
+	for row := range constraints {
+		ids[row] = row
+		for field := range dictionary {
+			value := (row*(field*2+3) + field) % distinct
+			constraints[row].values[field] = dictionary[field][value]
+			constraints[row].thresholds[field] = value
+			constraints[row].present[field] = true
+		}
+	}
+	return constraints, ids
+}
+
+func lossyAllBenchmarkOrder(
+	constraints []lossyAllBenchmarkConstraint,
+	ids []int,
+	shuffled bool,
+) iter.Seq2[lossyAllBenchmarkConstraint, int] {
+	return func(yield func(lossyAllBenchmarkConstraint, int) bool) {
+		for position := range constraints {
+			row := position
+			if shuffled {
+				row = position * 65_537 % len(constraints)
+			}
+			if !yield(constraints[row], ids[row]) {
+				return
+			}
+		}
+	}
+}
+
+func benchmarkLossyStreamingTradeoffCase(
+	b *testing.B,
+	schema Rule[lossyAllBenchmarkConstraint],
+	entries iter.Seq2[lossyAllBenchmarkConstraint, int],
+	queries []lossyAllBenchmarkConstraint,
+	limit uint64,
+	streaming bool,
+) {
+	b.Helper()
+	sampledQueries := make([]lossyAllBenchmarkConstraint, 0, 64)
+	for i := range 64 {
+		sampledQueries = append(sampledQueries, queries[i*len(queries)/64])
+	}
+	var aggregate Inspector
+	inspectors := make([]Inspector, 4)
+	operator := "Equality"
+	if _, ok := schema.(*allRule[lossyAllBenchmarkConstraint]); ok {
+		// Rebuild the schema with leaf inspectors. The benchmark passes a
+		// four-child canonical schema.
+		if _, ordered := schema.(*allRule[lossyAllBenchmarkConstraint]).children[0].(*orderedRule[lossyAllBenchmarkConstraint, int]); ordered {
+			operator = "Ordered"
+		}
+	}
+	measuredSchema := Inspect(&aggregate, Lossy(lossySelectionBenchmarkSchema(operator, 4, inspectors), MemoryLimit(limit)))
+	var accountedPeak, softTarget uint64
+	options := buildOptions{
+		compilePhysicalAliases: true,
+		enableStreaming:        streaming,
+		observeWorkingUsage: func(usage, target uint64) {
+			accountedPeak = max(accountedPeak, usage)
+			softTarget = target
+		},
+	}
+
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	previousGC := debug.SetGCPercent(-1)
+	index, _, err := buildIndexPhysicalAliases(measuredSchema, entries, false, nil, options)
+	runtime.ReadMemStats(&after)
+	debug.SetGCPercent(previousGC)
+	if err != nil {
+		b.Fatal(err)
+	}
+	retained, ok := aggregate.Snapshot().MemoryUsage()
+	if !ok || retained > limit {
+		b.Fatalf("retained accounted bytes %d exceed limit %d", retained, limit)
+	}
+	downgraded := 0
+	for i := range inspectors {
+		if inspectors[i].Snapshot().Mode() == RuleModeLossy {
+			downgraded++
+		}
+	}
+	exactIndex, err := New[lossyAllBenchmarkConstraint, int](schema).Build(entries)
+	if err != nil {
+		b.Fatal(err)
+	}
+	var totalCandidates, exactTotal uint64
+	for _, query := range sampledQueries {
+		var matches, exactMatches []int
+		index.Search(query, &matches)
+		exactIndex.Search(query, &exactMatches)
+		totalCandidates += uint64(len(matches))
+		exactTotal += uint64(len(exactMatches))
+	}
+
+	runtime.GC()
+	var gcBefore, gcAfter runtime.MemStats
+	runtime.ReadMemStats(&gcBefore)
+	gcIndex, _, gcErr := buildIndexPhysicalAliases(measuredSchema, entries, false, nil, options)
+	if gcErr != nil {
+		b.Fatal(gcErr)
+	}
+	runtime.ReadMemStats(&gcAfter)
+	runtime.KeepAlive(gcIndex)
+	gcCycles := uint64(gcAfter.NumGC - gcBefore.NumGC)
+	gcPause := gcAfter.PauseTotalNs - gcBefore.PauseTotalNs
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		built, _, buildErr := buildIndexPhysicalAliases(measuredSchema, entries, false, nil, options)
+		if buildErr != nil {
+			b.Fatal(buildErr)
+		}
+		lossyAllBenchmarkIndex = built
+	}
+	b.StopTimer()
+	heapGrowth := uint64(0)
+	if after.HeapAlloc > before.HeapAlloc {
+		heapGrowth = after.HeapAlloc - before.HeapAlloc
+	}
+	b.ReportMetric(float64(accountedPeak), "accounted-working-peak-B")
+	b.ReportMetric(float64(softTarget), "soft-target-B")
+	b.ReportMetric(float64(retained), "retained-B/index")
+	b.ReportMetric(float64(downgraded), "downgraded-leaves")
+	b.ReportMetric(float64(totalCandidates)/float64(len(sampledQueries)), "candidates/query")
+	if possible := uint64(len(sampledQueries))*aggregate.Snapshot().RuleCount() - exactTotal; possible != 0 {
+		b.ReportMetric(float64(totalCandidates-exactTotal)/float64(possible), "false-positive-rate")
+	}
+	b.ReportMetric(float64(heapGrowth), "live-heap-growth-B")
+	b.ReportMetric(float64(gcCycles), "GC-cycles/build")
+	b.ReportMetric(float64(gcPause), "GC-pause-ns/build")
 }
 
 // BenchmarkLossyScaleSearch measures latency, allocation traffic, candidate

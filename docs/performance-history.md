@@ -186,6 +186,51 @@ allocs/op. После исправления Local стал быстрее пр�
 но не заменяет измерение; поэтому численные строки для этих переходов не
 восстанавливаются задним числом из несопоставимых focused-бенчмарков.
 
+## 2026-09-01: exact-first против one-pass streaming
+
+Apple M1 Max, macOS arm64, Go 1.26.0. Четыре equality-листа, 1 024 distinct
+значения на лист, общий `MemoryLimit` 65% от exact accounting, 64 равномерно
+распределённых запроса. `benchtime=1x`, `count=1`; числа ниже — отдельные
+checkpoint-измерения, не статистическая медиана. Accounted peak не включает
+Go allocator/RSS. Полный 1M streaming прогон остановлен после 4 минут; это
+зафиксированный незавершённый measurement, а не численный результат.
+
+| Entries / порядок | Policy | Build | B/op | allocs/op | accounted peak | retained | candidates/query | FP rate |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 10K / ordered | exact-first | 170.3 ms | 82.0 MB | 1.93M | 290,856 | 187,872 | 9.797 | 0 |
+| 10K / ordered | streaming | 197.1 ms | 101.3 MB | 2.43M | 261,928 | 32,928 | 10,000 | 1.0 |
+| 10K / shuffled | exact-first | 185.6 ms | 82.1 MB | 1.93M | 290,856 | 188,072 | 9.797 | 0 |
+| 10K / shuffled | streaming | 206.6 ms | 103.2 MB | 2.48M | 261,928 | 32,928 | 10,000 | 1.0 |
+| 100K / ordered | exact-first | 432.8 ms | 252.3 MB | 2.28M | 1,029,160 | 656,359 | 97.67 | 0 |
+| 100K / ordered | streaming | 2.321 s | 1.229 GB | 16.80M | 818,984 | 32,940 | 100,000 | 1.0 |
+| 100K / shuffled | exact-first | 507.8 ms | 257.0 MB | 2.28M | 1,029,160 | 655,055 | 97.67 | 0 |
+| 100K / shuffled | streaming | 2.452 s | 1.256 GB | 16.40M | 818,984 | 32,940 | 100,000 | 1.0 |
+| 1M / ordered | exact-first | 3.359 s | 2.047 GB | 11.14M | 8,687,912 | 5,595,352 | 976.6 | 0 |
+
+GC checkpoints на 100K: exact-first 3 cycles и 0.259 ms pause; streaming 18
+cycles и 1.85 ms pause. Peak-live probe с отключённым GC дал соответственно
+примерно 252.6 MB и 1.229 GB роста heap. Несмотря на меньшие deterministic
+accounted peak/retained числа streaming, текущий universal accumulator теряет
+всю селективность и создаёт больше фактической работы. Порядок входа итог не
+меняет. Ordered-проба при 50–65% не смогла вместить streaming tails при
+успешном exact-first плане.
+
+CPU profile 100K streaming: 50.96% cumulative в `representationLadder`, 40.71%
+в callback pressure-path, 31.30% flat в runtime `madvise`. Подтверждённая
+причина регрессии — повторная материализация лестниц/bitmap unions на pressure
+checks и allocator pressure. Решение: exact-first остаётся default; новый
+one-pass режим возможен только после operator-specific accumulator или как
+явный API с replayable two-pass input.
+
+```sh
+go test -run '^$' -bench '^BenchmarkLossyStreamingTradeoff$' \
+  -benchmem -benchtime=1x -count=1 .
+go test -run '^$' \
+  -bench '^BenchmarkLossyStreamingTradeoff$/Entries100000$/Equality$/Ordered$/Streaming$' \
+  -benchtime=1x -count=1 -cpuprofile=/tmp/ruleix-streaming-step8.cpu .
+go tool pprof -top -cum /tmp/ruleix-streaming-step8.cpu
+```
+
 ## Шаблон следующего релиза
 
 ```markdown

@@ -338,8 +338,8 @@ func TestLossyCodecFixtureBuildOrderAndWorkingPressure(t *testing.T) {
 	ladder, err := state.newLossyAllPlanner().representationLadder()
 	require.NoError(t, err)
 	limit := ladder[len(ladder)-1].details.MemoryUsageBytes
-	require.Greater(t, exactUsage, limit+limit/5, "exact-first working state must materially exceed the future soft target")
-	t.Logf("exact-first-accounted-working=%d retained-limit=%d future-soft-target=%d checkpoints=%d",
+	require.Greater(t, exactUsage, limit+limit/5, "exact-first working state must materially exceed the experimental soft target")
+	t.Logf("exact-first-accounted-working=%d retained-limit=%d experimental-soft-target=%d checkpoints=%d",
 		exactUsage, limit, limit+limit/5, entries/4096)
 
 	baseline := codecFixtureSnapshot(t, constraints, ids, get, limit)
@@ -354,7 +354,7 @@ func TestLossyCodecFixtureBuildOrderAndWorkingPressure(t *testing.T) {
 	}
 	shuffled := codecFixtureSnapshot(t, shuffledConstraints, shuffledIDs, get, limit)
 	require.Equal(t, baseline, shuffled)
-	require.Equal(t, "lossy-streaming-universal", baseline.strategy)
+	require.Equal(t, "lossy-grouped-hash", baseline.strategy)
 	require.LessOrEqual(t, baseline.usage, limit)
 }
 

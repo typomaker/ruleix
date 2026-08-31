@@ -30,7 +30,10 @@ func buildIdentityABIndex[C any, ID comparable](
 	ids []ID,
 ) identityABIndex[C, ID] {
 	t.Helper()
-	index, _, err := buildIndexPhysicalAliases(schema, Zip(constraints, ids), false, nil, mode == identityIntegrated)
+	index, _, err := buildIndexPhysicalAliases(schema, Zip(constraints, ids), false, nil, buildOptions{
+		compilePhysicalAliases: mode == identityIntegrated,
+		enableStreaming:        true,
+	})
 	require.NoError(t, err)
 	result := identityABIndex[C, ID]{index: index, counters: &allExecutionCounters{}}
 	attachIdentityABCounters(index.root, result.counters)

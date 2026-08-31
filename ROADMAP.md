@@ -185,7 +185,7 @@ Acceptance: peak accounted working state is normally brought back below 120%
 after each check, final usage stays within 100%, and documentation explicitly
 states that Go heap/RSS may exceed both figures.
 
-### 8. Quantify streaming tradeoffs and decide the final contract
+### 8. Quantify streaming tradeoffs and decide the final contract — completed
 
 - Benchmark exact-first and streaming builds at 10K, 100K, 1M, and available
   larger production sizes. Report build latency, B/op, allocations, peak live
