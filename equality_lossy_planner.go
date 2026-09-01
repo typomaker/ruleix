@@ -1,6 +1,8 @@
 package ruleix
 
 import (
+	"sort"
+
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
@@ -58,6 +60,7 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	if codecErr != nil {
 		return planner
 	}
+	sort.Slice(hashed, func(i, j int) bool { return hashed[i].hash < hashed[j].hash })
 	planner.prepare = func() []Rule[T] {
 		bucketCounts := equalityBucketCounts(lossyMaxBucketBits)
 		representations := make([]Rule[T], 0, len(bucketCounts))

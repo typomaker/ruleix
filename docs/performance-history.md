@@ -4,6 +4,26 @@
 релизами и предрелизными checkpoints. Он является сводкой, а не заменой сырых
 benchmark-отчётов.
 
+## 2026-09-01: common standalone ordered search path
+
+На родительском `a791a30` и кандидате шага 4 сопоставлен selective standalone
+ordered workload: один узкий ordered source и семь широких siblings, Apple M1
+Max, Go 1.26.0, `GOMAXPROCS=1`, 300 ms, пять запусков. Команда:
+`GOMAXPROCS=1 go test -run '^$' -bench
+'^BenchmarkLossyAllSelectiveOrderedPlanning$' -benchmem -benchtime=300ms
+-count=5 .`.
+
+| Path | `a791a30` median ns/op | candidate median ns/op | B/op; allocs/op |
+| --- | ---: | ---: | ---: |
+| Adaptive estimate | 6 863 | 5 833 | 6 232; 70 (без изменения) |
+| Unknown estimate | 8 760 | 7 692 | 7 368–7 369; 107 (без изменения) |
+
+Общий `orderedIndex` ускорил пути на 15,0% и 12,2%; allocation class не
+изменилась. Differential и race fixtures подтвердили общий matcher/Local
+layout без false negatives. `go test ./...` и focused race прошли; changed-line
+coverage по `gocovdiff` составил 96,7%. Between/CompareBy остаются scope шага
+5.
+
 ## 2026-09-01: shared rebuild primitives revalidation
 
 На `89fb085` и кандидате `rebuildPostingGeneration` прошёл merge, неизменность старого поколения и overflow fixtures; streaming-матрица подтвердила повторные

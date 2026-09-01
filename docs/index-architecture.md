@@ -263,12 +263,23 @@ Equality уже следует этой форме: полный hash вычис
 build insertion, search lookup и преобразовании текущего ключа на следующую
 ступень streaming downgrade; policy interface в эти пути не попадает.
 
-Первый ordered-срез компилирует монотонный encoder для встроенных signed,
-unsigned и floating-point scalar типов при построении Lossy representation.
-Опубликованный `lossyOrderedRule` хранит конкретную функцию `V -> uint64` и
-использует её для streaming insertion и всех query-key lookup. Именованные
-scalar типы пока сохраняют comparator-backed layout: изменение их физического
-представления отклонено до отдельного production-shaped gate.
+Standalone `Greater*`/`Less*` exact и lossy representations публикуют один
+`orderedRule` с одним `orderedIndex`. Build-only `quantizedOrderedRule`
+управляет streaming precision, но search, cardinality/matchesID, candidate
+filtering и Local cache у него являются promoted-методами общего rule. Старые
+`lossyOrderedRule` и `lossyComparedOrderedRule` удалены.
+
+Quantized класс хранит один outward-rounded boundary и объединённый posting.
+Для `Greater*` сохраняется нижняя граница класса, для `Less*` — верхняя;
+strict/inclusive семантика matcher не меняется. Огрубление независимо
+пересобирает `orderedIndex`, объединяя наименее заполненную соседнюю пару.
+Последний `prepareSearch` строит обычные block aggregates, prefix sums и
+routing, поэтому finest lossy больше не выполняет линейный union legacy
+buckets. Between и CompareBy сохраняют fused layouts до шага 5 roadmap.
+Ordered gate дополнительно зафиксировал детерминированный порядок equality
+posting rebuild: planner и повторное streaming coarsening сортируют `uint64`
+keys перед merge и публикацией, чтобы соседний aggregate pressure не зависел
+от randomized Go map iteration.
 
 Build lifecycle разделяет mutable и immutable состояния. Streaming pressure и
 все downgrade выполняются до `optimizeRule`, bitmap interning и

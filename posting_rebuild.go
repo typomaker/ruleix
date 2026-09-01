@@ -20,11 +20,22 @@ func rebuildPostingGeneration[K comparable](
 	entryBytes uint64,
 	coarsen func(K) K,
 ) (postingGeneration[K], uint64, bool) {
+	keys := make([]K, 0, len(old))
+	for key := range old {
+		keys = append(keys, key)
+	}
+	return rebuildPostingGenerationInOrder(old, keys, capacity, entryBytes, coarsen)
+}
+
+func rebuildPostingGenerationInOrder[K comparable](
+	old postingGeneration[K], keys []K, capacity int, entryBytes uint64, coarsen func(K) K,
+) (postingGeneration[K], uint64, bool) {
 	if capacity < 0 {
 		return nil, 0, false
 	}
 	next := make(postingGeneration[K], min(len(old), capacity))
-	for key, bits := range old {
+	for _, key := range keys {
+		bits := old[key]
 		coarser := coarsen(key)
 		if merged := next[coarser]; merged != nil {
 			merged.Or(bits)

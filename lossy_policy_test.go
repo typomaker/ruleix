@@ -13,17 +13,18 @@ import (
 
 func TestLossyOrderedEstimateAndIDMatchAgreeWithSearch(t *testing.T) {
 	wildcard := roaring.BitmapOf(8)
-	rule := &lossyOrderedRule[lossyConstraint, int64]{
-		get:       func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
-		encoder:   mustCompileOrderedKeyEncoder[int64](),
-		dir:       greaterThan,
-		inclusive: true,
-		wildcard:  wildcard,
-		min:       orderedScalarKeyOrPanic(int64(0)),
-		max:       orderedScalarKeyOrPanic(int64(29)),
-		width:     10,
-		buckets:   []*roaring.Bitmap{roaring.BitmapOf(0, 1), roaring.BitmapOf(2, 3), roaring.BitmapOf(4, 5)},
+	rule := &orderedRule[lossyConstraint, int64]{
+		get:           func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
+		compare:       cmp.Compare[int64],
+		dir:           greaterThan,
+		inclusive:     true,
+		wildcard:      wildcard,
+		index:         newOrderedIndex(cmp.Compare[int64]),
+		lossyCapacity: 3,
 	}
+	rule.index.insertPosting(0, roaring.BitmapOf(0, 1))
+	rule.index.insertPosting(10, roaring.BitmapOf(2, 3))
+	rule.index.insertPosting(20, roaring.BitmapOf(4, 5))
 	for _, query := range []lossyConstraint{{minimum: -1, present: true}, {minimum: 0, present: true}, {minimum: 15, present: true}, {minimum: 40, present: true}, {}} {
 		bits := roaring.New()
 		rule.search(query, bits, newBitmapPool())
@@ -45,22 +46,18 @@ func orderedScalarKeyOrPanic[V any](value V) uint64 {
 func BenchmarkLossyAllSelectiveOrderedPlanning(b *testing.B) {
 	const entries = 100_000
 	query := lossyConstraint{minimum: entries - 1, present: true}
-	minKey := orderedScalarKeyOrPanic(int64(0))
-	maxKey := orderedScalarKeyOrPanic(int64(entries - 1))
 	broad := roaring.New()
 	broad.AddRange(0, entries)
-	selective := &lossyOrderedRule[lossyConstraint, int64]{
-		get:       func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
-		encoder:   mustCompileOrderedKeyEncoder[int64](),
-		dir:       lessThan,
-		inclusive: true,
-		wildcard:  roaring.New(),
-		min:       minKey,
-		max:       maxKey,
-		width:     1,
-		buckets:   make([]*roaring.Bitmap, entries),
+	selective := &orderedRule[lossyConstraint, int64]{
+		get:           func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
+		compare:       cmp.Compare[int64],
+		dir:           lessThan,
+		inclusive:     true,
+		wildcard:      roaring.New(),
+		index:         newOrderedIndex(cmp.Compare[int64]),
+		lossyCapacity: entries,
 	}
-	selective.buckets[entries-1] = roaring.BitmapOf(entries - 1)
+	selective.index.insertPosting(entries-1, roaring.BitmapOf(entries-1))
 	children := make([]Rule[lossyConstraint], 0, 8)
 	for range 7 {
 		children = append(children, &matchAllRule[lossyConstraint]{bits: broad})

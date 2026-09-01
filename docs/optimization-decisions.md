@@ -6,6 +6,15 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-01: общий ordered layout принят для standalone operators
+
+Принят build-only quantized wrapper над общим `orderedRule`/`orderedIndex`.
+Соседние posting-классы сливаются с outward boundary, а опубликованный search
+использует exact matcher, block aggregates, routing и Local cache. Legacy
+numeric/comparator bucket search types удалены. Focused benchmark улучшил
+selective path на 12–15% при прежних allocations; correctness, streaming и
+race gates прошли. Between/CompareBy остаются отдельным шагом 5.
+
 ## 2026-09-01: общий equality posting layout
 
 **Принято:** quantized equality хранит transformed `uint64` keys в общем

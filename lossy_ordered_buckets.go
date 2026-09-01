@@ -6,31 +6,6 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
-type lossyOrderedRule[T any, V any] struct {
-	nodeID          nodeID
-	get             Getter[T, V]
-	encoder         orderedKeyEncoder[V]
-	dir             direction
-	inclusive       bool
-	wildcard        *roaring.Bitmap
-	min, max, width uint64
-	buckets         []*roaring.Bitmap
-}
-
-type lossyComparedOrderedRule[T any, V any] struct {
-	nodeID     nodeID
-	get        Getter[T, V]
-	compare    Compare[V]
-	dir        direction
-	inclusive  bool
-	wildcard   *roaring.Bitmap
-	minimum    V
-	maximum    V
-	capacity   int
-	boundaries []V
-	buckets    []*roaring.Bitmap
-}
-
 type lossyComparedBuckets[V any] struct {
 	compare    Compare[V]
 	minimum    V

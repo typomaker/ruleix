@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Lossy `Greater*` and `Less*` now publish the exact ordered index, matcher,
+  routing, block aggregates, and Local cache, with outward build-time
+  coarsening under memory pressure.
 - Roadmap history is now preserved exclusively by two Git boundaries: a
   pre-cleanup commit containing the fully completed milestone and a separate
   post-activation commit containing the cleaned next roadmap. The standalone

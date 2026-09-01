@@ -247,6 +247,85 @@ func (i *orderedIndex[V]) insert(value V, id uint32) {
 	i.blocks[block].bits.Add(id)
 }
 
+// insertPosting is build-only: it installs an already merged posting under an
+// outward-rounded boundary. Search publication still uses the ordinary
+// ordered blocks, aggregates and routing built by prepareSearch.
+func (i *orderedIndex[V]) insertPosting(value V, bits *roaring.Bitmap) {
+	if bits == nil {
+		return
+	}
+	if len(i.blocks) == 0 {
+		i.blocks = []orderedBlock[V]{{
+			items: []*orderedItem[V]{{value: value, bits: bits}}, bits: bits,
+		}}
+		return
+	}
+	if len(i.blocks) != 0 {
+		block := &i.blocks[i.blockFor(value)]
+		pos := i.searchBlock(block, value)
+		if pos < len(block.items) && i.compare(block.items[pos].value, value) == 0 {
+			block.items[pos].bits.Or(bits)
+			block.bits.Or(bits)
+			return
+		}
+	}
+	for block := range i.blocks {
+		if len(i.blocks[block].items) == 1 && i.blocks[block].bits == i.blocks[block].items[0].bits {
+			i.blocks[block].bits = i.blocks[block].bits.Clone()
+		}
+	}
+	i.insertItem(&orderedItem[V]{value: value, bits: bits})
+	i.blocks[i.blockFor(value)].bits.Or(bits)
+}
+
+func (i *orderedIndex[V]) cloneBuild() orderedIndex[V] {
+	clone := newOrderedIndex(i.compare)
+	for _, block := range i.blocks {
+		for _, item := range block.items {
+			clone.insertPosting(item.value, item.bits.Clone())
+		}
+	}
+	return clone
+}
+
+// coarsenOne rebuilds an independent posting generation and merges the least
+// populated adjacent pair. The retained boundary is rounded outward for the
+// rule direction, so strict and inclusive predicates can only gain matches.
+func (i *orderedIndex[V]) coarsenOne(dir direction) bool {
+	items := make([]*orderedItem[V], 0, i.buildStatistics().uniqueValues)
+	for _, block := range i.blocks {
+		items = append(items, block.items...)
+	}
+	if len(items) <= 1 {
+		return false
+	}
+	merge := 0
+	best := items[0].bits.GetCardinality() + items[1].bits.GetCardinality()
+	for pos := 1; pos+1 < len(items); pos++ {
+		n := items[pos].bits.GetCardinality() + items[pos+1].bits.GetCardinality()
+		if n < best {
+			merge, best = pos, n
+		}
+	}
+	next := newOrderedIndex(i.compare)
+	for pos := 0; pos < len(items); pos++ {
+		if pos == merge {
+			bits := items[pos].bits.Clone()
+			bits.Or(items[pos+1].bits)
+			boundary := items[pos].value
+			if dir == lessThan {
+				boundary = items[pos+1].value
+			}
+			next.insertPosting(boundary, bits)
+			pos++
+			continue
+		}
+		next.insertPosting(items[pos].value, items[pos].bits.Clone())
+	}
+	*i = next
+	return true
+}
+
 func (i *orderedIndex[V]) searchBlock(block *orderedBlock[V], value V) int {
 	lo, hi := 0, len(block.items)
 	for lo < hi {

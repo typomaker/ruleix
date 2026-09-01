@@ -145,7 +145,13 @@ memory за пределами шума сравнимой серии.
 
 ### 4. Унифицировать ordered rules
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-01`
+
+Результат: standalone exact/lossy ordered переведены на общий
+`orderedRule`/`orderedIndex` и Local cache; legacy numeric/comparator search
+types удалены, streaming/differential/race/full-test gates прошли, а focused
+performance gate ускорился на 12–15% без новых allocations; nested planning
+остаётся детерминированным при повторных builds.
 
 - Хранить exact и округлённые monotonic keys в общем `orderedIndex`.
 - При lossy downgrade округлять хранимую границу наружу в зависимости от

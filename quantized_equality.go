@@ -2,6 +2,7 @@ package ruleix
 
 import (
 	"math/bits"
+	"sort"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -91,15 +92,25 @@ func (r *quantizedEqualityRule[T, V]) rebucket(count uint64) {
 		set.addTo(bits)
 		old[key] = bits
 	})
-	next, _, ok := rebuildPostingGeneration(old, int(count), 24, func(key uint64) uint64 {
+	keys := make([]uint64, 0, len(old))
+	for key := range old {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	next, _, ok := rebuildPostingGenerationInOrder(old, keys, int(count), 24, func(key uint64) uint64 {
 		return r.quantizer.coarsen(key, nextQuantizer)
 	})
 	if !ok {
 		return
 	}
 	values := newEqualityIndex[uint64](len(next))
-	for key, bits := range next {
-		values.addSet(key, &equalitySet{bits: bits})
+	keys = keys[:0]
+	for key := range next {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	for _, key := range keys {
+		values.addSet(key, &equalitySet{bits: next[key]})
 	}
 	r.quantizer, r.values = nextQuantizer, values
 }
