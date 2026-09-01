@@ -1,5 +1,22 @@
 # Roadmap history
 
+## 2026-09-01: replace streaming collapse with build-time rebucketing
+
+Numeric ordered grids now recompute their range when a later stream value lies
+outside the compiled prefix and conservatively remap every old posting into
+overlapping new buckets. Comparator-backed ordered, `Between`, and `CompareBy`
+grids add explicit edge boundaries and merge adjacent buckets; equality hash
+grids also coarsen by overlapping hash intervals. Final aggregate fitting
+releases one representation step at a time rather than collapsing every lossy
+leaf to its minimum. No operation was added to published search.
+
+On Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, 38,098 entries and a 377,122-byte
+budget, five 500ms runs measured `Index.Search` at a 43,075 ns/op median,
+38,909 B/op and 22 allocs/op, and warm `Local.Search` at 586.9 ns/op with zero
+bytes and allocations. Both rotating queries returned 139 candidates. This
+corrects the preceding streaming medians of 50,386 and 3,893 ns/op while
+retaining one-pass compression.
+
 ## 2026-09-01: make lossy build compression streaming by contract
 
 `Lossy` no longer retains the complete input in exact leaf state before

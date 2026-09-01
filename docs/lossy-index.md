@@ -133,8 +133,15 @@ irreversibly compiles the current selective plan. The compiled equality,
 numeric ordered, comparator ordered, `Between`, and `CompareBy` leaves accept
 subsequent values directly. This replaces the rejected universal-tail
 prototype: no additional node or bitmap union is added to published search.
-The final accounting pass may coarsen streaming buckets and fails rather than
-publish an index above the hard retained `MemoryLimit`. The target bounds
+When a later ordered value expands the prefix range, numeric grids are
+recomputed and each old posting is conservatively copied to every overlapping
+new interval. Comparator grids add a new edge boundary and merge the least
+populated adjacent pair when their configured capacity is reached. Equality
+hash intervals and final aggregate pressure are likewise coarsened in discrete
+steps. A one-bucket representation is only the terminal ladder level, not the
+response to the first out-of-range value. All rebucketing remains build-only.
+The final accounting pass fails rather than publish an index above the hard
+retained `MemoryLimit`. The target bounds
 Ruleix-accounted build state opportunistically; neither it nor `MemoryLimit`
 is a Go heap or RSS guarantee.
 

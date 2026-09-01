@@ -197,7 +197,63 @@ func fitStreamingRule[T any](rule Rule[T], limit uint64) {
 	}
 }
 
-func collapseStreamingRule[T any](rule Rule[T]) { fitStreamingRule(rule, 0) }
+type streamingFitCandidate struct {
+	fitter      streamingLimitFitter
+	usage       uint64
+	granularity uint64
+}
+
+func collectStreamingFitCandidates[T any](rule Rule[T], candidates *[]streamingFitCandidate) uint64 {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		var usage uint64
+		for _, child := range typed.children {
+			usage = saturatingAdd(usage, collectStreamingFitCandidates(child, candidates))
+		}
+		return usage
+	case *inspectRule[T]:
+		return collectStreamingFitCandidates(typed.child, candidates)
+	case *inspectionDetailsRule[T]:
+		return collectStreamingFitCandidates(typed.child, candidates)
+	default:
+		provider, hasDetails := any(rule).(streamingDetailsProvider)
+		if !hasDetails {
+			return inspectionDetailsOf(rule).MemoryUsageBytes
+		}
+		details := provider.refreshedStreamingDetails(inspectionDetailsOf(rule))
+		if fitter, ok := any(rule).(streamingLimitFitter); ok &&
+			details.GranularityAvailable && details.GranularityValue > 1 {
+			*candidates = append(*candidates, streamingFitCandidate{
+				fitter: fitter, usage: details.MemoryUsageBytes, granularity: details.GranularityValue,
+			})
+		}
+		return details.MemoryUsageBytes
+	}
+}
+
+// fitStreamingAggregate releases one build-time bucket level at a time until
+// the complete published subtree satisfies its aggregate retained-memory
+// limit. It avoids the old emergency path that collapsed every lossy child to
+// its minimum representation at once.
+func fitStreamingAggregate[T any](rule Rule[T], limit uint64) {
+	for {
+		var candidates []streamingFitCandidate
+		usage := collectStreamingFitCandidates(rule, &candidates)
+		if usage <= limit || len(candidates) == 0 {
+			return
+		}
+		selected := 0
+		for i := 1; i < len(candidates); i++ {
+			if candidates[i].usage > candidates[selected].usage ||
+				(candidates[i].usage == candidates[selected].usage &&
+					candidates[i].granularity > candidates[selected].granularity) {
+				selected = i
+			}
+		}
+		candidate := candidates[selected]
+		candidate.fitter.fitStreamingLimit(candidate.usage - 1)
+	}
+}
 
 func (*streamingLossyLeaf[T]) rule()                                                 {}
 func (r *streamingLossyLeaf[T]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
@@ -299,7 +355,7 @@ func refreshStreamingLossyDetails[T any](rule Rule[T]) (Rule[T], inspectionDetai
 		if typed.details.MemoryLimitAvailable {
 			details.MemoryLimitBytes, details.MemoryLimitAvailable = typed.details.MemoryLimitBytes, true
 			if details.MemoryUsageBytes > details.MemoryLimitBytes {
-				collapseStreamingRule(child)
+				fitStreamingAggregate(child, details.MemoryLimitBytes)
 				child, details, err = refreshStreamingLossyDetails(child)
 				if err != nil {
 					return nil, inspectionDetails{}, err
@@ -1131,16 +1187,32 @@ func (r *lossyEqualityRule[T, V]) refreshedStreamingDetails(details inspectionDe
 	return details
 }
 func (r *lossyEqualityRule[T, V]) fitStreamingLimit(limit uint64) {
-	details := r.refreshedStreamingDetails(inspectionDetails{})
-	if details.MemoryUsageBytes <= limit || r.bucketCount == 1 {
+	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit && r.bucketCount > 1 {
+		r.rebucket(max(r.bucketCount/2, 1))
+	}
+}
+
+// rebucket maps each old hash interval to every overlapping interval in a
+// coarser multiply-high grid. The original hash values are not retained.
+func (r *lossyEqualityRule[T, V]) rebucket(count uint64) {
+	count = min(max(count, 1), r.bucketCount)
+	if count == r.bucketCount {
 		return
 	}
-	bits := roaring.New()
-	for _, posting := range r.buckets {
-		bits.Or(posting.bits)
+	next := make(map[uint64]lossyEqualityPosting, min(len(r.buckets), int(count)))
+	for old, posting := range r.buckets {
+		first := old * count / r.bucketCount
+		last := ((old+1)*count - 1) / r.bucketCount
+		for bucket := first; bucket <= last; bucket++ {
+			merged := next[bucket]
+			if merged.bits == nil {
+				merged.bits = roaring.New()
+			}
+			merged.bits.Or(posting.bits)
+			next[bucket] = merged
+		}
 	}
-	r.bucketCount = 1
-	r.buckets = map[uint64]lossyEqualityPosting{0: {bits: bits}}
+	r.bucketCount, r.buckets = count, next
 }
 
 func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bool) {
@@ -1321,6 +1393,7 @@ type lossyComparedOrderedRule[T any, V any] struct {
 	wildcard   *roaring.Bitmap
 	minimum    V
 	maximum    V
+	capacity   int
 	boundaries []V
 	buckets    []*roaring.Bitmap
 }
@@ -1329,6 +1402,7 @@ type lossyComparedBuckets[V any] struct {
 	compare    Compare[V]
 	minimum    V
 	maximum    V
+	capacity   int
 	boundaries []V
 	buckets    []*roaring.Bitmap
 }
@@ -1336,39 +1410,62 @@ type lossyComparedBuckets[V any] struct {
 func (r *lossyComparedBuckets[V]) insert(value V, id uint32) {
 	if len(r.buckets) == 0 {
 		r.minimum, r.maximum = value, value
+		r.capacity = max(r.capacity, 1)
 		r.boundaries = []V{value}
 		r.buckets = []*roaring.Bitmap{roaring.BitmapOf(id)}
 		return
 	}
-	bucket := 0
 	if r.compare(value, r.minimum) < 0 {
 		r.minimum = value
-	} else if r.compare(value, r.maximum) > 0 {
-		r.maximum = value
-		bucket = len(r.buckets) - 1
-		r.boundaries[bucket] = value
-	} else {
-		bucket = sort.Search(len(r.boundaries), func(i int) bool {
-			return r.compare(r.boundaries[i], value) >= 0
-		})
+		r.boundaries = append([]V{value}, r.boundaries...)
+		r.buckets = append([]*roaring.Bitmap{roaring.BitmapOf(id)}, r.buckets...)
+		r.fitCapacity()
+		return
 	}
+	if r.compare(value, r.maximum) > 0 {
+		r.maximum = value
+		r.boundaries = append(r.boundaries, value)
+		r.buckets = append(r.buckets, roaring.BitmapOf(id))
+		r.fitCapacity()
+		return
+	}
+	bucket := sort.Search(len(r.boundaries), func(i int) bool {
+		return r.compare(r.boundaries[i], value) >= 0
+	})
 	r.buckets[bucket].Add(id)
 }
 
-func (r *lossyComparedBuckets[V]) collapse() {
+func (r *lossyComparedBuckets[V]) fitCapacity() {
+	for len(r.buckets) > max(r.capacity, 1) {
+		r.coarsenOne()
+	}
+}
+
+// coarsenOne merges the least-populated adjacent pair. Comparator-backed
+// values have no arithmetic distance, so cardinality is the only stable
+// build-time signal available without retaining the original exact values.
+func (r *lossyComparedBuckets[V]) coarsenOne() {
 	if len(r.buckets) <= 1 {
 		return
 	}
-	bits := roaring.New()
-	for _, bucket := range r.buckets {
-		bits.Or(bucket)
+	merge := 0
+	best := r.buckets[0].GetCardinality() + r.buckets[1].GetCardinality()
+	for i := 1; i+1 < len(r.buckets); i++ {
+		cardinality := r.buckets[i].GetCardinality() + r.buckets[i+1].GetCardinality()
+		if cardinality < best {
+			merge, best = i, cardinality
+		}
 	}
-	r.boundaries = []V{r.maximum}
-	r.buckets = []*roaring.Bitmap{bits}
+	r.buckets[merge].Or(r.buckets[merge+1])
+	r.boundaries[merge] = r.boundaries[merge+1]
+	copy(r.buckets[merge+1:], r.buckets[merge+2:])
+	copy(r.boundaries[merge+1:], r.boundaries[merge+2:])
+	r.buckets = r.buckets[:len(r.buckets)-1]
+	r.boundaries = r.boundaries[:len(r.boundaries)-1]
 }
 
 func buildLossyComparedBuckets[V any](index *orderedIndex[V], wanted int) lossyComparedBuckets[V] {
-	result := lossyComparedBuckets[V]{compare: index.compare}
+	result := lossyComparedBuckets[V]{compare: index.compare, capacity: max(wanted, 1)}
 	values := make([]*orderedItem[V], 0, index.buildStatistics().uniqueValues)
 	for block := range index.blocks {
 		values = append(values, index.blocks[block].items...)
@@ -1491,14 +1588,15 @@ func (r *lossyComparedOrderedRule[T, V]) refreshedStreamingDetails(details inspe
 	return details
 }
 func (r *lossyComparedOrderedRule[T, V]) fitStreamingLimit(limit uint64) {
-	if r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes <= limit {
-		return
-	}
 	buckets := lossyComparedBuckets[V]{
 		compare: r.compare, minimum: r.minimum, maximum: r.maximum,
-		boundaries: r.boundaries, buckets: r.buckets,
+		capacity: r.capacity, boundaries: r.boundaries, buckets: r.buckets,
 	}
-	buckets.collapse()
+	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit && len(buckets.buckets) > 1 {
+		buckets.coarsenOne()
+		r.boundaries, r.buckets = buckets.boundaries, buckets.buckets
+	}
+	r.capacity = min(max(r.capacity, 1), len(buckets.buckets))
 	r.boundaries, r.buckets = buckets.boundaries, buckets.buckets
 }
 func (r *lossyComparedOrderedRule[T, V]) insert(v T, id uint32) {
@@ -1509,10 +1607,11 @@ func (r *lossyComparedOrderedRule[T, V]) insert(v T, id uint32) {
 	}
 	buckets := lossyComparedBuckets[V]{
 		compare: r.compare, minimum: r.minimum, maximum: r.maximum,
-		boundaries: r.boundaries, buckets: r.buckets,
+		capacity: r.capacity, boundaries: r.boundaries, buckets: r.buckets,
 	}
 	buckets.insert(value, id)
 	r.minimum, r.maximum = buckets.minimum, buckets.maximum
+	r.capacity = buckets.capacity
 	r.boundaries, r.buckets = buckets.boundaries, buckets.buckets
 }
 func (r *lossyComparedOrderedRule[T, V]) matchingBucketRange(v T) (int, int, bool) {
@@ -1609,6 +1708,57 @@ func lossyOrderedBucket(key, minimum, width, count uint64) uint64 {
 	return bucket
 }
 
+func lossyOrderedGrid(minimum, maximum uint64, wanted int) (uint64, int) {
+	count := uint64(max(wanted, 1))
+	span := maximum - minimum
+	width := span/count + 1
+	if width == 0 {
+		width = math.MaxUint64
+	}
+	used := min(span/width+1, count)
+	return width, int(used)
+}
+
+// regrid rebuilds a coarser numeric grid using only the interval represented
+// by each old bucket. An old posting is copied to every overlapping new bucket,
+// preserving the no-false-negative contract without retaining exact values.
+func (r *lossyOrderedRule[T, V]) regrid(minimum, maximum uint64, wanted int) {
+	width, count := lossyOrderedGrid(minimum, maximum, wanted)
+	next := make([]*roaring.Bitmap, count)
+	oldMinimum, oldMaximum, oldWidth := r.min, r.max, r.width
+	for i, bits := range r.buckets {
+		if bits == nil {
+			continue
+		}
+		start := oldMinimum
+		if i != 0 {
+			if oldWidth != 0 && uint64(i) > math.MaxUint64/oldWidth {
+				start = math.MaxUint64
+			} else {
+				offset := uint64(i) * oldWidth
+				if offset > math.MaxUint64-oldMinimum {
+					start = math.MaxUint64
+				} else {
+					start += offset
+				}
+			}
+		}
+		end := oldMaximum
+		if oldWidth != math.MaxUint64 && oldWidth-1 <= math.MaxUint64-start {
+			end = min(end, start+oldWidth-1)
+		}
+		first := lossyOrderedBucket(start, minimum, width, uint64(count))
+		last := lossyOrderedBucket(end, minimum, width, uint64(count))
+		for bucket := first; bucket <= last; bucket++ {
+			if next[bucket] == nil {
+				next[bucket] = roaring.New()
+			}
+			next[bucket].Or(bits)
+		}
+	}
+	r.min, r.max, r.width, r.buckets = minimum, maximum, width, next
+}
+
 func (*lossyOrderedRule[T, V]) rule()                                                 {}
 func (r *lossyOrderedRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
 func (*lossyOrderedRule[T, V]) validate(T) error                                      { return nil }
@@ -1628,16 +1778,9 @@ func (r *lossyOrderedRule[T, V]) refreshedStreamingDetails(details inspectionDet
 	return details
 }
 func (r *lossyOrderedRule[T, V]) fitStreamingLimit(limit uint64) {
-	if r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes <= limit || len(r.buckets) <= 1 {
-		return
+	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit && len(r.buckets) > 1 {
+		r.regrid(r.min, r.max, len(r.buckets)-1)
 	}
-	all := roaring.New()
-	for _, bucket := range r.buckets {
-		if bucket != nil {
-			all.Or(bucket)
-		}
-	}
-	r.width, r.buckets = math.MaxUint64, []*roaring.Bitmap{all}
 }
 func (r *lossyOrderedRule[T, V]) insert(v T, id uint32) {
 	value, ok := r.get(v)
@@ -1655,16 +1798,7 @@ func (r *lossyOrderedRule[T, V]) insert(v T, id uint32) {
 		return
 	}
 	if key < r.min || key > r.max {
-		all := roaring.New()
-		for _, bucket := range r.buckets {
-			if bucket != nil {
-				all.Or(bucket)
-			}
-		}
-		all.Add(id)
-		r.min, r.max = min(r.min, key), max(r.max, key)
-		r.width, r.buckets = math.MaxUint64, []*roaring.Bitmap{all}
-		return
+		r.regrid(min(r.min, key), max(r.max, key), len(r.buckets))
 	}
 	bucket := lossyOrderedBucket(key, r.min, r.width, uint64(len(r.buckets)))
 	if r.buckets[bucket] == nil {

@@ -126,13 +126,19 @@ func (r *lossyCompareByRule[T, V]) refreshedStreamingDetails(details inspectionD
 	return details
 }
 func (r *lossyCompareByRule[T, V]) fitStreamingLimit(limit uint64) {
-	if r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes <= limit {
-		return
-	}
-	for operator := range r.indexes {
-		if r.present[operator] {
-			r.indexes[operator].collapse()
+	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit {
+		selected := -1
+		for operator := range r.indexes {
+			if r.present[operator] && len(r.indexes[operator].buckets) > 1 &&
+				(selected < 0 || len(r.indexes[operator].buckets) > len(r.indexes[selected].buckets)) {
+				selected = operator
+			}
 		}
+		if selected < 0 {
+			return
+		}
+		r.indexes[selected].coarsenOne()
+		r.indexes[selected].capacity = min(max(r.indexes[selected].capacity, 1), len(r.indexes[selected].buckets))
 	}
 }
 func (r *lossyCompareByRule[T, V]) insert(v T, id uint32) {

@@ -289,3 +289,25 @@ func TestProductionShapeLossyNeverDropsExactMatches(t *testing.T) {
 		}
 	}
 }
+
+func TestProductionShapeStreamingLossyKeepsWarmResultsCompact(t *testing.T) {
+	constraints, ids := productionBenchmarkData()
+	var exactUsage ruleix.Inspector
+	_, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](ruleix.Inspect(
+		&exactUsage,
+		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(^uint64(0))),
+	)).Build(ruleix.Zip(constraints, ids))
+	require.NoError(t, err)
+	usage, ok := exactUsage.Snapshot().MemoryUsage()
+	require.True(t, ok)
+
+	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(usage/2)),
+	).Build(ruleix.Zip(constraints, ids))
+	require.NoError(t, err)
+	for _, day := range []int{100, 101} {
+		var matches []productionBenchmarkID
+		index.Search(productionBenchmarkQuery(day), &matches)
+		require.LessOrEqual(t, len(matches), 256, "day %d crossed the compact Local result threshold", day)
+	}
+}

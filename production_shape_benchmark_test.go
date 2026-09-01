@@ -347,11 +347,11 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 //	GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLossySearch/' \
 //	  -benchmem -benchtime=1s -count=5 .
 //
-// Latest streaming-build run (Apple M1 Max, Go 1.26.0, GOMAXPROCS=1, 38,098
-// entries, 377,122-byte budget, 500ms x3): Index median 50,386 ns/op,
-// 78,858 B/op, 25 allocs/op; Local median 3,893 ns/op, 1 B/op as rounded by
-// testing.B and 0 allocs/op. The preceding exact-first medians were 70,030
-// ns/op and 1,386 ns/op respectively.
+// Latest build-time rebucketing run (Apple M1 Max, Go 1.26.0, GOMAXPROCS=1,
+// 38,098 entries, 377,122-byte budget, 500ms x5): Index median 43,075 ns/op,
+// 38,909 B/op, 22 allocs/op; Local median 586.9 ns/op, 0 B/op and 0 allocs/op;
+// both rotating queries returned 139 candidates. The preceding streaming
+// medians were 50,386 ns/op and 3,893 ns/op respectively.
 func BenchmarkProductionShapeLossySearch(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	var inspector ruleix.Inspector
@@ -397,6 +397,7 @@ func BenchmarkProductionShapeLossySearch(b *testing.B) {
 				}
 			}
 			b.ReportMetric(float64(budget), "budget-bytes")
+			b.ReportMetric(float64(len(matches)), "candidates/op")
 		})
 	}
 }

@@ -188,6 +188,17 @@ allocs/op. После исправления Local стал быстрее пр�
 
 ## 2026-09-01: exact-first против one-pass streaming
 
+Исправление streaming rebucketing устранило аварийный one-bucket collapse.
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, 38,098 entries, 377,122-byte budget,
+`go test -run '^$' -bench '^BenchmarkProductionShapeLossySearch/(Index|Local)$' -benchmem -benchtime=500ms -count=5 .`:
+`Index.Search` 42,927–43,423 ns/op (median 43,075), 38,909 B/op и 22 allocs/op;
+warm `Local.Search` 586.4–589.7 ns/op (median 586.9), 0 B/op и 0 allocs/op.
+Оба запроса возвращали 139 candidates. Непосредственно предшествующий
+operator-specific streaming checkpoint давал медианы 50,386 и 3,893 ns/op;
+записанный exact-first checkpoint — 70,030 и 1,386 ns/op соответственно.
+Измерение является accepted correction текущего streaming path, а не
+ретроспективной заменой старых чисел ниже.
+
 Следующий operator-specific streaming вариант заменил universal tail и принят
 как production default. Apple M1 Max, Go 1.26.0, 10K entries, четыре equality-
 листа, 65% budget, `benchtime=1x`: ordered и shuffled streaming сохранили 9,797

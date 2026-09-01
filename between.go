@@ -110,11 +110,16 @@ func (r *lossyBetweenRule[T, V]) refreshedStreamingDetails(details inspectionDet
 	return details
 }
 func (r *lossyBetweenRule[T, V]) fitStreamingLimit(limit uint64) {
-	if r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes <= limit {
-		return
+	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit &&
+		(len(r.from.buckets) > 1 || len(r.until.buckets) > 1) {
+		if len(r.from.buckets) >= len(r.until.buckets) && len(r.from.buckets) > 1 {
+			r.from.coarsenOne()
+			r.from.capacity = min(max(r.from.capacity, 1), len(r.from.buckets))
+		} else {
+			r.until.coarsenOne()
+			r.until.capacity = min(max(r.until.capacity, 1), len(r.until.buckets))
+		}
 	}
-	r.from.collapse()
-	r.until.collapse()
 }
 func (r *lossyBetweenRule[T, V]) insert(v T, id uint32) {
 	if value, ok := r.fromGet(v); ok {

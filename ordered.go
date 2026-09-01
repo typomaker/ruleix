@@ -205,6 +205,7 @@ func buildComparedOrderedRepresentations[T any, V any](
 		candidate := &lossyComparedOrderedRule[T, V]{
 			nodeID: r.nodeID, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
 			wildcard: r.wildcard, minimum: values[0].value, maximum: values[len(values)-1].value,
+			capacity:   count,
 			boundaries: make([]V, 0, count), buckets: make([]*roaring.Bitmap, 0, count),
 		}
 		for first := 0; first < len(values); first += width {

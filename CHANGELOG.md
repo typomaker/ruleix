@@ -15,6 +15,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   directly into their compiled buckets; the published search types gain no
   wrapper or extra hot-path operation. `MemoryLimit` remains the hard final
   retained-accounting limit.
+- Streaming Lossy grids now expand and rebucket during `Build` instead of
+  collapsing an ordered leaf when a later value falls outside the prefix
+  range. Numeric grids conservatively remap old bucket intervals; arbitrary
+  comparators add edge boundaries and merge adjacent buckets. Equality and
+  aggregate memory pressure use the same gradual coarsening rule, so search
+  receives no rebucketing work.
 
 - Lossy equality precision now uses four arbitrary bucket-count levels per
   power-of-two interval. Multiply-high reduction makes memory and collision
