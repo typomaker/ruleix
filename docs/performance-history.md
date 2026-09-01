@@ -150,6 +150,33 @@ string 46,71–51,59, `[3]int` 53,84–54,37, struct 42,51–55,52; все ва�
 
 ### Exact versus Lossy search checkpoint 2026-09-01
 
+Latest recheck on Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, revision
+`316596b`, `benchtime=500ms`, `count=7` used the same 38,098-constraint
+production fixture and 377,122-byte Lossy budget:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShape(Search|LossySearch)/(Index|Local)$' \
+  -benchmem -benchtime=500ms -count=7 .
+```
+
+| Path | Exact median | Lossy median | Lossy delta | Exact / Lossy allocations |
+| --- | ---: | ---: | ---: | ---: |
+| `Index.Search` | 32,409 ns/op | 27,905 ns/op | **−13.9%** | 40,805 / 13,594 B/op; 28 / 15 allocs/op |
+| warm `Local.Search` | 223.5 ns/op | 251.2 ns/op | **+12.4%** | 0 / 0 B/op; 0 / 0 allocs/op |
+
+Both Lossy queries returned 80 candidates. The current implementation therefore
+does not show an uncached search degradation: `Index.Search` is faster while
+allocating 66.7% fewer bytes and 46.4% fewer objects. A reproducible latency
+degradation remains on the warm Local cache-hit path, although both modes stay
+allocation-free. Exact-superset correctness passed with
+`TestProductionShapeLossyNeverDropsExactMatches` and
+`TestLossyExactDifferentialEverySupportedRule`; Lossy may add false positives
+but did not drop exact matches.
+
+The older checkpoint below is retained because it captures the search shape
+before the subsequent streaming and comparator corrections.
+
 Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, current revision `8b81d55`,
 `benchtime=500ms`, `count=5`. The production-shaped matrix used 38,098
 constraints and a 377,122-byte Lossy budget (50% of exact accounting):
