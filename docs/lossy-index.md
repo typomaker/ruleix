@@ -296,6 +296,16 @@ the absence of full exact materialization take priority.
 The detailed dependency order and acceptance gates are maintained in
 [`ROADMAP.md`](../ROADMAP.md).
 
+The active roadmap now targets a shared physical search layout for exact and
+lossy modes. Lossy will remain a build-time memory policy, but approximation
+will be expressed by a compiled key quantizer: identity for exact and an
+outward, precision-specific transform for lossy. Equality and ordered postings,
+matchers, range traversal, and local caches are to be shared. Streaming memory
+pressure will continue to rebuild the current keys and merge their postings at
+a coarser nested precision without retaining the complete original exact
+values. The migration order, operator-specific rounding rules, and correctness,
+retained-memory, and performance gates are maintained in the roadmap.
+
 ## Build-time planning
 
 Representation selection belongs in `Build` and has three conceptual phases:
