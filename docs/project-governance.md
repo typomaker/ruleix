@@ -16,6 +16,11 @@ updated only when a new canonical entry point is required.
   the repository-wide aggregate. Add or update tests before completing the task
   when the changed-code coverage is below this threshold.
 - Do not include unrelated user changes in the commit.
+- Repository files must not exceed 500 lines. New files must comply immediately;
+  an existing oversized file must be brought within the limit as part of any
+  task that changes it. Move logically related content into focused modules or
+  documents; if the excess consists of obsolete historical data, remove it
+  instead.
 - Document every change, report, verification, and experiment in `docs/` as
   part of the same task. Update an existing document when possible; create a
   focused document when no suitable canonical document exists.
