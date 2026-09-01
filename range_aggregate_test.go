@@ -187,4 +187,23 @@ func TestBetweenSelectiveBoundPreservesWildcards(t *testing.T) {
 
 	require.Equal(t, []string{"covering", "open-from", "open-until"},
 		search(ix, optionalInterval{from: ptr(5), until: ptr(15)}))
+	require.Equal(t, []string{"open-until"},
+		search(ix, optionalInterval{from: ptr(5)}), "missing query until requires a stored until wildcard")
+	require.Equal(t, []string{"open-from"},
+		search(ix, optionalInterval{until: ptr(15)}), "missing query from requires a stored from wildcard")
+}
+
+func TestBetweenEvaluatesInvertedIntervalsByIndependentBounds(t *testing.T) {
+	type interval struct{ from, until int }
+	schema := ruleix.Between(
+		func(v interval) (int, bool) { return v.from, true },
+		func(v interval) (int, bool) { return v.until, true },
+		cmp.Compare[int],
+	)
+	ix := buildZip(t, schema,
+		[]interval{{from: 0, until: 20}, {from: 20, until: 10}},
+		[]string{"ordinary", "inverted"})
+
+	require.Equal(t, []string{"ordinary"}, search(ix, interval{from: 5, until: 15}))
+	require.Equal(t, []string{"ordinary", "inverted"}, search(ix, interval{from: 25, until: 5}))
 }

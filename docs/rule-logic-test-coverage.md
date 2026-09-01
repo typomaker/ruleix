@@ -30,31 +30,20 @@ not imply complete semantic coverage.
 
 | Rule | Covered valid logic | Confirmed gaps |
 | --- | --- | --- |
-| `Include` | exact match, non-match, stored wildcard, missing query through the production-shape matrix, duplicate IDs | no focused table that explicitly distinguishes a present zero value from an absent value |
-| `Exclude` | forbidden match, non-match, missing query, stored missing value, repeated ID exclusion, `Search` and `Visit` | no focused present-zero-versus-absent case |
-| `Greater`, `GreaterOrEqual`, `Less`, `LessOrEqual` | all four directions, strict and inclusive equality boundaries, less/equal/greater values, stored wildcard, missing query | no focused present-zero-versus-absent case for each constructor |
-| `CompareBy` | all five operators, equality and broad scanning-reference comparisons, ignored query operator, stored wildcard, missing query value, unsupported operator | a present stored value with a missing operator is specified to fail build but has no direct test; boundary truth tables are split across tests instead of one explicit per-operator matrix |
-| `Between` | covered, non-covered, exact inclusive bounds, both stored bounds missing, each stored bound missing independently, both query bounds missing, repeated IDs, scanning-reference comparisons | query missing only `from` and query missing only `until` are not tested independently; inverted stored/query intervals are not covered or explicitly rejected by contract |
-| `All` | multi-child AND, nesting/flattening, wildcard children, equality/ordered/`Between` combinations, exclusions, repeated children and adaptive execution paths | public semantics of zero children are not asserted; there is no single exact differential oracle spanning every public child type including `Exclude` |
-| `Lossy` | central exact-versus-lossy superset matrix for `Include`, all ordered rules, `Between`, `CompareBy`, and `All`; local and streaming paths | `Exclude` is absent from the central public-rule matrix (even if retained exact internally); wrapper combinations are spread across specialized tests |
+| `Include` | exact match, non-match, stored wildcard, missing query, duplicate IDs, present zero versus absent | no known public semantic gap |
+| `Exclude` | forbidden match, non-match, missing query, stored missing value, repeated ID exclusion, present zero versus absent, scanning-reference differential, `Search` and `Visit` | no known public semantic gap |
+| `Greater`, `GreaterOrEqual`, `Less`, `LessOrEqual` | all four directions, strict and inclusive equality boundaries, less/equal/greater values, stored wildcard, missing query, present zero versus absent | no known public semantic gap |
+| `CompareBy` | all five operators, equality and broad scanning-reference comparisons, ignored query operator, stored wildcard, missing query value, missing operator error, unsupported operator error | boundary truth tables remain split across focused and scanning-reference tests rather than duplicated in one table |
+| `Between` | covered, non-covered, exact inclusive bounds, stored/query bounds missing independently and together, repeated IDs, inverted intervals, scanning-reference comparisons | no known public semantic gap; inverted intervals intentionally use the two independent bound comparisons |
+| `All` | zero-, one-, multi-child AND, nesting/flattening, wildcard children, equality/ordered/`Between` combinations, exclusions, repeated children, adaptive execution and underestimated wide bitmap paths | no known public semantic gap |
+| `Lossy` | central exact-versus-lossy superset matrix for every lossy-capable predicate; local and streaming paths | `Exclude` is intentionally exact-only and is covered by its scanning oracle; wrapper combinations remain spread across specialized tests |
 | `Inspect` | transparent results for normal and local search plus exact/lossy reporting | no semantic gap found in the reviewed public contract |
 
 ## Conclusion
 
-Every public matching rule type has representative valid-logic coverage, but
-the full logical case space is not covered. The highest-value additions are:
-
-1. test the documented `CompareBy` build error for a concrete value with a
-   missing operator;
-2. add the two one-sided missing-query cases for `Between`;
-3. define and test the public contract of `All()` with zero children;
-4. add compact zero-value-versus-absent tables for getter-based rules;
-5. extend one exact differential oracle across every public predicate and
-   wrapper-relevant mode, including `Exclude`.
-
-Inverted intervals require a contract decision before a test can be written:
-either reject them during build/search validation or document their current
-comparison-derived behavior.
+The previously identified public semantic cases now have focused regression
+coverage. This remains a maintained risk inventory rather than a claim that
+the combinatorial input space can be exhaustively enumerated.
 
 ## Risk assessment
 
@@ -63,20 +52,14 @@ The 84.5% statement result leaves two different kinds of uncovered code. Many
 not evidence of a missing public runtime scenario. They should not be treated
 as critical merely because their function percentage is zero.
 
-The current high-priority gaps are the untested documented `CompareBy` missing-
-operator validation branch and the one-sided missing-query behavior of
-`Between`. Both sit directly on public input semantics and can change accepted
-or returned results.
+Focused tests now cover the `CompareBy` missing-operator branch, independent
+missing `Between` query bounds, zero-value distinction, inverted intervals,
+zero-child `All`, an `Exclude` scanning oracle, and both small-inline and
+more-than-eight-child underestimated wide-`All` bitmap assembly. The new empty
+`All` test exposed and fixed a correctness defect: it previously returned no
+IDs instead of acting as the identity of logical AND.
 
-The coverage report also shows active wide-`All` helpers
-`materializeRankedAfterFirst` and `appendBitmapAllMatches` at 0%. These helpers
-are reachable from the production search implementation, so this is a
-high-priority path-coverage warning even though the existing differential and
-shadow tests provide indirect result-level protection. A focused test should
-prove that the public search setup actually selects each helper path and
-compare its result with a scanning oracle.
-
-The zero-child `All()` contract, zero-value-versus-absent tables, inverted
-interval policy, and extending the central differential matrix to `Exclude`
-are medium-priority completeness gaps. No currently observed failing valid-
-logic case establishes a release-blocking correctness defect.
+After these additions aggregate statement coverage is 85.2%; the active
+`materializeRankedAfterFirst` and `appendBitmapAllMatches` helpers are now
+covered. No remaining 0% function was classified as an uncovered public
+valid-logic contract in this audit.

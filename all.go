@@ -207,7 +207,9 @@ func (r *allRule[T]) prepareDuplicateEqualityResults() {
 }
 func (r *allRule[T]) optimize(total uint64) Rule[T] {
 	if len(r.children) == 0 {
-		return r
+		universe := roaring.New()
+		universe.AddRange(0, total)
+		return newMatchAllRule[T](universe)
 	}
 	children := make([]Rule[T], 0, len(r.children))
 	seen := make(map[canonicalRuleDescriptor]struct{}, len(r.children))

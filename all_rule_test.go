@@ -1,6 +1,7 @@
 package ruleix
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -12,6 +13,43 @@ type countingRule struct {
 	searchCalls      int
 	cardinalityCalls int
 	matchIDCalls     int
+}
+
+type underestimatedRule struct{ ids []uint32 }
+
+func (*underestimatedRule) rule()                                                   {}
+func (r *underestimatedRule) newState(*nodeIDAllocator, *buildStatistics) Rule[int] { return r }
+func (*underestimatedRule) validate(int) error                                      { return nil }
+func (*underestimatedRule) insert(int, uint32)                                      {}
+func (*underestimatedRule) cardinality(int, *bitmapPool) uint64                     { return 1 }
+func (*underestimatedRule) estimateCheapCardinality(int) uint64                     { return 1 }
+func (r *underestimatedRule) search(_ int, dst *roaring.Bitmap, _ *bitmapPool) {
+	dst.AddMany(r.ids)
+}
+func (*underestimatedRule) exclude(int, *roaring.Bitmap, *bitmapPool)    {}
+func (*underestimatedRule) collectBuildStatistics([]nodeBuildStatistics) {}
+
+func TestIndexSearchMaterializesUnderestimatedWideAllChildren(t *testing.T) {
+	ids := make([]uint32, 20)
+	entries, externalIDs := make([]int, len(ids)), make([]int, len(ids))
+	for i := range ids {
+		ids[i], entries[i], externalIDs[i] = uint32(i), i, i
+	}
+	for _, childCount := range []int{2, 9} {
+		t.Run(fmt.Sprintf("children=%d", childCount), func(t *testing.T) {
+			children := make([]Rule[int], childCount)
+			for i := range children {
+				children[i] = &underestimatedRule{ids: ids}
+			}
+			children[childCount-1] = &underestimatedRule{ids: ids[5:15]}
+			index, err := New[int, int](All(children...)).Build(Zip(entries, externalIDs))
+			require.NoError(t, err)
+
+			var got []int
+			index.Search(0, &got)
+			require.Equal(t, []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, got)
+		})
+	}
 }
 
 func TestAllOptimizeFlattensNestedGroups(t *testing.T) {

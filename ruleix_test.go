@@ -203,6 +203,15 @@ func TestCompareByRejectsInvalidInsertedOperator(t *testing.T) {
 	require.EqualError(t, err, "ruleix: entry 0: ruleix: unsupported operator 255")
 }
 
+func TestCompareByRejectsMissingInsertedOperator(t *testing.T) {
+	_, err := ruleix.New[CustomerOrderCount, string](ruleix.CompareBy(
+		ruleix.GetterFromPointer(func(c CustomerOrderCount) *int { return &c.Total }),
+		ruleix.GetterFromPointer(func(c CustomerOrderCount) *ruleix.Operator { return c.Operator }),
+		cmp.Compare[int],
+	)).Build(ruleix.Zip([]CustomerOrderCount{{Total: 5}}, []string{"missing-operator"}))
+	require.EqualError(t, err, "ruleix: entry 0: ruleix: CompareBy operator is nil")
+}
+
 func TestBetweenNestedWildcard(t *testing.T) {
 	t0 := time.Unix(0, 0)
 	t1, t2, t3 := t0.Add(time.Hour), t0.Add(2*time.Hour), t0.Add(3*time.Hour)
