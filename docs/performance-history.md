@@ -218,6 +218,15 @@ directly comparing the original value, so it was rejected. The query-key
 correction does not address the independently profiled uncached candidate-
 validation cost.
 
+Verification note: the focused query-key and equality-cache tests passed five
+consecutive runs. A clean-HEAD full suite and the synthetic Budget50 benchmark
+were blocked before search by the existing streaming planner: depending on the
+build, it either reported `Lossy streaming state cannot fit the memory limit`
+or produced 10,629 candidates and failed the pre-existing compact-result gate.
+The query-key path is inactive for that broad result because ready-ID caching
+is capped at 256 candidates. These failures reproduce without the query-key
+patch and are not counted as correction measurements.
+
 ### Production Lossy checkpoint 2026-08-31
 
 Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, 38 098 constraints. Полная
