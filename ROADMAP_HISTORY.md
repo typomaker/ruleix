@@ -1,5 +1,18 @@
 # Roadmap history
 
+## 2026-09-01: Exact-vs-Lossy public rule differential matrix
+
+A single regression matrix now compares Exact results with Lossy results for
+every public Lossy-supported rule: `Include`, `Greater`, `GreaterOrEqual`,
+`Less`, `LessOrEqual`, `Between`, `CompareBy`, and an `All` composition. The
+fixture exceeds the 4,096-entry streaming checkpoint, asserts that each case
+actually crosses build pressure, and introduces late minima and maxima after
+the checkpoint. It covers present values, stored and query wildcards, strict
+and inclusive boundaries, all five `CompareBy` operators, direct
+`Index.Search`, and cold plus repeated `Local.Search`. Every Exact ID must be
+present in the corresponding Lossy result; additional Lossy candidates remain
+permitted by contract.
+
 ## 2026-09-01: audit remaining Lossy collapse paths
 
 The post-rebucketing audit covered every public Lossy-capable leaf and both
