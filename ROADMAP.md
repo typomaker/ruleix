@@ -22,15 +22,6 @@ quantizer; postings одинаковых новых ключей объедин�
 `Build` build-only состояние удаляется, а search получает ту же immutable
 структуру независимо от режима.
 
-### 1. Зафиксировать семантику ключей и baseline
-
-- Зафиксировать текущие Exact, Lossy 50% и identity-lossy показатели для
-  build time, accounted retained memory, `Index.Search`, warm `Local.Search`,
-  allocations и candidate count.
-
-Gate: differential-матрица всех поддерживаемых правил доказывает равенство
-identity-lossy и exact, а обычный lossy сохраняет `result ⊇ exact result`.
-
 ### 2. Выделить общие key transformation и rebuild primitives
 
 - Ввести build-скомпилированные encoder/quantizer без reflection и

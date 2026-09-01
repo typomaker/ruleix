@@ -1,5 +1,42 @@
 # Roadmap history
 
+## 2026-09-01: shared-key migration baseline
+
+Roadmap step 1 is complete. The retained `BenchmarkSharedKeyBaseline` measures
+Exact, the internal identity-lossy control, and Lossy at 50% of exact accounted
+memory on one mixed equality/ordered/range schema. On Apple M1 Max, macOS
+arm64, Go 1.26.0, `GOMAXPROCS=1`, 5,632 entries, 58 boundary/missing-value
+queries, `benchtime=500ms`, and five runs, Exact and identity-lossy retained the
+same 486,463 accounted bytes and 2.121 candidates/query. Their median
+`Index.Search` results were 50,420 and 51,216 ns/op respectively, both
+23,497 B/op and 20 allocations; warm `Local.Search` was 60.74 and 60.57 ns/op,
+both allocation-free. Identity's current planner-based build control cost
+133.7 ms/op, 71.8 MB/op, and about 1.97 million allocations, versus Exact at
+6.90 ms/op, 4.90 MB/op, and 84,335 allocations.
+
+Lossy50 retained 241,016 accounted bytes (49.55% of exact) and averaged 3.414
+candidates/query. Its medians were 107.65 ms/op, 60.3 MB/op, and about 1.58
+million allocations for Build; 48,562 ns/op, 24,721 B/op, and 17 allocations
+for `Index.Search`; and 2,242 ns/op, 152 B/op, and six allocations for warm
+`Local.Search`. These are migration baselines, not accepted parity targets for
+the current separate lossy search engines.
+
+The all-rule differential gate covers `Include`, all four ordered boundary
+rules, `Between`, every `CompareBy` operator, and `All`. Exact and identity
+return identical ordered external IDs through Index, cold Local, and repeated
+warm Local searches; Lossy remains an Exact superset, including after forced
+streaming pressure. The full ordinary and race suites pass.
+
+Reproduce with:
+
+```sh
+go test -run 'Test(IdentityLossy|LossyExact)DifferentialEverySupportedRule' .
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkSharedKeyBaseline/' \
+  -benchmem -benchtime=500ms -count=5 .
+go test ./...
+go test -race ./...
+```
+
 ## 2026-09-01: identity quantizer control
 
 An internal build control now runs every public Lossy-supported rule through
