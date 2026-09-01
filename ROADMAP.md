@@ -1,8 +1,11 @@
 # Roadmap
 
-This file is the active implementation plan. Completed work and rejected
-experiments belong in [`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md);
-release-facing behavior belongs in [`CHANGELOG.md`](CHANGELOG.md).
+This file is the active implementation plan. A fully completed step remains
+marked here with its completion date and a concise result summary; detailed
+completed work and rejected experiments belong in
+[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Release-facing behavior belongs in
+[`CHANGELOG.md`](CHANGELOG.md). Partial work must not be marked as a completed
+step.
 
 ## Общие exact/lossy-индексы
 

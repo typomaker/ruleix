@@ -19,6 +19,12 @@ updated only when a new canonical entry point is required.
   remains and why.
 - After fully completing each assigned task, create a Git commit containing all
   changes related to that task.
+- When a roadmap step is fully completed, mark that step in `ROADMAP.md` with
+  its completion date and a concise result summary. The summary must state the
+  delivered outcome and the relevant gates that passed, while detailed evidence
+  remains in the canonical documents and `ROADMAP_HISTORY.md`. Do not mark a
+  partially implemented step as complete; intermediate commits or completed
+  subparts may be recorded in history without changing the step's status.
 - Before committing, run the appropriate checks and `git diff --check`.
 - Changed production code must have at least 90% test coverage. Measure coverage
   over the executable lines added or modified by the task (diff coverage), not
