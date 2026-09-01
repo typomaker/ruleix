@@ -168,26 +168,26 @@ string 46,71–51,59, `[3]int` 53,84–54,37, struct 42,51–55,52; все ва�
 
 Перед началом объединения физических индексов один смешанный
 equality/ordered/range benchmark зафиксировал Exact, internal identity-lossy и
-Lossy с 50% бюджета в одном бинарнике. Apple M1 Max, macOS arm64, Go 1.26.0,
-`GOMAXPROCS=1`, commit после `7bda17e`, 5 632 entries, 58 запросов,
+Lossy с 50% бюджета в одном бинарнике. Повторный gate снят на чистом `97c9e00`
+(Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`), 5 632 entries, 58 запросов,
 `benchtime=500ms`, `count=5`; ниже приведены медианы.
 
 | Показатель | Exact | identity-lossy | Lossy50 |
 | --- | ---: | ---: | ---: |
-| Build | 6,898 ms | 133,655 ms | 107,649 ms |
-| Build B/op | 4 899 226 | 71 826 262 | 60 313 513 |
-| Build allocs/op | 84 335 | 1 967 506 | 1 579 884 |
+| Build | 6,813 ms | 132,382 ms | 108,150 ms |
+| Build B/op | 4 899 230 | 71 776 218 | 60 300 443 |
+| Build allocs/op | 84 335 | 1 966 737 | 1 579 352 |
 | accounted retained | 486 463 B | 486 463 B | 241 016 B |
-| `Index.Search` | 50 420 ns/op | 51 216 ns/op | 48 562 ns/op |
+| `Index.Search` | 50 946 ns/op | 51 029 ns/op | 47 990 ns/op |
 | `Index.Search` B/op | 23 497 | 23 497 | 24 721 |
 | `Index.Search` allocs/op | 20 | 20 | 17 |
-| warm `Local.Search` | 60,74 ns/op | 60,57 ns/op | 2 242 ns/op |
+| warm `Local.Search` | 59,53 ns/op | 59,83 ns/op | 2 191 ns/op |
 | warm `Local.Search` B/op | 0 | 0 | 152 |
 | warm `Local.Search` allocs/op | 0 | 0 | 6 |
 | candidates/query | 2,121 | 2,121 | 3,414 |
 
 Identity и Exact совпадают по памяти, allocations и candidate quality;
-разница latency `Index.Search` +1,6%, а Local −0,3% находится в шуме серии.
+разница latency `Index.Search` +0,2%, а Local +0,5% находится в шуме серии.
 Большая цена Build у identity — измеренная цена текущего полного Lossy planner,
 который используется только тестовым control и должен исчезнуть после общей
 build-time key transformation. Lossy50 удерживает 49,55% exact accounting и
@@ -196,6 +196,9 @@ build-time key transformation. Lossy50 удерживает 49,55% exact account
 разрешение сохранить регрессию.
 
 ```sh
+GOMAXPROCS=1 go test -run \
+  'Test(LossyExactDifferentialEverySupportedRule|IdentityLossyDifferentialEverySupportedRule)$' \
+  -count=1 .
 GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkSharedKeyBaseline/' \
   -benchmem -benchtime=500ms -count=5 .
 ```
