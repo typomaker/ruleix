@@ -4,6 +4,25 @@
 релизами и предрелизными checkpoints. Он является сводкой, а не заменой сырых
 benchmark-отчётов.
 
+## 2026-09-01: shared rebuild primitives revalidation
+
+На `89fb085` и кандидате `rebuildPostingGeneration` прошёл merge, неизменность старого поколения и overflow fixtures; streaming-матрица подтвердила повторные
+downgrade, hard limits, порядок входа и финализацию routing после downgrade.
+
+Сопоставимый build gate выполнен на Apple M1 Max, Go 1.26.0,
+`GOMAXPROCS=1`, 100 000 записей, `MemoryLimit(1<<20)`, 300 ms, пять baseline и
+три candidate запуска:
+```text
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkLossyStreamingBuild$' -benchmem -benchtime=300ms -count=5 .
+```
+
+| Revision | median ns/op | B/op range | allocs/op range |
+| --- | ---: | ---: | ---: |
+| `89fb085` | 2 449 938 750 | 906 560 904–906 999 920 | 22 924 657–22 924 690 |
+| step 2 candidate | 2 432 079 083 | 906 289 216–906 837 608 | 22 924 638–22 924 680 |
+Build time находится в шуме; allocation class совпадает. Search-функции не
+менялись. Проверки: `go test ./...`, streaming fixtures и race-вариант.
+
 ## 2026-09-01: compiled equality quantizer checkpoint
 
 Первый implementation-срез общей key-архитектуры перенёс equality precision в

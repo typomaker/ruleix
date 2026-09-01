@@ -98,7 +98,13 @@ Gate: на текущем `HEAD` differential-матрица всех подде
 
 ### 2. Выделить общие key transformation и rebuild primitives
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-01`
+
+Результат: повторно подтверждены build-скомпилированные equality/ordered key
+transformations, общий checked rebuild независимых posting generations и
+финализация immutable routing/aggregates только после streaming downgrade;
+hard-limit, order, race, full-test и сопоставимый build gate пройдены без
+изменения allocation class.
 
 - Проверить заново и при необходимости переработать build-скомпилированный
   equality encoder/quantizer, затем распространить общий контракт на ordered

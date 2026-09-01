@@ -234,9 +234,12 @@ exact values и не зависит от порядка поступления �
 bitmap-ы совпавших ключей и считает новое поколение с проверкой переполнения.
 Старые bitmap-ы не изменяются, поэтому владелец либо атомарно принимает
 полностью собранную пару `(generation, accounting)` и освобождает прежнюю map,
-либо при ошибке продолжает использовать прежнее поколение. Equality и ordered
-layout-ы будут последовательно переведены на этот примитив следующими срезами;
-до такого перевода их legacy rebuild остаётся действующим.
+либо при ошибке продолжает использовать прежнее поколение. Primitive является
+общей build-only границей для последующей миграции equality и ordered
+layout-ов. На шаге 2 повторно проверены его независимость поколения, слияние
+коллизий и checked accounting; перенос equality rebucket остаётся scope шага
+3, а numeric regrid и comparator coarsening — шага 4. До соответствующих
+performance gates их специализированные rebuild-пути остаются действующими.
 
 Для equality диапазоном класса служит вложенный интервал полного hash-space.
 Лестница сохраняет четыре уровня на каждый двукратный диапазон bucket count:
@@ -266,6 +269,13 @@ unsigned и floating-point scalar типов при построении Lossy r
 использует её для streaming insertion и всех query-key lookup. Именованные
 scalar типы пока сохраняют comparator-backed layout: изменение их физического
 представления отклонено до отдельного production-shaped gate.
+
+Build lifecycle разделяет mutable и immutable состояния. Streaming pressure и
+все downgrade выполняются до `optimizeRule`, bitmap interning и
+`prepareRuleSearch`. Только финальный `prepareSearch` строит `orderedIndex`
+routing, block prefixes и, где требуется оператором, range blocks; входной
+iterator для этого не перечитывается. После публикации Index эти структуры
+больше не перестраиваются, а build-only adaptive wrappers уже удалены.
 
 Для ordered-оператора обозначим оболочку класса как `[lo, hi]`, а хранимую
 границу как `s`. Преобразование границы определяется записью сравнения со
