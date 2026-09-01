@@ -44,7 +44,7 @@ func TestCanonicalScalarIsStableAndTypeSeparated(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestHashScalarMatchesCanonicalFNV(t *testing.T) {
+func TestHashScalarMatchesCanonicalEncoding(t *testing.T) {
 	t.Parallel()
 
 	values := []any{
@@ -60,7 +60,13 @@ func TestHashScalarMatchesCanonicalFNV(t *testing.T) {
 		require.NoError(t, err)
 		actual, ok := hashScalar(value)
 		require.True(t, ok)
-		require.Equal(t, legacy.Sum64(), actual, "%T(%v)", value, value)
+		want := legacy.Sum64()
+		switch value.(type) {
+		case bool, string:
+		default:
+			want = avalancheEqualityHash(want)
+		}
+		require.Equal(t, want, actual, "%T(%v)", value, value)
 	}
 
 	_, ok := hashScalar(struct{}{})

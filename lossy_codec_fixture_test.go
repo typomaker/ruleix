@@ -97,6 +97,20 @@ func TestEqualityCodecUUIDCollisionDistribution(t *testing.T) {
 	require.Less(t, delta, 500)
 }
 
+func TestEqualityCodecIntegerCollisionDistribution(t *testing.T) {
+	ordinary, err := compileEqualityCodec[int64]()
+	require.NoError(t, err)
+	named, err := compileEqualityCodec[fixtureNamedInt]()
+	require.NoError(t, err)
+	ordinaryBuckets, namedBuckets := make(map[uint16]struct{}), make(map[uint16]struct{})
+	for value := range int64(10_000) {
+		ordinaryBuckets[uint16(ordinary.hash(value)>>48)] = struct{}{}
+		namedBuckets[uint16(named.hash(fixtureNamedInt(value))>>48)] = struct{}{}
+	}
+	require.Greater(t, len(ordinaryBuckets), 8_000)
+	require.Greater(t, len(namedBuckets), 8_000)
+}
+
 func TestEqualityBucketCountLadder(t *testing.T) {
 	require.Equal(t, []uint64{65536, 57344, 49152, 40960, 32768}, equalityBucketCounts(16)[:5])
 	require.Equal(t, uint64(1), equalityBucketCounts(16)[len(equalityBucketCounts(16))-1])
@@ -392,7 +406,9 @@ var codecFixtureBenchmarkResult []int
 
 // BenchmarkLossyCompiledScalarCodec compares the direct and build-compiled
 // scalar paths with the same 10,000-entry workload. Apple M1 Max, Go 1.26.0,
-// 500ms x5: Int64 185.0 ns/op, NamedInt64 185.3 ns/op; both 0 B/op, 0 allocs/op.
+// 500ms x5 after scalar avalanche mixing: Int64 45.47-46.64 ns/op,
+// NamedInt64 45.37-46.47 ns/op; both 0 B/op and 0 allocs/op. The pre-fix
+// raw-FNV baselines were 188.8-190.1 and 189.7-190.9 ns/op respectively.
 // Reproduce: go test -run '^$' -bench '^BenchmarkLossyCompiledScalarCodec$'
 // -benchmem -benchtime=500ms -count=5 .
 func BenchmarkLossyCompiledScalarCodec(b *testing.B) {

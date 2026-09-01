@@ -974,31 +974,31 @@ func hashScalar(value any) (uint64, bool) {
 		}
 		return hash, true
 	case int:
-		return fnvHashTaggedUint64(canonicalInt, uint64(int64(value))), true
+		return avalancheTaggedEqualityHash(canonicalInt, uint64(int64(value))), true
 	case int8:
-		return fnvHashTaggedUint64(canonicalInt8, uint64(value)), true
+		return avalancheTaggedEqualityHash(canonicalInt8, uint64(value)), true
 	case int16:
-		return fnvHashTaggedUint64(canonicalInt16, uint64(value)), true
+		return avalancheTaggedEqualityHash(canonicalInt16, uint64(value)), true
 	case int32:
-		return fnvHashTaggedUint64(canonicalInt32, uint64(value)), true
+		return avalancheTaggedEqualityHash(canonicalInt32, uint64(value)), true
 	case int64:
-		return fnvHashTaggedUint64(canonicalInt64, uint64(value)), true
+		return avalancheTaggedEqualityHash(canonicalInt64, uint64(value)), true
 	case uint:
-		return fnvHashTaggedUint64(canonicalUint, uint64(value)), true
+		return avalancheTaggedEqualityHash(canonicalUint, uint64(value)), true
 	case uint8:
-		return fnvHashTaggedUint64(canonicalUint8, uint64(value)), true
+		return avalancheTaggedEqualityHash(canonicalUint8, uint64(value)), true
 	case uint16:
-		return fnvHashTaggedUint64(canonicalUint16, uint64(value)), true
+		return avalancheTaggedEqualityHash(canonicalUint16, uint64(value)), true
 	case uint32:
-		return fnvHashTaggedUint64(canonicalUint32, uint64(value)), true
+		return avalancheTaggedEqualityHash(canonicalUint32, uint64(value)), true
 	case uint64:
-		return fnvHashTaggedUint64(canonicalUint64, value), true
+		return avalancheTaggedEqualityHash(canonicalUint64, value), true
 	case uintptr:
-		return fnvHashTaggedUint64(canonicalUintptr, uint64(value)), true
+		return avalancheTaggedEqualityHash(canonicalUintptr, uint64(value)), true
 	case float32:
-		return fnvHashTaggedUint64(canonicalFloat32, uint64(canonicalFloat32Bits(value))), true
+		return avalancheTaggedEqualityHash(canonicalFloat32, uint64(canonicalFloat32Bits(value))), true
 	case float64:
-		return fnvHashTaggedUint64(canonicalFloat64, canonicalFloat64Bits(value)), true
+		return avalancheTaggedEqualityHash(canonicalFloat64, canonicalFloat64Bits(value)), true
 	case [16]byte:
 		hash := fnvHashByte(fnvOffset64, 0xf0)
 		for _, item := range value {
@@ -1082,6 +1082,10 @@ func fnvHashUint64(hash, value uint64) uint64 {
 
 func fnvHashTaggedUint64(tag byte, value uint64) uint64 {
 	return fnvHashUint64(fnvHashByte(fnvOffset64, tag), value)
+}
+
+func avalancheTaggedEqualityHash(tag byte, value uint64) uint64 {
+	return avalancheEqualityHash(fnvHashTaggedUint64(tag, value))
 }
 
 func avalancheEqualityHash(hash uint64) uint64 {

@@ -100,12 +100,12 @@ func compileNamedScalarCodec[V comparable](typeOf reflect.Type) (equalityCodec[V
 	case reflect.Float32:
 		return equalityCodec[V]{hash: func(value V) uint64 {
 			bits := canonicalFloat32Bits(*(*float32)(unsafe.Pointer(&value)))
-			return fnvHashTaggedUint64(canonicalFloat32, uint64(bits))
+			return avalancheTaggedEqualityHash(canonicalFloat32, uint64(bits))
 		}}, true
 	case reflect.Float64:
 		return equalityCodec[V]{hash: func(value V) uint64 {
 			bits := canonicalFloat64Bits(*(*float64)(unsafe.Pointer(&value)))
-			return fnvHashTaggedUint64(canonicalFloat64, bits)
+			return avalancheTaggedEqualityHash(canonicalFloat64, bits)
 		}}, true
 	default:
 		return equalityCodec[V]{}, false
@@ -154,29 +154,29 @@ func compileEqualityPointerCodec(typeOf reflect.Type) (equalityPointerCodec, str
 		return pointerIntegerCodec[uintptr](canonicalUintptr), ""
 	case reflect.Float32:
 		return func(ptr unsafe.Pointer) uint64 {
-			return fnvHashTaggedUint64(canonicalFloat32, uint64(canonicalFloat32Bits(*(*float32)(ptr))))
+			return avalancheTaggedEqualityHash(canonicalFloat32, uint64(canonicalFloat32Bits(*(*float32)(ptr))))
 		}, ""
 	case reflect.Float64:
 		return func(ptr unsafe.Pointer) uint64 {
-			return fnvHashTaggedUint64(canonicalFloat64, canonicalFloat64Bits(*(*float64)(ptr)))
+			return avalancheTaggedEqualityHash(canonicalFloat64, canonicalFloat64Bits(*(*float64)(ptr)))
 		}, ""
 	case reflect.Complex64:
 		return func(ptr unsafe.Pointer) uint64 {
 			value := *(*complex64)(ptr)
 			hash := fnvHashByte(fnvOffset64, 0xe0)
 			hash = fnvHashUint64(hash, uint64(canonicalFloat32Bits(real(value))))
-			return fnvHashUint64(hash, uint64(canonicalFloat32Bits(imag(value))))
+			return avalancheEqualityHash(fnvHashUint64(hash, uint64(canonicalFloat32Bits(imag(value)))))
 		}, ""
 	case reflect.Complex128:
 		return func(ptr unsafe.Pointer) uint64 {
 			value := *(*complex128)(ptr)
 			hash := fnvHashByte(fnvOffset64, 0xe1)
 			hash = fnvHashUint64(hash, canonicalFloat64Bits(real(value)))
-			return fnvHashUint64(hash, canonicalFloat64Bits(imag(value)))
+			return avalancheEqualityHash(fnvHashUint64(hash, canonicalFloat64Bits(imag(value))))
 		}, ""
 	case reflect.Pointer, reflect.UnsafePointer, reflect.Chan:
 		return func(ptr unsafe.Pointer) uint64 {
-			return fnvHashTaggedUint64(0xe2, uint64(*(*uintptr)(ptr)))
+			return avalancheTaggedEqualityHash(0xe2, uint64(*(*uintptr)(ptr)))
 		}, ""
 	case reflect.Array:
 		if typeOf.Elem().Kind() == reflect.Uint8 {
@@ -259,7 +259,7 @@ func fnvHash8(hash uint64, bytes []byte) uint64 {
 
 func pointerIntegerCodec[I equalityInteger](tag byte) equalityPointerCodec {
 	return func(ptr unsafe.Pointer) uint64 {
-		return fnvHashTaggedUint64(tag, uint64(*(*I)(ptr)))
+		return avalancheTaggedEqualityHash(tag, uint64(*(*I)(ptr)))
 	}
 }
 
@@ -270,6 +270,6 @@ type equalityInteger interface {
 
 func integerEqualityCodec[V comparable, I equalityInteger](tag byte) equalityCodec[V] {
 	return equalityCodec[V]{hash: func(value V) uint64 {
-		return fnvHashTaggedUint64(tag, uint64(*(*I)(unsafe.Pointer(&value))))
+		return avalancheTaggedEqualityHash(tag, uint64(*(*I)(unsafe.Pointer(&value))))
 	}}
 }

@@ -1,5 +1,24 @@
 # Roadmap history
 
+## 2026-09-01: Lossy scalar hash distribution audit
+
+- Audited every production value-hashing path used by Lossy. Ordered,
+  `Between`, and `CompareBy` bucket by an order-preserving key or comparator and
+  do not hash values; equality is the only hashed representation.
+- Found that raw FNV scalar hashes clustered sequential integers into only 8
+  of 256 buckets and 86 of 4096 buckets. The multiply-high bucket reduction was
+  correct; its input hash did not have sufficiently mixed high bits.
+- Added the same final avalanche already used by byte/composite equality
+  codecs to integer, floating-point, complex, and pointer-like codecs, covering
+  ordinary and named types. String codecs continue to use seeded `maphash`.
+- Added a high-bit distribution regression fixture for ordinary and named
+  integers. The existing Exact-vs-Lossy differential matrix remains the
+  conservative-correctness guard.
+- On Apple M1 Max with Go 1.26.0, the focused 10,000-entry Lossy search
+  benchmark (`-benchtime=500ms -count=5`) improved from 188.8-190.1 to
+  45.47-46.64 ns/op for `int64` and from 189.7-190.9 to 45.37-46.47 ns/op for
+  named `int64`, with 0 B/op and 0 allocs/op throughout.
+
 ## 2026-09-01: Exact-vs-Lossy public rule differential matrix
 
 A single regression matrix now compares Exact results with Lossy results for
