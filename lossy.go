@@ -709,14 +709,14 @@ func (r *inspectionDetailsRule[T]) inspectionDetails() inspectionDetails { retur
 
 // compileLossyRules finds the outermost policy boundaries. Each boundary is
 // planned as one tree so nested caps participate in ancestor allocation.
-func compileLossyRules[T any](rule Rule[T]) (Rule[T], error) {
+func compileLossyRules[T any](rule Rule[T], identity bool) (Rule[T], error) {
 	switch typed := rule.(type) {
 	case *lossyRule[T]:
-		return compileLossyPolicyTree(typed)
+		return compileLossyPolicyTree(typed, identity)
 	case *allRule[T]:
 		children := make([]Rule[T], len(typed.children))
 		for i, child := range typed.children {
-			compiled, err := compileLossyRules(child)
+			compiled, err := compileLossyRules(child, identity)
 			if err != nil {
 				return nil, err
 			}
@@ -724,7 +724,7 @@ func compileLossyRules[T any](rule Rule[T]) (Rule[T], error) {
 		}
 		return &allRule[T]{children: children}, nil
 	case *inspectRule[T]:
-		child, err := compileLossyRules(typed.child)
+		child, err := compileLossyRules(typed.child, identity)
 		if err != nil {
 			return nil, err
 		}
@@ -754,7 +754,7 @@ type lossyPolicyPlan[T any] struct {
 	path       string
 }
 
-func compileLossyPolicyTree[T any](rule *lossyRule[T]) (Rule[T], error) {
+func compileLossyPolicyTree[T any](rule *lossyRule[T], identity bool) (Rule[T], error) {
 	leaves := make([]lossyAllLeaf[T], 0, 8)
 	root, err := analyzeLossyPolicy(rule, "Lossy", &leaves)
 	if err != nil {
@@ -763,12 +763,38 @@ func compileLossyPolicyTree[T any](rule *lossyRule[T]) (Rule[T], error) {
 	for i := range leaves {
 		leaves[i].compiled = leaves[i].ladder[0].compiled
 	}
-	if err := enforceLossyPolicyCaps(root, leaves); err != nil {
-		return nil, err
+	if !identity {
+		if err := enforceLossyPolicyCaps(root, leaves); err != nil {
+			return nil, err
+		}
 	}
 	assignEffectiveLossyPolicyLimits(root, leaves, nil)
 	compiled, _, err := materializeLossyPolicy(root, leaves)
+	if err == nil && identity {
+		compiled = clearIdentityLossyLimits(compiled)
+	}
 	return compiled, err
+}
+
+// clearIdentityLossyLimits prevents final streaming refresh from enforcing a
+// cap that the internal identity control intentionally does not represent.
+func clearIdentityLossyLimits[T any](rule Rule[T]) Rule[T] {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		children := make([]Rule[T], len(typed.children))
+		for i, child := range typed.children {
+			children[i] = clearIdentityLossyLimits(child)
+		}
+		return &allRule[T]{children: children}
+	case *inspectRule[T]:
+		return &inspectRule[T]{dst: typed.dst, child: clearIdentityLossyLimits(typed.child)}
+	case *inspectionDetailsRule[T]:
+		details := typed.details
+		details.MemoryLimitBytes, details.MemoryLimitAvailable = 0, false
+		return &inspectionDetailsRule[T]{child: clearIdentityLossyLimits(typed.child), details: details}
+	default:
+		return rule
+	}
 }
 
 type lossyAncestorLimit struct {

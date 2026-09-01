@@ -93,7 +93,11 @@ func buildIndex[C any, ID comparable](
 type buildOptions struct {
 	compilePhysicalAliases bool
 	enableStreaming        bool
-	observeWorkingUsage    func(usage, target uint64)
+	// identityLossy selects the exact-key head of every Lossy representation
+	// ladder after normal policy analysis. It is a test/benchmark control, not
+	// a public memory-limit mode.
+	identityLossy       bool
+	observeWorkingUsage func(usage, target uint64)
 }
 
 //nolint:gocognit // The build pipeline is intentionally kept in one linear ownership scope.
@@ -138,7 +142,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		}
 		state.insert(constraint, internalID)
 		entryIndex++
-		if options.enableStreaming && entryIndex%lossyBuildPressureInterval == 0 {
+		if options.enableStreaming && !options.identityLossy && entryIndex%lossyBuildPressureInterval == 0 {
 			var usage, target uint64
 			var hasTarget bool
 			if streaming {
@@ -159,7 +163,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 					fitStreamingPolicies(state)
 				} else {
 					var err error
-					state, err = compileLossyRules(state)
+					state, err = compileLossyRules(state, false)
 					if err != nil {
 						buildErr = err
 						return false
@@ -185,7 +189,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	}
 	ix := &Index[C, ID]{root: state, values: values, pool: newBitmapPool()}
 	var err error
-	ix.root, err = compileLossyRules(ix.root)
+	ix.root, err = compileLossyRules(ix.root, options.identityLossy)
 	if err != nil {
 		return nil, buildStatistics{}, err
 	}

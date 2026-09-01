@@ -1,5 +1,30 @@
 # Roadmap history
 
+## 2026-09-01: identity quantizer control
+
+An internal build control now runs every public Lossy-supported rule through
+the ordinary policy analyzer and selects the exact-key head of each
+representation ladder. It intentionally bypasses streaming pressure and the
+hard retained limit: this is a test and benchmark control for migration to a
+shared physical index, not a public Lossy configuration.
+
+The differential fixture covers `Include`, all four ordered boundary rules,
+`Between`, every `CompareBy` operator, and `All`. Exact and identity builds
+return identical ordered IDs for `Index.Search`, cold Local search, and
+repeated warm Local search, including missing values, strict boundaries, late
+range extrema, and duplicate external IDs. Ordinary Lossy continues to use
+the same planner and streaming limit enforcement. The ordinary suite and race
+suite pass. Diff coverage of changed production statements is 97.4% (38/39)
+in `/tmp/ruleix-identity-quantizer.cover`.
+
+Reproduce with:
+
+```sh
+go test -run 'Test(IdentityLossy|LossyExact)DifferentialEverySupportedRule' .
+go test ./...
+go test -race ./...
+```
+
 ## 2026-09-01: nested equality precision ladder
 
 The four equality precision levels per power-of-two interval now form a strict

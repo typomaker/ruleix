@@ -24,8 +24,6 @@ quantizer; postings одинаковых новых ключей объедин�
 
 ### 1. Зафиксировать семантику ключей и baseline
 
-- Добавить контрольный режим `identity quantizer`, который проходит общий
-  lossy pipeline, но возвращает те же ключи и результаты, что exact.
 - Зафиксировать текущие Exact, Lossy 50% и identity-lossy показатели для
   build time, accounted retained memory, `Index.Search`, warm `Local.Search`,
   allocations и candidate count.

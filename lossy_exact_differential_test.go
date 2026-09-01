@@ -153,3 +153,65 @@ func TestLossyExactDifferentialEverySupportedRule(t *testing.T) {
 		})
 	}
 }
+
+// TestIdentityLossyDifferentialEverySupportedRule proves that the control
+// quantizer traverses Lossy policy analysis while retaining exact keys.
+func TestIdentityLossyDifferentialEverySupportedRule(t *testing.T) {
+	constraints, ids := lossyDifferentialData()
+	for i := range ids {
+		ids[i] /= 2 // constraints deliberately share external IDs
+	}
+	queries := lossyDifferentialQueries()
+	name := func(v lossyDifferentialConstraint) (string, bool) { return v.name, v.namePresent }
+	value := func(v lossyDifferentialConstraint) (int, bool) { return v.value, v.valuePresent }
+	from := func(v lossyDifferentialConstraint) (int, bool) { return v.from, v.fromPresent }
+	until := func(v lossyDifferentialConstraint) (int, bool) { return v.until, v.untilPresent }
+	operator := func(v lossyDifferentialConstraint) (Operator, bool) {
+		return v.operator, v.operatorPresent
+	}
+	tests := []struct {
+		name  string
+		build func() Rule[lossyDifferentialConstraint]
+	}{
+		{"Include", func() Rule[lossyDifferentialConstraint] { return Include(name) }},
+		{"Greater", func() Rule[lossyDifferentialConstraint] { return Greater(value, cmp.Compare[int]) }},
+		{"GreaterOrEqual", func() Rule[lossyDifferentialConstraint] { return GreaterOrEqual(value, cmp.Compare[int]) }},
+		{"Less", func() Rule[lossyDifferentialConstraint] { return Less(value, cmp.Compare[int]) }},
+		{"LessOrEqual", func() Rule[lossyDifferentialConstraint] { return LessOrEqual(value, cmp.Compare[int]) }},
+		{"Between", func() Rule[lossyDifferentialConstraint] { return Between(from, until, cmp.Compare[int]) }},
+		{"CompareBy", func() Rule[lossyDifferentialConstraint] {
+			return CompareBy(value, operator, cmp.Compare[int])
+		}},
+		{"All", func() Rule[lossyDifferentialConstraint] {
+			var inspector Inspector
+			return All(Inspect(&inspector, Include(name)), GreaterOrEqual(value, cmp.Compare[int]), Between(from, until, cmp.Compare[int]))
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			exact, err := New[lossyDifferentialConstraint, int](test.build()).Build(Zip(constraints, ids))
+			require.NoError(t, err)
+			var inspector Inspector
+			identity, _, err := buildIndexPhysicalAliases(
+				Inspect(&inspector, Lossy(test.build(), MemoryLimit(1))), Zip(constraints, ids), false, nil,
+				buildOptions{compilePhysicalAliases: true, enableStreaming: true, identityLossy: true},
+			)
+			require.NoError(t, err)
+			exactLocal, identityLocal := exact.Local(), identity.Local()
+			defer exactLocal.Close()
+			defer identityLocal.Close()
+			for queryIndex, query := range queries {
+				var want, got []int
+				exact.Search(query, &want)
+				identity.Search(query, &got)
+				require.Equalf(t, want, got, "Index.Search query %d", queryIndex)
+				for pass := range 3 {
+					want, got = want[:0], got[:0]
+					exactLocal.Search(query, &want)
+					identityLocal.Search(query, &got)
+					require.Equalf(t, want, got, "Local.Search query %d pass %d", queryIndex, pass)
+				}
+			}
+		})
+	}
+}

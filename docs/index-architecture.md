@@ -213,7 +213,10 @@ exact equality, хотя postings внутри индекса адресуютс
 
 `quantized key` — идентификатор класса exact keys плюс представимый диапазон
 этого класса. Identity-quantizer возвращает одноэлементный класс исходного
-exact key. Lossy-quantizer может только объединять классы. Posting нового
+exact key. Внутренний контрольный build-режим уже проводит поддерживаемые
+Lossy-правила через policy analyzer и выбирает exact-key вершину их
+representation ladder; это не публичный способ обойти `MemoryLimit`.
+Lossy-quantizer может только объединять классы. Posting нового
 класса равен объединению postings всех входящих классов; разделять posting или
 восстанавливать отброшенное исходное значение запрещено.
 
