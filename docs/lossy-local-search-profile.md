@@ -1,5 +1,50 @@
 # Exact и Lossy `Local.Search`: CPU-профиль
 
+## Current output-amplification diagnosis
+
+Повторное измерение выполнено 2026-09-01 на Apple M1 Max, Go 1.26.0,
+`GOMAXPROCS=1`, revision `c86ab8a`. Сопоставимые 20-second CPU profiles
+production fixture из 38 098 constraints дали 231.1 ns/op для Exact и
+255.7 ns/op для Lossy с бюджетом 377 122 bytes:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeSearch/Local$' \
+  -benchtime=20s -count=1 -cpuprofile=/tmp/ruleix-exact-current.cpu .
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeLossySearch/Local$' \
+  -benchtime=20s -count=1 -cpuprofile=/tmp/ruleix-lossy-current.cpu .
+go tool pprof -top -nodecount=35 /tmp/ruleix-exact-current.cpu
+go tool pprof -top -nodecount=35 /tmp/ruleix-lossy-current.cpu
+go tool pprof -list='searchAllMatches' /tmp/ruleix-exact-current.cpu
+go tool pprof -list='searchAllMatches' /tmp/ruleix-lossy-current.cpu
+```
+
+Построчный профиль локализует текущую дельту в materialization результата,
+а не в поиске или проверке ключей. Строка
+`result = append(result, values[id])` получила 2.28 seconds Exact samples на
+100,000,000 операций, то есть 22.8 ns/op, и 4.83 seconds Lossy samples на
+94,787,914 операций, то есть 51.0 ns/op. Разница 28.2 ns/op полностью покрывает
+наблюдаемые 24.6 ns/op с точностью 10 ms CPU sampling. Собственная cumulative
+стоимость `loadLocalQueryResult`, нормированная на число операций, составила
+159.2 ns/op Exact и 156.2 ns/op Lossy; следовательно, matcher path не является
+причиной текущей деградации.
+
+Focused diagnostic на тех же двух запросах показал 45 Exact matches и 80 Lossy
+candidates для каждого запроса, то есть 1.78x candidate amplification. Lossy
+копирует в destination на 35 дополнительных `[16]byte` ID. Это ожидаемая цена
+разрешённых false positives при текущем memory budget, а не дополнительная
+ветка или allocation regression: оба пути остаются на 0 B/op и 0 allocs/op.
+Устранить эту дельту одной оптимизацией cache-hit кода нельзя без уменьшения
+candidate amplification, изменения публичного результата либо переноса
+валидации false positives в библиотеку. Последние два варианта меняют контракт
+или состав работы и не являются эквивалентной search-оптимизацией.
+
+Диагностический тест candidate counts был временным и удалён после измерения;
+production и benchmark code не менялись. Результаты корректности по-прежнему
+проверены `TestProductionShapeLossyNeverDropsExactMatches` и
+`TestLossyExactDifferentialEverySupportedRule`.
+
 ## Контекст
 
 Измерение выполнено 2026-09-01 на Apple M1 Max, Go 1.26.0,
