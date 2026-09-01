@@ -55,3 +55,28 @@ the full logical case space is not covered. The highest-value additions are:
 Inverted intervals require a contract decision before a test can be written:
 either reject them during build/search validation or document their current
 comparison-derived behavior.
+
+## Risk assessment
+
+The 84.5% statement result leaves two different kinds of uncovered code. Many
+0% methods are sealed-interface stubs or pre-compilation placeholders and are
+not evidence of a missing public runtime scenario. They should not be treated
+as critical merely because their function percentage is zero.
+
+The current high-priority gaps are the untested documented `CompareBy` missing-
+operator validation branch and the one-sided missing-query behavior of
+`Between`. Both sit directly on public input semantics and can change accepted
+or returned results.
+
+The coverage report also shows active wide-`All` helpers
+`materializeRankedAfterFirst` and `appendBitmapAllMatches` at 0%. These helpers
+are reachable from the production search implementation, so this is a
+high-priority path-coverage warning even though the existing differential and
+shadow tests provide indirect result-level protection. A focused test should
+prove that the public search setup actually selects each helper path and
+compare its result with a scanning oracle.
+
+The zero-child `All()` contract, zero-value-versus-absent tables, inverted
+interval policy, and extending the central differential matrix to `Exclude`
+are medium-priority completeness gaps. No currently observed failing valid-
+logic case establishes a release-blocking correctness defect.
