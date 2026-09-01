@@ -2,11 +2,10 @@
 
 This file is the active implementation plan. A fully completed step remains
 marked here with its completion date and a concise result summary until every
-step in its milestone is complete. The completed milestone is then moved to a
-dated file under [`docs/archive/`](docs/archive/) and replaced here by a short
-link to that archive. Release-facing behavior belongs in
-[`CHANGELOG.md`](CHANGELOG.md). Partial work must not be marked as a completed
-step.
+step in its milestone is complete. Roadmap history is not stored in separate
+files: Git preserves the committed pre-cleanup state. Release-facing behavior
+belongs in [`CHANGELOG.md`](CHANGELOG.md). Partial work must not be marked as a
+completed step.
 
 ## Формат шага
 
@@ -28,21 +27,21 @@ Gate: проверяемые критерии завершения и обяза
 Для статусов `запланирован` и `в работе` строка `Результат` не добавляется.
 Статус `завершён` разрешён только после выполнения всего scope и Gate; дата
 указывается в формате ISO `YYYY-MM-DD`, а `Результат` обязателен. Подробные
-замеры, эксперименты и доказательства остаются в канонических документах и
-после завершения включаются в соответствующий milestone archive.
+замеры, эксперименты и доказательства остаются в соответствующих канонических
+документах.
 
-## Архивация milestone
+## Завершение milestone и очистка roadmap
 
-Когда все шаги milestone имеют статус `завершён`, весь milestone — цель,
-полный список шагов, даты, итоговые сводки и Gate — переносится из активного
-плана в `docs/archive/YYYY-MM-DD-short-milestone-name.md`. Дата в имени файла —
-дата завершения milestone; короткое имя записывается в lowercase kebab-case.
-В `ROADMAP.md` вместо перенесённого содержимого остаются только название,
-дата завершения, общая итоговая сводка и относительная ссылка на архив.
+Когда все шаги milestone имеют статус `завершён`, сначала создаётся отдельный
+коммит, в котором `ROADMAP.md` ещё содержит полный milestone: цель, все шаги,
+даты, результаты и пройденные Gate. Этот коммит является исторической точкой
+перед очисткой и должен успешно пройти применимые проверки.
 
-Архив создаётся в том же финальном коммите, который завершает последний шаг.
-До завершения всех шагов milestone переносить его или отдельные шаги в архив
-нельзя.
+Только после этого milestone удаляется из `ROADMAP.md`, а следующий roadmap
+добавляется или переводится в активное состояние. Активация очищенного roadmap
+фиксируется вторым отдельным коммитом. Файлы истории roadmap и архивные копии
+milestone не создаются: для восстановления используется Git. Нельзя объединять
+pre-cleanup snapshot и post-activation cleanup в один коммит.
 
 ## Общие exact/lossy-индексы
 

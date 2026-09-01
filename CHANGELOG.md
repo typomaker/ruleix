@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Roadmap history is now preserved exclusively by two Git boundaries: a
+  pre-cleanup commit containing the fully completed milestone and a separate
+  post-activation commit containing the cleaned next roadmap. The standalone
+  roadmap-history file and milestone archive directory were removed.
 - Lossy builds now compile a selective representation while consuming the
   one-pass input once accounted exact state exceeds a private 125% pressure
   target. Equality and ordered/composite leaves insert the remaining values

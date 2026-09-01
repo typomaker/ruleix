@@ -22,18 +22,16 @@ updated only when a new canonical entry point is required.
 - Keep every roadmap step in the canonical format defined by `ROADMAP.md`.
   When a step is fully completed, mark it with its completion date and a concise
   result summary. The summary must state the delivered outcome and the relevant
-  gates that passed, while detailed evidence remains in the canonical documents
-  and `ROADMAP_HISTORY.md`. Do not mark a partially implemented step as
-  complete; intermediate commits or completed subparts may be recorded in
-  history without changing the step's status.
-- When every step in a roadmap milestone is complete, move the entire milestone
-  from `ROADMAP.md` to `docs/archive/YYYY-MM-DD-short-milestone-name.md` in the
-  same commit that completes its final step. Preserve the milestone goal, all
-  steps, completion dates, result summaries, and gates in the archive. Leave
-  only the milestone title, completion date, concise overall result, and a
-  relative archive link in the active roadmap. Use the milestone completion
-  date and a lowercase kebab-case short name in the filename; never archive a
-  milestone or any of its steps before the whole milestone is complete.
+  gates that passed, while detailed evidence remains in the relevant canonical
+  documents. Do not mark a partially implemented step as complete.
+- When every step in a roadmap milestone is complete, first create a dedicated
+  pre-cleanup commit in which `ROADMAP.md` still contains the complete milestone
+  goal, steps, completion dates, result summaries, and passed gates. Only after
+  that commit may the completed milestone be removed and the next roadmap be
+  added or activated. Record the cleaned and activated roadmap in a second,
+  separate post-activation commit. Never combine these two states in one commit.
+  Do not create roadmap-history or milestone-archive files; Git history is the
+  sole archive for removed roadmap content.
 - Before committing, run the appropriate checks and `git diff --check`.
 - Changed production code must have at least 90% test coverage. Measure coverage
   over the executable lines added or modified by the task (diff coverage), not
