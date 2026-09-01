@@ -6,6 +6,15 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-01: удалена полная lossy selection matrix
+
+`BenchmarkLossySelectionMatrix` удалён: один запуск разворачивал 120 дорогих
+build-сценариев на 10 000 записей, дублируя уже зафиксированное решение о
+селективном понижении листьев и существенно замедляя общий benchmark suite.
+Исторические результаты остаются в этом документе и Git. Актуальные свойства
+планировщика продолжают проверять focused lossy benchmarks, production-shaped
+gates и correctness-тесты exact-superset/streaming rebucketing.
+
 ## 2026-09-01: общий ordered layout принят для standalone operators
 
 Принят build-only quantized wrapper над общим `orderedRule`/`orderedIndex`.
