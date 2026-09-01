@@ -80,3 +80,35 @@ go test -run '^(TestProductionShapeLossyNeverDropsExactMatches|TestLossyExactDif
 ```
 
 Оба теста прошли.
+
+## Comparator experiments
+
+Повторная проверка выполнена 2026-09-01 на Apple M1 Max, Go 1.26.0,
+`GOMAXPROCS=1`, от parent revision `ea57e7f`. Для каждой точки использовался
+production benchmark с 38 098 constraints, Lossy budget 377 122 bytes, 80
+candidates/query, `-benchtime=1s`; baseline и финальный кандидат измерялись по
+10 запусков:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeLossySearch/Local$' \
+  -benchmem -benchtime=1s -count=10 .
+```
+
+| Вариант | Медиана | B/op | allocs/op | Retained accounting | Итог |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Parent | 261.2 ns/op | 0 | 0 | 377 122 bytes | Baseline |
+| `lossyCompareByRule`: прямой `r.compare` | 253.0 ns/op | 0 | 0 | 377 122 bytes | Принят, −3.1% |
+| Плюс единый comparator в `lossyBetweenRule` | 252.35 ns/op | 0 | 0 | 377 122 bytes budget; +8 bytes на representation | Отклонён |
+
+Прямое чтение уже подготовленного `lossyCompareByRule.compare` устраняет
+линейный просмотр пяти operator slots на каждом попадании в Local result cache.
+Финальная серия воспроизвела улучшение без смены allocation class или Lossy
+budget.
+
+Prepared comparator для `lossyBetweenRule` не дал измеримого end-to-end
+выигрыша относительно первого кандидата: 252.35 против 252.4 ns/op в
+последовательных промежуточных сериях, то есть разница меньше шума. Поле при
+этом увеличивало каждое представление на 8 bytes; accounting был временно
+изменён с 48 на 56 bytes. Эксперимент удалён, поэтому `Between` по-прежнему
+использует comparator уже подготовленных `from` и `until` buckets.

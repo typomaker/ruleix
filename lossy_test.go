@@ -352,6 +352,22 @@ func TestLossyEqualityLocalQueryKeyIsCollisionSafe(t *testing.T) {
 	require.False(t, provider.localQueryKeyMatches(query, "customer-7"))
 }
 
+func TestLossyCompareByLocalQueryKeyUsesPreparedComparator(t *testing.T) {
+	rule := &lossyCompareByRule[lossyScalarConstraint[int], int]{
+		value:   func(v lossyScalarConstraint[int]) (int, bool) { return v.value, v.present },
+		compare: cmp.Compare[int],
+	}
+	var provider localQueryKeyProvider[lossyScalarConstraint[int]] = rule
+	query := lossyScalarConstraint[int]{value: 7, present: true}
+	key, retained := provider.localQueryKey(query)
+
+	require.Positive(t, retained)
+	require.True(t, provider.localQueryKeyMatches(query, key))
+	require.False(t, provider.localQueryKeyMatches(lossyScalarConstraint[int]{value: 8, present: true}, key))
+	require.False(t, provider.localQueryKeyMatches(lossyScalarConstraint[int]{}, key))
+	require.False(t, provider.localQueryKeyMatches(query, "7"))
+}
+
 type unknownEstimateRule[T any] struct{ child Rule[T] }
 
 func (*unknownEstimateRule[T]) rule() {}

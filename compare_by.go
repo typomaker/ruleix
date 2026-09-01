@@ -206,16 +206,7 @@ func (r *lossyCompareByRule[T, V]) localQueryKeyMatches(v T, key any) bool {
 		return false
 	}
 	value, hasValue := r.value(v)
-	compare := r.firstComparator()
-	return want.hasValue == hasValue && (!hasValue || compare(want.value, value) == 0)
-}
-func (r *lossyCompareByRule[T, V]) firstComparator() Compare[V] {
-	for operator := range r.indexes {
-		if r.present[operator] {
-			return r.indexes[operator].compare
-		}
-	}
-	return func(V, V) int { return 0 }
+	return want.hasValue == hasValue && (!hasValue || r.compare(want.value, value) == 0)
 }
 func compareByLossyRange[V any](
 	index *lossyComparedBuckets[V],
