@@ -1,5 +1,15 @@
 # Roadmap history
 
+## 2026-09-01: outward rounding contract for ordered keys
+
+The shared-key architecture now defines outward transformation for every
+ordered predicate. `Greater`/`GT` and their inclusive variants use the class
+lower bound; `Less`/`LT` and their inclusive variants use the upper bound;
+`CompareBy(EQ)` admits the complete class. `Between` lowers its stored `from`
+and raises its stored `until`. Strictness, missing-value behavior, and the
+exact-result-implies-quantized-result invariant are explicit, including their
+preservation across repeated adjacent-class merges.
+
 ## 2026-09-01: contracts for shared exact and quantized keys
 
 The first slice of the shared exact/lossy roadmap defines the target internal
