@@ -127,9 +127,12 @@ fits and whose result is a superset of the exact result. `Lossy` therefore
 never forces approximation and does not promise that every positive budget is
 usable.
 
-Build planning is one-pass streaming. At fixed 4096-entry checkpoints, exact
-accounting above the private saturating target `MemoryLimit + MemoryLimit/4`
-irreversibly compiles the current selective plan. The compiled equality,
+Build planning is one-pass streaming. At every fixed 4096-entry checkpoint,
+live exact and lossy accounting above the private saturating target
+`MemoryLimit + MemoryLimit/4` advances the candidate whose next representation
+releases the most accounted bytes. Checkpoints continue after the first
+selective compilation: exact leaves remain eligible for their first downgrade,
+and lossy leaves remain eligible for later ladder levels. The compiled equality,
 numeric ordered, comparator ordered, `Between`, and `CompareBy` leaves accept
 subsequent values directly. This replaces the rejected universal-tail
 prototype: no additional node or bitmap union is added to published search.
@@ -140,7 +143,8 @@ populated adjacent pair when their configured capacity is reached. Equality
 hash intervals and final aggregate pressure are likewise coarsened in discrete
 steps. A one-bucket representation is only the terminal ladder level, not the
 response to the first out-of-range value. All rebucketing remains build-only.
-The final accounting pass fails rather than publish an index above the hard
+Temporary adaptive holders are removed before publication and add no search
+node or operation. The final accounting pass fails rather than publish an index above the hard
 retained `MemoryLimit`. The target bounds
 Ruleix-accounted build state opportunistically; neither it nor `MemoryLimit`
 is a Go heap or RSS guarantee.

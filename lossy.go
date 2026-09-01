@@ -180,6 +180,171 @@ type streamingDetailsProvider interface {
 }
 
 type streamingLimitFitter interface{ fitStreamingLimit(uint64) }
+type streamingStepFitter interface{ fitStreamingNext() }
+type streamingFitAvailability interface{ canFitStreaming() bool }
+type streamingNextUsageProvider interface{ nextStreamingUsage() (uint64, bool) }
+type streamingNextPreparer interface{ prepareStreamingNext() (uint64, func(), bool) }
+
+// streamingAdaptiveLeaf keeps an exact leaf mutable until aggregate pressure
+// actually selects it. Once selected, the same holder keeps forwarding later
+// inserts into the compiled lossy accumulator, so subsequent checkpoints can
+// advance it through the remaining representation levels.
+type streamingAdaptiveLeaf[T any] struct {
+	child                          Rule[T]
+	nextUsage                      uint64
+	nextUsagePrepared, nextUsageOK bool
+	nextApply                      func()
+}
+
+func (*streamingAdaptiveLeaf[T]) rule()                                                 {}
+func (r *streamingAdaptiveLeaf[T]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
+func (r *streamingAdaptiveLeaf[T]) validate(v T) error                                  { return r.child.validate(v) }
+func (r *streamingAdaptiveLeaf[T]) insert(v T, id uint32) {
+	r.nextUsagePrepared, r.nextApply = false, nil
+	r.child.insert(v, id)
+}
+func (r *streamingAdaptiveLeaf[T]) cardinality(v T, p *bitmapPool) uint64 {
+	return r.child.cardinality(v, p)
+}
+func (r *streamingAdaptiveLeaf[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	r.child.search(v, dst, p)
+}
+func (r *streamingAdaptiveLeaf[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
+	r.child.exclude(v, dst, p)
+}
+func (r *streamingAdaptiveLeaf[T]) collectBuildStatistics(s []nodeBuildStatistics) {
+	r.child.collectBuildStatistics(s)
+}
+func (r *streamingAdaptiveLeaf[T]) inspectionMode() RuleMode   { return inspectionModeOf(r.child) }
+func (r *streamingAdaptiveLeaf[T]) inspectionStrategy() string { return inspectionStrategyOf(r.child) }
+func (r *streamingAdaptiveLeaf[T]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	return refreshedStreamingRuleDetails(r.child, details)
+}
+func (r *streamingAdaptiveLeaf[T]) canFitStreaming() bool {
+	_, ok := r.nextStreamingUsage()
+	return ok
+}
+func (r *streamingAdaptiveLeaf[T]) nextStreamingUsage() (uint64, bool) {
+	if r.nextUsagePrepared {
+		return r.nextUsage, r.nextUsageOK
+	}
+	r.nextUsagePrepared = true
+	if factory, ok := r.child.(lossyAllCompiler[T]); ok {
+		ladder, err := factory.newLossyAllPlanner().representationLadder()
+		if err != nil || len(ladder) < 2 {
+			r.nextUsageOK = false
+			return 0, false
+		}
+		r.nextUsage, r.nextUsageOK = ladder[1].details.MemoryUsageBytes, true
+		next := ladder[1].compiled
+		r.nextApply = func() { r.child = next }
+		return r.nextUsage, true
+	}
+	if preparer, ok := streamingRuleNextPreparer(r.child); ok {
+		r.nextUsage, r.nextApply, r.nextUsageOK = preparer.prepareStreamingNext()
+	} else {
+		r.nextUsage, r.nextUsageOK = nextStreamingRuleUsage(r.child)
+	}
+	return r.nextUsage, r.nextUsageOK
+}
+func (r *streamingAdaptiveLeaf[T]) fitStreamingLimit(limit uint64) {
+	r.nextUsagePrepared, r.nextApply = false, nil
+	if factory, ok := r.child.(lossyAllCompiler[T]); ok {
+		planner := factory.newLossyAllPlanner()
+		compiled, err := planner.compile(limit)
+		if err == nil {
+			r.child = compiled
+		}
+		return
+	}
+	fitStreamingRule(r.child, limit)
+}
+func (r *streamingAdaptiveLeaf[T]) fitStreamingNext() {
+	if r.nextUsagePrepared && r.nextUsageOK && r.nextApply != nil {
+		apply := r.nextApply
+		r.nextUsagePrepared, r.nextApply = false, nil
+		apply()
+		return
+	}
+	r.nextUsagePrepared = false
+	if factory, ok := r.child.(lossyAllCompiler[T]); ok {
+		ladder, err := factory.newLossyAllPlanner().representationLadder()
+		if err == nil && len(ladder) > 1 {
+			r.child = ladder[1].compiled
+		}
+		return
+	}
+	fitStreamingRuleNext(r.child)
+}
+
+func streamingRuleNextPreparer[T any](rule Rule[T]) (streamingNextPreparer, bool) {
+	switch typed := rule.(type) {
+	case *inspectionDetailsRule[T]:
+		return streamingRuleNextPreparer(typed.child)
+	case *streamingAdaptiveLeaf[T]:
+		return streamingRuleNextPreparer(typed.child)
+	default:
+		preparer, ok := any(rule).(streamingNextPreparer)
+		return preparer, ok
+	}
+}
+
+func refreshedStreamingRuleDetails[T any](rule Rule[T], fallback inspectionDetails) inspectionDetails {
+	switch typed := rule.(type) {
+	case *inspectionDetailsRule[T]:
+		return refreshedStreamingRuleDetails(typed.child, typed.details)
+	case *streamingAdaptiveLeaf[T]:
+		return typed.refreshedStreamingDetails(fallback)
+	default:
+		if provider, ok := any(rule).(streamingDetailsProvider); ok {
+			return provider.refreshedStreamingDetails(fallback)
+		}
+		if details := inspectionDetailsOf(rule); details.MemoryUsageAvailable {
+			return details
+		}
+		return fallback
+	}
+}
+
+func streamingRuleCanFit[T any](rule Rule[T]) bool {
+	switch typed := rule.(type) {
+	case *inspectionDetailsRule[T]:
+		return streamingRuleCanFit(typed.child)
+	case *streamingAdaptiveLeaf[T]:
+		return typed.canFitStreaming()
+	default:
+		available, ok := any(rule).(streamingFitAvailability)
+		return ok && available.canFitStreaming()
+	}
+}
+
+func nextStreamingRuleUsage[T any](rule Rule[T]) (uint64, bool) {
+	switch typed := rule.(type) {
+	case *inspectionDetailsRule[T]:
+		return nextStreamingRuleUsage(typed.child)
+	case *streamingAdaptiveLeaf[T]:
+		return typed.nextStreamingUsage()
+	default:
+		provider, ok := any(rule).(streamingNextUsageProvider)
+		if !ok {
+			return 0, false
+		}
+		return provider.nextStreamingUsage()
+	}
+}
+
+func fitStreamingRuleNext[T any](rule Rule[T]) {
+	switch typed := rule.(type) {
+	case *inspectionDetailsRule[T]:
+		fitStreamingRuleNext(typed.child)
+	case *streamingAdaptiveLeaf[T]:
+		typed.fitStreamingNext()
+	default:
+		if stepper, ok := any(rule).(streamingStepFitter); ok {
+			stepper.fitStreamingNext()
+		}
+	}
+}
 
 func fitStreamingRule[T any](rule Rule[T], limit uint64) {
 	switch typed := rule.(type) {
@@ -200,7 +365,9 @@ func fitStreamingRule[T any](rule Rule[T], limit uint64) {
 
 type streamingFitCandidate struct {
 	fitter      streamingLimitFitter
+	stepper     streamingStepFitter
 	usage       uint64
+	released    uint64
 	granularity uint64
 }
 
@@ -223,9 +390,19 @@ func collectStreamingFitCandidates[T any](rule Rule[T], candidates *[]streamingF
 		}
 		details := provider.refreshedStreamingDetails(inspectionDetailsOf(rule))
 		if fitter, ok := any(rule).(streamingLimitFitter); ok &&
-			details.GranularityAvailable && details.GranularityValue > 1 {
+			((details.GranularityAvailable && details.GranularityValue > 1) || streamingRuleCanFit(rule)) {
+			next, available := nextStreamingRuleUsage(rule)
+			if !available || next == details.MemoryUsageBytes {
+				return details.MemoryUsageBytes
+			}
+			released := uint64(0)
+			if next < details.MemoryUsageBytes {
+				released = details.MemoryUsageBytes - next
+			}
+			stepper, _ := any(rule).(streamingStepFitter)
 			*candidates = append(*candidates, streamingFitCandidate{
-				fitter: fitter, usage: details.MemoryUsageBytes, granularity: details.GranularityValue,
+				fitter: fitter, stepper: stepper, usage: details.MemoryUsageBytes,
+				released: released, granularity: details.GranularityValue,
 			})
 		}
 		return details.MemoryUsageBytes
@@ -240,19 +417,84 @@ func fitStreamingAggregate[T any](rule Rule[T], limit uint64) {
 	for {
 		var candidates []streamingFitCandidate
 		usage := collectStreamingFitCandidates(rule, &candidates)
-		if usage <= limit || len(candidates) == 0 {
+		if usage <= limit {
 			return
+		}
+		if len(candidates) == 0 {
+			fitStreamingRule(rule, 0)
+			var refreshed []streamingFitCandidate
+			if collectStreamingFitCandidates(rule, &refreshed) >= usage {
+				return
+			}
+			continue
 		}
 		selected := 0
 		for i := 1; i < len(candidates); i++ {
-			if candidates[i].usage > candidates[selected].usage ||
-				(candidates[i].usage == candidates[selected].usage &&
-					candidates[i].granularity > candidates[selected].granularity) {
+			if candidates[i].released > candidates[selected].released ||
+				(candidates[i].released == candidates[selected].released &&
+					(candidates[i].usage > candidates[selected].usage ||
+						(candidates[i].usage == candidates[selected].usage &&
+							candidates[i].granularity > candidates[selected].granularity))) {
 				selected = i
 			}
 		}
 		candidate := candidates[selected]
-		candidate.fitter.fitStreamingLimit(candidate.usage - 1)
+		if candidate.stepper != nil {
+			candidate.stepper.fitStreamingNext()
+		} else {
+			candidate.fitter.fitStreamingLimit(candidate.usage - 1)
+		}
+	}
+}
+
+// lossyStreamingBuildPressure reads live accounted sizes after the first
+// compilation. Policy wrappers retain their effective hard limits, while the
+// adaptive leaves beneath them retain both exact and lossy downgrade choices.
+func lossyStreamingBuildPressure[T any](rule Rule[T]) (usage, target uint64, available bool) {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		for _, child := range typed.children {
+			childUsage, childTarget, ok := lossyStreamingBuildPressure(child)
+			if !ok {
+				continue
+			}
+			if childUsage > childTarget {
+				return childUsage, childTarget, true
+			}
+			if !available || childTarget < target {
+				usage, target, available = childUsage, childTarget, true
+			}
+		}
+	case *inspectRule[T]:
+		return lossyStreamingBuildPressure(typed.child)
+	case *inspectionDetailsRule[T]:
+		if typed.details.MemoryLimitAvailable {
+			var candidates []streamingFitCandidate
+			return collectStreamingFitCandidates(typed.child, &candidates),
+				lossyBuildTarget(typed.details.MemoryLimitBytes), true
+		}
+		return lossyStreamingBuildPressure(typed.child)
+	}
+	return usage, target, available
+}
+
+// fitStreamingPolicies enforces descendant limits before ancestor limits.
+// Each aggregate fit repeatedly chooses the live leaf with the largest current
+// release opportunity, regardless of whether that leaf is still exact or has
+// already entered its lossy ladder.
+func fitStreamingPolicies[T any](rule Rule[T]) {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		for _, child := range typed.children {
+			fitStreamingPolicies(child)
+		}
+	case *inspectRule[T]:
+		fitStreamingPolicies(typed.child)
+	case *inspectionDetailsRule[T]:
+		fitStreamingPolicies(typed.child)
+		if typed.details.MemoryLimitAvailable {
+			fitStreamingAggregate(typed.child, typed.details.MemoryLimitBytes)
+		}
 	}
 }
 
@@ -299,9 +541,12 @@ func wrapStreamingLossyLeaves[T any](rule Rule[T]) Rule[T] {
 	case *inspectionDetailsRule[T]:
 		return &inspectionDetailsRule[T]{child: wrapStreamingLossyLeaves(typed.child), details: typed.details}
 	default:
+		if _, ok := any(rule).(lossyAllCompiler[T]); ok {
+			return &streamingAdaptiveLeaf[T]{child: rule}
+		}
 		if inspectionModeOf(rule) == RuleModeLossy {
 			if _, ok := any(rule).(streamingLossyAccumulator); ok {
-				return rule
+				return &streamingAdaptiveLeaf[T]{child: rule}
 			}
 			if provider, ok := any(rule).(streamingUniversalProvider); ok {
 				node, bits, name := provider.streamingUniversal()
@@ -374,8 +619,31 @@ func refreshStreamingLossyDetails[T any](rule Rule[T]) (Rule[T], inspectionDetai
 		details.Items += typed.tail.GetCardinality()
 		details.MemoryUsageAvailable, details.ItemsAvailable = true, true
 		return typed, details, nil
+	case *streamingAdaptiveLeaf[T]:
+		return typed, typed.refreshedStreamingDetails(inspectionDetails{}), nil
 	default:
 		return rule, inspectionDetailsOf(rule), nil
+	}
+}
+
+func unwrapStreamingAdaptiveLeaves[T any](rule Rule[T]) Rule[T] {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		children := make([]Rule[T], len(typed.children))
+		for i, child := range typed.children {
+			children[i] = unwrapStreamingAdaptiveLeaves(child)
+		}
+		return &allRule[T]{children: children}
+	case *inspectRule[T]:
+		return &inspectRule[T]{dst: typed.dst, child: unwrapStreamingAdaptiveLeaves(typed.child)}
+	case *inspectionDetailsRule[T]:
+		return &inspectionDetailsRule[T]{
+			child: unwrapStreamingAdaptiveLeaves(typed.child), details: typed.details,
+		}
+	case *streamingAdaptiveLeaf[T]:
+		return unwrapStreamingAdaptiveLeaves(typed.child)
+	default:
+		return rule
 	}
 }
 
@@ -1193,8 +1461,35 @@ func (r *lossyEqualityRule[T, V]) refreshedStreamingDetails(details inspectionDe
 }
 func (r *lossyEqualityRule[T, V]) fitStreamingLimit(limit uint64) {
 	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit && r.bucketCount > 1 {
-		r.rebucket(max(r.bucketCount/2, 1))
+		r.rebucket(nextEqualityBucketCount(r.bucketCount))
 	}
+}
+func (r *lossyEqualityRule[T, V]) fitStreamingNext() {
+	if r.bucketCount > 1 {
+		r.rebucket(nextEqualityBucketCount(r.bucketCount))
+	}
+}
+func (r *lossyEqualityRule[T, V]) nextStreamingUsage() (uint64, bool) {
+	usage, _, ok := r.prepareStreamingNext()
+	return usage, ok
+}
+func (r *lossyEqualityRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
+	if r.bucketCount <= 1 {
+		return 0, nil, false
+	}
+	clone := *r
+	clone.rebucket(nextEqualityBucketCount(clone.bucketCount))
+	usage := clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
+	return usage, func() { r.bucketCount, r.buckets = clone.bucketCount, clone.buckets }, true
+}
+
+func nextEqualityBucketCount(current uint64) uint64 {
+	for _, count := range equalityBucketCounts(lossyMaxBucketBits) {
+		if count > 0 && count < current {
+			return count
+		}
+	}
+	return 1
 }
 
 // rebucket maps each old hash interval to every overlapping interval in a
@@ -1419,6 +1714,16 @@ type lossyComparedBuckets[V any] struct {
 	buckets    []*roaring.Bitmap
 }
 
+func cloneLossyComparedBuckets[V any](source lossyComparedBuckets[V]) lossyComparedBuckets[V] {
+	clone := source
+	clone.boundaries = append([]V(nil), source.boundaries...)
+	clone.buckets = make([]*roaring.Bitmap, len(source.buckets))
+	for i, bucket := range source.buckets {
+		clone.buckets[i] = bucket.Clone()
+	}
+	return clone
+}
+
 func (r *lossyComparedBuckets[V]) insert(value V, id uint32) {
 	if len(r.buckets) == 0 {
 		r.minimum, r.maximum = value, value
@@ -1611,6 +1916,39 @@ func (r *lossyComparedOrderedRule[T, V]) fitStreamingLimit(limit uint64) {
 	r.capacity = min(max(r.capacity, 1), len(buckets.buckets))
 	r.boundaries, r.buckets = buckets.boundaries, buckets.buckets
 }
+func (r *lossyComparedOrderedRule[T, V]) fitStreamingNext() {
+	if len(r.buckets) <= 1 {
+		return
+	}
+	buckets := lossyComparedBuckets[V]{
+		compare: r.compare, minimum: r.minimum, maximum: r.maximum,
+		capacity: r.capacity, boundaries: r.boundaries, buckets: r.buckets,
+	}
+	buckets.coarsenOne()
+	r.capacity = min(max(r.capacity, 1), len(buckets.buckets))
+	r.boundaries, r.buckets = buckets.boundaries, buckets.buckets
+}
+func (r *lossyComparedOrderedRule[T, V]) nextStreamingUsage() (uint64, bool) {
+	usage, _, ok := r.prepareStreamingNext()
+	return usage, ok
+}
+func (r *lossyComparedOrderedRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
+	if len(r.buckets) <= 1 {
+		return 0, nil, false
+	}
+	clone := *r
+	buckets := cloneLossyComparedBuckets(lossyComparedBuckets[V]{
+		compare: r.compare, minimum: r.minimum, maximum: r.maximum,
+		capacity: r.capacity, boundaries: r.boundaries, buckets: r.buckets,
+	})
+	buckets.coarsenOne()
+	clone.capacity = min(max(clone.capacity, 1), len(buckets.buckets))
+	clone.boundaries, clone.buckets = buckets.boundaries, buckets.buckets
+	usage := clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
+	return usage, func() {
+		r.capacity, r.boundaries, r.buckets = clone.capacity, clone.boundaries, clone.buckets
+	}, true
+}
 func (r *lossyComparedOrderedRule[T, V]) insert(v T, id uint32) {
 	value, ok := r.get(v)
 	if !ok {
@@ -1793,6 +2131,26 @@ func (r *lossyOrderedRule[T, V]) fitStreamingLimit(limit uint64) {
 	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit && len(r.buckets) > 1 {
 		r.regrid(r.min, r.max, len(r.buckets)-1)
 	}
+}
+func (r *lossyOrderedRule[T, V]) fitStreamingNext() {
+	if len(r.buckets) > 1 {
+		r.regrid(r.min, r.max, len(r.buckets)-1)
+	}
+}
+func (r *lossyOrderedRule[T, V]) nextStreamingUsage() (uint64, bool) {
+	usage, _, ok := r.prepareStreamingNext()
+	return usage, ok
+}
+func (r *lossyOrderedRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
+	if len(r.buckets) <= 1 {
+		return 0, nil, false
+	}
+	clone := *r
+	clone.regrid(clone.min, clone.max, len(clone.buckets)-1)
+	usage := clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
+	return usage, func() {
+		r.min, r.max, r.width, r.buckets = clone.min, clone.max, clone.width, clone.buckets
+	}, true
 }
 func (r *lossyOrderedRule[T, V]) insert(v T, id uint32) {
 	value, ok := r.get(v)

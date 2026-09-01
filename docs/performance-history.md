@@ -182,9 +182,24 @@ from 894.5 to 916.8 ns/op (+2.5%). The companion quality workload returned
 exactly 1.000 candidate/query and zero observed false positives at both Exact
 and Budget50. `TestLossyExactDifferentialEverySupportedRule` and
 `TestProductionShapeLossyNeverDropsExactMatches` passed, so no false negatives
-were observed. The legacy Budget25 benchmark case did not build because the
-current streaming state cannot fit that limit; it produced no search result
-and is excluded from the comparison.
+were observed. At that checkpoint the legacy Budget25 benchmark did not build
+because the streaming state could not fit that limit, so it produced no search
+result and was excluded from the comparison. The 2026-09-01 repeated-checkpoint
+correction later made the case build successfully; the historical search
+comparison above remains unchanged.
+
+Focused correction measurement on Apple M1 Max, Go 1.26.0, one iteration:
+
+```text
+go test -run '^$' -bench '^BenchmarkLossyAllPlanning/(Children4|Children8)/Budget25$' -benchmem -benchtime=1x -count=1 .
+Children4/Budget25  402.8 ms/op  271,040,824 B/op  6,839,939 allocs/op  limit 303,144 B
+Children8/Budget25  1.736 s/op  1,120,496,104 B/op  28,200,263 allocs/op  limit 606,288 B
+```
+
+These are measured build-cost results for the formerly failing points, not a
+revision-to-revision speedup claim. Both completed within the configured hard
+retained limit; full tests, including production search compactness and exact
+superset gates, passed.
 
 Focused CPU profiles confirmed separate causes for the two production paths.
 Profiles used the same benchmarks with `-cpuprofile`, `GOMAXPROCS=1`, and a

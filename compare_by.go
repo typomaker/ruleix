@@ -141,6 +141,47 @@ func (r *lossyCompareByRule[T, V]) fitStreamingLimit(limit uint64) {
 		r.indexes[selected].capacity = min(max(r.indexes[selected].capacity, 1), len(r.indexes[selected].buckets))
 	}
 }
+func (r *lossyCompareByRule[T, V]) fitStreamingNext() {
+	selected := -1
+	for operator := range r.indexes {
+		if r.present[operator] && len(r.indexes[operator].buckets) > 1 &&
+			(selected < 0 || len(r.indexes[operator].buckets) > len(r.indexes[selected].buckets)) {
+			selected = operator
+		}
+	}
+	if selected >= 0 {
+		r.indexes[selected].coarsenOne()
+		r.indexes[selected].capacity = min(
+			max(r.indexes[selected].capacity, 1), len(r.indexes[selected].buckets),
+		)
+	}
+}
+func (r *lossyCompareByRule[T, V]) nextStreamingUsage() (uint64, bool) {
+	usage, _, ok := r.prepareStreamingNext()
+	return usage, ok
+}
+func (r *lossyCompareByRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
+	selected := -1
+	for operator := range r.indexes {
+		if r.present[operator] && len(r.indexes[operator].buckets) > 1 &&
+			(selected < 0 || len(r.indexes[operator].buckets) > len(r.indexes[selected].buckets)) {
+			selected = operator
+		}
+	}
+	if selected < 0 {
+		return 0, nil, false
+	}
+	clone := *r
+	for operator := range r.indexes {
+		clone.indexes[operator] = cloneLossyComparedBuckets(r.indexes[operator])
+	}
+	clone.indexes[selected].coarsenOne()
+	clone.indexes[selected].capacity = min(
+		max(clone.indexes[selected].capacity, 1), len(clone.indexes[selected].buckets),
+	)
+	usage := clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
+	return usage, func() { r.indexes = clone.indexes }, true
+}
 func (r *lossyCompareByRule[T, V]) insert(v T, id uint32) {
 	value, ok := r.value(v)
 	if !ok {

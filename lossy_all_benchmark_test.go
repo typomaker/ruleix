@@ -261,6 +261,9 @@ func BenchmarkLossySelectionMatrix(b *testing.B) {
 }
 
 func BenchmarkLossyAllPlanning(b *testing.B) {
+	// Latest local Budget25 result (Apple M1 Max, Go 1.26.0, 10k entries,
+	// benchtime=1x, count=1): Children4 402.8 ms/op, 271.0 MB/op and
+	// 6.84M allocs/op; Children8 1.736 s/op, 1.120 GB/op and 28.20M allocs/op.
 	constraints, ids := lossyAllBenchmarkData(lossyAllBenchmarkEntries)
 	for _, children := range []int{2, 4, 8} {
 		exactBytes := lossyAllBenchmarkExactBytes(b, constraints, ids, children)

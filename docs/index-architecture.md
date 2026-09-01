@@ -229,13 +229,18 @@ Aggregate-планирование начинает со всех exact-лист
 публикуются вместе с ними.
 
 Однопроходный `Build` вычисляет приватную мягкую цель как saturating
-`MemoryLimit + MemoryLimit/4`. На фиксированных checkpoints превышение цели
-необратимо компилирует selective lossy-представления и освобождает exact state
-пониженных листьев. Последующие equality, ordered, `Between` и `CompareBy`
+`MemoryLimit + MemoryLimit/4`. Проверка продолжается на каждом checkpoint и
+после первой компиляции. При превышении цели общий селектор сравнивает следующую
+ступень exact- и уже lossy-листьев по фактически освобождаемым accounted bytes
+и выполняет лучший шаг до возврата под cap. Exact-лист хранит build-only
+adaptive holder лишь до первого выбранного downgrade; перед публикацией holder
+удаляется, поэтому search path не получает дополнительный узел. Последующие
+equality, ordered, `Between` и `CompareBy`
 значения вставляются непосредственно в скомпилированные buckets; universal
 tail и дополнительная search-обёртка не используются. Exact-листья, которые
-aggregate planner решил сохранить, продолжают собираться как exact, поэтому
-малые поля не теряют селективность. Выход numeric-значения за prefix range
+aggregate planner решил сохранить, продолжают собираться как exact до тех пор,
+пока следующий checkpoint не выберет их по максимальному выигрышу. Выход
+numeric-значения за prefix range
 пересчитывает сетку и переносит старые postings во все пересекающиеся новые
 интервалы. Comparator-сетки добавляют крайний boundary и объединяют соседнюю
 пару; при memory pressure equality, numeric и comparator buckets огрубляются

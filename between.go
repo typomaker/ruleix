@@ -121,6 +121,36 @@ func (r *lossyBetweenRule[T, V]) fitStreamingLimit(limit uint64) {
 		}
 	}
 }
+func (r *lossyBetweenRule[T, V]) fitStreamingNext() {
+	if len(r.from.buckets) >= len(r.until.buckets) && len(r.from.buckets) > 1 {
+		r.from.coarsenOne()
+		r.from.capacity = min(max(r.from.capacity, 1), len(r.from.buckets))
+	} else if len(r.until.buckets) > 1 {
+		r.until.coarsenOne()
+		r.until.capacity = min(max(r.until.capacity, 1), len(r.until.buckets))
+	}
+}
+func (r *lossyBetweenRule[T, V]) nextStreamingUsage() (uint64, bool) {
+	usage, _, ok := r.prepareStreamingNext()
+	return usage, ok
+}
+func (r *lossyBetweenRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
+	if len(r.from.buckets) <= 1 && len(r.until.buckets) <= 1 {
+		return 0, nil, false
+	}
+	clone := *r
+	clone.from = cloneLossyComparedBuckets(r.from)
+	clone.until = cloneLossyComparedBuckets(r.until)
+	if len(clone.from.buckets) >= len(clone.until.buckets) && len(clone.from.buckets) > 1 {
+		clone.from.coarsenOne()
+		clone.from.capacity = min(max(clone.from.capacity, 1), len(clone.from.buckets))
+	} else {
+		clone.until.coarsenOne()
+		clone.until.capacity = min(max(clone.until.capacity, 1), len(clone.until.buckets))
+	}
+	usage := clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
+	return usage, func() { r.from, r.until = clone.from, clone.until }, true
+}
 func (r *lossyBetweenRule[T, V]) insert(v T, id uint32) {
 	if value, ok := r.fromGet(v); ok {
 		r.from.insert(value, id)

@@ -138,23 +138,35 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		}
 		state.insert(constraint, internalID)
 		entryIndex++
-		if options.enableStreaming && !streaming && entryIndex%lossyBuildPressureInterval == 0 {
-			usage, target, hasTarget, err := lossyBuildPressure(state)
-			if err != nil {
-				buildErr = err
-				return false
-			}
-			if hasTarget && options.observeWorkingUsage != nil {
-				options.observeWorkingUsage(usage, target)
-			}
-			if hasTarget && options.enableStreaming && usage > target {
-				state, err = compileLossyRules(state)
+		if options.enableStreaming && entryIndex%lossyBuildPressureInterval == 0 {
+			var usage, target uint64
+			var hasTarget bool
+			if streaming {
+				usage, target, hasTarget = lossyStreamingBuildPressure(state)
+			} else {
+				var err error
+				usage, target, hasTarget, err = lossyBuildPressure(state)
 				if err != nil {
 					buildErr = err
 					return false
 				}
-				state = wrapStreamingLossyLeaves(state)
-				streaming = true
+			}
+			if hasTarget && options.observeWorkingUsage != nil {
+				options.observeWorkingUsage(usage, target)
+			}
+			if hasTarget && usage > target {
+				if streaming {
+					fitStreamingPolicies(state)
+				} else {
+					var err error
+					state, err = compileLossyRules(state)
+					if err != nil {
+						buildErr = err
+						return false
+					}
+					state = wrapStreamingLossyLeaves(state)
+					streaming = true
+				}
 			}
 		}
 		return true
@@ -181,6 +193,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	if err != nil {
 		return nil, buildStatistics{}, err
 	}
+	ix.root = unwrapStreamingAdaptiveLeaves(ix.root)
 	statistics := buildStatistics{entries: entryIndex, uniqueIDs: len(ix.values)}
 	if collectStatistics {
 		statistics.nodes = make([]nodeBuildStatistics, int(ids.next))
