@@ -27,18 +27,30 @@ updated only when a new canonical entry point is required.
 - When adding or changing a benchmark, include a nearby comment with the latest
   local results and enough run parameters to make future measurements
   comparable. Update the relevant canonical document in `docs/` as well.
-- Before removing a performance experiment that regresses its target or a gate
-  workload, profile the reproducible parent and candidate under comparable
-  conditions. Use focused profiles, microbenchmarks, or assembly inspection if
-  needed to localize the delta. Record confirmed causes as measured findings
-  and unresolved explanations as hypotheses; a regression may be rejected
-  without a conclusive cause, but not without the profiling attempt.
-- When a change reveals a performance regression or degradation, profile the
-  affected workload before completing the task, identify and document the
-  cause when the evidence permits, and attempt a correction when that cause is
-  understood and the correction is practical and in scope. Re-run the same
-  workload after the correction; clearly record unresolved causes or an
-  intentionally accepted regression.
+- A measured performance regression must first be reproduced against both the
+  candidate commit and its previous commit under comparable conditions. Record
+  the exact revisions, environment, commands, run parameters, and results. Use
+  interleaved runs when environmental drift could explain the difference; a
+  sequential series with unexplained drift is not sufficient evidence of a
+  regression.
+- Before removing or rejecting a performance experiment, collect comparable
+  CPU and, when allocations or retained memory are affected, allocation or
+  memory profiles for both the candidate commit and its previous commit. Use
+  focused profiles, microbenchmarks, traces, or assembly inspection as needed
+  to identify the specific additional work, allocation, retention, or changed
+  layout responsible for the regression. Merely observing different benchmark
+  numbers or a changed physical representation does not identify the cause.
+- After localizing the bottleneck, attempt to remove, correct, or mitigate it
+  and then repeat the same benchmark and profile comparison. Continue with
+  reasonable in-scope investigations and fixes while they remain available;
+  an initial failed fix is not grounds for rejection.
+- A performance experiment may be rejected only when the regression's cause is
+  conclusively established and documented as an expected or inherent
+  consequence of the candidate design, and reasonable correction attempts did
+  not remove it. Unresolved explanations must be recorded as hypotheses and
+  keep the experiment under investigation; they must not be used to justify
+  rejection. If conclusive attribution requires unavailable infrastructure or
+  external input, report the work as blocked rather than rejected.
 - Degradation or regression in any search function or search path is not
   acceptable. This includes correctness, observable behavior, latency,
   allocations, and retained-memory characteristics across all public search
