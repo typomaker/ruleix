@@ -366,6 +366,13 @@ type eqRule[T any, V comparable] struct {
 func (r *eqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*eqRule[T, V]) inspectionStrategy() string { return "equality" }
+func (r *eqRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	ladder, err := r.newLossyAllPlanner().representationLadder()
+	if err != nil || len(ladder) == 0 {
+		return details
+	}
+	return ladder[0].details
+}
 
 func (*eqRule[T, V]) rule() {}
 func (r *eqRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {

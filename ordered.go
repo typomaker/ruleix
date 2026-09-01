@@ -273,6 +273,13 @@ func orderedIndexLossyAccounting[V any](index *orderedIndex[V], wildcard *roarin
 }
 
 func (*orderedRule[T, V]) inspectionStrategy() string { return "ordered" }
+func (r *orderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	ladder, err := r.newLossyAllPlanner().representationLadder()
+	if err != nil || len(ladder) == 0 {
+		return details
+	}
+	return ladder[0].details
+}
 
 func (*orderedRule[T, V]) rule() {}
 func (r *orderedRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {

@@ -46,6 +46,13 @@ type compareByLocalQueryKey[V any] struct {
 func (r *compareByRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
+func (r *compareByRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	ladder, err := r.newLossyAllPlanner().representationLadder()
+	if err != nil || len(ladder) == 0 {
+		return details
+	}
+	return ladder[0].details
+}
 
 func (r *compareByRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	memory := uint64(24) + bitmapBytes(r.wildcard)
@@ -64,7 +71,8 @@ func (r *compareByRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	candidates := make([]Rule[T], 0, lossyMaxBucketBits+1)
 	for bucketBits := uint(0); bucketBits <= lossyMaxBucketBits; bucketBits++ {
 		candidate := &lossyCompareByRule[T, V]{
-			nodeID: r.nodeID, value: r.value, compare: r.compare, wildcard: r.wildcard,
+			nodeID: r.nodeID, value: r.value, operator: r.operator,
+			compare: r.compare, wildcard: r.wildcard,
 		}
 		usage := uint64(48) + bitmapBytes(r.wildcard)
 		var granularity uint64
@@ -86,6 +94,7 @@ func (r *compareByRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 type lossyCompareByRule[T any, V any] struct {
 	nodeID   nodeID
 	value    Getter[T, V]
+	operator Getter[T, Operator]
 	compare  Compare[V]
 	wildcard *roaring.Bitmap
 	indexes  [5]lossyComparedBuckets[V]
@@ -96,7 +105,49 @@ func (r *lossyCompareByRule[T, V]) runtimeNodeID() nodeID                       
 func (*lossyCompareByRule[T, V]) rule()                                                 {}
 func (r *lossyCompareByRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
 func (*lossyCompareByRule[T, V]) validate(T) error                                      { return nil }
-func (*lossyCompareByRule[T, V]) insert(T, uint32)                                      {}
+func (*lossyCompareByRule[T, V]) streamingLossyAccumulator()                            {}
+func (r *lossyCompareByRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	usage := uint64(48) + bitmapBytes(r.wildcard)
+	items := r.wildcard.GetCardinality()
+	var granularity uint64
+	for operator := range r.indexes {
+		if !r.present[operator] {
+			continue
+		}
+		usage += r.indexes[operator].memoryUsage()
+		granularity += uint64(len(r.indexes[operator].buckets))
+		for _, bucket := range r.indexes[operator].buckets {
+			items += bucket.GetCardinality()
+		}
+	}
+	details.MemoryUsageBytes, details.MemoryUsageAvailable = usage, true
+	details.Items, details.ItemsAvailable = items, true
+	details.GranularityValue, details.GranularityAvailable = granularity, true
+	return details
+}
+func (r *lossyCompareByRule[T, V]) fitStreamingLimit(limit uint64) {
+	if r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes <= limit {
+		return
+	}
+	for operator := range r.indexes {
+		if r.present[operator] {
+			r.indexes[operator].collapse()
+		}
+	}
+}
+func (r *lossyCompareByRule[T, V]) insert(v T, id uint32) {
+	value, ok := r.value(v)
+	if !ok {
+		r.wildcard.Add(id)
+		return
+	}
+	operator, _ := r.operator(v)
+	r.present[operator] = true
+	if r.indexes[operator].compare == nil {
+		r.indexes[operator].compare = r.compare
+	}
+	r.indexes[operator].insert(value, id)
+}
 func (r *lossyCompareByRule[T, V]) localQueryKey(v T) (any, uint64) {
 	value, hasValue := r.value(v)
 	key := compareByLocalQueryKey[V]{value: value, hasValue: hasValue}

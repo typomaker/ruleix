@@ -127,15 +127,16 @@ fits and whose result is a superset of the exact result. `Lossy` therefore
 never forces approximation and does not promise that every positive budget is
 usable.
 
-Build planning is exact-first. The builder consumes the one-pass iterator into
-exact state and selects the retained representation only after iteration. A
-private 120% pressure target and irreversible streaming accumulator were
-implemented and measured, but are not active in the public build path: the
-prototype produced complete candidate sets in the measured equality workload,
-could make an otherwise viable ordered budget fail, and scaled worse because
-pressure checks repeatedly materialized candidate ladders. A future opt-in
-build-memory contract should use a replayable two-pass input or operator-
-specific accumulators; it must not weaken the hard retained `MemoryLimit`.
+Build planning is one-pass streaming. At fixed 4096-entry checkpoints, exact
+accounting above the private saturating target `MemoryLimit + MemoryLimit/4`
+irreversibly compiles the current selective plan. The compiled equality,
+numeric ordered, comparator ordered, `Between`, and `CompareBy` leaves accept
+subsequent values directly. This replaces the rejected universal-tail
+prototype: no additional node or bitmap union is added to published search.
+The final accounting pass may coarsen streaming buckets and fails rather than
+publish an index above the hard retained `MemoryLimit`. The target bounds
+Ruleix-accounted build state opportunistically; neither it nor `MemoryLimit`
+is a Go heap or RSS guarantee.
 
 `Build` fails, without publishing an index or a new inspector snapshot, when:
 
@@ -229,7 +230,7 @@ Unsupported dynamic composites return an internal typed `equalityCodecError`
 from `Build` instead of silently selecting a complete-leaf bitmap.
 
 The companion 32,768-entry named-int64 fixture makes exact-first working state
-materially exceed the experimental 120% target. This is deterministic Ruleix
+materially exceed the active 125% pressure target. This is deterministic Ruleix
 accounting, not a claim about Go heap or RSS. Reproduce the fixtures with:
 
 ```sh
@@ -272,17 +273,14 @@ that releases the most bytes, then the larger current leaf, then schema order.
 The same large leaf may take consecutive finer downgrade steps while other
 leaves remain exact. Planning stops immediately when the total fits.
 
-The rejected streaming prototype kept `MemoryLimit` as the hard accounted
-retained limit and derived a private saturating soft target of
-`MemoryLimit + MemoryLimit/5`. At fixed 4096-entry checkpoints it irreversibly
-downgraded exact state into conservative accumulators. Measurements at
-10K/100K and the available 1M scale found complete candidate sets for equality,
-worse latency and allocation scaling, and ordered tails that could exceed a
-budget accepted by exact-first planning. Consequently the public build path
-does not apply this target: it consumes the iterator into exact state and plans
-once afterward. The prototype remains only in the benchmark harness. Neither
-the hard retained limit nor the experimental 120% accounting described Go heap
-or RSS.
+The first streaming prototype used a universal tail and was rejected after it
+produced complete candidate sets, poor scaling, and ordered fit failures. The
+accepted design instead mutates the same operator-specific representation that
+will be published. On the 10K four-equality benchmark it retained 9.797
+candidates/query and zero observed false positives in both ordered and shuffled
+input, instead of the prototype's 10,000 candidates and 1.0 false-positive
+rate. Build time and transient allocations may be higher; search behavior and
+the absence of full exact materialization take priority.
 
 The detailed dependency order and acceptance gates are maintained in
 [`ROADMAP.md`](../ROADMAP.md).

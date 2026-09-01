@@ -80,10 +80,10 @@ func buildIndex[C any, ID comparable](
 ) (*Index[C, ID], buildStatistics, error) {
 	return buildIndexPhysicalAliases(schema, entries, collectStatistics, hints, buildOptions{
 		compilePhysicalAliases: true,
-		// One-pass streaming remains an internal experiment: measurements found
-		// unacceptable quality loss and viable exact-first plans that its
-		// conservative ordered tails could not fit.
-		enableStreaming: false,
+		// Lossy policies must bound their build state while consuming the one-pass
+		// iterator. Compiled leaves accept later values directly, so this does not
+		// add a wrapper or another operation to the published search path.
+		enableStreaming: true,
 	})
 }
 

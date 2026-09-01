@@ -196,12 +196,15 @@ multiply-high arithmetic, so lossy precision changes more smoothly while warm
 `Local.Search` remains allocation-free. Interfaces are rejected because their
 dynamic values cannot be encoded safely without query-time dispatch.
 
-Build planning is exact-first: the one-pass iterator is fully consumed before
-the retained representation is selected. `MemoryLimit` is a hard limit on
-Ruleix's deterministic retained accounting, not on Go heap or RSS. A measured
-private prototype that downgraded at 120% of the limit is disabled because it
-lost selectivity, scaled worse, and could reject ordered workloads that the
-exact-first planner accepts.
+Lossy build planning is streaming. At fixed checkpoints, accounted exact state
+above a private 125% pressure target is irreversibly compiled into selective
+buckets; later values are inserted directly into those buckets. This prevents
+the builder from retaining the complete input as exact leaf state before
+compression. Low-cardinality exact leaves selected by the aggregate planner
+may remain exact, while pressured high-cardinality leaves release their exact
+maps and ordered values. The published index contains the ordinary lossy search
+types, not a streaming wrapper. `MemoryLimit` is a hard limit on Ruleix's final
+deterministic retained accounting, not on transient Go heap or RSS.
 
 All getters return `(value, ok)`. In a stored constraint, `ok == false` is a
 wildcard. In a search value it only matches stored wildcards. For `Exclude`,

@@ -1,5 +1,25 @@
 # Roadmap history
 
+## 2026-09-01: make lossy build compression streaming by contract
+
+`Lossy` no longer retains the complete input in exact leaf state before
+compression. At 4096-entry checkpoints, exceeding the private saturating 125%
+target compiles the current selective aggregate plan. Equality, numeric and
+comparator ordered, `Between`, and `CompareBy` representations accept all later
+values directly into their published buckets. The discarded universal-tail
+prototype is not used, so streaming adds no wrapper or bitmap union to search.
+Final accounting is refreshed from the mutated buckets and may irreversibly
+collapse them before enforcing the hard `MemoryLimit`.
+
+Apple M1 Max, Go 1.26.0: the 10K/four-equality 65% workload retained 9.797
+candidates/query and zero observed false positives in ordered and shuffled
+input, with 261,928 B accounted working peak versus 290,856 B exact-first.
+Production-shaped `Index.Search` (38,098 entries, 377,122-byte budget, 500ms
+x3) measured a 50,386 ns/op median versus the preceding 70,030 ns/op; warm
+`Local.Search` remained allocation-free but moved from 1,386 to 3,893 ns/op.
+Build latency and transient allocation growth are accepted because the task
+explicitly prioritizes streaming compression and `Index.Search` latency.
+
 ## 2026-09-01: finalize compiled-codec roadmap
 
 Roadmap step 9 reconciled the public and canonical documentation with the
@@ -10,12 +30,11 @@ part of the public API. Equality precision uses the accepted four-level
 multiply-high ladder, aggregate planning retains the released-bytes selector,
 and `Between`/`CompareBy` use fused selective comparator buckets.
 
-The public build contract remains exact-first. The private 120% one-pass
-prototype is documented as a rejected default after its measured selectivity,
-scaling, and ordered-tail failures; `MemoryLimit` continues to bound only the
-final deterministic retained accounting, not Go heap or RSS. All completed
-steps were removed from the active roadmap, which now records that no
-implementation work remains.
+At this checkpoint the public build contract remained exact-first and the
+private 120% universal-tail prototype was rejected after its measured
+selectivity, scaling, and ordered-tail failures. The later operator-specific
+streaming entry above supersedes that build decision while retaining the same
+hard final accounting contract.
 
 ## 2026-09-01: revalidate aggregate selective downgrade planning
 

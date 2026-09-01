@@ -519,6 +519,11 @@ func BenchmarkLossyStreamingBuild(b *testing.B) {
 //
 //	go test -run '^$' -bench '^BenchmarkLossyStreamingTradeoff/' -benchmem -benchtime=1x -count=1 .
 //
+// Latest focused result (Apple M1 Max, Go 1.26.0, 10K entries, four equality
+// leaves, 65% budget, 1x): streaming retained 9.797 candidates/query and zero
+// observed false positives for ordered and shuffled input. Accounted working
+// peak was 261,928 B versus 290,856 B exact-first.
+//
 // The fixed permutation is bijective for every decimal scale below (its
 // multiplier is coprime to 10), so Ordered and Shuffled consume identical
 // constraints and IDs without retaining a second large input copy.

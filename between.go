@@ -41,6 +41,13 @@ type betweenLocalQueryKey[V any] struct {
 func (r *betweenRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
+func (r *betweenRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	ladder, err := r.newLossyAllPlanner().representationLadder()
+	if err != nil || len(ladder) == 0 {
+		return details
+	}
+	return ladder[0].details
+}
 
 func (r *betweenRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	fromMemory, fromItems, fromDistinct, _ := orderedIndexLossyAccounting(&r.from.index, r.from.wildcard)
@@ -85,7 +92,42 @@ func (r *lossyBetweenRule[T, V]) runtimeNodeID() nodeID                         
 func (*lossyBetweenRule[T, V]) rule()                                                 {}
 func (r *lossyBetweenRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
 func (*lossyBetweenRule[T, V]) validate(T) error                                      { return nil }
-func (*lossyBetweenRule[T, V]) insert(T, uint32)                                      {}
+func (*lossyBetweenRule[T, V]) streamingLossyAccumulator()                            {}
+func (r *lossyBetweenRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	usage := uint64(48) + bitmapBytes(r.fromWildcard) + bitmapBytes(r.untilWildcard) +
+		r.from.memoryUsage() + r.until.memoryUsage()
+	items := r.fromWildcard.GetCardinality() + r.untilWildcard.GetCardinality()
+	for _, bucket := range r.from.buckets {
+		items += bucket.GetCardinality()
+	}
+	for _, bucket := range r.until.buckets {
+		items += bucket.GetCardinality()
+	}
+	details.MemoryUsageBytes, details.MemoryUsageAvailable = usage, true
+	details.Items, details.ItemsAvailable = items, true
+	details.GranularityValue = uint64(len(r.from.buckets) + len(r.until.buckets))
+	details.GranularityAvailable = true
+	return details
+}
+func (r *lossyBetweenRule[T, V]) fitStreamingLimit(limit uint64) {
+	if r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes <= limit {
+		return
+	}
+	r.from.collapse()
+	r.until.collapse()
+}
+func (r *lossyBetweenRule[T, V]) insert(v T, id uint32) {
+	if value, ok := r.fromGet(v); ok {
+		r.from.insert(value, id)
+	} else {
+		r.fromWildcard.Add(id)
+	}
+	if value, ok := r.untilGet(v); ok {
+		r.until.insert(value, id)
+	} else {
+		r.untilWildcard.Add(id)
+	}
+}
 func (r *lossyBetweenRule[T, V]) localQueryKey(v T) (any, uint64) {
 	from, hasFrom := r.fromGet(v)
 	until, hasUntil := r.untilGet(v)

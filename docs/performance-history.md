@@ -188,6 +188,23 @@ allocs/op. После исправления Local стал быстрее пр�
 
 ## 2026-09-01: exact-first против one-pass streaming
 
+Следующий operator-specific streaming вариант заменил universal tail и принят
+как production default. Apple M1 Max, Go 1.26.0, 10K entries, четыре equality-
+листа, 65% budget, `benchtime=1x`: ordered и shuffled streaming сохранили 9,797
+candidates/query и нулевой observed false-positive rate; accounted working peak
+составил 261,928 B против 290,856 B exact-first. Build занял 190,9–207,3 ms
+против 168,1–181,8 ms и выделил 102,2–104,3 MB/op против 81,7–81,9 MB/op.
+
+Production-shaped Search, 38,098 entries, 377,122-byte budget,
+`GOMAXPROCS=1`, 500ms x3: `Index.Search` измерен как
+50,129/50,386/56,161 ns/op, 78,858–78,860 B/op, 25 allocs/op против прежней
+медианы 70,030 ns/op, 40,222 B/op, 23 allocs/op. Warm `Local.Search`:
+3,887/3,893/3,912 ns/op, 0 allocs/op против 1,386 ns/op. Требование задачи
+приоритизирует отсутствие полного exact materialization и отсутствие
+регрессии `Index.Search`; рост build cost, transient allocations и Local
+latency принят и не маскируется.
+
+Исторический universal-tail эксперимент ниже оставлен как отклонённый baseline.
 Apple M1 Max, macOS arm64, Go 1.26.0. Четыре equality-листа, 1 024 distinct
 значения на лист, общий `MemoryLimit` 65% от exact accounting, 64 равномерно
 распределённых запроса. `benchtime=1x`, `count=1`; числа ниже — отдельные
@@ -218,9 +235,9 @@ accounted peak/retained числа streaming, текущий universal accumulat
 CPU profile 100K streaming: 50.96% cumulative в `representationLadder`, 40.71%
 в callback pressure-path, 31.30% flat в runtime `madvise`. Подтверждённая
 причина регрессии — повторная материализация лестниц/bitmap unions на pressure
-checks и allocator pressure. Решение: exact-first остаётся default; новый
-one-pass режим возможен только после operator-specific accumulator или как
-явный API с replayable two-pass input.
+checks и allocator pressure. На этом историческом checkpoint exact-first был
+оставлен default; последующая operator-specific реализация выше заменила этот
+вывод, не возвращая universal tail.
 
 ```sh
 go test -run '^$' -bench '^BenchmarkLossyStreamingTradeoff$' \

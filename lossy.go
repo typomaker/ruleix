@@ -110,7 +110,7 @@ const lossyBuildPressureInterval = 4096
 // public and hard retained-memory contract. Saturation keeps MaxUint64 limits
 // useful for disabling pressure without wrapping the soft target.
 func lossyBuildTarget(limit uint64) uint64 {
-	headroom := limit / 5
+	headroom := limit / 4
 	if math.MaxUint64-limit < headroom {
 		return math.MaxUint64
 	}
@@ -156,11 +156,10 @@ func lossyBuildPressure[T any](rule Rule[T]) (usage, target uint64, available bo
 	return usage, target, available, nil
 }
 
-// streamingLossyLeaf preserves the representation built from the prefix and
-// conservatively admits every later ID. The tail is intentionally independent
-// of operator semantics: it cannot create a false negative and lets the exact
-// prefix state be released immediately. A later phase may replace this broad
-// accumulator with operator-specific streaming insertion after measurements.
+// streamingLossyLeaf is a conservative safety net for a future lossy
+// representation that does not yet implement operator-specific insertion.
+// Every built-in representation implements streamingLossyAccumulator, so this
+// wrapper is not present in production indexes built from the public rules.
 type streamingLossyLeaf[T any] struct {
 	child Rule[T]
 	tail  *roaring.Bitmap
@@ -169,6 +168,36 @@ type streamingLossyLeaf[T any] struct {
 type streamingUniversalProvider interface {
 	streamingUniversal() (nodeID, *roaring.Bitmap, string)
 }
+
+// streamingLossyAccumulator marks a compiled lossy search representation that
+// can also accept the remainder of the one-pass build directly. The marker is
+// build-only: the published search method is unchanged.
+type streamingLossyAccumulator interface{ streamingLossyAccumulator() }
+
+type streamingDetailsProvider interface {
+	refreshedStreamingDetails(inspectionDetails) inspectionDetails
+}
+
+type streamingLimitFitter interface{ fitStreamingLimit(uint64) }
+
+func fitStreamingRule[T any](rule Rule[T], limit uint64) {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		for _, child := range typed.children {
+			fitStreamingRule(child, limit)
+		}
+	case *inspectRule[T]:
+		fitStreamingRule(typed.child, limit)
+	case *inspectionDetailsRule[T]:
+		fitStreamingRule(typed.child, limit)
+	default:
+		if fitter, ok := any(rule).(streamingLimitFitter); ok {
+			fitter.fitStreamingLimit(limit)
+		}
+	}
+}
+
+func collapseStreamingRule[T any](rule Rule[T]) { fitStreamingRule(rule, 0) }
 
 func (*streamingLossyLeaf[T]) rule()                                                 {}
 func (r *streamingLossyLeaf[T]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
@@ -214,6 +243,9 @@ func wrapStreamingLossyLeaves[T any](rule Rule[T]) Rule[T] {
 		return &inspectionDetailsRule[T]{child: wrapStreamingLossyLeaves(typed.child), details: typed.details}
 	default:
 		if inspectionModeOf(rule) == RuleModeLossy {
+			if _, ok := any(rule).(streamingLossyAccumulator); ok {
+				return rule
+			}
 			if provider, ok := any(rule).(streamingUniversalProvider); ok {
 				node, bits, name := provider.streamingUniversal()
 				return &lossyUniversalRule[T]{nodeID: node, bits: bits, name: name}
@@ -242,11 +274,21 @@ func refreshStreamingLossyDetails[T any](rule Rule[T]) (Rule[T], inspectionDetai
 		child, details, err := refreshStreamingLossyDetails(typed.child)
 		return &inspectRule[T]{dst: typed.dst, child: child}, details, err
 	case *inspectionDetailsRule[T]:
+		if typed.details.MemoryLimitAvailable {
+			fitStreamingRule(typed.child, typed.details.MemoryLimitBytes)
+		}
 		child, details, err := refreshStreamingLossyDetails(typed.child)
 		if err != nil {
 			return nil, inspectionDetails{}, err
 		}
-		if streaming, ok := child.(*streamingLossyLeaf[T]); ok {
+		if typed.details.MemoryLimitAvailable {
+			if fitter, ok := any(child).(streamingLimitFitter); ok {
+				fitter.fitStreamingLimit(typed.details.MemoryLimitBytes)
+			}
+		}
+		if provider, ok := any(child).(streamingDetailsProvider); ok {
+			details = provider.refreshedStreamingDetails(typed.details)
+		} else if streaming, ok := child.(*streamingLossyLeaf[T]); ok {
 			details = typed.details
 			details.MemoryUsageBytes += bitmapBytes(streaming.tail)
 			details.Items += streaming.tail.GetCardinality()
@@ -257,7 +299,15 @@ func refreshStreamingLossyDetails[T any](rule Rule[T]) (Rule[T], inspectionDetai
 		if typed.details.MemoryLimitAvailable {
 			details.MemoryLimitBytes, details.MemoryLimitAvailable = typed.details.MemoryLimitBytes, true
 			if details.MemoryUsageBytes > details.MemoryLimitBytes {
-				return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy streaming state cannot fit the memory limit")
+				collapseStreamingRule(child)
+				child, details, err = refreshStreamingLossyDetails(child)
+				if err != nil {
+					return nil, inspectionDetails{}, err
+				}
+				details.MemoryLimitBytes, details.MemoryLimitAvailable = typed.details.MemoryLimitBytes, true
+				if details.MemoryUsageBytes > details.MemoryLimitBytes {
+					return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy streaming state cannot fit the memory limit")
+				}
 			}
 		}
 		return &inspectionDetailsRule[T]{child: child, details: details}, details, nil
@@ -1014,6 +1064,10 @@ func (*lossyUniversalRule[T]) inspectionMode() RuleMode                         
 func (r *lossyUniversalRule[T]) inspectionDetails() inspectionDetails {
 	return representationDetails(uint64(24)+bitmapBytes(r.bits), r.bits.GetCardinality(), 1, 1, true)
 }
+func (*lossyUniversalRule[T]) streamingLossyAccumulator() {}
+func (r *lossyUniversalRule[T]) refreshedStreamingDetails(inspectionDetails) inspectionDetails {
+	return r.inspectionDetails()
+}
 func (r *lossyUniversalRule[T]) prepareSearch()                         { prepareBitmapForSearch(r.bits) }
 func (r *lossyUniversalRule[T]) internBitmaps(interner *bitmapInterner) { interner.intern(&r.bits) }
 
@@ -1063,6 +1117,32 @@ func (r *lossyEqualityRule[T, V]) streamingUniversal() (nodeID, *roaring.Bitmap,
 	return r.nodeID, bits, "lossy-streaming-universal"
 }
 
+func (*lossyEqualityRule[T, V]) streamingLossyAccumulator() {}
+func (r *lossyEqualityRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	usage := uint64(40) + bitmapBytes(r.wildcard)
+	items := r.wildcard.GetCardinality()
+	for _, posting := range r.buckets {
+		usage += 24 + bitmapBytes(posting.bits)
+		items += posting.bits.GetCardinality()
+	}
+	details.MemoryUsageBytes, details.MemoryUsageAvailable = usage, true
+	details.Items, details.ItemsAvailable = items, true
+	details.GranularityValue, details.GranularityAvailable = uint64(len(r.buckets)), true
+	return details
+}
+func (r *lossyEqualityRule[T, V]) fitStreamingLimit(limit uint64) {
+	details := r.refreshedStreamingDetails(inspectionDetails{})
+	if details.MemoryUsageBytes <= limit || r.bucketCount == 1 {
+		return
+	}
+	bits := roaring.New()
+	for _, posting := range r.buckets {
+		bits.Or(posting.bits)
+	}
+	r.bucketCount = 1
+	r.buckets = map[uint64]lossyEqualityPosting{0: {bits: bits}}
+}
+
 func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bool) {
 	// A wildcard requires a union with the concrete bucket, so it cannot expose
 	// one of its owned bitmaps as the complete child result.
@@ -1084,7 +1164,20 @@ func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bo
 func (*lossyEqualityRule[T, V]) rule()                                                 {}
 func (r *lossyEqualityRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
 func (*lossyEqualityRule[T, V]) validate(T) error                                      { return nil }
-func (*lossyEqualityRule[T, V]) insert(T, uint32)                                      {}
+func (r *lossyEqualityRule[T, V]) insert(v T, id uint32) {
+	value, ok := r.get(v)
+	if !ok {
+		r.wildcard.Add(id)
+		return
+	}
+	bucket := reduceEqualityHash(r.codec.hash(value), r.bucketCount)
+	posting := r.buckets[bucket]
+	if posting.bits == nil {
+		posting.bits = roaring.New()
+	}
+	posting.bits.Add(id)
+	r.buckets[bucket] = posting
+}
 func (r *lossyEqualityRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)
 	if pool.local != nil {
@@ -1240,6 +1333,40 @@ type lossyComparedBuckets[V any] struct {
 	buckets    []*roaring.Bitmap
 }
 
+func (r *lossyComparedBuckets[V]) insert(value V, id uint32) {
+	if len(r.buckets) == 0 {
+		r.minimum, r.maximum = value, value
+		r.boundaries = []V{value}
+		r.buckets = []*roaring.Bitmap{roaring.BitmapOf(id)}
+		return
+	}
+	bucket := 0
+	if r.compare(value, r.minimum) < 0 {
+		r.minimum = value
+	} else if r.compare(value, r.maximum) > 0 {
+		r.maximum = value
+		bucket = len(r.buckets) - 1
+		r.boundaries[bucket] = value
+	} else {
+		bucket = sort.Search(len(r.boundaries), func(i int) bool {
+			return r.compare(r.boundaries[i], value) >= 0
+		})
+	}
+	r.buckets[bucket].Add(id)
+}
+
+func (r *lossyComparedBuckets[V]) collapse() {
+	if len(r.buckets) <= 1 {
+		return
+	}
+	bits := roaring.New()
+	for _, bucket := range r.buckets {
+		bits.Or(bucket)
+	}
+	r.boundaries = []V{r.maximum}
+	r.buckets = []*roaring.Bitmap{bits}
+}
+
 func buildLossyComparedBuckets[V any](index *orderedIndex[V], wanted int) lossyComparedBuckets[V] {
 	result := lossyComparedBuckets[V]{compare: index.compare}
 	values := make([]*orderedItem[V], 0, index.buildStatistics().uniqueValues)
@@ -1349,8 +1476,45 @@ func (*lossyComparedOrderedRule[T, V]) rule()                   {}
 func (r *lossyComparedOrderedRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] {
 	return r
 }
-func (*lossyComparedOrderedRule[T, V]) validate(T) error { return nil }
-func (*lossyComparedOrderedRule[T, V]) insert(T, uint32) {}
+func (*lossyComparedOrderedRule[T, V]) validate(T) error           { return nil }
+func (*lossyComparedOrderedRule[T, V]) streamingLossyAccumulator() {}
+func (r *lossyComparedOrderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	usage := uint64(40) + bitmapBytes(r.wildcard) + uint64(len(r.buckets))*16
+	items := r.wildcard.GetCardinality()
+	for i, bucket := range r.buckets {
+		usage += bitmapBytes(bucket) + comparableValueBytes(any(r.boundaries[i]))
+		items += bucket.GetCardinality()
+	}
+	details.MemoryUsageBytes, details.MemoryUsageAvailable = usage, true
+	details.Items, details.ItemsAvailable = items, true
+	details.GranularityValue, details.GranularityAvailable = uint64(len(r.buckets)), true
+	return details
+}
+func (r *lossyComparedOrderedRule[T, V]) fitStreamingLimit(limit uint64) {
+	if r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes <= limit {
+		return
+	}
+	buckets := lossyComparedBuckets[V]{
+		compare: r.compare, minimum: r.minimum, maximum: r.maximum,
+		boundaries: r.boundaries, buckets: r.buckets,
+	}
+	buckets.collapse()
+	r.boundaries, r.buckets = buckets.boundaries, buckets.buckets
+}
+func (r *lossyComparedOrderedRule[T, V]) insert(v T, id uint32) {
+	value, ok := r.get(v)
+	if !ok {
+		r.wildcard.Add(id)
+		return
+	}
+	buckets := lossyComparedBuckets[V]{
+		compare: r.compare, minimum: r.minimum, maximum: r.maximum,
+		boundaries: r.boundaries, buckets: r.buckets,
+	}
+	buckets.insert(value, id)
+	r.minimum, r.maximum = buckets.minimum, buckets.maximum
+	r.boundaries, r.buckets = buckets.boundaries, buckets.buckets
+}
 func (r *lossyComparedOrderedRule[T, V]) matchingBucketRange(v T) (int, int, bool) {
 	value, ok := r.get(v)
 	if !ok || len(r.buckets) == 0 {
@@ -1448,7 +1612,66 @@ func lossyOrderedBucket(key, minimum, width, count uint64) uint64 {
 func (*lossyOrderedRule[T, V]) rule()                                                 {}
 func (r *lossyOrderedRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
 func (*lossyOrderedRule[T, V]) validate(T) error                                      { return nil }
-func (*lossyOrderedRule[T, V]) insert(T, uint32)                                      {}
+func (*lossyOrderedRule[T, V]) streamingLossyAccumulator()                            {}
+func (r *lossyOrderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	usage := uint64(32) + bitmapBytes(r.wildcard) + uint64(len(r.buckets))*8
+	items := r.wildcard.GetCardinality()
+	for _, bucket := range r.buckets {
+		if bucket != nil {
+			usage += bitmapBytes(bucket)
+			items += bucket.GetCardinality()
+		}
+	}
+	details.MemoryUsageBytes, details.MemoryUsageAvailable = usage, true
+	details.Items, details.ItemsAvailable = items, true
+	details.GranularityValue, details.GranularityAvailable = uint64(len(r.buckets)), true
+	return details
+}
+func (r *lossyOrderedRule[T, V]) fitStreamingLimit(limit uint64) {
+	if r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes <= limit || len(r.buckets) <= 1 {
+		return
+	}
+	all := roaring.New()
+	for _, bucket := range r.buckets {
+		if bucket != nil {
+			all.Or(bucket)
+		}
+	}
+	r.width, r.buckets = math.MaxUint64, []*roaring.Bitmap{all}
+}
+func (r *lossyOrderedRule[T, V]) insert(v T, id uint32) {
+	value, ok := r.get(v)
+	if !ok {
+		r.wildcard.Add(id)
+		return
+	}
+	key, ok := orderedScalarKey(any(value))
+	if !ok {
+		return
+	}
+	if len(r.buckets) == 0 {
+		r.min, r.max, r.width = key, key, math.MaxUint64
+		r.buckets = []*roaring.Bitmap{roaring.BitmapOf(id)}
+		return
+	}
+	if key < r.min || key > r.max {
+		all := roaring.New()
+		for _, bucket := range r.buckets {
+			if bucket != nil {
+				all.Or(bucket)
+			}
+		}
+		all.Add(id)
+		r.min, r.max = min(r.min, key), max(r.max, key)
+		r.width, r.buckets = math.MaxUint64, []*roaring.Bitmap{all}
+		return
+	}
+	bucket := lossyOrderedBucket(key, r.min, r.width, uint64(len(r.buckets)))
+	if r.buckets[bucket] == nil {
+		r.buckets[bucket] = roaring.New()
+	}
+	r.buckets[bucket].Add(id)
+}
 func (r *lossyOrderedRule[T, V]) search(v T, dst *roaring.Bitmap, _ *bitmapPool) {
 	dst.Or(r.wildcard)
 	first, last, ok := r.matchingBucketRange(v)
