@@ -1,9 +1,10 @@
 # Roadmap
 
 This file is the active implementation plan. A fully completed step remains
-marked here with its completion date and a concise result summary; detailed
-completed work and rejected experiments belong in
-[`ROADMAP_HISTORY.md`](ROADMAP_HISTORY.md). Release-facing behavior belongs in
+marked here with its completion date and a concise result summary until every
+step in its milestone is complete. The completed milestone is then moved to a
+dated file under [`docs/archive/`](docs/archive/) and replaced here by a short
+link to that archive. Release-facing behavior belongs in
 [`CHANGELOG.md`](CHANGELOG.md). Partial work must not be marked as a completed
 step.
 
@@ -28,7 +29,20 @@ Gate: проверяемые критерии завершения и обяза
 Статус `завершён` разрешён только после выполнения всего scope и Gate; дата
 указывается в формате ISO `YYYY-MM-DD`, а `Результат` обязателен. Подробные
 замеры, эксперименты и доказательства остаются в канонических документах и
-`ROADMAP_HISTORY.md`.
+после завершения включаются в соответствующий milestone archive.
+
+## Архивация milestone
+
+Когда все шаги milestone имеют статус `завершён`, весь milestone — цель,
+полный список шагов, даты, итоговые сводки и Gate — переносится из активного
+плана в `docs/archive/YYYY-MM-DD-short-milestone-name.md`. Дата в имени файла —
+дата завершения milestone; короткое имя записывается в lowercase kebab-case.
+В `ROADMAP.md` вместо перенесённого содержимого остаются только название,
+дата завершения, общая итоговая сводка и относительная ссылка на архив.
+
+Архив создаётся в том же финальном коммите, который завершает последний шаг.
+До завершения всех шагов milestone переносить его или отдельные шаги в архив
+нельзя.
 
 ## Общие exact/lossy-индексы
 

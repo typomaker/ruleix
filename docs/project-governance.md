@@ -26,6 +26,14 @@ updated only when a new canonical entry point is required.
   and `ROADMAP_HISTORY.md`. Do not mark a partially implemented step as
   complete; intermediate commits or completed subparts may be recorded in
   history without changing the step's status.
+- When every step in a roadmap milestone is complete, move the entire milestone
+  from `ROADMAP.md` to `docs/archive/YYYY-MM-DD-short-milestone-name.md` in the
+  same commit that completes its final step. Preserve the milestone goal, all
+  steps, completion dates, result summaries, and gates in the archive. Leave
+  only the milestone title, completion date, concise overall result, and a
+  relative archive link in the active roadmap. Use the milestone completion
+  date and a lowercase kebab-case short name in the filename; never archive a
+  milestone or any of its steps before the whole milestone is complete.
 - Before committing, run the appropriate checks and `git diff --check`.
 - Changed production code must have at least 90% test coverage. Measure coverage
   over the executable lines added or modified by the task (diff coverage), not
