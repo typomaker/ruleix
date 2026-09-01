@@ -1,5 +1,55 @@
 # Exact и Lossy `Local.Search`: CPU-профиль
 
+## Forced finest-lossy control
+
+Эксперимент 2026-09-01 на Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, parent
+revision `c017736` отделил overhead lossy implementations от false-positive
+materialization. Временный build-only hook исключал exact candidate и выбирал
+первый, самый точный lossy ladder level для каждого содержательного leaf
+production schema. Листья без отдельного lossy candidate оставались exact.
+Hook и временный benchmark удалены после измерения; production code не изменён.
+
+Оба production-запроса вернули 45 IDs в Exact и forced finest-lossy, тогда как
+обычный 50%-budget Lossy вернул 80. На этой fixture forced representation
+потому имело exact observable precision без false positives, при этом
+`Inspector.Mode()` подтверждал `lossy`. Accounted retained memory составила
+539 596 bytes против 754 244 bytes у Exact (−28.5%).
+
+Сопоставимая baseline/50%-Lossy серия использовала `benchtime=500ms`,
+`count=7`; forced вариант измерялся одним process run, чтобы дорогое построение
+finest ladders не повторялось, сначала `500ms x5` для выбранного leaf, затем
+`3s x1` для всех доступных lossy leaves. Медианы и устойчивые точки:
+
+| Path | Exact | Forced finest-lossy, 45 IDs | Lossy 50%, 80 IDs |
+| --- | ---: | ---: | ---: |
+| `Index.Search` | 32 734 ns/op | 186 700 ns/op | 27 874 ns/op |
+| warm `Local.Search` | 222.1 ns/op | 227.0 ns/op | 247.9 ns/op |
+| `Index.Search` allocations | 40 805 B/op, 28 allocs | 13 274 B/op, 14 allocs | 13 594 B/op, 15 allocs |
+| warm `Local.Search` allocations | 0 B/op, 0 allocs | 0 B/op, 0 allocs | 0 B/op, 0 allocs |
+
+Таким образом, при одинаковых 45 выходных IDs чистая Local delta составляет
+около +2.2%; основная прежняя +11.6% delta 50%-Lossy связана с 1.78x candidate
+amplification. Сопоставимые 20-second Exact и 15-second forced CPU profiles
+дали 231.1 и 236.8 ns/op. Нормированная cumulative стоимость
+`loadLocalQueryResult` составила 159.2 и 163.3 ns/op; материализация 45 IDs —
+22.8 и 25.6 ns/op. Остаточная разница мала и распределена между concrete lossy
+query-key matchers и sampling noise, а не вызвана дополнительными кандидатами.
+
+Forced `Index.Search` является плохой практической конфигурацией, несмотря на
+точность и меньшую память. Его профиль отнёс 64.7% CPU к `Bitmap.Or`; 62.1%
+cumulative пришлось на `lossyComparedBuckets.addRange`, далее доминировали
+`union2by2` (32.6% flat), `bitmapContainer.iorArray` (14.7%) и
+`bitmapContainer.loadData` (6.6%). Finest ordered grids материализуют запрос как
+union большого числа мелких buckets, тогда как exact ordered index использует
+свою range/block структуру. Обычный 50%-Lossy быстрее Exact на uncached path,
+поскольку более грубая сетка резко уменьшает число объединяемых buckets.
+
+Контроль отвечает именно на вопрос об overhead: при одинаковой точности
+`Local.Search` lossy path почти совпадает с Exact, поэтому его заметная
+деградация при 50% budget вызвана преимущественно дополнительными результатами.
+Однако «больше гранулярности» нельзя использовать как общую оптимизацию:
+uncached ordered search регрессирует примерно в 5.7 раза.
+
 ## Current output-amplification diagnosis
 
 Повторное измерение выполнено 2026-09-01 на Apple M1 Max, Go 1.26.0,
