@@ -8,6 +8,15 @@ updated only when a new canonical entry point is required.
 
 ## Agent workflow
 
+- Complete the entire task as assigned, including every explicitly requested
+  deliverable and every applicable roadmap gate or acceptance criterion. Do
+  not unilaterally reduce the task to a convenient slice, milestone, or partial
+  implementation and present that subset as completion. Small, reviewable
+  commits and intermediate checkpoints are allowed, but continue working after
+  them until the full assigned outcome is achieved. Stop short of full
+  completion only when the user explicitly narrows the scope or progress is
+  genuinely blocked under the rules below; in that case, state exactly what
+  remains and why.
 - After fully completing each assigned task, create a Git commit containing all
   changes related to that task.
 - Before committing, run the appropriate checks and `git diff --check`.
