@@ -11,6 +11,10 @@ updated only when a new canonical entry point is required.
 - After fully completing each assigned task, create a Git commit containing all
   changes related to that task.
 - Before committing, run the appropriate checks and `git diff --check`.
+- Changed production code must have at least 90% test coverage. Measure coverage
+  over the executable lines added or modified by the task (diff coverage), not
+  the repository-wide aggregate. Add or update tests before completing the task
+  when the changed-code coverage is below this threshold.
 - Do not include unrelated user changes in the commit.
 - Document every change, report, verification, and experiment in `docs/` as
   part of the same task. Update an existing document when possible; create a
