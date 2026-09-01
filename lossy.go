@@ -1723,6 +1723,7 @@ func (r *lossyEqualityRule[T, V]) assignEqualityClasses(classes map[equalitySour
 type lossyOrderedRule[T any, V any] struct {
 	nodeID          nodeID
 	get             Getter[T, V]
+	encoder         orderedKeyEncoder[V]
 	dir             direction
 	inclusive       bool
 	wildcard        *roaring.Bitmap
@@ -2197,10 +2198,7 @@ func (r *lossyOrderedRule[T, V]) insert(v T, id uint32) {
 		r.wildcard.Add(id)
 		return
 	}
-	key, ok := orderedScalarKey(any(value))
-	if !ok {
-		return
-	}
+	key := r.encoder.key(value)
 	if len(r.buckets) == 0 {
 		r.min, r.max, r.width = key, key, math.MaxUint64
 		r.buckets = []*roaring.Bitmap{roaring.BitmapOf(id)}
@@ -2232,10 +2230,7 @@ func (r *lossyOrderedRule[T, V]) matchingBucketRange(v T) (uint64, uint64, bool)
 	if !ok || len(r.buckets) == 0 {
 		return 0, 0, false
 	}
-	key, ok := orderedScalarKey(any(value))
-	if !ok {
-		return 0, 0, false
-	}
+	key := r.encoder.key(value)
 	last := uint64(len(r.buckets) - 1)
 	if r.dir == greaterThan {
 		if key < r.min || (!r.inclusive && key == r.min) {

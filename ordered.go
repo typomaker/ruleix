@@ -117,6 +117,7 @@ func (r *orderedRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		bits *roaring.Bitmap
 	}
 	var comparedValues []orderedItem[V]
+	encoder, encoderAvailable := compileOrderedKeyEncoder[V]()
 	for _, block := range r.index.blocks {
 		exact += bitmapBytes(block.bits) + 8
 		for _, item := range block.items {
@@ -128,12 +129,11 @@ func (r *orderedRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 				continue
 			}
 			exact += uint64(len(encoded)) + 8 + bitmapBytes(item.bits)
-			key, supported := orderedScalarKey(any(item.value))
-			if supported {
+			if encoderAvailable {
 				values = append(values, struct {
 					key  uint64
 					bits *roaring.Bitmap
-				}{key, item.bits})
+				}{encoder.key(item.value), item.bits})
 			}
 		}
 	}
@@ -170,7 +170,7 @@ func (r *orderedRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 				width = math.MaxUint64
 			}
 			used := min(span/width+1, count)
-			candidate := &lossyOrderedRule[T, V]{nodeID: r.nodeID, get: r.get, dir: r.dir, inclusive: r.inclusive, wildcard: r.wildcard, min: minKey, max: maxKey, width: width, buckets: make([]*roaring.Bitmap, used)}
+			candidate := &lossyOrderedRule[T, V]{nodeID: r.nodeID, get: r.get, encoder: encoder, dir: r.dir, inclusive: r.inclusive, wildcard: r.wildcard, min: minKey, max: maxKey, width: width, buckets: make([]*roaring.Bitmap, used)}
 			for _, value := range values {
 				n := lossyOrderedBucket(value.key, minKey, width, used)
 				if candidate.buckets[n] == nil {

@@ -449,6 +449,7 @@ func TestLossyOrderedEstimateAndIDMatchAgreeWithSearch(t *testing.T) {
 	wildcard := roaring.BitmapOf(8)
 	rule := &lossyOrderedRule[lossyConstraint, int64]{
 		get:       func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
+		encoder:   mustCompileOrderedKeyEncoder[int64](),
 		dir:       greaterThan,
 		inclusive: true,
 		wildcard:  wildcard,
@@ -484,6 +485,7 @@ func BenchmarkLossyAllSelectiveOrderedPlanning(b *testing.B) {
 	broad.AddRange(0, entries)
 	selective := &lossyOrderedRule[lossyConstraint, int64]{
 		get:       func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
+		encoder:   mustCompileOrderedKeyEncoder[int64](),
 		dir:       lessThan,
 		inclusive: true,
 		wildcard:  roaring.New(),

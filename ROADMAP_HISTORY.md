@@ -1,5 +1,35 @@
 # Roadmap history
 
+## 2026-09-01: compiled ordered scalar encoder
+
+Built-in numeric ordered Lossy representations now compile their monotonic
+key encoder while the representation ladder is built. The published numeric
+rule uses the stored typed encoder for streaming insertion and every search,
+cardinality, and direct-ID lookup, removing `any` conversion and the dynamic
+scalar type switch from that search path. Tests cover every supported signed,
+unsigned, and floating-point width, including NaN and signed zero behavior.
+
+A broader prototype that moved named numeric types from comparator-backed
+ordered buckets into the numeric grid was rejected because it changed the
+physical representation and its production-shaped search series regressed.
+The accepted slice deliberately preserves that path. Full tests pass; the
+comparable restricted candidate warm Local series was 1,780–1,797 ns/op,
+152 B/op, and six allocations on Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`,
+500ms and five runs. The parent measured 2,185–2,250 ns/op with identical
+allocations; sequential absolute timings varied, so this is recorded only as
+a no-regression result. The compiled encoder production file measured 90.0%
+statement coverage in `/tmp/ruleix-ordered-encoder.cover`; both typed helper
+constructors measured 100%.
+
+Reproduce with:
+
+```sh
+go test ./...
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkSharedKeyBaseline/Lossy50/LocalSearch$' \
+  -benchmem -benchtime=500ms -count=5 .
+```
+
 ## 2026-09-01: compiled equality quantizer
 
 Equality Lossy now stores its selected precision in a concrete

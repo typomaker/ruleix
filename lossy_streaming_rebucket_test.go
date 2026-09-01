@@ -16,7 +16,7 @@ func TestLossyOrderedStreamingRegridsExpandedRange(t *testing.T) {
 	minimum, _ := orderedScalarKey(any(10))
 	middle, _ := orderedScalarKey(any(19))
 	rule := &lossyOrderedRule[streamingOrderedFixture, int]{
-		get: streamingOrderedValue, dir: greaterThan, inclusive: true,
+		get: streamingOrderedValue, encoder: mustCompileOrderedKeyEncoder[int](), dir: greaterThan, inclusive: true,
 		min: minimum, max: middle, width: 5,
 		buckets:  []*roaring.Bitmap{roaring.BitmapOf(0), roaring.BitmapOf(1)},
 		wildcard: roaring.New(),
@@ -281,7 +281,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 	})
 	t.Run("numeric ordered", func(t *testing.T) {
 		rule := &lossyOrderedRule[streamingOrderedFixture, int]{
-			get: streamingOrderedValue, wildcard: roaring.New(), min: 1, max: 3, width: 1,
+			get: streamingOrderedValue, encoder: mustCompileOrderedKeyEncoder[int](), wildcard: roaring.New(), min: 1, max: 3, width: 1,
 			buckets: []*roaring.Bitmap{roaring.BitmapOf(1), roaring.BitmapOf(2), roaring.BitmapOf(3)},
 		}
 		_, apply, ok := rule.prepareStreamingNext()

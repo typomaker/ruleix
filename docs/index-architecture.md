@@ -251,6 +251,13 @@ Equality уже следует этой форме: полный hash вычис
 build insertion, search lookup и преобразовании текущего ключа на следующую
 ступень streaming downgrade; policy interface в эти пути не попадает.
 
+Первый ordered-срез компилирует монотонный encoder для встроенных signed,
+unsigned и floating-point scalar типов при построении Lossy representation.
+Опубликованный `lossyOrderedRule` хранит конкретную функцию `V -> uint64` и
+использует её для streaming insertion и всех query-key lookup. Именованные
+scalar типы пока сохраняют comparator-backed layout: изменение их физического
+представления отклонено до отдельного production-shaped gate.
+
 Для ordered-оператора обозначим оболочку класса как `[lo, hi]`, а хранимую
 границу как `s`. Преобразование границы определяется записью сравнения со
 стороны query и всегда ослабляет предикат:

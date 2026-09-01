@@ -6,6 +6,34 @@
 [`ROADMAP_HISTORY.md`](../ROADMAP_HISTORY.md); здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-01: compiled ordered encoder только для текущего scalar layout
+
+**Принято с ограничением:** встроенные numeric ordered Lossy rules компилируют
+монотонный `V -> uint64` encoder при построении representation. Reflection
+выбирает typed load один раз; insertion и search вызывают сохранённый encoder
+без reflection, `any` conversion и runtime type switch. Физический grid и
+наблюдаемое поведение остаются прежними.
+
+**Отклонено для этого среза:** перевод named numeric типов из
+comparator-backed layout в numeric grid только на основании underlying kind.
+На shared-key workload это изменило retained accounting с 243 016 до 240 696
+байт и candidates/query с 3.586 до 3.414, то есть перестало быть изолированной
+key-transformation заменой. Candidate warm Local дал 2 286–2 412 ns/op против
+2 185–2 250 ns/op parent; непересекающаяся регрессия привела к удалению этой
+части прототипа.
+
+Ограниченный candidate, сохраняющий прежний выбор representation, дал
+1 780–1 797 ns/op, 152 B/op и 6 allocs/op. Последовательные абсолютные времена
+заметно менялись, поэтому результат трактуется только как отсутствие
+регрессии, не как ускорение. Среда: Apple M1 Max, macOS arm64, Go 1.26.0,
+`GOMAXPROCS=1`, 5 632 entries, 58 queries, 500ms, пять запусков. Команда:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkSharedKeyBaseline/Lossy50/LocalSearch$' \
+  -benchmem -benchtime=500ms -count=5 .
+```
+
 Статусы:
 
 - **принято** — изменение прошло focused-бенчмарк, production-shaped gate и
