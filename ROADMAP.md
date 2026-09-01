@@ -45,6 +45,14 @@ pre-cleanup snapshot и post-activation cleanup в один коммит.
 
 ## Общие exact/lossy-индексы
 
+Статус milestone: `активирован заново — 2026-09-01`.
+
+Milestone выполняется повторно с шага 1. Результаты и код предыдущего прохода
+не засчитываются автоматически: на каждом шаге нужно заново проверить весь
+scope и пройти Gate на текущем `HEAD`. Уже реализованные части разрешено
+переиспользовать только после такой проверки; незавершённые изменения следующих
+шагов не переводят их в статус `в работе`, пока шаг 1 не завершён.
+
 Цель — оставить `Lossy` политикой преобразования ключей, а не отдельным
 search engine. Exact и lossy должны использовать одни физические posting
 структуры, matcher-ы, range search и `Local`-кэши. Lossy отличается только
@@ -61,13 +69,35 @@ quantizer; postings одинаковых новых ключей объедин�
 `Build` build-only состояние удаляется, а search получает ту же immutable
 структуру независимо от режима.
 
+### 1. Зафиксировать семантику ключей и baseline
+
+Статус: `запланирован`
+
+- Заново описать и проверить внутренние контракты exact key, quantized key и
+  precision ladder на фактической реализации текущего `HEAD`.
+- Подтвердить вложенность уровней precision: каждый ключ текущего уровня должен
+  однозначно переводиться в следующий без исходного значения.
+- Зафиксировать направленное округление для `Greater*`, `Less*`, `Between` и
+  каждого оператора `CompareBy`; преобразование может только расширять
+  множество совпадений.
+- Повторно проверить контрольный `identity quantizer`, проходящий общий lossy
+  pipeline и сохраняющий те же ключи и результаты, что exact.
+- Снять новые Exact, Lossy 50% и identity-lossy baseline для build time,
+  accounted retained memory, `Index.Search`, warm `Local.Search`, allocations
+  и candidate count. Старые замеры остаются историческим контекстом.
+
+Gate: на текущем `HEAD` differential-матрица всех поддерживаемых правил
+доказывает равенство identity-lossy и exact, обычный lossy сохраняет
+`result ⊇ exact result`, а новые baseline и команды воспроизведения записаны в
+канонической документации.
+
 ### 2. Выделить общие key transformation и rebuild primitives
 
-Статус: `в работе`
+Статус: `запланирован`
 
-- Распространить уже введённый build-скомпилированный equality
-  encoder/quantizer на ordered key transformations без reflection и interface
-  dispatch в search path.
+- Проверить заново и при необходимости переработать build-скомпилированный
+  equality encoder/quantizer, затем распространить общий контракт на ordered
+  key transformations без reflection и interface dispatch в search path.
 - Реализовать общую операцию `old key -> coarser key -> merge postings` с
   checked accounting и освобождением старого поколения после успешной сборки.
 - Отделить mutable build layout от финализации immutable search layout:

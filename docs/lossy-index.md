@@ -306,6 +306,13 @@ a coarser nested precision without retaining the complete original exact
 values. The migration order, operator-specific rounding rules, and correctness,
 retained-memory, and performance gates are maintained in the roadmap.
 
+On 2026-09-01 this milestone was explicitly reactivated from step 1. Previous
+implementations and measurements are historical evidence only: every step must
+re-audit its complete scope and pass its gate against the current revision
+before it can be marked complete. Work already present in the tree may be
+retained when it passes that renewed verification, but it does not advance the
+roadmap status by itself.
+
 ## Build-time planning
 
 Representation selection belongs in `Build` and has three conceptual phases:
