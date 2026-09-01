@@ -148,6 +148,44 @@ string 46,71–51,59, `[3]int` 53,84–54,37, struct 42,51–55,52; все ва�
 
 ## Непокрытые переходы
 
+### Exact versus Lossy search checkpoint 2026-09-01
+
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, current revision `8b81d55`,
+`benchtime=500ms`, `count=5`. The production-shaped matrix used 38,098
+constraints and a 377,122-byte Lossy budget (50% of exact accounting):
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeSearch/(Index|Local)$' \
+  -benchmem -benchtime=500ms -count=5 .
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeLossySearch/(Index|Local)$' \
+  -benchmem -benchtime=500ms -count=5 .
+```
+
+| Path | Exact median | Lossy median | Lossy delta | Exact / Lossy allocations |
+| --- | ---: | ---: | ---: | ---: |
+| `Index.Search` | 33,380 ns/op | 43,773 ns/op | +31.1% | 40,805 / 38,909 B/op; 28 / 22 allocs/op |
+| warm `Local.Search` | 228.5 ns/op | 586.4 ns/op | +156.6% | 0 / 0 B/op; 0 / 0 allocs/op |
+
+Both production queries returned 139 Lossy candidates. Thus the 50% retained-
+memory policy reduces uncached allocation traffic by 4.6% and allocations by
+21.4%, but degrades production-shaped search latency, particularly the warm
+Local path. This is a measured mode tradeoff, not a revision-to-revision
+regression.
+
+The focused four-equality-child matrix did not reproduce the production
+latency degradation consistently. At a 50% budget, repeated Index and Local
+medians improved from 850.3 to 658.0 ns/op and from 450.8 to 383.6 ns/op;
+rotating Index improved from 848.6 to 773.9 ns/op, while rotating Local slowed
+from 894.5 to 916.8 ns/op (+2.5%). The companion quality workload returned
+exactly 1.000 candidate/query and zero observed false positives at both Exact
+and Budget50. `TestLossyExactDifferentialEverySupportedRule` and
+`TestProductionShapeLossyNeverDropsExactMatches` passed, so no false negatives
+were observed. The legacy Budget25 benchmark case did not build because the
+current streaming state cannot fit that limit; it produced no search result
+and is excluded from the comparison.
+
 ### Production Lossy checkpoint 2026-08-31
 
 Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, 38 098 constraints. Полная
