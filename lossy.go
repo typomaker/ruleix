@@ -1451,7 +1451,7 @@ type lossyEqualityRule[T any, V comparable] struct {
 	wildcard       *roaring.Bitmap
 	wildcardSource physicalSourceID
 	wildcardClass  uint32
-	bucketCount    uint64
+	quantizer      equalityQuantizer
 	codec          equalityCodec[V]
 	buckets        map[uint64]lossyEqualityPosting
 }
@@ -1486,13 +1486,13 @@ func (r *lossyEqualityRule[T, V]) refreshedStreamingDetails(details inspectionDe
 	return details
 }
 func (r *lossyEqualityRule[T, V]) fitStreamingLimit(limit uint64) {
-	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit && r.bucketCount > 1 {
-		r.rebucket(nextEqualityBucketCount(r.bucketCount))
+	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit && r.quantizer.bucketCount > 1 {
+		r.rebucket(nextEqualityBucketCount(r.quantizer.bucketCount))
 	}
 }
 func (r *lossyEqualityRule[T, V]) fitStreamingNext() {
-	if r.bucketCount > 1 {
-		r.rebucket(nextEqualityBucketCount(r.bucketCount))
+	if r.quantizer.bucketCount > 1 {
+		r.rebucket(nextEqualityBucketCount(r.quantizer.bucketCount))
 	}
 }
 func (r *lossyEqualityRule[T, V]) nextStreamingUsage() (uint64, bool) {
@@ -1500,13 +1500,13 @@ func (r *lossyEqualityRule[T, V]) nextStreamingUsage() (uint64, bool) {
 	return usage, ok
 }
 func (r *lossyEqualityRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
-	if r.bucketCount <= 1 {
+	if r.quantizer.bucketCount <= 1 {
 		return 0, nil, false
 	}
 	clone := *r
-	clone.rebucket(nextEqualityBucketCount(clone.bucketCount))
+	clone.rebucket(nextEqualityBucketCount(clone.quantizer.bucketCount))
 	usage := clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
-	return usage, func() { r.bucketCount, r.buckets = clone.bucketCount, clone.buckets }, true
+	return usage, func() { r.quantizer, r.buckets = clone.quantizer, clone.buckets }, true
 }
 
 func nextEqualityBucketCount(current uint64) uint64 {
@@ -1521,13 +1521,14 @@ func nextEqualityBucketCount(current uint64) uint64 {
 // rebucket maps each old nested hash class to its single parent class. The
 // original hash values are not retained.
 func (r *lossyEqualityRule[T, V]) rebucket(count uint64) {
-	count = min(max(count, 1), r.bucketCount)
-	if count == r.bucketCount {
+	count = min(max(count, 1), r.quantizer.bucketCount)
+	if count == r.quantizer.bucketCount {
 		return
 	}
+	nextQuantizer := newEqualityQuantizer(count)
 	next := make(map[uint64]lossyEqualityPosting, min(len(r.buckets), int(count)))
 	for old, posting := range r.buckets {
-		bucket := coarsenEqualityBucket(old, r.bucketCount, count)
+		bucket := r.quantizer.coarsen(old, nextQuantizer)
 		merged := next[bucket]
 		if merged.bits == nil {
 			merged.bits = roaring.New()
@@ -1535,7 +1536,7 @@ func (r *lossyEqualityRule[T, V]) rebucket(count uint64) {
 		merged.bits.Or(posting.bits)
 		next[bucket] = merged
 	}
-	r.bucketCount, r.buckets = count, next
+	r.quantizer, r.buckets = nextQuantizer, next
 }
 
 func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bool) {
@@ -1549,7 +1550,7 @@ func (r *lossyEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bo
 		return r.wildcard, true
 	}
 	hash := r.codec.hash(value)
-	bits := r.buckets[reduceEqualityHash(hash, r.bucketCount)].bits
+	bits := r.buckets[r.quantizer.key(hash)].bits
 	if bits == nil {
 		return r.wildcard, true
 	}
@@ -1565,7 +1566,7 @@ func (r *lossyEqualityRule[T, V]) insert(v T, id uint32) {
 		r.wildcard.Add(id)
 		return
 	}
-	bucket := reduceEqualityHash(r.codec.hash(value), r.bucketCount)
+	bucket := r.quantizer.key(r.codec.hash(value))
 	posting := r.buckets[bucket]
 	if posting.bits == nil {
 		posting.bits = roaring.New()
@@ -1597,7 +1598,7 @@ func (r *lossyEqualityRule[T, V]) addMatches(value optionalValue[V], dst *roarin
 		return
 	}
 	hash := r.codec.hash(value.value)
-	if bits := r.buckets[reduceEqualityHash(hash, r.bucketCount)].bits; bits != nil {
+	if bits := r.buckets[r.quantizer.key(hash)].bits; bits != nil {
 		dst.Or(bits)
 	}
 }
@@ -1608,7 +1609,7 @@ func (r *lossyEqualityRule[T, V]) estimateCardinality(v T) uint64 {
 		return n
 	}
 	hash := r.codec.hash(value)
-	if bits := r.buckets[reduceEqualityHash(hash, r.bucketCount)].bits; bits != nil {
+	if bits := r.buckets[r.quantizer.key(hash)].bits; bits != nil {
 		n += bits.GetCardinality()
 	}
 	return n
@@ -1622,7 +1623,7 @@ func (r *lossyEqualityRule[T, V]) lookupEqualityClass(v T) uint32 {
 		return r.wildcardClass
 	}
 	hash := r.codec.hash(value)
-	return r.buckets[reduceEqualityHash(hash, r.bucketCount)].class
+	return r.buckets[r.quantizer.key(hash)].class
 }
 func (r *lossyEqualityRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
 	bits, found := r.lookupCachedBitmap(v, pool)
@@ -1653,7 +1654,7 @@ func (r *lossyEqualityRule[T, V]) matchesID(v T, id uint32) bool {
 		return false
 	}
 	hash := r.codec.hash(value)
-	bits := r.buckets[reduceEqualityHash(hash, r.bucketCount)].bits
+	bits := r.buckets[r.quantizer.key(hash)].bits
 	return bits != nil && bits.Contains(id)
 }
 func (*lossyEqualityRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
@@ -1661,23 +1662,11 @@ func (*lossyEqualityRule[T, V]) directIDWork() uint64 { return allEqualityDirect
 // reduceEqualityHash maps the complete codec hash onto a nested immutable
 // class. Intermediate levels pairwise merge a prefix of the finest cells.
 func reduceEqualityHash(hash, bucketCount uint64) uint64 {
-	upper := equalityBucketUpper(bucketCount)
-	high, _ := bits.Mul64(hash, upper)
-	return reduceEqualityBaseBucket(high, upper, bucketCount)
+	return newEqualityQuantizer(bucketCount).key(hash)
 }
 
 func coarsenEqualityBucket(bucket, current, next uint64) uint64 {
-	upper := equalityBucketUpper(current)
-	merged := upper - current
-	base := bucket + merged
-	if bucket < merged {
-		base = bucket * 2
-	}
-	for upper > equalityBucketUpper(next) {
-		base /= 2
-		upper /= 2
-	}
-	return reduceEqualityBaseBucket(base, upper, next)
+	return newEqualityQuantizer(current).coarsen(bucket, newEqualityQuantizer(next))
 }
 
 func reduceEqualityBaseBucket(base, upper, count uint64) uint64 {

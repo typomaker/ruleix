@@ -157,7 +157,7 @@ func TestLossyUUIDUsesFinerBucketCounts(t *testing.T) {
 	counts := make([]uint64, 0, len(ladder)-1)
 	for _, level := range ladder[1:] {
 		detailed := level.compiled.(*inspectionDetailsRule[codecFixtureConstraint[fixtureUUID]])
-		counts = append(counts, detailed.child.(*lossyEqualityRule[codecFixtureConstraint[fixtureUUID], fixtureUUID]).bucketCount)
+		counts = append(counts, detailed.child.(*lossyEqualityRule[codecFixtureConstraint[fixtureUUID], fixtureUUID]).quantizer.bucketCount)
 	}
 	for _, want := range []uint64{65536, 57344, 49152, 40960, 32768} {
 		require.Contains(t, counts, want)
@@ -438,9 +438,9 @@ func BenchmarkLossyCompiledScalarCodec(b *testing.B) {
 
 // BenchmarkLossyCompiledCompositeCodec measures the fixed-byte and recursive
 // codec search paths with 10,000 entries and MemoryLimit(200000).
-// Apple M1 Max, Go 1.26.0, 300ms x3: Bytes16 55.65-56.94 ns/op,
-// NamedUUID 55.82-56.40, String 41.16-54.15, IntArray 53.35-54.13, Struct
-// 45.97-55.66; every case reported 0 B/op and 0 allocs/op.
+// Latest focused run (Apple M1 Max, Go 1.26.0, GOMAXPROCS=1, 300ms x5):
+// Bytes16 49.84-50.69 ns/op and NamedUUID 57.57-59.01 ns/op; both reported
+// 0 B/op and 0 allocs/op. Other cases retain the broader benchmark coverage.
 // Reproduce: go test -run '^$' -bench '^BenchmarkLossyCompiledCompositeCodec$'
 // -benchmem -benchtime=300ms -count=3 .
 func BenchmarkLossyCompiledCompositeCodec(b *testing.B) {

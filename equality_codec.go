@@ -3,6 +3,7 @@ package ruleix
 import (
 	"fmt"
 	"hash/maphash"
+	"math/bits"
 	"reflect"
 	"unsafe"
 )
@@ -23,6 +24,38 @@ func (e *equalityCodecError) Error() string {
 // represented separately by the immutable shift stored on lossyEqualityRule.
 type equalityCodec[V comparable] struct {
 	hash func(V) uint64
+}
+
+// equalityQuantizer is compiled together with the equality codec during
+// Build. Keeping the selected precision in this concrete value makes the
+// search path a direct hash-to-key transformation with no policy lookup or
+// interface dispatch.
+type equalityQuantizer struct {
+	bucketCount uint64
+}
+
+func newEqualityQuantizer(bucketCount uint64) equalityQuantizer {
+	return equalityQuantizer{bucketCount: max(bucketCount, 1)}
+}
+
+func (q equalityQuantizer) key(hash uint64) uint64 {
+	upper := equalityBucketUpper(q.bucketCount)
+	high, _ := bits.Mul64(hash, upper)
+	return reduceEqualityBaseBucket(high, upper, q.bucketCount)
+}
+
+func (q equalityQuantizer) coarsen(key uint64, next equalityQuantizer) uint64 {
+	upper := equalityBucketUpper(q.bucketCount)
+	merged := upper - q.bucketCount
+	base := key + merged
+	if key < merged {
+		base = key * 2
+	}
+	for upper > equalityBucketUpper(next.bucketCount) {
+		base /= 2
+		upper /= 2
+	}
+	return reduceEqualityBaseBucket(base, upper, next.bucketCount)
 }
 
 func compileEqualityCodec[V comparable]() (equalityCodec[V], error) {

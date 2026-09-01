@@ -24,8 +24,9 @@ quantizer; postings одинаковых новых ключей объедин�
 
 ### 2. Выделить общие key transformation и rebuild primitives
 
-- Ввести build-скомпилированные encoder/quantizer без reflection и
-  interface dispatch в search path.
+- Распространить уже введённый build-скомпилированный equality
+  encoder/quantizer на ordered key transformations без reflection и interface
+  dispatch в search path.
 - Реализовать общую операцию `old key -> coarser key -> merge postings` с
   checked accounting и освобождением старого поколения после успешной сборки.
 - Отделить mutable build layout от финализации immutable search layout:

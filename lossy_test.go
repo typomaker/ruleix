@@ -264,10 +264,10 @@ func TestLossyAllReusesPlanningBucket(t *testing.T) {
 				getterCalls[i]++
 				return v.name, v.present
 			},
-			wildcard:    roaring.New(),
-			codec:       codec,
-			bucketCount: 65536,
-			buckets:     map[uint64]lossyEqualityPosting{reduceEqualityHash(hash, 65536): {bits: roaring.BitmapOf(7)}},
+			wildcard:  roaring.New(),
+			codec:     codec,
+			quantizer: newEqualityQuantizer(65536),
+			buckets:   map[uint64]lossyEqualityPosting{reduceEqualityHash(hash, 65536): {bits: roaring.BitmapOf(7)}},
 		}
 	}
 
@@ -292,10 +292,10 @@ func TestLossyAllLocalPlanReusesPlanningBucket(t *testing.T) {
 				getterCalls[i]++
 				return v.name, v.present
 			},
-			wildcard:    roaring.New(),
-			codec:       codec,
-			bucketCount: 65536,
-			buckets:     map[uint64]lossyEqualityPosting{reduceEqualityHash(hash, 65536): {bits: roaring.BitmapOf(7)}},
+			wildcard:  roaring.New(),
+			codec:     codec,
+			quantizer: newEqualityQuantizer(65536),
+			buckets:   map[uint64]lossyEqualityPosting{reduceEqualityHash(hash, 65536): {bits: roaring.BitmapOf(7)}},
 		}
 	}
 
@@ -315,12 +315,12 @@ func TestLossyEqualityLocalCachesRepeatedValue(t *testing.T) {
 	require.NoError(t, err)
 	hash := codec.hash(value)
 	rule := &lossyEqualityRule[lossyConstraint, string]{
-		nodeID:      0,
-		get:         func(v lossyConstraint) (string, bool) { return v.name, v.present },
-		wildcard:    roaring.New(),
-		codec:       codec,
-		bucketCount: 256,
-		buckets:     map[uint64]lossyEqualityPosting{reduceEqualityHash(hash, 256): {bits: roaring.BitmapOf(7)}},
+		nodeID:    0,
+		get:       func(v lossyConstraint) (string, bool) { return v.name, v.present },
+		wildcard:  roaring.New(),
+		codec:     codec,
+		quantizer: newEqualityQuantizer(256),
+		buckets:   map[uint64]lossyEqualityPosting{reduceEqualityHash(hash, 256): {bits: roaring.BitmapOf(7)}},
 	}
 	pool := newLocalBitmapPool(1)
 	query := lossyConstraint{name: value, present: true}
@@ -406,11 +406,11 @@ func BenchmarkLossyAllSelectivePlanning(b *testing.B) {
 	broad := roaring.New()
 	broad.AddRange(0, entries)
 	selective := &lossyEqualityRule[lossyConstraint, string]{
-		get:         func(v lossyConstraint) (string, bool) { return v.name, v.present },
-		wildcard:    roaring.New(),
-		codec:       codec,
-		bucketCount: 65536,
-		buckets:     map[uint64]lossyEqualityPosting{reduceEqualityHash(hash, 65536): {bits: roaring.BitmapOf(7)}},
+		get:       func(v lossyConstraint) (string, bool) { return v.name, v.present },
+		wildcard:  roaring.New(),
+		codec:     codec,
+		quantizer: newEqualityQuantizer(65536),
+		buckets:   map[uint64]lossyEqualityPosting{reduceEqualityHash(hash, 65536): {bits: roaring.BitmapOf(7)}},
 	}
 	children := make([]Rule[lossyConstraint], 0, 8)
 	for range 7 {

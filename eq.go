@@ -75,12 +75,13 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		// coarse-to-fine order and reverses it after the exact level.
 		for index := len(bucketCounts) - 1; index >= 0; index-- {
 			bucketCount := bucketCounts[index]
+			quantizer := newEqualityQuantizer(bucketCount)
 			candidate := &lossyEqualityRule[T, V]{
 				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-				bucketCount: bucketCount, codec: codec, buckets: make(map[uint64]lossyEqualityPosting),
+				quantizer: quantizer, codec: codec, buckets: make(map[uint64]lossyEqualityPosting),
 			}
 			for _, value := range hashed {
-				bucket := reduceEqualityHash(value.hash, bucketCount)
+				bucket := quantizer.key(value.hash)
 				posting := candidate.buckets[bucket]
 				if posting.bits == nil {
 					posting.bits = roaring.New()

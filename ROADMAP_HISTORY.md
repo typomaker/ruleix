@@ -1,5 +1,38 @@
 # Roadmap history
 
+## 2026-09-01: compiled equality quantizer
+
+Equality Lossy now stores its selected precision in a concrete
+`equalityQuantizer` compiled during `Build`. The full equality codec hash and
+the quantizer are separate primitives: build insertion and every search,
+cardinality, class, and direct-ID lookup call the same direct `hash -> key`
+transformation without reflection, policy lookup, or interface dispatch.
+Streaming rebucketing uses the quantizer's adjacent-class transformation and
+publishes the new quantizer together with the rebuilt posting map.
+
+The existing exhaustive nested-ladder and streaming fixtures cover direct and
+adjacent coarsening, posting merges, repeated pressure, and every runtime
+lookup. Full tests pass. Coverage of all three changed quantizer functions was
+100% in `/tmp/ruleix-equality-quantizer.cover`; executable production diff
+coverage was 98.3% (59/60 statements).
+
+On Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`, 10,000 entries,
+`MemoryLimit(200000)`, `benchtime=300ms`, and five runs, warm Local lookup was
+49.84–50.69 ns/op for `[16]byte` and 57.57–59.01 ns/op for a named UUID, both
+at 0 B/op and 0 allocations. The preceding nested-ladder checkpoint was
+50.91–53.46 and 60.07–60.55 ns/op respectively, so the compiled quantizer
+introduces no measured search regression.
+
+Reproduce with:
+
+```sh
+go test ./...
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkLossyCompiledCompositeCodec/(Bytes16|NamedUUID)$' \
+  -benchmem -benchtime=300ms -count=5 .
+go test -race ./...
+```
+
 ## 2026-09-01: shared-key migration baseline
 
 Roadmap step 1 is complete. The retained `BenchmarkSharedKeyBaseline` measures

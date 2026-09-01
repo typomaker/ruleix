@@ -73,7 +73,7 @@ func TestLossyComparedStreamingFitsGradually(t *testing.T) {
 
 func TestLossyEqualityStreamingRebucketsWithoutDroppingIDs(t *testing.T) {
 	rule := &lossyEqualityRule[streamingOrderedFixture, int]{
-		bucketCount: 4,
+		quantizer: newEqualityQuantizer(4),
 		buckets: map[uint64]lossyEqualityPosting{
 			0: {bits: roaring.BitmapOf(0)},
 			1: {bits: roaring.BitmapOf(1)},
@@ -82,8 +82,8 @@ func TestLossyEqualityStreamingRebucketsWithoutDroppingIDs(t *testing.T) {
 		},
 	}
 	rule.rebucket(3)
-	if rule.bucketCount != 3 {
-		t.Fatalf("bucket count is %d, want 3", rule.bucketCount)
+	if rule.quantizer.bucketCount != 3 {
+		t.Fatalf("bucket count is %d, want 3", rule.quantizer.bucketCount)
 	}
 	seen := roaring.New()
 	for _, posting := range rule.buckets {
@@ -265,7 +265,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 	}
 	t.Run("equality", func(t *testing.T) {
 		rule := &lossyEqualityRule[streamingOrderedFixture, int]{
-			get: streamingOrderedValue, wildcard: roaring.New(), bucketCount: 8,
+			get: streamingOrderedValue, wildcard: roaring.New(), quantizer: newEqualityQuantizer(8),
 			buckets: map[uint64]lossyEqualityPosting{
 				0: {bits: roaring.BitmapOf(0)}, 1: {bits: roaring.BitmapOf(1)},
 				2: {bits: roaring.BitmapOf(2)}, 3: {bits: roaring.BitmapOf(3)},
@@ -274,7 +274,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		_, apply, ok := rule.prepareStreamingNext()
 		require.True(t, ok)
 		apply()
-		require.Less(t, rule.bucketCount, uint64(8))
+		require.Less(t, rule.quantizer.bucketCount, uint64(8))
 		_, ok = rule.nextStreamingUsage()
 		require.True(t, ok)
 		rule.fitStreamingNext()

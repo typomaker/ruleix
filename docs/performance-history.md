@@ -4,6 +4,22 @@
 релизами и предрелизными checkpoints. Он является сводкой, а не заменой сырых
 benchmark-отчётов.
 
+## 2026-09-01: compiled equality quantizer checkpoint
+
+Первый implementation-срез общей key-архитектуры перенёс equality precision в
+конкретный build-скомпилированный quantizer, напрямую используемый insertion,
+search и streaming coarsening. Apple M1 Max, macOS arm64, Go 1.26.0,
+`GOMAXPROCS=1`, 10 000 entries, `MemoryLimit(200000)`, `benchtime=300ms`, пять
+запусков:
+
+| Warm `Local.Search` workload | Предыдущий nested-ladder диапазон | Compiled quantizer | Allocations |
+| --- | ---: | ---: | ---: |
+| `[16]byte` | 50,91–53,46 ns/op | 49,84–50,69 ns/op | 0 B/op, 0 allocs/op |
+| named UUID | 60,07–60,55 ns/op | 57,57–59,01 ns/op | 0 B/op, 0 allocs/op |
+
+Диапазоны не показывают search-регрессии. Команда:
+`GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkLossyCompiledCompositeCodec/(Bytes16|NamedUUID)$' -benchmem -benchtime=300ms -count=5 .`.
+
 ## Правила ведения
 
 - Для каждой новой версии сначала измеряется последний релиз и кандидат в
