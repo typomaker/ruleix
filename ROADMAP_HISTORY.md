@@ -1,5 +1,23 @@
 # Roadmap history
 
+## 2026-09-01: audit remaining Lossy collapse paths
+
+The post-rebucketing audit covered every public Lossy-capable leaf and both
+single-leaf and aggregate limit fitting. `Include`, scalar and comparator-backed
+ordered rules, `Between`, and `CompareBy` now reduce precision one bucket step
+at a time; a one-bucket representation remains reachable only as the terminal
+level required by a genuinely tight `MemoryLimit`. Late values outside an
+observed prefix do not select that level directly.
+
+Two conservative mechanisms remain in `lossy.go`, but neither is reachable by
+the current public Lossy rule set: `streamingLossyLeaf` is a future-safety tail
+for a compiled lossy type that lacks operator-specific streaming insertion,
+and `lossyUniversalRule` is infrastructure for an operator that has no viable
+selective approximation. Every currently supported compiled type implements
+`streamingLossyAccumulator`; unsupported custom rules are rejected during
+Lossy policy analysis. The equality type's legacy `streamingUniversal`
+provider is also shadowed by the accumulator check and is not selected.
+
 ## 2026-09-01: replace streaming collapse with build-time rebucketing
 
 Numeric ordered grids now recompute their range when a later stream value lies
