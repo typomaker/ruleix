@@ -186,6 +186,26 @@ were observed. The legacy Budget25 benchmark case did not build because the
 current streaming state cannot fit that limit; it produced no search result
 and is excluded from the comparison.
 
+Focused CPU profiles confirmed separate causes for the two production paths.
+Profiles used the same benchmarks with `-cpuprofile`, `GOMAXPROCS=1`, and a
+longer timed region (`benchtime=12s` for Index and `15s` for Local). Index
+measured 33,341 ns/op Exact versus 41,488 ns/op Lossy. In the filtered profile,
+`validateCandidateBitmap` grew from 10.18% to 18.72% of samples and
+`matchesChildID` from 9.04% to 16.23%. The Lossy bucket superset therefore
+spends the additional CPU validating candidates against exact child
+predicates; this is the primary confirmed Index cause.
+
+Local measured 226.3 ns/op Exact versus 618.1 ns/op Lossy. Exact spent 76.59%
+of samples cumulatively in `loadLocalQueryResult`, which validates the two
+rotating query keys and returns stored IDs before planning. Lossy spent 47.35%
+in `populatePlanningLocalPlan` and 36.24% in `cachedLocalPlanChild` instead.
+The confirmed capability gap is `lossyEqualityRule`: it provides bitmap-cache
+lookup but not `localQueryKeyProvider`. Consequently `captureLocalQueryKeys`
+cannot store a complete key tuple, `loadLocalQueryResult` cannot hit, and every
+warm Lossy search must reconstruct the child plan and inspect cached bitmaps.
+Adding a collision-safe lossy equality query key is the focused correction to
+evaluate; candidate validation remains a separate uncached-Index cost.
+
 ### Production Lossy checkpoint 2026-08-31
 
 Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, 38 098 constraints. Полная
