@@ -7,176 +7,6 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
-func (r *eqRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
-	return r.newLossyAllPlanner().compile(limit)
-}
-
-type equalityLossyAllPlanner[T any, V comparable] struct {
-	representations []Rule[T]
-	ladder          []lossyRepresentation[T]
-	exact           Rule[T]
-	prepare         func() []Rule[T]
-	err             error
-}
-
-//nolint:gocognit // Planning evaluates representations in one allocation-aware pass.
-func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
-	// V1 exact accounting: wildcard payload, 24 bytes of strategy/source
-	// metadata, and for each occupied bucket an 8-byte key, 16-byte logical
-	// slot (including its source ID and alignment), and payload.
-	exact := uint64(24) + bitmapBytes(r.wildcard)
-	items := r.wildcard.GetCardinality()
-	distinct := uint64(0)
-	codec, codecErr := compileEqualityCodec[V]()
-	type hashedSet struct {
-		hash uint64
-		set  *equalitySet
-	}
-	hashed := make([]hashedSet, 0, len(r.values.sets))
-	addHash := func(value V, set *equalitySet) {
-		if codecErr == nil {
-			hashed = append(hashed, hashedSet{hash: codec.hash(value), set: set})
-		}
-	}
-	if r.values.offsets == nil {
-		for n := range int(r.values.count) {
-			items += equalitySetCardinality(&r.values.sets[n])
-			distinct++
-			addHash(r.values.keys[n], &r.values.sets[n])
-			exact += comparableValueBytes(any(r.values.keys[n])) + 16 + equalitySetBytes(&r.values.sets[n])
-		}
-	} else {
-		for value, offset := range r.values.offsets {
-			items += equalitySetCardinality(&r.values.sets[offset])
-			distinct++
-			addHash(value, &r.values.sets[offset])
-			exact += comparableValueBytes(any(value)) + 16 + equalitySetBytes(&r.values.sets[offset])
-		}
-	}
-	exactRepresentation := Rule[T](&inspectionDetailsRule[T]{
-		child:   r,
-		details: representationDetails(exact, items, distinct, 0, false),
-	})
-	planner := &equalityLossyAllPlanner[T, V]{exact: exactRepresentation, err: codecErr}
-	if codecErr != nil {
-		return planner
-	}
-	planner.prepare = func() []Rule[T] {
-		bucketCounts := equalityBucketCounts(lossyMaxBucketBits)
-		representations := make([]Rule[T], 0, len(bucketCounts))
-		var sameValuePairs float64
-		for _, value := range hashed {
-			count := equalitySetCardinality(value.set)
-			sameValuePairs += float64(count) * float64(count)
-		}
-		concreteItems := items - r.wildcard.GetCardinality()
-		allDifferentValuePairs := float64(concreteItems)*float64(concreteItems) - sameValuePairs
-		// buildLossyRepresentationLadder accepts the builders' natural
-		// coarse-to-fine order and reverses it after the exact level.
-		for index := len(bucketCounts) - 1; index >= 0; index-- {
-			bucketCount := bucketCounts[index]
-			quantizer := newEqualityQuantizer(bucketCount)
-			candidate := &lossyEqualityRule[T, V]{
-				nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-				quantizer: quantizer, codec: codec, buckets: make(map[uint64]lossyEqualityPosting),
-			}
-			for _, value := range hashed {
-				bucket := quantizer.key(value.hash)
-				posting := candidate.buckets[bucket]
-				if posting.bits == nil {
-					posting.bits = roaring.New()
-				}
-				value.set.addTo(posting.bits)
-				candidate.buckets[bucket] = posting
-			}
-			usage := uint64(40) + bitmapBytes(candidate.wildcard)
-			var collidingDifferentValuePairs float64
-			for _, posting := range candidate.buckets {
-				usage += 24 + bitmapBytes(posting.bits)
-				count := float64(posting.bits.GetCardinality())
-				collidingDifferentValuePairs += count * count
-			}
-			details := representationDetails(usage, items, distinct, uint64(len(candidate.buckets)), true)
-			if allDifferentValuePairs > 0 {
-				collidingDifferentValuePairs -= sameValuePairs
-				details.EstimatedFalsePositiveRateValue = collidingDifferentValuePairs / allDifferentValuePairs
-				details.EstimatedFalsePositiveRateAvailable = true
-			}
-			representations = append(representations, &inspectionDetailsRule[T]{child: candidate, details: details})
-		}
-		return representations
-	}
-	return planner
-}
-
-// equalityBucketCounts returns four nested precision levels per power-of-two
-// interval. Each intermediate level merges one more quarter of the upper
-// level's base classes pairwise, so every class has exactly one parent.
-func equalityBucketCounts(maxBits uint) []uint64 {
-	counts := make([]uint64, 0, int(maxBits)*4+1)
-	for bit := maxBits; bit > 0; bit-- {
-		upper := uint64(1) << bit
-		for numerator := uint64(8); numerator >= 5; numerator-- {
-			count := upper / 8 * numerator
-			if len(counts) == 0 || counts[len(counts)-1] != count {
-				counts = append(counts, count)
-			}
-		}
-	}
-	return append(counts, 1)
-}
-
-func (p *equalityLossyAllPlanner[T, V]) compile(limit uint64) (Rule[T], error) {
-	ladder, err := p.representationLadder()
-	if err != nil {
-		return nil, err
-	}
-	return selectLossyRepresentation(ladder, limit, "ruleix: Lossy equality cannot fit the memory limit")
-}
-
-func (p *equalityLossyAllPlanner[T, V]) representationLadder() ([]lossyRepresentation[T], error) {
-	if p.err != nil {
-		return nil, p.err
-	}
-	if p.ladder == nil {
-		p.representations = p.prepare()
-		p.prepare = nil
-		p.ladder = buildLossyRepresentationLadder(p.exact, p.representations)
-	}
-	return p.ladder, nil
-}
-
-func equalitySetCardinality(s *equalitySet) uint64 {
-	if s.bits != nil {
-		return s.bits.GetCardinality()
-	}
-	if s.small != nil {
-		return uint64(len(s.small))
-	}
-	return 1
-}
-
-func equalitySetBytes(s *equalitySet) uint64 {
-	if s.bits != nil {
-		return bitmapBytes(s.bits)
-	}
-	if s.small != nil {
-		return uint64(len(s.small)) * 4
-	}
-	return 4
-}
-
-// Include matches a query field when it equals the stored field. A missing
-// stored value is a wildcard and matches every concrete query value; a missing
-// query value matches only stored wildcards.
-//
-// For example, to match a rule's optional country:
-//
-//	ruleix.Include(func(c Constraint) (string, bool) { return c.Country, true })
-func Include[T any, V comparable](get Getter[T, V]) Rule[T] {
-	return &eqRule[T, V]{get: get}
-}
-
 // equalityArrayLimit is the largest equality posting list kept as a compact
 // uint32 slice. Larger lists use Roaring, whose containers become more
 // efficient once the fixed bitmap/object overhead is amortized.
@@ -249,6 +79,65 @@ func (i *equalityIndex[V]) add(value V, id uint32) {
 	i.offsets[value] = uint32(len(i.sets) - 1)
 }
 
+func (i *equalityIndex[V]) addBitmap(value V, id uint32) {
+	if set := i.get(value); set != nil {
+		if set.bits == nil {
+			bits := roaring.New()
+			set.addTo(bits)
+			set.bits, set.small = bits, nil
+		}
+		set.bits.Add(id)
+		return
+	}
+	i.addSet(value, &equalitySet{bits: roaring.BitmapOf(id)})
+}
+
+// addSet publishes a complete posting under an already transformed key.
+// Collisions merge into the same equalitySet, just like repeated exact keys.
+func (i *equalityIndex[V]) addSet(value V, incoming *equalitySet) {
+	if set := i.get(value); set != nil {
+		incoming.addToSet(set)
+		return
+	}
+	if i.offsets == nil && i.count < uint8(len(i.keys)) {
+		i.keys[i.count] = value
+		i.count++
+		i.sets = append(i.sets, incoming.clone())
+		return
+	}
+	if i.offsets == nil {
+		capacity := max(i.hint, len(i.keys)+1)
+		i.offsets = make(map[V]uint32, capacity)
+		for index := range int(i.count) {
+			i.offsets[i.keys[index]] = uint32(index)
+		}
+	}
+	i.sets = append(i.sets, incoming.clone())
+	i.offsets[value] = uint32(len(i.sets) - 1)
+}
+
+func (s *equalitySet) clone() equalitySet {
+	clone := *s
+	clone.source, clone.class = 0, 0
+	clone.small = slices.Clone(s.small)
+	if s.bits != nil {
+		clone.bits = s.bits.Clone()
+	}
+	return clone
+}
+
+func (i *equalityIndex[V]) visit(visit func(V, *equalitySet)) {
+	if i.offsets == nil {
+		for index := range int(i.count) {
+			visit(i.keys[index], &i.sets[index])
+		}
+		return
+	}
+	for key, offset := range i.offsets {
+		visit(key, &i.sets[offset])
+	}
+}
+
 func (s *equalitySet) add(id uint32) {
 	if s.bits != nil {
 		s.bits.Add(id)
@@ -314,6 +203,15 @@ func (s *equalitySet) addTo(dst *roaring.Bitmap) {
 		return
 	}
 	dst.Add(s.single)
+}
+
+func (s *equalitySet) addToSet(dst *equalitySet) {
+	if dst.bits == nil {
+		bits := roaring.New()
+		dst.addTo(bits)
+		dst.bits, dst.small = bits, nil
+	}
+	s.addTo(dst.bits)
 }
 
 // intersectEqualitySet keeps immutable bitmap postings on the direct And
@@ -445,12 +343,7 @@ func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		return
 	}
 
-	node := &pool.local[int(r.nodeID)]
-	cache, _ := node.equality.(*valueBitmapCache[V])
-	if cache == nil {
-		cache = newValueBitmapCache[V](pool, r.nodeID)
-		node.equality = cache
-	}
+	cache := equalityCache[V](pool, r.nodeID)
 	if bits, found := comparableValueCacheLookup(cache, value); found {
 		dst.Or(bits)
 		return
@@ -467,12 +360,7 @@ func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 }
 
 func (r *eqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
-	dst.Or(r.wildcard)
-	if value.ok {
-		if set := r.values.get(value.value); set != nil {
-			set.addTo(dst)
-		}
-	}
+	addEqualityMatches(r.wildcard, &r.values, value, dst)
 }
 func (r *eqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
 func (r *eqRule[T, V]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
@@ -584,651 +472,4 @@ func (r *eqRule[T, V]) assignEqualityClasses(classes map[equalitySourcePair]uint
 			set.class = classes[equalitySourcePair{wildcard: r.wildcardSource, posting: set.source}]
 		}
 	}
-}
-
-// unaryEqRule and binaryEqRule are immutable build-time specializations for
-// low-cardinality equality filters. Besides avoiding a map lookup, they discard
-// the slice and capacity retained by the general equality index.
-type unaryEqRule[T any, V comparable] struct {
-	nodeID         nodeID
-	get            Getter[T, V]
-	wildcard       *roaring.Bitmap
-	wildcardSource physicalSourceID
-	wildcardClass  uint32
-	key            V
-	set            equalitySet
-}
-
-func (r *unaryEqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
-
-func (*unaryEqRule[T, V]) inspectionStrategy() string { return "equality-unary" }
-func (r *unaryEqRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
-	return canonicalRuleDescriptor{representation: canonicalEquality, schema: r.nodeID}
-}
-
-func (*unaryEqRule[T, V]) rule()                                                 {}
-func (r *unaryEqRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
-func (*unaryEqRule[T, V]) validate(T) error                                      { return nil }
-func (*unaryEqRule[T, V]) insert(T, uint32)                                      {}
-func (r *unaryEqRule[T, V]) matchingSet(value optionalValue[V]) *equalitySet {
-	if value.ok && value.value == r.key {
-		return &r.set
-	}
-	return nil
-}
-func (r *unaryEqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
-	return r.estimateCardinality(v)
-}
-func (r *unaryEqRule[T, V]) estimateCardinality(v T) uint64 {
-	n := r.wildcard.GetCardinality()
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		n += set.cardinality()
-	}
-	return n
-}
-func (r *unaryEqRule[T, V]) estimateCheapCardinality(v T) uint64 {
-	return r.estimateCardinality(v)
-}
-func (r *unaryEqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
-	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
-}
-func (r *unaryEqRule[T, V]) localQueryKey(v T) (any, uint64) {
-	return getOptional(r.get, v), uint64(16 + unsafe.Sizeof(optionalValue[V]{}))
-}
-func (r *unaryEqRule[T, V]) localQueryKeyMatches(v T, key any) bool {
-	want, ok := key.(optionalValue[V])
-	return ok && want == getOptional(r.get, v)
-}
-func (r *unaryEqRule[T, V]) isCardinalityZero(v T) bool {
-	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
-}
-func (r *unaryEqRule[T, V]) matchesID(v T, id uint32) bool {
-	if r.wildcard.Contains(id) {
-		return true
-	}
-	set := r.matchingSet(getOptional(r.get, v))
-	return set != nil && set.contains(id)
-}
-func (*unaryEqRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
-func (r *unaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	value := getOptional(r.get, v)
-	if pool.local == nil {
-		r.addMatches(value, dst)
-		return
-	}
-	cache := equalityCache[V](pool, r.nodeID)
-	if bits, found := comparableValueCacheLookup(cache, value); found {
-		dst.Or(bits)
-		return
-	}
-	if !comparableValueCacheAdmit(cache, value) {
-		r.addMatches(value, dst)
-		return
-	}
-	bits := cache.replace(value, pool)
-	r.addMatches(value, bits)
-	dst.Or(bits)
-	cache.commit(bits, pool)
-}
-func (r *unaryEqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
-	dst.Or(r.wildcard)
-	if set := r.matchingSet(value); set != nil {
-		set.addTo(dst)
-	}
-}
-func (r *unaryEqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
-func (r *unaryEqRule[T, V]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
-	visit(r.wildcard)
-	if r.set.bits != nil {
-		visit(r.set.bits)
-	}
-}
-func (r *unaryEqRule[T, V]) lookupEqualityResultComponents(v T) (*roaring.Bitmap, *roaring.Bitmap, bool) {
-	set := r.matchingSet(getOptional(r.get, v))
-	posting, deduplicable := equalitySetBitmap(set)
-	return r.wildcard, posting, set == nil || deduplicable
-}
-func (r *unaryEqRule[T, V]) lookupEqualityClass(v T) uint32 {
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		return set.class
-	}
-	return r.wildcardClass
-}
-func (r *unaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		set.addTo(dst)
-	}
-}
-func (r *unaryEqRule[T, V]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	intersectEqualitySet(r.matchingSet(getOptional(r.get, v)), dst, pool)
-}
-func (*unaryEqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
-func (*unaryEqRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
-func (r *unaryEqRule[T, V]) prepareSearch() {
-	prepareBitmapForSearch(r.wildcard)
-	r.set.prepareSearch()
-}
-func (r *unaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
-	r.wildcardSource = interner.internSource(&r.wildcard)
-	r.set.internBitmaps(interner)
-}
-func (r *unaryEqRule[T, V]) equalitySourceCount() int { return 2 }
-func (r *unaryEqRule[T, V]) visitEqualitySources(visit func(equalitySourcePair)) {
-	visit(equalitySourcePair{wildcard: r.wildcardSource})
-	if r.set.source != 0 {
-		visit(equalitySourcePair{wildcard: r.wildcardSource, posting: r.set.source})
-	}
-}
-func (r *unaryEqRule[T, V]) assignEqualityClasses(classes map[equalitySourcePair]uint32) {
-	r.wildcardClass = classes[equalitySourcePair{wildcard: r.wildcardSource}]
-	if r.set.source != 0 {
-		r.set.class = classes[equalitySourcePair{wildcard: r.wildcardSource, posting: r.set.source}]
-	}
-}
-
-type binaryEqRule[T any, V comparable] struct {
-	nodeID         nodeID
-	get            Getter[T, V]
-	wildcard       *roaring.Bitmap
-	wildcardSource physicalSourceID
-	wildcardClass  uint32
-	keys           [2]V
-	sets           [2]equalitySet
-}
-
-func (r *binaryEqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
-
-func (*binaryEqRule[T, V]) inspectionStrategy() string { return "equality-binary" }
-func (r *binaryEqRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
-	return canonicalRuleDescriptor{representation: canonicalEquality, schema: r.nodeID}
-}
-
-func (*binaryEqRule[T, V]) rule()                                                 {}
-func (r *binaryEqRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
-func (*binaryEqRule[T, V]) validate(T) error                                      { return nil }
-func (*binaryEqRule[T, V]) insert(T, uint32)                                      {}
-func (r *binaryEqRule[T, V]) matchingSet(value optionalValue[V]) *equalitySet {
-	if !value.ok {
-		return nil
-	}
-	if value.value == r.keys[0] {
-		return &r.sets[0]
-	}
-	if value.value == r.keys[1] {
-		return &r.sets[1]
-	}
-	return nil
-}
-func (r *binaryEqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
-	return r.estimateCardinality(v)
-}
-func (r *binaryEqRule[T, V]) estimateCardinality(v T) uint64 {
-	n := r.wildcard.GetCardinality()
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		n += set.cardinality()
-	}
-	return n
-}
-func (r *binaryEqRule[T, V]) estimateCheapCardinality(v T) uint64 {
-	return r.estimateCardinality(v)
-}
-func (r *binaryEqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
-	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
-}
-func (r *binaryEqRule[T, V]) localQueryKey(v T) (any, uint64) {
-	return getOptional(r.get, v), uint64(16 + unsafe.Sizeof(optionalValue[V]{}))
-}
-func (r *binaryEqRule[T, V]) localQueryKeyMatches(v T, key any) bool {
-	want, ok := key.(optionalValue[V])
-	return ok && want == getOptional(r.get, v)
-}
-func (r *binaryEqRule[T, V]) isCardinalityZero(v T) bool {
-	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
-}
-func (r *binaryEqRule[T, V]) matchesID(v T, id uint32) bool {
-	if r.wildcard.Contains(id) {
-		return true
-	}
-	set := r.matchingSet(getOptional(r.get, v))
-	return set != nil && set.contains(id)
-}
-func (*binaryEqRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
-func (r *binaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	value := getOptional(r.get, v)
-	if pool.local == nil {
-		r.addMatches(value, dst)
-		return
-	}
-	cache := equalityCache[V](pool, r.nodeID)
-	if bits, found := comparableValueCacheLookup(cache, value); found {
-		dst.Or(bits)
-		return
-	}
-	if !comparableValueCacheAdmit(cache, value) {
-		r.addMatches(value, dst)
-		return
-	}
-	bits := cache.replace(value, pool)
-	r.addMatches(value, bits)
-	dst.Or(bits)
-	cache.commit(bits, pool)
-}
-func (r *binaryEqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
-	dst.Or(r.wildcard)
-	if set := r.matchingSet(value); set != nil {
-		set.addTo(dst)
-	}
-}
-func (r *binaryEqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
-func (r *binaryEqRule[T, V]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
-	visit(r.wildcard)
-	for i := range r.sets {
-		if r.sets[i].bits != nil {
-			visit(r.sets[i].bits)
-		}
-	}
-}
-func (r *binaryEqRule[T, V]) lookupEqualityResultComponents(v T) (*roaring.Bitmap, *roaring.Bitmap, bool) {
-	set := r.matchingSet(getOptional(r.get, v))
-	posting, deduplicable := equalitySetBitmap(set)
-	return r.wildcard, posting, set == nil || deduplicable
-}
-func (r *binaryEqRule[T, V]) lookupEqualityClass(v T) uint32 {
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		return set.class
-	}
-	return r.wildcardClass
-}
-func (r *binaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		set.addTo(dst)
-	}
-}
-func (r *binaryEqRule[T, V]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	intersectEqualitySet(r.matchingSet(getOptional(r.get, v)), dst, pool)
-}
-func (*binaryEqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
-func (*binaryEqRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
-func (r *binaryEqRule[T, V]) prepareSearch() {
-	prepareBitmapForSearch(r.wildcard)
-	for i := range r.sets {
-		r.sets[i].prepareSearch()
-	}
-}
-func (r *binaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
-	r.wildcardSource = interner.internSource(&r.wildcard)
-	for i := range r.sets {
-		r.sets[i].internBitmaps(interner)
-	}
-}
-func (r *binaryEqRule[T, V]) equalitySourceCount() int { return 3 }
-func (r *binaryEqRule[T, V]) visitEqualitySources(visit func(equalitySourcePair)) {
-	visit(equalitySourcePair{wildcard: r.wildcardSource})
-	for i := range r.sets {
-		set := r.sets[i]
-		if set.source != 0 {
-			visit(equalitySourcePair{wildcard: r.wildcardSource, posting: set.source})
-		}
-	}
-}
-func (r *binaryEqRule[T, V]) assignEqualityClasses(classes map[equalitySourcePair]uint32) {
-	r.wildcardClass = classes[equalitySourcePair{wildcard: r.wildcardSource}]
-	for i := range r.sets {
-		set := &r.sets[i]
-		if set.source != 0 {
-			set.class = classes[equalitySourcePair{wildcard: r.wildcardSource, posting: set.source}]
-		}
-	}
-}
-
-// ternaryEqRule is the three-value counterpart of the unary and binary
-// specializations. It replaces the build-time equality index completely, so
-// the finished rule retains neither its map nor its slice and hint fields.
-type ternaryEqRule[T any, V comparable] struct {
-	nodeID         nodeID
-	get            Getter[T, V]
-	wildcard       *roaring.Bitmap
-	wildcardSource physicalSourceID
-	wildcardClass  uint32
-	keys           [3]V
-	sets           [3]equalitySet
-}
-
-func (r *ternaryEqRule[T, V]) runtimeNodeID() nodeID    { return r.nodeID }
-func (*ternaryEqRule[T, V]) inspectionStrategy() string { return "equality-ternary" }
-func (r *ternaryEqRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
-	return canonicalRuleDescriptor{representation: canonicalEquality, schema: r.nodeID}
-}
-func (*ternaryEqRule[T, V]) rule()                                                 {}
-func (r *ternaryEqRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
-func (*ternaryEqRule[T, V]) validate(T) error                                      { return nil }
-func (*ternaryEqRule[T, V]) insert(T, uint32)                                      {}
-func (r *ternaryEqRule[T, V]) matchingSet(value optionalValue[V]) *equalitySet {
-	if !value.ok {
-		return nil
-	}
-	if value.value == r.keys[0] {
-		return &r.sets[0]
-	}
-	if value.value == r.keys[1] {
-		return &r.sets[1]
-	}
-	if value.value == r.keys[2] {
-		return &r.sets[2]
-	}
-	return nil
-}
-func (r *ternaryEqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
-	return r.estimateCardinality(v)
-}
-func (r *ternaryEqRule[T, V]) estimateCardinality(v T) uint64 {
-	n := r.wildcard.GetCardinality()
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		n += set.cardinality()
-	}
-	return n
-}
-func (r *ternaryEqRule[T, V]) estimateCheapCardinality(v T) uint64 {
-	return r.estimateCardinality(v)
-}
-func (r *ternaryEqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
-	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
-}
-func (r *ternaryEqRule[T, V]) localQueryKey(v T) (any, uint64) {
-	return getOptional(r.get, v), uint64(16 + unsafe.Sizeof(optionalValue[V]{}))
-}
-func (r *ternaryEqRule[T, V]) localQueryKeyMatches(v T, key any) bool {
-	want, ok := key.(optionalValue[V])
-	return ok && want == getOptional(r.get, v)
-}
-func (r *ternaryEqRule[T, V]) isCardinalityZero(v T) bool {
-	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
-}
-func (r *ternaryEqRule[T, V]) matchesID(v T, id uint32) bool {
-	if r.wildcard.Contains(id) {
-		return true
-	}
-	set := r.matchingSet(getOptional(r.get, v))
-	return set != nil && set.contains(id)
-}
-func (*ternaryEqRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
-func (r *ternaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	value := getOptional(r.get, v)
-	if pool.local == nil {
-		r.addMatches(value, dst)
-		return
-	}
-	cache := equalityCache[V](pool, r.nodeID)
-	if bits, found := comparableValueCacheLookup(cache, value); found {
-		dst.Or(bits)
-		return
-	}
-	if !comparableValueCacheAdmit(cache, value) {
-		r.addMatches(value, dst)
-		return
-	}
-	bits := cache.replace(value, pool)
-	r.addMatches(value, bits)
-	dst.Or(bits)
-	cache.commit(bits, pool)
-}
-func (r *ternaryEqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
-	dst.Or(r.wildcard)
-	if set := r.matchingSet(value); set != nil {
-		set.addTo(dst)
-	}
-}
-func (r *ternaryEqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
-func (r *ternaryEqRule[T, V]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
-	visit(r.wildcard)
-	for i := range r.sets {
-		if r.sets[i].bits != nil {
-			visit(r.sets[i].bits)
-		}
-	}
-}
-func (r *ternaryEqRule[T, V]) lookupEqualityResultComponents(v T) (*roaring.Bitmap, *roaring.Bitmap, bool) {
-	set := r.matchingSet(getOptional(r.get, v))
-	posting, deduplicable := equalitySetBitmap(set)
-	return r.wildcard, posting, set == nil || deduplicable
-}
-func (r *ternaryEqRule[T, V]) lookupEqualityClass(v T) uint32 {
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		return set.class
-	}
-	return r.wildcardClass
-}
-func (r *ternaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		set.addTo(dst)
-	}
-}
-func (r *ternaryEqRule[T, V]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	intersectEqualitySet(r.matchingSet(getOptional(r.get, v)), dst, pool)
-}
-func (*ternaryEqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
-func (*ternaryEqRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
-func (r *ternaryEqRule[T, V]) prepareSearch() {
-	prepareBitmapForSearch(r.wildcard)
-	for i := range r.sets {
-		r.sets[i].prepareSearch()
-	}
-}
-func (r *ternaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
-	r.wildcardSource = interner.internSource(&r.wildcard)
-	for i := range r.sets {
-		r.sets[i].internBitmaps(interner)
-	}
-}
-func (r *ternaryEqRule[T, V]) equalitySourceCount() int { return 4 }
-func (r *ternaryEqRule[T, V]) visitEqualitySources(visit func(equalitySourcePair)) {
-	visit(equalitySourcePair{wildcard: r.wildcardSource})
-	for i := range r.sets {
-		set := r.sets[i]
-		if set.source != 0 {
-			visit(equalitySourcePair{wildcard: r.wildcardSource, posting: set.source})
-		}
-	}
-}
-func (r *ternaryEqRule[T, V]) assignEqualityClasses(classes map[equalitySourcePair]uint32) {
-	r.wildcardClass = classes[equalitySourcePair{wildcard: r.wildcardSource}]
-	for i := range r.sets {
-		set := &r.sets[i]
-		if set.source != 0 {
-			set.class = classes[equalitySourcePair{wildcard: r.wildcardSource, posting: set.source}]
-		}
-	}
-}
-
-// quaternaryEqRule is the largest fixed equality specialization. Measurements
-// keep five or more values on the general map-backed representation.
-type quaternaryEqRule[T any, V comparable] struct {
-	nodeID         nodeID
-	get            Getter[T, V]
-	wildcard       *roaring.Bitmap
-	wildcardSource physicalSourceID
-	wildcardClass  uint32
-	keys           [4]V
-	sets           [4]equalitySet
-}
-
-func (r *quaternaryEqRule[T, V]) runtimeNodeID() nodeID    { return r.nodeID }
-func (*quaternaryEqRule[T, V]) inspectionStrategy() string { return "equality-quaternary" }
-func (r *quaternaryEqRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
-	return canonicalRuleDescriptor{representation: canonicalEquality, schema: r.nodeID}
-}
-func (*quaternaryEqRule[T, V]) rule()                                                 {}
-func (r *quaternaryEqRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
-func (*quaternaryEqRule[T, V]) validate(T) error                                      { return nil }
-func (*quaternaryEqRule[T, V]) insert(T, uint32)                                      {}
-func (r *quaternaryEqRule[T, V]) matchingSet(value optionalValue[V]) *equalitySet {
-	if !value.ok {
-		return nil
-	}
-	if value.value == r.keys[0] {
-		return &r.sets[0]
-	}
-	if value.value == r.keys[1] {
-		return &r.sets[1]
-	}
-	if value.value == r.keys[2] {
-		return &r.sets[2]
-	}
-	if value.value == r.keys[3] {
-		return &r.sets[3]
-	}
-	return nil
-}
-func (r *quaternaryEqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
-	return r.estimateCardinality(v)
-}
-func (r *quaternaryEqRule[T, V]) estimateCardinality(v T) uint64 {
-	n := r.wildcard.GetCardinality()
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		n += set.cardinality()
-	}
-	return n
-}
-func (r *quaternaryEqRule[T, V]) estimateCheapCardinality(v T) uint64 {
-	return r.estimateCardinality(v)
-}
-func (r *quaternaryEqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
-	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
-}
-func (r *quaternaryEqRule[T, V]) localQueryKey(v T) (any, uint64) {
-	return getOptional(r.get, v), uint64(16 + unsafe.Sizeof(optionalValue[V]{}))
-}
-func (r *quaternaryEqRule[T, V]) localQueryKeyMatches(v T, key any) bool {
-	want, ok := key.(optionalValue[V])
-	return ok && want == getOptional(r.get, v)
-}
-func (r *quaternaryEqRule[T, V]) isCardinalityZero(v T) bool {
-	return r.wildcard.IsEmpty() && r.matchingSet(getOptional(r.get, v)) == nil
-}
-func (r *quaternaryEqRule[T, V]) matchesID(v T, id uint32) bool {
-	if r.wildcard.Contains(id) {
-		return true
-	}
-	set := r.matchingSet(getOptional(r.get, v))
-	return set != nil && set.contains(id)
-}
-func (*quaternaryEqRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
-func (r *quaternaryEqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	value := getOptional(r.get, v)
-	if pool.local == nil {
-		r.addMatches(value, dst)
-		return
-	}
-	cache := equalityCache[V](pool, r.nodeID)
-	if bits, found := comparableValueCacheLookup(cache, value); found {
-		dst.Or(bits)
-		return
-	}
-	if !comparableValueCacheAdmit(cache, value) {
-		r.addMatches(value, dst)
-		return
-	}
-	bits := cache.replace(value, pool)
-	r.addMatches(value, bits)
-	dst.Or(bits)
-	cache.commit(bits, pool)
-}
-func (r *quaternaryEqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
-	dst.Or(r.wildcard)
-	if set := r.matchingSet(value); set != nil {
-		set.addTo(dst)
-	}
-}
-func (r *quaternaryEqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
-func (r *quaternaryEqRule[T, V]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
-	visit(r.wildcard)
-	for i := range r.sets {
-		if r.sets[i].bits != nil {
-			visit(r.sets[i].bits)
-		}
-	}
-}
-func (r *quaternaryEqRule[T, V]) lookupEqualityResultComponents(v T) (*roaring.Bitmap, *roaring.Bitmap, bool) {
-	set := r.matchingSet(getOptional(r.get, v))
-	posting, deduplicable := equalitySetBitmap(set)
-	return r.wildcard, posting, set == nil || deduplicable
-}
-func (r *quaternaryEqRule[T, V]) lookupEqualityClass(v T) uint32 {
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		return set.class
-	}
-	return r.wildcardClass
-}
-func (r *quaternaryEqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
-	if set := r.matchingSet(getOptional(r.get, v)); set != nil {
-		set.addTo(dst)
-	}
-}
-func (r *quaternaryEqRule[T, V]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	intersectEqualitySet(r.matchingSet(getOptional(r.get, v)), dst, pool)
-}
-func (*quaternaryEqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
-func (*quaternaryEqRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
-func (r *quaternaryEqRule[T, V]) prepareSearch() {
-	prepareBitmapForSearch(r.wildcard)
-	for i := range r.sets {
-		r.sets[i].prepareSearch()
-	}
-}
-func (r *quaternaryEqRule[T, V]) internBitmaps(interner *bitmapInterner) {
-	r.wildcardSource = interner.internSource(&r.wildcard)
-	for i := range r.sets {
-		r.sets[i].internBitmaps(interner)
-	}
-}
-func (r *quaternaryEqRule[T, V]) equalitySourceCount() int { return 5 }
-func (r *quaternaryEqRule[T, V]) visitEqualitySources(visit func(equalitySourcePair)) {
-	visit(equalitySourcePair{wildcard: r.wildcardSource})
-	for i := range r.sets {
-		set := r.sets[i]
-		if set.source != 0 {
-			visit(equalitySourcePair{wildcard: r.wildcardSource, posting: set.source})
-		}
-	}
-}
-func (r *quaternaryEqRule[T, V]) assignEqualityClasses(classes map[equalitySourcePair]uint32) {
-	r.wildcardClass = classes[equalitySourcePair{wildcard: r.wildcardSource}]
-	for i := range r.sets {
-		set := &r.sets[i]
-		if set.source != 0 {
-			set.class = classes[equalitySourcePair{wildcard: r.wildcardSource, posting: set.source}]
-		}
-	}
-}
-
-func equalityCache[V comparable](pool *bitmapPool, id nodeID) *valueBitmapCache[V] {
-	node := &pool.local[int(id)]
-	cache, _ := node.equality.(*valueBitmapCache[V])
-	if cache == nil {
-		cache = newValueBitmapCache[V](pool, id)
-		node.equality = cache
-	}
-	return cache
-}
-
-func lookupEqualityCachedBitmap[V comparable](
-	pool *bitmapPool,
-	id nodeID,
-	value optionalValue[V],
-) (*roaring.Bitmap, bool) {
-	if pool.local == nil {
-		return nil, false
-	}
-	cache, _ := pool.local[int(id)].equality.(*valueBitmapCache[V])
-	if cache == nil {
-		return nil, false
-	}
-	return comparableValueCacheLookup(cache, value)
-}
-
-func equalitySetBitmap(set *equalitySet) (*roaring.Bitmap, bool) {
-	if set == nil || set.bits == nil {
-		return nil, false
-	}
-	return set.bits, true
 }

@@ -6,6 +6,21 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-01: общий equality posting layout
+
+**Принято:** quantized equality хранит transformed `uint64` keys в общем
+`equalityIndex`/`equalitySet`, объединяет коллизии тем же posting primitive и
+выполняет streaming rebucket через `rebuildPostingGeneration`. Отдельные
+lossy posting map и опубликованный `lossyEqualityRule` удалены; Exact и Lossy
+делят bitmap preparation, physical-source metadata и Local cache primitive.
+
+На shared-key gate identity-lossy против Exact получил медианы 51 071 против
+52 924 ns/op для Index и 59,95 против 60,80 ns/op для warm Local, с одинаковыми
+486 463 accounted bytes, candidate count и allocation classes. Поэтому общий
+layout принят без search-регрессии. Среда и команда воспроизведения записаны в
+[`performance-history.md`](performance-history.md); race, full suite,
+десятикратная differential-матрица и repeated streaming rebuild прошли.
+
 ## 2026-09-01: compiled ordered encoder только для текущего scalar layout
 
 **Принято с ограничением:** встроенные numeric ordered Lossy rules компилируют

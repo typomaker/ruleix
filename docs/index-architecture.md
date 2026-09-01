@@ -313,6 +313,18 @@ Strict-оператор остаётся strict после преобразов�
 обычный Lossy после streaming downgrade. Команды проверки и сопоставимый
 baseline приведены в [`performance-history.md`](performance-history.md).
 
+Equality migration step 3 заменил отдельную map-backed lossy posting structure
+тем же generic `equalityIndex[K]` и `equalitySet`, которые использует Exact.
+Exact передаёт исходный `V` как ключ, а quantized representation компилирует
+`V -> hash -> uint64 class`; после этого lookup, posting merge, bitmap
+preparation, physical-source classes и Local value cache используют общие
+primitives. Коллизии transformed keys объединяются `equalityIndex.addSet`, а
+streaming pressure публикует независимое поколение через общий checked
+`rebuildPostingGeneration`. Новые streaming buckets немедленно переходят в
+bitmap-backed `equalitySet`, чтобы каждый concrete posting получил physical
+source до immutable finalization. Отдельный опубликованный тип
+`lossyEqualityRule` больше не существует.
+
 `Lossy(rule, MemoryLimit(n))` компилируется во время `Build`. Если точное
 представление укладывается в детерминированно учитываемый бюджет, оно
 сохраняется. Иначе планировщик выбирает поддерживаемое приближённое

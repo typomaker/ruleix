@@ -21,7 +21,8 @@ func (e *equalityCodecError) Error() string {
 }
 
 // equalityCodec always produces the complete 64-bit hash. Lossy precision is
-// represented separately by the immutable shift stored on lossyEqualityRule.
+// represented separately by the immutable quantizer stored on the shared
+// equality search rule.
 type equalityCodec[V comparable] struct {
 	hash func(V) uint64
 }

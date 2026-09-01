@@ -123,7 +123,12 @@ Gate: повторные streaming downgrade укладываются в hard re
 
 ### 3. Унифицировать equality
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-01`
+
+Результат: exact и quantized equality переведены на общие
+`equalityIndex`/`equalitySet`, Local cache и checked streaming rebuild;
+отдельный `lossyEqualityRule` удалён, а correctness, race, retained и
+сопоставимый identity-lossy performance gate прошли без регрессии.
 
 - Научить `equalityIndex` принимать уже преобразованный ключ и объединять
   `equalitySet` при коллизии quantized keys.

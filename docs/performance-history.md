@@ -222,6 +222,34 @@ GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkSharedKeyBaseline/' \
   -benchmem -benchtime=500ms -count=5 .
 ```
 
+### Equality shared-layout gate 2026-09-01
+
+После перевода quantized equality на общий `equalityIndex` повторена
+сопоставимая часть baseline на Apple M1 Max, macOS arm64, Go 1.26.0,
+`GOMAXPROCS=1`, 5 632 entries, 58 queries, `benchtime=500ms`, `count=5`.
+Медиана Exact / identity-lossy: `Index.Search` 52 924 / 51 071 ns/op,
+warm `Local.Search` 60,80 / 59,95 ns/op. Оба режима сохранили 486 463 B
+accounted retained memory, 2,121 candidates/query, 23 498 B и 20 allocations
+для Index, 0 B и 0 allocations для warm Local. Таким образом identity-lossy
+не хуже Exact вне шума серии; correctness подтверждён десятикратной
+differential-матрицей и repeated-rebuild fixture.
+
+Lossy50 control после общей posting-структуры: медианы 46 734 ns/op для Index
+и 2 214 ns/op для warm Local, 24 721 B/17 allocs и 152 B/6 allocs
+соответственно; candidate quality остался 3,414, accounted retained уменьшился
+с baseline 241 016 до 240 576 B. Search latency и allocation class не
+регрессировали относительно baseline выше.
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkSharedKeyBaseline/(Exact|IdentityLossy)/(IndexSearch|WarmLocalSearch)$' \
+  -benchmem -benchtime=500ms -count=5 .
+go test -run \
+  'Test(LossyExactDifferentialEverySupportedRule|IdentityLossyDifferentialEverySupportedRule|LossyEqualityRepeatedRebuildKeepsEveryPosting)$' \
+  -count=10 .
+go test -race ./...
+```
+
 ### Exact versus Lossy search checkpoint 2026-09-01
 
 Latest recheck on Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, revision

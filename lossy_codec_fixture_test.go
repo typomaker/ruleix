@@ -157,7 +157,7 @@ func TestLossyUUIDUsesFinerBucketCounts(t *testing.T) {
 	counts := make([]uint64, 0, len(ladder)-1)
 	for _, level := range ladder[1:] {
 		detailed := level.compiled.(*inspectionDetailsRule[codecFixtureConstraint[fixtureUUID]])
-		counts = append(counts, detailed.child.(*lossyEqualityRule[codecFixtureConstraint[fixtureUUID], fixtureUUID]).quantizer.bucketCount)
+		counts = append(counts, detailed.child.(*quantizedEqualityRule[codecFixtureConstraint[fixtureUUID], fixtureUUID]).quantizer.bucketCount)
 	}
 	for _, want := range []uint64{65536, 57344, 49152, 40960, 32768} {
 		require.Contains(t, counts, want)
@@ -422,8 +422,7 @@ func codecFixtureUsage[V comparable](t testing.TB, constraints []codecFixtureCon
 
 var codecFixtureBenchmarkResult []int
 
-// BenchmarkLossyCompiledScalarCodec compares the direct and build-compiled
-// scalar paths with the same 10,000-entry workload. Apple M1 Max, Go 1.26.0,
+// BenchmarkLossyCompiledScalarCodec compares direct and build-compiled scalar paths.
 // 500ms x5 after scalar avalanche mixing: Int64 45.47-46.64 ns/op,
 // NamedInt64 45.37-46.47 ns/op; both 0 B/op and 0 allocs/op. The pre-fix
 // raw-FNV baselines were 188.8-190.1 and 189.7-190.9 ns/op respectively.

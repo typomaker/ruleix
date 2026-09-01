@@ -10,6 +10,14 @@ import (
 
 type streamingOrderedFixture struct{ value int }
 
+func testEqualityValues(postings map[uint64]*roaring.Bitmap) equalityIndex[uint64] {
+	values := newEqualityIndex[uint64](len(postings))
+	for key, bits := range postings {
+		values.addSet(key, &equalitySet{bits: bits})
+	}
+	return values
+}
+
 func streamingOrderedValue(v streamingOrderedFixture) (int, bool) { return v.value, true }
 
 func TestLossyOrderedStreamingRegridsExpandedRange(t *testing.T) {
@@ -72,29 +80,58 @@ func TestLossyComparedStreamingFitsGradually(t *testing.T) {
 }
 
 func TestLossyEqualityStreamingRebucketsWithoutDroppingIDs(t *testing.T) {
-	rule := &lossyEqualityRule[streamingOrderedFixture, int]{
+	rule := &quantizedEqualityRule[streamingOrderedFixture, int]{
 		quantizer: newEqualityQuantizer(4),
-		buckets: map[uint64]lossyEqualityPosting{
-			0: {bits: roaring.BitmapOf(0)},
-			1: {bits: roaring.BitmapOf(1)},
-			2: {bits: roaring.BitmapOf(2)},
-			3: {bits: roaring.BitmapOf(3)},
-		},
+		values: testEqualityValues(map[uint64]*roaring.Bitmap{
+			0: roaring.BitmapOf(0), 1: roaring.BitmapOf(1),
+			2: roaring.BitmapOf(2), 3: roaring.BitmapOf(3),
+		}),
 	}
 	rule.rebucket(3)
 	if rule.quantizer.bucketCount != 3 {
 		t.Fatalf("bucket count is %d, want 3", rule.quantizer.bucketCount)
 	}
 	seen := roaring.New()
-	for _, posting := range rule.buckets {
-		seen.Or(posting.bits)
+	for index := range rule.values.sets {
+		rule.values.sets[index].addTo(seen)
 	}
 	if seen.GetCardinality() != 4 {
 		t.Fatalf("rebucketing retained %d IDs, want 4", seen.GetCardinality())
 	}
-	if len(rule.buckets) != 3 {
-		t.Fatalf("rebucketing produced %d classes, want 3", len(rule.buckets))
+	if len(rule.values.sets) != 3 {
+		t.Fatalf("rebucketing produced %d classes, want 3", len(rule.values.sets))
 	}
+}
+
+func TestLossyEqualityRepeatedRebuildKeepsEveryPosting(t *testing.T) {
+	codec, err := compileEqualityCodec[[16]byte]()
+	require.NoError(t, err)
+	rule := &quantizedEqualityRule[codecFixtureConstraint[[16]byte], [16]byte]{
+		get:      func(v codecFixtureConstraint[[16]byte]) ([16]byte, bool) { return v.value, true },
+		wildcard: roaring.New(), codec: codec, quantizer: newEqualityQuantizer(65536),
+		values: newEqualityIndex[uint64](5000),
+	}
+	values := make([][16]byte, 5000)
+	for id := range values {
+		values[id][0] = byte(id)
+		values[id][1] = byte(id >> 8)
+		rule.insert(codecFixtureConstraint[[16]byte]{value: values[id]}, uint32(id))
+	}
+	for range 8 {
+		rule.fitStreamingNext()
+	}
+	for id, value := range values {
+		require.True(t, rule.matchesID(codecFixtureConstraint[[16]byte]{value: value}, uint32(id)), "id %d", id)
+	}
+}
+
+func TestEqualityIndexBitmapInsertConvertsCompactPosting(t *testing.T) {
+	values := newEqualityIndex[int](2)
+	values.add(1, 1)
+	values.addBitmap(1, 2)
+	values.addBitmap(2, 3)
+	require.Equal(t, []uint32{1, 2}, values.get(1).bits.ToArray())
+	require.Equal(t, []uint32{3}, values.get(2).bits.ToArray())
 }
 
 type streamingSelectionFixture struct {
@@ -264,12 +301,12 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		}
 	}
 	t.Run("equality", func(t *testing.T) {
-		rule := &lossyEqualityRule[streamingOrderedFixture, int]{
+		rule := &quantizedEqualityRule[streamingOrderedFixture, int]{
 			get: streamingOrderedValue, wildcard: roaring.New(), quantizer: newEqualityQuantizer(8),
-			buckets: map[uint64]lossyEqualityPosting{
-				0: {bits: roaring.BitmapOf(0)}, 1: {bits: roaring.BitmapOf(1)},
-				2: {bits: roaring.BitmapOf(2)}, 3: {bits: roaring.BitmapOf(3)},
-			},
+			values: testEqualityValues(map[uint64]*roaring.Bitmap{
+				0: roaring.BitmapOf(0), 1: roaring.BitmapOf(1),
+				2: roaring.BitmapOf(2), 3: roaring.BitmapOf(3),
+			}),
 		}
 		_, apply, ok := rule.prepareStreamingNext()
 		require.True(t, ok)
