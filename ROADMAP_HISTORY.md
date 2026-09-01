@@ -1,5 +1,25 @@
 # Roadmap history
 
+## 2026-09-01: nested equality precision ladder
+
+The four equality precision levels per power-of-two interval now form a strict
+partition hierarchy. Each intermediate level pairwise merges one additional
+quarter of the finest hash cells, preserving the existing 8/8, 7/8, 6/8,
+5/8, and 4/8 bucket counts while making every current key map to exactly one
+key at the next level. Streaming downgrade therefore merges each posting once
+without retaining full hashes or duplicating postings across overlapping
+multiply-high intervals. An exhaustive small-ladder fixture verifies both the
+unique-parent invariant and equivalence between direct and adjacent coarsening.
+
+On Apple M1 Max with Go 1.26.0, the focused warm-search command
+`go test -run '^$' -bench '^BenchmarkLossyCompiledCompositeCodec/(Bytes16|NamedUUID)$' -benchmem -benchtime=300ms -count=5 .`
+measured 50.91–53.46 ns/op for `[16]byte` and 60.07–60.55 ns/op for the named
+UUID, with 0 B/op and 0 allocs/op. These ranges overlap the preceding
+51.88–53.33 and 59.75–61.80 ns/op checkpoint, so the nested lookup adds no
+measured search regression. Full ordinary and race suites passed. Coverage of
+the executable production lines changed by this slice was 100% in
+`/tmp/ruleix-nested-equality.cover` (repository aggregate 86.5%).
+
 ## 2026-09-01: outward rounding contract for ordered keys
 
 The shared-key architecture now defines outward transformation for every

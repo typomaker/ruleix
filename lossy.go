@@ -1492,8 +1492,8 @@ func nextEqualityBucketCount(current uint64) uint64 {
 	return 1
 }
 
-// rebucket maps each old hash interval to every overlapping interval in a
-// coarser multiply-high grid. The original hash values are not retained.
+// rebucket maps each old nested hash class to its single parent class. The
+// original hash values are not retained.
 func (r *lossyEqualityRule[T, V]) rebucket(count uint64) {
 	count = min(max(count, 1), r.bucketCount)
 	if count == r.bucketCount {
@@ -1501,16 +1501,13 @@ func (r *lossyEqualityRule[T, V]) rebucket(count uint64) {
 	}
 	next := make(map[uint64]lossyEqualityPosting, min(len(r.buckets), int(count)))
 	for old, posting := range r.buckets {
-		first := old * count / r.bucketCount
-		last := ((old+1)*count - 1) / r.bucketCount
-		for bucket := first; bucket <= last; bucket++ {
-			merged := next[bucket]
-			if merged.bits == nil {
-				merged.bits = roaring.New()
-			}
-			merged.bits.Or(posting.bits)
-			next[bucket] = merged
+		bucket := coarsenEqualityBucket(old, r.bucketCount, count)
+		merged := next[bucket]
+		if merged.bits == nil {
+			merged.bits = roaring.New()
 		}
+		merged.bits.Or(posting.bits)
+		next[bucket] = merged
 	}
 	r.bucketCount, r.buckets = count, next
 }
@@ -1635,11 +1632,38 @@ func (r *lossyEqualityRule[T, V]) matchesID(v T, id uint32) bool {
 }
 func (*lossyEqualityRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
 
-// reduceEqualityHash maps the complete codec hash onto any immutable bucket
-// count without modulo bias. bits.Mul64 returns the high half of hash*count.
+// reduceEqualityHash maps the complete codec hash onto a nested immutable
+// class. Intermediate levels pairwise merge a prefix of the finest cells.
 func reduceEqualityHash(hash, bucketCount uint64) uint64 {
-	high, _ := bits.Mul64(hash, bucketCount)
-	return high
+	upper := equalityBucketUpper(bucketCount)
+	high, _ := bits.Mul64(hash, upper)
+	return reduceEqualityBaseBucket(high, upper, bucketCount)
+}
+
+func coarsenEqualityBucket(bucket, current, next uint64) uint64 {
+	upper := equalityBucketUpper(current)
+	merged := upper - current
+	base := bucket + merged
+	if bucket < merged {
+		base = bucket * 2
+	}
+	for upper > equalityBucketUpper(next) {
+		base /= 2
+		upper /= 2
+	}
+	return reduceEqualityBaseBucket(base, upper, next)
+}
+
+func reduceEqualityBaseBucket(base, upper, count uint64) uint64 {
+	merged := upper - count
+	if base < merged*2 {
+		return base / 2
+	}
+	return base - merged
+}
+
+func equalityBucketUpper(count uint64) uint64 {
+	return uint64(1) << bits.Len64(count-1)
 }
 func (r *lossyEqualityRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	return r.estimateCardinality(v)

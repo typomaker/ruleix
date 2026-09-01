@@ -108,8 +108,9 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	return planner
 }
 
-// equalityBucketCounts returns four precision levels per power-of-two
-// interval. The next interval begins at one half of the upper bound.
+// equalityBucketCounts returns four nested precision levels per power-of-two
+// interval. Each intermediate level merges one more quarter of the upper
+// level's base classes pairwise, so every class has exactly one parent.
 func equalityBucketCounts(maxBits uint) []uint64 {
 	counts := make([]uint64, 0, int(maxBits)*4+1)
 	for bit := maxBits; bit > 0; bit-- {

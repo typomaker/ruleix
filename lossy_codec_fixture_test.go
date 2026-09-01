@@ -115,11 +115,29 @@ func TestEqualityBucketCountLadder(t *testing.T) {
 	require.Equal(t, []uint64{65536, 57344, 49152, 40960, 32768}, equalityBucketCounts(16)[:5])
 	require.Equal(t, uint64(1), equalityBucketCounts(16)[len(equalityBucketCounts(16))-1])
 
-	// Multiply-high reduction covers exactly [0, bucketCount) for the extreme
-	// hashes and works for non-power-of-two counts.
+	// Nested reduction covers exactly [0, bucketCount) for the extreme hashes.
 	for _, bucketCount := range []uint64{1, 5, 40960, 57344, 65536} {
 		require.Zero(t, reduceEqualityHash(0, bucketCount))
 		require.Equal(t, bucketCount-1, reduceEqualityHash(math.MaxUint64, bucketCount))
+	}
+}
+
+func TestEqualityBucketLadderIsNested(t *testing.T) {
+	counts := equalityBucketCounts(8)
+	for i := 0; i < len(counts)-1; i++ {
+		current, next := counts[i], counts[i+1]
+		parents := make(map[uint64]uint64, current)
+		for hashBucket := uint64(0); hashBucket < 256; hashBucket++ {
+			hash := hashBucket << 56
+			currentKey := reduceEqualityHash(hash, current)
+			nextKey := reduceEqualityHash(hash, next)
+			if parent, ok := parents[currentKey]; ok {
+				require.Equal(t, parent, nextKey)
+			} else {
+				parents[currentKey] = nextKey
+			}
+			require.Equal(t, nextKey, coarsenEqualityBucket(currentKey, current, next))
+		}
 	}
 }
 
