@@ -337,6 +337,21 @@ func TestLossyEqualityLocalCachesRepeatedValue(t *testing.T) {
 	require.Equal(t, []uint32{7}, cached.ToArray())
 }
 
+func TestLossyEqualityLocalQueryKeyIsCollisionSafe(t *testing.T) {
+	rule := &lossyEqualityRule[lossyConstraint, string]{
+		get: func(v lossyConstraint) (string, bool) { return v.name, v.present },
+	}
+	var provider localQueryKeyProvider[lossyConstraint] = rule
+	query := lossyConstraint{name: "customer-7", present: true}
+	key, retained := provider.localQueryKey(query)
+
+	require.Positive(t, retained)
+	require.True(t, provider.localQueryKeyMatches(query, key))
+	require.False(t, provider.localQueryKeyMatches(lossyConstraint{name: "customer-8", present: true}, key))
+	require.False(t, provider.localQueryKeyMatches(lossyConstraint{}, key))
+	require.False(t, provider.localQueryKeyMatches(query, "customer-7"))
+}
+
 type unknownEstimateRule[T any] struct{ child Rule[T] }
 
 func (*unknownEstimateRule[T]) rule() {}

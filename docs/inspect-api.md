@@ -178,6 +178,23 @@ Strategy names and fine-grained representation details may evolve as the
 planner changes. Decide which values are stable public contracts and which are
 diagnostic strings before exposing them.
 
+For exact equality rules, `Strategy` exposes the concrete build-time
+specialization selected from the number of distinct concrete values:
+
+| Distinct concrete values | `Mode()` | `Strategy()` |
+| ---: | --- | --- |
+| 1 | `exact` | `equality-unary` |
+| 2 | `exact` | `equality-binary` |
+| 3 | `exact` | `equality-ternary` |
+| 4 | `exact` | `equality-quaternary` |
+| 5 or more | `exact` | `equality` |
+
+`Mode` remains orthogonal to this choice and reports matching semantics
+(`exact` or `lossy`). The arity in `Strategy` describes the equality index
+shape, not the payload of every posting: an individual posting may still use a
+single internal ID, a compact ID slice, or a Roaring bitmap according to its
+cardinality.
+
 ## Lossy integration
 
 `Inspect` is especially useful around `Lossy` because the final representation

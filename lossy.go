@@ -6,6 +6,7 @@ import (
 	"math/bits"
 	"reflect"
 	"sort"
+	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
@@ -1314,6 +1315,13 @@ func (r *lossyEqualityRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPoo
 }
 func (r *lossyEqualityRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
 	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
+}
+func (r *lossyEqualityRule[T, V]) localQueryKey(v T) (any, uint64) {
+	return getOptional(r.get, v), uint64(16 + unsafe.Sizeof(optionalValue[V]{}))
+}
+func (r *lossyEqualityRule[T, V]) localQueryKeyMatches(v T, key any) bool {
+	want, ok := key.(optionalValue[V])
+	return ok && want == getOptional(r.get, v)
 }
 func (r *lossyEqualityRule[T, V]) isCardinalityZero(v T) bool {
 	return r.estimateCardinality(v) == 0

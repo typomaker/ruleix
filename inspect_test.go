@@ -161,6 +161,39 @@ func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
 	require.Equal(t, uint64(3), snapshot.RuleCount())
 }
 
+func TestInspectReportsEqualitySpecializationStrategy(t *testing.T) {
+	tests := []struct {
+		distinct int
+		strategy string
+	}{
+		{distinct: 1, strategy: "equality-unary"},
+		{distinct: 2, strategy: "equality-binary"},
+		{distinct: 3, strategy: "equality-ternary"},
+		{distinct: 4, strategy: "equality-quaternary"},
+		{distinct: 5, strategy: "equality"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.strategy, func(t *testing.T) {
+			var inspector Inspector
+			constraints := make([]inspectConstraint, tt.distinct)
+			ids := make([]int, tt.distinct)
+			for i := range constraints {
+				constraints[i].country = fmt.Sprintf("country-%d", i)
+				ids[i] = i
+			}
+
+			_, err := New[inspectConstraint, int](Inspect(
+				&inspector,
+				Include(func(v inspectConstraint) (string, bool) { return v.country, true }),
+			)).Build(Zip(constraints, ids))
+			require.NoError(t, err)
+			require.Equal(t, RuleModeExact, inspector.Snapshot().Mode())
+			require.Equal(t, tt.strategy, inspector.Snapshot().Strategy())
+		})
+	}
+}
+
 func TestInspectLifecycleTracksLatestSuccessfulBuild(t *testing.T) {
 	require.False(t, (InspectorSnapshot{}).Bound(), "the zero snapshot is unbound")
 

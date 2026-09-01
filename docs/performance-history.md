@@ -206,6 +206,18 @@ warm Lossy search must reconstruct the child plan and inspect cached bitmaps.
 Adding a collision-safe lossy equality query key is the focused correction to
 evaluate; candidate validation remains a separate uncached-Index cost.
 
+The correction stores the original `optionalValue` for lossy equality, matching
+the exact implementation. On the unchanged production fixture before the
+concurrent streaming-planner worktree changed its candidate shape, 1s x5 gave
+a 310.5 ns/op Local median, 0 B/op and 0 allocs/op, versus the preceding
+586.4 ns/op checkpoint: a 47.0% latency reduction. Index remained within its
+previous range (44,283 ns/op median, 38,909 B/op, 22 allocs/op). A direct A/B
+against a compact `{present, bucketID}` key gave 344.0 ns/op; recomputing the
+codec hash on every lookup made that variant 10.8% slower than retaining and
+directly comparing the original value, so it was rejected. The query-key
+correction does not address the independently profiled uncached candidate-
+validation cost.
+
 ### Production Lossy checkpoint 2026-08-31
 
 Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, 38 098 constraints. Полная
