@@ -1,5 +1,17 @@
 # Roadmap history
 
+## 2026-09-01: contracts for shared exact and quantized keys
+
+The first slice of the shared exact/lossy roadmap defines the target internal
+contracts for exact keys, quantized classes, and the precision ladder in the
+canonical architecture document. Exact equality remains collision-free rather
+than treating a full hash as identity; wildcard state remains outside key
+transformation. Every coarser level must be derivable from the current class
+and its representable range, and its posting is the union of complete input
+classes. The document explicitly records that the current arbitrary
+multiply-high equality ladder and recomputed numeric grids are legacy
+representations, not implementations of the new nested-ladder contract.
+
 ## 2026-09-01: Lossy scalar hash distribution audit
 
 - Audited every production value-hashing path used by Lossy. Ordered,
