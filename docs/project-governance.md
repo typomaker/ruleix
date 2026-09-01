@@ -30,6 +30,12 @@ updated only when a new canonical entry point is required.
   understood and the correction is practical and in scope. Re-run the same
   workload after the correction; clearly record unresolved causes or an
   intentionally accepted regression.
+- Degradation or regression in any search function or search path is not
+  acceptable. This includes correctness, observable behavior, latency,
+  allocations, and retained-memory characteristics across all public search
+  APIs and their supported modes. Such a regression must be corrected before
+  completing the task, or the causing change must be rejected; it must not be
+  intentionally accepted.
 
 ## Documentation ownership
 
