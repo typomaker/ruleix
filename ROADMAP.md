@@ -7,6 +7,29 @@ completed work and rejected experiments belong in
 [`CHANGELOG.md`](CHANGELOG.md). Partial work must not be marked as a completed
 step.
 
+## Формат шага
+
+Каждый шаг оформляется по следующему шаблону:
+
+```markdown
+### N. Краткое название
+
+Статус: `запланирован` | `в работе` | `завершён — YYYY-MM-DD`
+
+Результат: краткая итоговая сводка выполненного изменения и его эффекта.
+
+- Конкретный элемент scope.
+- Конкретный элемент scope.
+
+Gate: проверяемые критерии завершения и обязательные проверки.
+```
+
+Для статусов `запланирован` и `в работе` строка `Результат` не добавляется.
+Статус `завершён` разрешён только после выполнения всего scope и Gate; дата
+указывается в формате ISO `YYYY-MM-DD`, а `Результат` обязателен. Подробные
+замеры, эксперименты и доказательства остаются в канонических документах и
+`ROADMAP_HISTORY.md`.
+
 ## Общие exact/lossy-индексы
 
 Цель — оставить `Lossy` политикой преобразования ключей, а не отдельным
@@ -27,6 +50,8 @@ quantizer; postings одинаковых новых ключей объедин�
 
 ### 2. Выделить общие key transformation и rebuild primitives
 
+Статус: `в работе`
+
 - Распространить уже введённый build-скомпилированный equality
   encoder/quantizer на ordered key transformations без reflection и interface
   dispatch в search path.
@@ -44,6 +69,8 @@ Gate: повторные streaming downgrade укладываются в hard re
 
 ### 3. Унифицировать equality
 
+Статус: `запланирован`
+
 - Научить `equalityIndex` принимать уже преобразованный ключ и объединять
   `equalitySet` при коллизии quantized keys.
 - Exact использует identity key; lossy использует полный compiled hash и
@@ -59,6 +86,8 @@ memory за пределами шума сравнимой серии.
 
 ### 4. Унифицировать ordered rules
 
+Статус: `запланирован`
+
 - Хранить exact и округлённые monotonic keys в общем `orderedIndex`.
 - При lossy downgrade округлять хранимую границу наружу в зависимости от
   направления и inclusive/exclusive семантики.
@@ -73,6 +102,8 @@ Gate: finest/identity-lossy `Index.Search` больше не выполняет 
 ступени сохраняют текущую или лучшую latency/allocations/candidate quality.
 
 ### 5. Унифицировать `Between` и `CompareBy`
+
+Статус: `запланирован`
 
 - `Between` хранит нижний и верхний преобразованные ключи в общих ordered
   структурах: lower округляется вниз, upper вверх; используется общий fused
@@ -91,6 +122,8 @@ identity-lossy полностью равен exact, включая strict bounda
 values, duplicate IDs и все операторы.
 
 ### 6. Завершить миграцию и подтвердить production shape
+
+Статус: `запланирован`
 
 - Удалить неиспользуемые lossy search types, отдельные caches и bucket-union
   helpers; оставить lossy planner, quantizers, accounting и build-time rebuild.
