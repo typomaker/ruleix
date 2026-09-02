@@ -94,7 +94,12 @@ performance benchmarks, profiles и оптимизации выполняютс�
 
 ### 1. Зафиксировать контракт потокового округления
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-02`
+
+Результат: в канонической lossy-архитектуре закреплены identity level 0,
+вложенные полные переходы поколений, общий Exact physical/search path,
+pressure selector и разделение retained/transient accounting; contract unit
+tests подтвердили identity, вложенность, монотонность и общий physical index.
 
 - Описать единый контракт current level, next level, преобразования нового
   значения и повторного преобразования уже сохранённого ключа.

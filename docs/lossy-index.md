@@ -19,6 +19,59 @@ budget, an estimated 8 MiB exact representation should remain exact; an exact
 representation estimated at 300 MiB may be replaced by a lossy representation
 that fits approximately within the budget.
 
+### Streaming quantization contract
+
+The active implementation milestone replaces the existing lossy planners and
+representation ladders. They are compatibility and correctness references,
+not constraints on the replacement design. The normative model is one current
+generation per rule: an exact key maps to a bitmap in the same physical index
+used by Exact, while the rule stores one current precision level. Exact always
+uses level 0. Lossy also starts at level 0 and changes level only at a pressure
+checkpoint.
+
+Level 0 is the identity function for every key. For level `N`, insertion and
+search both compute `quantize(exactKey, N)`. A rebuild computes the next key
+only from the currently stored key. Levels must be nested, so for every exact
+key the following equality holds:
+
+```text
+quantize(quantize(exactKey, N), N+1) = quantize(exactKey, N+1)
+```
+
+Here the left-hand outer operation is the incremental `N -> N+1` transform,
+not a request for the discarded exact value. A successful transition replaces
+the entire generation and releases every reference to the previous generation.
+The number of distinct physical keys cannot increase. Insert, rebuild, and
+search use the same level definition; input order cannot change the resulting
+key classes.
+
+The quantizer and its stored level are the only mode-specific state. Posting
+containers, indexes, matcher logic, range execution, routing, aggregates, and
+Local caches are the Exact implementations and receive only physical keys.
+They neither inspect the mode nor select precision. In particular, Lossy must
+not introduce a parallel posting layout or search node at any level.
+
+At each fixed checkpoint, accounted usage is compared with the saturating soft
+target `MemoryLimit + MemoryLimit/4`. While usage exceeds that target, the
+aggregate selector evaluates the complete next generation for every eligible
+rule, chooses the rule with the largest deterministic retained-byte release,
+performs exactly one whole-generation transition, and repeats. Ties are broken
+deterministically by schema order after current usage. The hard `MemoryLimit`
+applies to the final retained published generations. Independent transient
+memory required to construct a checked replacement is tracked separately and
+is not reported as retained usage.
+
+A universal bitmap is allowed only at a rule's terminal level, and only when
+no more precise available generation can satisfy the hard limit. It cannot be
+produced by local pairwise merges or used as an early fallback. If the sum of
+terminal retained generations exceeds the applicable hard limit, `Build`
+fails without publishing the candidate generation.
+
+Contract gate verified on 2026-09-02 with `go test ./...` and focused coverage
+from `go test ./... -coverprofile=/tmp/ruleix-step1.cover`: every executable
+line added in `lossy_levels.go` was covered (100%). No benchmarks or
+performance assertions were run or used for this step.
+
 ## Public API direction
 
 Lossy behavior should decorate an existing `Rule[T]`:
