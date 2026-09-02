@@ -275,7 +275,13 @@ strict/inclusive семантика matcher не меняется. Огрубл�
 пересобирает `orderedIndex`, объединяя наименее заполненную соседнюю пару.
 Последний `prepareSearch` строит обычные block aggregates, prefix sums и
 routing, поэтому finest lossy больше не выполняет линейный union legacy
-buckets. Between и CompareBy сохраняют fused layouts до шага 5 roadmap.
+buckets. Between и CompareBy сохраняют fused layouts до шага 5 roadmap. Их
+`lossyComparedBuckets` дополнительно строит один уровень immutable aggregates
+по 128 leaf buckets. Полностью покрытая группа обслуживается одним bitmap
+`Or`, cardinality lookup или `Contains`; неполные края по-прежнему используют
+leaf postings и сохраняют прежний outward-boundary matcher. Aggregates входят
+в retained accounting и перестраиваются вместе с postings при streaming
+coarsening; минимальная одно-bucket ступень память не дублирует.
 Ordered gate дополнительно зафиксировал детерминированный порядок equality
 posting rebuild: planner и повторное streaming coarsening сортируют `uint64`
 keys перед merge и публикацией, чтобы соседний aggregate pressure не зависел

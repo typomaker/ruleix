@@ -6,6 +6,20 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-02: один уровень aggregates принят для lossy range buckets
+
+В `lossyComparedBuckets` принят один accounted aggregate на каждую полную
+группу из 128 leaf postings. Fan-out 32 отклонён: дополнительная память меняла
+global precision plan, увеличивала production candidates с 80 до 108 и
+замедляла оба search path. Fan-out 128 сохранил candidate quality, allocation
+classes и production-shaped latency в шуме, а focused 1 024-leaf wide range
+ускорил с медианы 269,6 до 60,74 мкс и снизил allocations с 11 до 10.
+
+Partial blocks намеренно не агрегируются: они не сокращают число bitmap
+операций и мешали минимальной ступени укладываться в hard memory limit. Это
+принятый primitive для следующего unified matcher, но не завершение шага 5:
+exact и lossy Between/CompareBy пока используют разные search types.
+
 ## 2026-09-02: общий ordered layout для Between/CompareBy отклонён
 
 Прототип перевёл Lossy `Between` и `CompareBy` на общий `orderedIndex`, сохранив

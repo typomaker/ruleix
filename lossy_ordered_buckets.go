@@ -13,7 +13,14 @@ type lossyComparedBuckets[V any] struct {
 	capacity   int
 	boundaries []V
 	buckets    []*roaring.Bitmap
+	aggregates []*roaring.Bitmap
 }
+
+// lossyComparedAggregateSize mirrors the exact ordered block fan-out. Leaf
+// postings preserve the cheap lossy boundary matcher, while aggregates make a
+// fully covered range cost one bitmap operation per block instead of one per
+// quantized key.
+const lossyComparedAggregateSize = 128
 
 func cloneLossyComparedBuckets[V any](source lossyComparedBuckets[V]) lossyComparedBuckets[V] {
 	clone := source
@@ -21,6 +28,10 @@ func cloneLossyComparedBuckets[V any](source lossyComparedBuckets[V]) lossyCompa
 	clone.buckets = make([]*roaring.Bitmap, len(source.buckets))
 	for i, bucket := range source.buckets {
 		clone.buckets[i] = bucket.Clone()
+	}
+	clone.aggregates = make([]*roaring.Bitmap, len(source.aggregates))
+	for i, aggregate := range source.aggregates {
+		clone.aggregates[i] = aggregate.Clone()
 	}
 	return clone
 }
@@ -31,6 +42,7 @@ func (r *lossyComparedBuckets[V]) insert(value V, id uint32) {
 		r.capacity = max(r.capacity, 1)
 		r.boundaries = []V{value}
 		r.buckets = []*roaring.Bitmap{roaring.BitmapOf(id)}
+		r.rebuildAggregates()
 		return
 	}
 	if r.compare(value, r.minimum) < 0 {
@@ -51,18 +63,27 @@ func (r *lossyComparedBuckets[V]) insert(value V, id uint32) {
 		return r.compare(r.boundaries[i], value) >= 0
 	})
 	r.buckets[bucket].Add(id)
+	if aggregate := bucket / lossyComparedAggregateSize; aggregate < len(r.aggregates) {
+		r.aggregates[aggregate].Add(id)
+	}
 }
 
 func (r *lossyComparedBuckets[V]) fitCapacity() {
 	for len(r.buckets) > max(r.capacity, 1) {
-		r.coarsenOne()
+		r.coarsenOnePosting()
 	}
+	r.rebuildAggregates()
 }
 
 // coarsenOne merges the least-populated adjacent pair. Comparator-backed
 // values have no arithmetic distance, so cardinality is the only stable
 // build-time signal available without retaining the original exact values.
 func (r *lossyComparedBuckets[V]) coarsenOne() {
+	r.coarsenOnePosting()
+	r.rebuildAggregates()
+}
+
+func (r *lossyComparedBuckets[V]) coarsenOnePosting() {
 	if len(r.buckets) <= 1 {
 		return
 	}
@@ -105,7 +126,24 @@ func buildLossyComparedBuckets[V any](index *orderedIndex[V], wanted int) lossyC
 		result.boundaries = append(result.boundaries, values[last-1].value)
 		result.buckets = append(result.buckets, bits)
 	}
+	result.rebuildAggregates()
 	return result
+}
+
+func (r *lossyComparedBuckets[V]) rebuildAggregates() {
+	// Partial blocks stay as leaf postings: their aggregate would duplicate the
+	// same payload without reducing any addRange or rangeContains operation.
+	count := len(r.buckets) / lossyComparedAggregateSize
+	r.aggregates = make([]*roaring.Bitmap, count)
+	for aggregate := range count {
+		first := aggregate * lossyComparedAggregateSize
+		last := first + lossyComparedAggregateSize
+		bits := roaring.New()
+		for bucket := first; bucket < last; bucket++ {
+			bits.Or(r.buckets[bucket])
+		}
+		r.aggregates[aggregate] = bits
+	}
 }
 
 func (r *lossyComparedBuckets[V]) matchingRange(value V, dir direction, inclusive bool) (int, int, bool) {
@@ -150,38 +188,76 @@ func (r *lossyComparedBuckets[V]) exactRange(value V) (int, int, bool) {
 }
 
 func (r *lossyComparedBuckets[V]) addRange(first, last int, dst *roaring.Bitmap) {
-	for i := first; i <= last; i++ {
-		dst.Or(r.buckets[i])
+	for first <= last && first%lossyComparedAggregateSize != 0 {
+		dst.Or(r.buckets[first])
+		first++
+	}
+	for first+lossyComparedAggregateSize-1 <= last {
+		dst.Or(r.aggregates[first/lossyComparedAggregateSize])
+		first += lossyComparedAggregateSize
+	}
+	for first <= last {
+		dst.Or(r.buckets[first])
+		first++
 	}
 }
 
 func (r *lossyComparedBuckets[V]) rangeCardinality(first, last int) uint64 {
 	var result uint64
-	for i := first; i <= last; i++ {
-		result += r.buckets[i].GetCardinality()
+	for first <= last && first%lossyComparedAggregateSize != 0 {
+		result += r.buckets[first].GetCardinality()
+		first++
+	}
+	for first+lossyComparedAggregateSize-1 <= last {
+		result += r.aggregates[first/lossyComparedAggregateSize].GetCardinality()
+		first += lossyComparedAggregateSize
+	}
+	for first <= last {
+		result += r.buckets[first].GetCardinality()
+		first++
 	}
 	return result
 }
 
 func (r *lossyComparedBuckets[V]) rangeContains(first, last int, id uint32) bool {
-	for i := first; i <= last; i++ {
-		if r.buckets[i].Contains(id) {
+	for first <= last && first%lossyComparedAggregateSize != 0 {
+		if r.buckets[first].Contains(id) {
 			return true
 		}
+		first++
+	}
+	for first+lossyComparedAggregateSize-1 <= last {
+		if r.aggregates[first/lossyComparedAggregateSize].Contains(id) {
+			return true
+		}
+		first += lossyComparedAggregateSize
+	}
+	for first <= last {
+		if r.buckets[first].Contains(id) {
+			return true
+		}
+		first++
 	}
 	return false
 }
 
 func (r *lossyComparedBuckets[V]) memoryUsage() uint64 {
-	usage := uint64(16 * len(r.buckets))
+	// Include the aggregate slice header in addition to its pointer payload.
+	usage := uint64(24 + 16*len(r.buckets))
 	for i, bits := range r.buckets {
 		usage += comparableValueBytes(any(r.boundaries[i])) + bitmapBytes(bits)
+	}
+	for _, bits := range r.aggregates {
+		usage += 8 + bitmapBytes(bits)
 	}
 	return usage
 }
 
 func (r *lossyComparedBuckets[V]) prepareSearch() {
 	for _, bits := range r.buckets {
+		prepareBitmapForSearch(bits)
+	}
+	for _, bits := range r.aggregates {
 		prepareBitmapForSearch(bits)
 	}
 }

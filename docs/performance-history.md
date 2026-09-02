@@ -1,5 +1,31 @@
 # История производительности
 
+## 2026-09-02: lossy range aggregate checkpoint
+
+Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Baseline
+`328a45e`, candidate — один aggregate на 128 leaf buckets. Интерливинг по три
+запуска, `benchtime=300ms`, сохранил production shape: `Index.Search` median
+27 048 → 26 670 ns/op, warm `Local.Search` 244,7 → 245,5 ns/op, 80 candidates,
+15/0 allocations. Mixed Lossy50 сохранил 3,069 candidates/query и allocation
+classes; `Index.Search` median 47 604 → 46 766 ns/op. Exact не менялся и в
+candidate серии дал 50 096 ns/op и 59,47 ns/op для Index/warm Local.
+
+Focused 1 024-leaf диапазон, `benchtime=500ms`, `count=5`, сравнил прежний
+leaf union с теми же postings через aggregates: median 269 577 → 60 737 ns/op,
+6 160 → 3 856 B/op, 11 → 10 allocs/op. Команды:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' -bench \
+  'BenchmarkSharedKeyBaseline|BenchmarkProductionShapeLossySearch' \
+  -benchmem -benchtime=300ms -count=3 .
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkLossyComparedBucketWideRange/' \
+  -benchmem -benchtime=500ms -count=5 .
+```
+
+Full, race и lossy differential/boundary/streaming gates прошли; line-based
+diff coverage изменённого production-файла — 71/71 executable lines (100%).
+
 ## 2026-09-02: отклонённый unified Between/CompareBy checkpoint
 
 Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`, production-shaped
