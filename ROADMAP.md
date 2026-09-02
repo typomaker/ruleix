@@ -174,7 +174,12 @@ limit; выполняются только correctness и accounting checks.
 
 ### 4. Перевести numeric и time ordered rules
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-02`
+
+Результат: numeric и time ordered rules переведены на фиксированные вложенные
+outward levels с полным rebuild поколения; strict/inclusive границы, поздние
+значения, extremes и повторные переходы прошли differential, full-test,
+hard-limit и diff-coverage gates без benchmarks.
 
 - Реализовать вложенные уровни монотонного ключа с устойчивыми origin и width;
   расширение наблюдаемого диапазона не должно менять уже выбранный уровень.

@@ -297,7 +297,9 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		common.index.insertPosting(1, roaring.BitmapOf(1))
 		common.index.insertPosting(2, roaring.BitmapOf(2))
 		common.index.insertPosting(3, roaring.BitmapOf(3))
-		rule := &quantizedOrderedRule[streamingOrderedFixture, int]{common}
+		_, first, ok := common.prepareStreamingFirstGeneration()
+		require.True(t, ok)
+		rule := first.(*quantizedOrderedRule[streamingOrderedFixture, int])
 		_, apply, ok := rule.prepareStreamingNext()
 		require.True(t, ok)
 		apply()

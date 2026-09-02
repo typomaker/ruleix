@@ -84,6 +84,8 @@ type orderedRule[T any, V any] struct {
 	wildcard      *roaring.Bitmap
 	index         orderedIndex[V]
 	lossyCapacity int
+	quantizer     *orderedQuantizer[V]
+	level         uint32
 }
 
 type orderedLocalQueryKey[V any] struct {
@@ -283,7 +285,7 @@ func (r *orderedRule[T, V]) inspectionStrategy() string {
 	return "ordered"
 }
 func (r *orderedRule[T, V]) inspectionMode() RuleMode {
-	if r.lossyCapacity > 0 {
+	if r.quantizer == nil && r.lossyCapacity > 0 {
 		return RuleModeLossy
 	}
 	return RuleModeExact
@@ -348,7 +350,7 @@ func (r *orderedRule[T, V]) insert(v T, id uint32) {
 		r.wildcard.Add(id)
 		return
 	}
-	r.index.insert(value, id)
+	r.index.insert(r.storageValue(value), id)
 	if r.lossyCapacity > 0 {
 		for r.index.buildStatistics().uniqueValues > r.lossyCapacity {
 			r.index.coarsenOne(r.dir)
@@ -365,7 +367,7 @@ func (r *orderedRule[T, V]) estimateCardinality(v T) uint64 {
 	if !ok {
 		return n
 	}
-	return n + r.index.estimateCardinality(value, r.dir == lessThan, r.inclusive)
+	return n + r.index.estimateCardinality(r.searchValue(value), r.dir == lessThan, r.inclusive)
 }
 func (r *orderedRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
 	if pool.local == nil {
@@ -442,13 +444,13 @@ func (r *orderedRule[T, V]) matchesID(v T, id uint32) bool {
 		return true
 	}
 	value, ok := r.get(v)
-	return ok && r.index.matches(value, r.dir == lessThan, r.inclusive, id)
+	return ok && r.index.matches(r.searchValue(value), r.dir == lessThan, r.inclusive, id)
 }
 
 func (r *orderedRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
 	dst.Or(r.wildcard)
 	if value.ok {
-		r.index.walk(value.value, r.dir == lessThan, r.inclusive, dst.Or)
+		r.index.walk(r.searchValue(value.value), r.dir == lessThan, r.inclusive, dst.Or)
 	}
 }
 func (r *orderedRule[T, V]) appendMatchingBitmaps(value optionalValue[V], dst []*roaring.Bitmap) []*roaring.Bitmap {
@@ -456,7 +458,7 @@ func (r *orderedRule[T, V]) appendMatchingBitmaps(value optionalValue[V], dst []
 		dst = append(dst, r.wildcard)
 	}
 	if value.ok {
-		r.index.walk(value.value, r.dir == lessThan, r.inclusive, func(bits *roaring.Bitmap) {
+		r.index.walk(r.searchValue(value.value), r.dir == lessThan, r.inclusive, func(bits *roaring.Bitmap) {
 			dst = append(dst, bits)
 		})
 	}

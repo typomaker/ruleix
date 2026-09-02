@@ -92,6 +92,33 @@ The step 2 gate was verified on 2026-09-02 with focused state/rebuild tests and
 the full test suite. Diff coverage for changed executable production lines was
 measured above 90%. No benchmark was run and no layout decision was made.
 
+### Numeric and time ordered levels
+
+Standalone ordered rules over built-in and named numeric values now use a
+fixed domain-wide monotonic key grid. `time.Time` uses its Unix-second order,
+with the first lossy level expanding fractional seconds outward. The grid
+origin and widths do not depend on observed minima or maxima, so values arriving
+after a pressure transition cannot change the meaning of an existing level.
+
+Stored lower bounds round downward and stored upper bounds round upward. Query
+keys use the opposite outward edge; this preserves strict as well as inclusive
+boundary behavior while the shared ordered index continues to execute the
+range lookup. Every next level clears one more key bit and rebuilds the complete
+current generation. Consequently an incremental transition produces the same
+boundary as direct quantization from the exact value, and no exact keys or
+future grids are retained.
+
+The numeric codec is enabled only when the supplied comparator agrees with the
+natural monotonic encoding of the collected values. Other total orders remain
+on the comparator-backed compatibility path until boundary levels are added in
+roadmap step 5. The step 4 gate covers integer extremes, negative and positive
+time boundaries, strict and inclusive operators, late values outside the
+initial range, repeated rebuilds, full tests, and changed-line coverage. No
+benchmark or performance conclusion is part of this step. Verification on
+2026-09-02 used `go test ./... -coverprofile=/tmp/ruleix-step4.cover` and
+reported 96.2% executable changed-line coverage (175/182), followed by
+`git diff --check`.
+
 ## Public API direction
 
 Lossy behavior should decorate an existing `Rule[T]`:

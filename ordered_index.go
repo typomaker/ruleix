@@ -289,9 +289,7 @@ func (i *orderedIndex[V]) cloneBuild() orderedIndex[V] {
 	return clone
 }
 
-// coarsenOne rebuilds an independent posting generation and merges the least
-// populated adjacent pair. The retained boundary is rounded outward for the
-// rule direction, so strict and inclusive predicates can only gain matches.
+// coarsenOne is retained for comparator-boundary migration in roadmap step 5.
 func (i *orderedIndex[V]) coarsenOne(dir direction) bool {
 	items := make([]*orderedItem[V], 0, i.buildStatistics().uniqueValues)
 	for _, block := range i.blocks {
