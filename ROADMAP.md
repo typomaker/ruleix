@@ -152,7 +152,12 @@ Gate: повторные rebuild сохраняют каждый ID, не уде
 
 ### 3. Перевести equality на вложенные уровни
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-02`
+
+Результат: equality переведён на ленивый identity-to-prefix rebuild одного
+поколения без будущих streaming candidates; текущий quantizer применяется к
+поздним insert/search, а ordered/shuffled, duplicates, wildcards и повторные
+downgrade прошли correctness, accounting, hard-limit и diff-coverage gates.
 
 - Exact-фаза хранит точные значения; после первого downgrade новые значения
   сразу преобразуются текущим equality quantizer.

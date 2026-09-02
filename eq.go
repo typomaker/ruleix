@@ -267,11 +267,7 @@ func (r *eqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*eqRule[T, V]) inspectionStrategy() string { return "equality" }
 func (r *eqRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
-	ladder, err := r.newLossyAllPlanner().representationLadder()
-	if err != nil || len(ladder) == 0 {
-		return details
-	}
-	return ladder[0].details
+	return r.streamingExactDetails(details)
 }
 
 func (*eqRule[T, V]) rule() {}

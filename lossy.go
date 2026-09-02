@@ -180,11 +180,6 @@ type streamingStepFitter interface{ fitStreamingNext() }
 type streamingFitAvailability interface{ canFitStreaming() bool }
 type streamingNextUsageProvider interface{ nextStreamingUsage() (uint64, bool) }
 type streamingNextPreparer interface{ prepareStreamingNext() (uint64, func(), bool) }
-
-// streamingAdaptiveLeaf keeps an exact leaf mutable until aggregate pressure
-// actually selects it. Once selected, the same holder keeps forwarding later
-// inserts into the compiled lossy accumulator, so subsequent checkpoints can
-// advance it through the remaining representation levels.
 type streamingAdaptiveLeaf[T any] struct {
 	child                          Rule[T]
 	nextUsage                      uint64
@@ -225,6 +220,16 @@ func (r *streamingAdaptiveLeaf[T]) nextStreamingUsage() (uint64, bool) {
 		return r.nextUsage, r.nextUsageOK
 	}
 	r.nextUsagePrepared = true
+	if factory, ok := r.child.(streamingFirstGenerationFactory[T]); ok {
+		usage, next, available := factory.prepareStreamingFirstGeneration()
+		if !available {
+			r.nextUsageOK = false
+			return 0, false
+		}
+		r.nextUsage, r.nextUsageOK = usage, true
+		r.nextApply = func() { r.child = next }
+		return usage, true
+	}
 	if factory, ok := r.child.(lossyAllCompiler[T]); ok {
 		ladder, err := factory.newLossyAllPlanner().representationLadder()
 		if err != nil || len(ladder) < 2 {
