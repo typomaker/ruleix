@@ -56,6 +56,30 @@ pre-cleanup snapshot и post-activation cleanup в один коммит.
 current key -> quantize(next level) -> same physical index -> merge bitmaps
 ```
 
+Это переписывание, а не последовательная доработка текущей lossy-реализации.
+Существующие lossy types, planners, ladders, capacity/classes и coarsening
+алгоритмы не являются источником требований или ограничений нового дизайна и
+не должны переноситься в него по умолчанию. Их разрешено читать только для
+удаления, переноса публичных контрактов и сохранения доказанных correctness
+cases; архитектурные решения принимаются от exact path и контракта этого
+milestone.
+
+Новый lossy не имеет собственных posting, index, matcher, range-search или
+cache структур. Он всегда использует те же структуры и search-код, что Exact.
+Единственное различие Exact и Lossy — функция преобразования ключа и
+сохранённый уровень её точности:
+
+```text
+physical key = quantize(input key, current level)
+level 0: quantize(key, 0) = key
+level N: quantize(key, N) = outward/coarser key
+```
+
+Exact всегда работает на identity level 0. Lossy также начинается с level 0 и
+переходит на следующий уровень только при memory pressure. Insert, rebuild и
+search обязаны применять одну и ту же функцию текущего уровня; за пределами
+этого преобразования режим не должен быть виден общим exact-структурам.
+
 Текущий уровень сохраняется в правиле и одинаково применяется к последующим
 insert и search values. Исходные exact keys после успешного перехода не
 удерживаются. Уникальные округлённые ключи могут называться buckets/classes
@@ -74,6 +98,14 @@ performance benchmarks, profiles и оптимизации выполняютс�
 
 - Описать единый контракт current level, next level, преобразования нового
   значения и повторного преобразования уже сохранённого ключа.
+- Зафиксировать level 0 как identity-функцию для любого ключа; Exact всегда
+  использует level 0, а Lossy начинает с него без отдельного physical layout.
+- Зафиксировать, что quantizer является единственной mode-specific частью:
+  posting/index/matcher/range/cache структуры и весь search execution берутся
+  непосредственно из Exact и не знают, выбран Exact или Lossy.
+- Рассматривать текущий lossy production code только как удаляемую реализацию и
+  источник публичных compatibility/correctness cases, но не как основу нового
+  алгоритма или ограничение его внутреннего устройства.
 - Потребовать вложенность уровней: переход `N -> N+1` без exact value должен
   совпадать с прямым округлением exact value на уровень `N+1`.
 - Зафиксировать общий алгоритм checkpoint: при accounted usage выше 125%
@@ -86,7 +118,8 @@ performance benchmarks, profiles и оптимизации выполняютс�
   limit, а не как следствие локальных последовательных merge.
 
 Gate: контракт записан в канонической lossy-архитектуре; unit tests выражают
-вложенность и монотонность уровней без performance assertions и benchmarks.
+identity level 0, полную общность physical/search структур, вложенность и
+монотонность уровней без performance assertions и benchmarks.
 
 ### 2. Ввести единый state и rebuild primitive
 
