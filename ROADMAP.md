@@ -204,13 +204,23 @@ values, duplicate IDs и все операторы.
 - Выполнить race, full test, differential, retained-memory, streaming-scale и
   production-shaped benchmark gates.
 - Снять сопоставимые CPU/allocation profiles Exact, identity-lossy и Lossy 50%.
+- При обнаружении деградации не удалять и не откатывать unified-реализацию.
+  Воспроизвести деградацию на сопоставимых baseline/candidate revisions,
+  локализовать её причину и составить отчёт с измерениями, профилями,
+  затронутыми workloads и возможными путями исправления. До принятия и
+  реализации решения шаг остаётся незавершённым.
 - Обновить архитектуру, performance history, optimization decisions и
   changelog только после принятия реализации.
 
 Финальный gate: ни один публичный search path не регрессирует по корректности,
 latency, allocations или retained memory. Если общий layout ухудшает exact или
-lossy workload, изменение профилируется и исправляется либо отклоняется согласно
-[`docs/project-governance.md`](docs/project-governance.md).
+lossy workload, unified-реализация сохраняется, а шаг нельзя завершить, пока
+причина деградации не подтверждена сопоставимыми измерениями и профилями, не
+оформлен отчёт с возможными путями решения и не реализовано принятое
+исправление. Для этого milestone отклонение или удаление реализации из-за
+деградации не допускается, даже если общие правила экспериментов в
+[`docs/project-governance.md`](docs/project-governance.md) допускают отклонение
+после исчерпывающего расследования.
 
 ## Порядок поставки
 
