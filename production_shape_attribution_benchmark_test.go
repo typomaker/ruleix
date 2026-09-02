@@ -2,6 +2,7 @@ package ruleix_test
 
 import (
 	"cmp"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -194,6 +195,63 @@ func BenchmarkProductionShapeAttribution(b *testing.B) {
 						b.ReportMetric(candidates/exactCandidates, "candidate-amplification")
 					})
 				}
+			}
+		})
+	}
+}
+
+// BenchmarkProductionEqualityPrecisionShape reports the physical posting
+// distribution at every budget selected by the production equality planner.
+// The timed search benchmark above remains the end-to-end acceptance gate.
+// Latest local shape (Apple M1 Max, Go 1.26.0, GOMAXPROCS=1, 38,098 entries,
+// 1x): 75% retained 534 buckets, max posting 29,137, weighted collision
+// 13,067 and 0.04693 observed query FP rate; 50% retained six buckets, max
+// posting 38,097, weighted collision 34,764 and 1.0 observed query FP rate.
+func BenchmarkProductionEqualityPrecisionShape(b *testing.B) {
+	constraints, ids := productionBenchmarkData()
+	queries := []productionBenchmarkConstraint{
+		productionBenchmarkQuery(100), productionBenchmarkQuery(101),
+	}
+	_, exactBytes := buildProductionAttributionIndex(
+		b, productionBenchmarkEqualityOnlySchema(), productionAttributionIdentity,
+		math.MaxUint64, constraints, ids,
+	)
+	exact, _ := buildProductionAttributionIndex(
+		b, productionBenchmarkEqualityOnlySchema(), productionAttributionExact,
+		math.MaxUint64, constraints, ids,
+	)
+	exactCandidates := productionAttributionCandidateAverage(exact, queries)
+	for _, percent := range []uint64{100, 75, 50} {
+		index, accounted := buildProductionAttributionIndex(
+			b, productionBenchmarkEqualityOnlySchema(), productionAttributionLossy50,
+			exactBytes*percent/100, constraints, ids,
+		)
+		diagnostics := ruleix.EqualityDiagnostics(index)
+		candidates := productionAttributionCandidateAverage(index, queries)
+		b.Run(fmt.Sprintf("Budget%d", percent), func(b *testing.B) {
+			var buckets, items, maxPosting, maxMedianPosting, maxP95Posting uint64
+			var weighted float64
+			for _, diagnostic := range diagnostics {
+				buckets += diagnostic.Buckets
+				items += diagnostic.Items
+				maxPosting = max(maxPosting, diagnostic.MaxPosting)
+				maxMedianPosting = max(maxMedianPosting, diagnostic.MedianPosting)
+				maxP95Posting = max(maxP95Posting, diagnostic.P95Posting)
+				weighted += diagnostic.WeightedCollision * float64(diagnostic.Items)
+			}
+			b.ReportMetric(float64(accounted), "accounted-B/index")
+			b.ReportMetric(float64(buckets), "buckets")
+			b.ReportMetric(candidates, "candidates/query")
+			b.ReportMetric(float64(len(diagnostics)), "lossy-leaves")
+			b.ReportMetric(float64(maxPosting), "max-posting")
+			b.ReportMetric(float64(maxMedianPosting), "max-leaf-median-posting")
+			b.ReportMetric(float64(maxP95Posting), "max-leaf-p95-posting")
+			denominator := float64(productionBenchmarkEntries) - exactCandidates
+			if denominator > 0 {
+				b.ReportMetric((candidates-exactCandidates)/denominator, "observed-query-fp-rate")
+			}
+			if items != 0 {
+				b.ReportMetric(weighted/float64(items), "weighted-collision")
 			}
 		})
 	}

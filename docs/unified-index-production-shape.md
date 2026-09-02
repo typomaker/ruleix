@@ -174,6 +174,41 @@ end-to-end выигрыша. Для ordered правил hash отсутству
 До реализации и сопоставимого повторного профилирования принятого решения шаг
 6 нельзя завершить.
 
+## Equality precision shape 2026-09-02
+
+Добавлен test-only физический отчёт `BenchmarkProductionEqualityPrecisionShape`.
+Он не расширяет публичный API и для реально выбираемых production budget points
+показывает число buckets, распределение posting cardinality (median/p95/max по
+листьям), weighted collision cost, observed query false-positive rate и
+candidates/query. Воспроизведение:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionEqualityPrecisionShape/' \
+  -benchtime=1x -count=1 .
+```
+
+Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`, 38 098 entries.
+Результаты физической формы детерминированы сборкой; `ns/op` этого diagnostic
+benchmark не является search-метрикой и не используется как performance gate.
+
+| Budget | Accounted | Buckets | Candidates/query | Max leaf median/p95/max | Weighted collision | Observed query FP |
+|---:|---:|---:|---:|---:|---:|---:|
+| 100% | 419 451 B | exact | 150 | exact | exact | 0 |
+| 75% | 284 665 B | 534 | 1 931 | 29 137 / 29 137 / 29 137 | 13 067 | 0,04693 |
+| 50% | 140 347 B | 6 | 38 098 | 38 097 / 38 097 / 38 097 | 34 764 | 1,000 |
+
+Три posting-квантили в таблице — отдельные maxima соответствующей метрики среди
+листьев; они показывают worst-leaf форму, а не общую CDF всех buckets.
+
+Измерение исключает stable-hash/salt как самостоятельное исправление 50%-точки:
+planner оставляет всего шесть классов на весь equality-only `All`, а один
+выбранный posting содержит 38 097 из 38 098 IDs. Перестановка hash не может
+разделить posting при одном классе. Следующий обоснованный эксперимент —
+quality-aware aggregate planning, который должен сохранить больше классов у
+селективных equality-листьев; его принятие по-прежнему требует end-to-end
+улучшения обоих search paths и прохождения mixed/adversarial gates.
+
 ## Search-first атрибуция по семействам 2026-09-02
 
 Добавлен отдельный `BenchmarkProductionShapeAttribution`, который на одинаковых
