@@ -52,36 +52,22 @@ func (r *betweenRule[T, V]) refreshedStreamingDetails(details inspectionDetails)
 func (r *betweenRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	fromMemory, fromItems, fromDistinct, _ := orderedIndexLossyAccounting(&r.from.index, r.from.wildcard)
 	untilMemory, untilItems, untilDistinct, _ := orderedIndexLossyAccounting(&r.until.index, r.until.wildcard)
-	exact := Rule[T](&inspectionDetailsRule[T]{
-		child: r,
-		details: representationDetails(
-			fromMemory+untilMemory,
-			fromItems+untilItems,
-			fromDistinct+untilDistinct,
-			0,
-			false,
-		),
-	})
-	candidates := make([]Rule[T], 0, lossyMaxBucketBits+1)
-	for bucketBits := uint(0); bucketBits <= lossyMaxBucketBits; bucketBits++ {
-		candidate := &betweenRule[T, V]{
-			nodeID: r.nodeID, compare: r.compare,
-			from:  buildQuantizedOrderedRule(r.from, 1<<bucketBits),
-			until: buildQuantizedOrderedRule(r.until, 1<<bucketBits),
+	exactDetails := representationDetails(fromMemory+untilMemory, fromItems+untilItems,
+		fromDistinct+untilDistinct, 0, false)
+	ladder := []lossyRepresentation[T]{{compiled: &inspectionDetailsRule[T]{child: r, details: exactDetails}, details: exactDetails}}
+	candidate := &quantizedBetweenRule[T, V]{cloneBetweenRule(r)}
+	for {
+		_, apply, ok := candidate.prepareStreamingNext()
+		if !ok {
+			break
 		}
-		fromUsage, _, _ := quantizedOrderedAccounting(&candidate.from.index, candidate.from.wildcard)
-		untilUsage, _, _ := quantizedOrderedAccounting(&candidate.until.index, candidate.until.wildcard)
-		usage := fromUsage + untilUsage
-		details := representationDetails(
-			usage, fromItems+untilItems, fromDistinct+untilDistinct,
-			uint64(candidate.from.index.buildStatistics().uniqueValues+
-				candidate.until.index.buildStatistics().uniqueValues), true,
-		)
-		candidates = append(candidates, &inspectionDetailsRule[T]{
-			child: &quantizedBetweenRule[T, V]{candidate}, details: details,
-		})
+		apply()
+		details := candidate.refreshedStreamingDetails(inspectionDetails{})
+		copy := &quantizedBetweenRule[T, V]{cloneBetweenRule(candidate.betweenRule)}
+		compiled := Rule[T](&inspectionDetailsRule[T]{child: copy, details: details})
+		ladder = append(ladder, lossyRepresentation[T]{compiled: compiled, details: details})
 	}
-	return fixedLossyAllPlanner[T]{ladder: buildLossyRepresentationLadder(exact, candidates)}
+	return fixedLossyAllPlanner[T]{ladder: ladder}
 }
 
 type quantizedBetweenRule[T any, V any] struct{ *betweenRule[T, V] }

@@ -38,11 +38,36 @@ func (r *quantizedCompareByRule[T, V]) refreshedStreamingDetails(details inspect
 	return details
 }
 
+func (r *compareByRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
+	clone := cloneCompareByRule(r)
+	candidate := &quantizedCompareByRule[T, V]{clone}
+	usage, apply, ok := candidate.prepareStreamingNext()
+	if !ok {
+		return 0, nil, false
+	}
+	apply()
+	return usage, candidate, true
+}
+
+func cloneCompareByRule[T any, V any](r *compareByRule[T, V]) *compareByRule[T, V] {
+	clone := *r
+	for operator, index := range r.indexes {
+		if index != nil {
+			copy := index.cloneBuild()
+			clone.indexes[operator] = &copy
+		}
+	}
+	return &clone
+}
+
 func (r *quantizedCompareByRule[T, V]) selectedStreamingIndex() int {
 	selected := -1
 	for operator, index := range r.indexes {
-		if index != nil && index.buildStatistics().uniqueValues > 1 &&
-			(selected < 0 || index.buildStatistics().uniqueValues > r.indexes[selected].buildStatistics().uniqueValues) {
+		if index == nil || index.buildStatistics().uniqueValues <= 1 ||
+			r.quantizers[operator] != nil && r.levels[operator] >= r.quantizers[operator].terminalLevel() {
+			continue
+		}
+		if selected < 0 || index.buildStatistics().uniqueValues > r.indexes[selected].buildStatistics().uniqueValues {
 			selected = operator
 		}
 	}
@@ -51,22 +76,18 @@ func (r *quantizedCompareByRule[T, V]) selectedStreamingIndex() int {
 
 func (r *quantizedCompareByRule[T, V]) fitStreamingLimit(limit uint64) {
 	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit {
-		if r.selectedStreamingIndex() < 0 {
+		if _, apply, ok := r.prepareStreamingNext(); ok {
+			apply()
+		} else {
 			return
 		}
-		r.fitStreamingNext()
 	}
 }
-
 func (r *quantizedCompareByRule[T, V]) fitStreamingNext() {
-	selected := r.selectedStreamingIndex()
-	if selected < 0 {
-		return
+	if _, apply, ok := r.prepareStreamingNext(); ok {
+		apply()
 	}
-	r.indexes[selected].coarsenOne(compareByDirection(Operator(selected)))
-	r.lossyCapacity[selected] = r.indexes[selected].buildStatistics().uniqueValues
 }
-
 func (r *quantizedCompareByRule[T, V]) nextStreamingUsage() (uint64, bool) {
 	usage, _, ok := r.prepareStreamingNext()
 	return usage, ok
@@ -77,19 +98,51 @@ func (r *quantizedCompareByRule[T, V]) prepareStreamingNext() (uint64, func(), b
 	if selected < 0 {
 		return 0, nil, false
 	}
-	clone := *r.compareByRule
-	for operator, index := range r.indexes {
-		if index != nil {
-			copy := index.cloneBuild()
-			clone.indexes[operator] = &copy
+	operator := Operator(selected)
+	current := r.indexes[selected]
+	next := newOrderedIndex(r.compare)
+	nextLevel := r.levels[selected] + 1
+	quantizer, boundaries := r.quantizers[selected], r.boundaries[selected]
+	if quantizer == nil && boundaries == nil {
+		compiled, ok := compileOrderedQuantizer[V]()
+		if ok && orderedIndexAgreesWithQuantizer(current, compiled) {
+			quantizer = &compiled
+		} else {
+			boundaries = &orderedBoundaryQuantizer[V]{}
 		}
 	}
-	clone.indexes[selected].coarsenOne(compareByDirection(Operator(selected)))
-	clone.lossyCapacity[selected] = clone.indexes[selected].buildStatistics().uniqueValues
-	wrapped := &quantizedCompareByRule[T, V]{&clone}
-	usage := wrapped.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
+	if boundaries != nil {
+		next = rebuildOrderedBoundaries(current, compareByDirection(operator))
+	} else {
+		for _, block := range current.blocks {
+			for _, item := range block.items {
+				key := quantizer.rounded(item.value, nextLevel, compareByStorageUpward(operator))
+				next.insertPosting(key, item.bits)
+			}
+		}
+	}
+	clone := cloneCompareByRule(r.compareByRule)
+	clone.indexes[selected] = &next
+	clone.quantizers[selected], clone.boundaries[selected], clone.levels[selected] = quantizer, boundaries, nextLevel
+	clone.lossyCapacity[selected] = next.buildStatistics().uniqueValues
+	usage := (&quantizedCompareByRule[T, V]{clone}).refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
 	return usage, func() {
-		r.indexes = clone.indexes
-		r.lossyCapacity = clone.lossyCapacity
+		r.indexes[selected] = &next
+		r.quantizers[selected], r.boundaries[selected], r.levels[selected] = quantizer, boundaries, nextLevel
+		r.lossyCapacity[selected] = next.buildStatistics().uniqueValues
 	}, true
+}
+
+func orderedIndexAgreesWithQuantizer[V any](index *orderedIndex[V], quantizer orderedQuantizer[V]) bool {
+	var previous V
+	havePrevious := false
+	for _, block := range index.blocks {
+		for _, item := range block.items {
+			if havePrevious && (index.compare(previous, item.value) >= 0 || quantizer.encode(previous) > quantizer.encode(item.value)) {
+				return false
+			}
+			previous, havePrevious = item.value, true
+		}
+	}
+	return true
 }

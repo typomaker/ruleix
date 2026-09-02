@@ -175,59 +175,18 @@ type streamingDetailsProvider interface {
 	refreshedStreamingDetails(inspectionDetails) inspectionDetails
 }
 
-type streamingLimitFitter interface{ fitStreamingLimit(uint64) }
-type streamingStepFitter interface{ fitStreamingNext() }
-type streamingFitAvailability interface{ canFitStreaming() bool }
-type streamingNextUsageProvider interface{ nextStreamingUsage() (uint64, bool) }
-type streamingNextPreparer interface{ prepareStreamingNext() (uint64, func(), bool) }
-type streamingAdaptiveLeaf[T any] struct {
-	child                          Rule[T]
-	nextUsage                      uint64
-	nextUsagePrepared, nextUsageOK bool
-	nextApply                      func()
-}
-
-func (*streamingAdaptiveLeaf[T]) rule()                                                 {}
-func (r *streamingAdaptiveLeaf[T]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
-func (r *streamingAdaptiveLeaf[T]) validate(v T) error                                  { return r.child.validate(v) }
-func (r *streamingAdaptiveLeaf[T]) insert(v T, id uint32) {
-	r.nextUsagePrepared, r.nextApply = false, nil
-	r.child.insert(v, id)
-}
-func (r *streamingAdaptiveLeaf[T]) cardinality(v T, p *bitmapPool) uint64 {
-	return r.child.cardinality(v, p)
-}
-func (r *streamingAdaptiveLeaf[T]) search(v T, dst *roaring.Bitmap, p *bitmapPool) {
-	r.child.search(v, dst, p)
-}
-func (r *streamingAdaptiveLeaf[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPool) {
-	r.child.exclude(v, dst, p)
-}
-func (r *streamingAdaptiveLeaf[T]) collectBuildStatistics(s []nodeBuildStatistics) {
-	r.child.collectBuildStatistics(s)
-}
-func (r *streamingAdaptiveLeaf[T]) inspectionMode() RuleMode   { return inspectionModeOf(r.child) }
-func (r *streamingAdaptiveLeaf[T]) inspectionStrategy() string { return inspectionStrategyOf(r.child) }
-func (r *streamingAdaptiveLeaf[T]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
-	return refreshedStreamingRuleDetails(r.child, details)
-}
-func (r *streamingAdaptiveLeaf[T]) canFitStreaming() bool {
-	_, ok := r.nextStreamingUsage()
-	return ok
-}
 func (r *streamingAdaptiveLeaf[T]) nextStreamingUsage() (uint64, bool) {
 	if r.nextUsagePrepared {
 		return r.nextUsage, r.nextUsageOK
 	}
 	r.nextUsagePrepared = true
-	if factory, ok := r.child.(streamingFirstGenerationFactory[T]); ok {
+	if factory, ok := r.child.(streamingFirstGenerationFactory[T]); ok && inspectionModeOf(r.child) == RuleModeExact {
 		usage, next, available := factory.prepareStreamingFirstGeneration()
 		if !available {
 			r.nextUsageOK = false
 			return 0, false
 		}
-		r.nextUsage, r.nextUsageOK = usage, true
-		r.nextApply = func() { r.child = next }
+		r.nextUsage, r.nextUsageOK, r.nextApply = usage, true, func() { r.child = next }
 		return usage, true
 	}
 	if factory, ok := r.child.(lossyAllCompiler[T]); ok {
@@ -248,11 +207,20 @@ func (r *streamingAdaptiveLeaf[T]) nextStreamingUsage() (uint64, bool) {
 	}
 	return r.nextUsage, r.nextUsageOK
 }
+
 func (r *streamingAdaptiveLeaf[T]) fitStreamingLimit(limit uint64) {
 	r.nextUsagePrepared, r.nextApply = false, nil
+	if _, first := r.child.(streamingFirstGenerationFactory[T]); first && inspectionModeOf(r.child) == RuleModeExact {
+		for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit {
+			if _, ok := r.nextStreamingUsage(); !ok {
+				return
+			}
+			r.fitStreamingNext()
+		}
+		return
+	}
 	if factory, ok := r.child.(lossyAllCompiler[T]); ok {
-		planner := factory.newLossyAllPlanner()
-		compiled, err := planner.compile(limit)
+		compiled, err := factory.newLossyAllPlanner().compile(limit)
 		if err == nil {
 			r.child = compiled
 		}
@@ -260,6 +228,7 @@ func (r *streamingAdaptiveLeaf[T]) fitStreamingLimit(limit uint64) {
 	}
 	fitStreamingRule(r.child, limit)
 }
+
 func (r *streamingAdaptiveLeaf[T]) fitStreamingNext() {
 	if r.nextUsagePrepared && r.nextUsageOK && r.nextApply != nil {
 		apply := r.nextApply
@@ -268,6 +237,14 @@ func (r *streamingAdaptiveLeaf[T]) fitStreamingNext() {
 		return
 	}
 	r.nextUsagePrepared = false
+	if _, first := r.child.(streamingFirstGenerationFactory[T]); first && inspectionModeOf(r.child) == RuleModeExact {
+		if _, ok := r.nextStreamingUsage(); ok && r.nextApply != nil {
+			apply := r.nextApply
+			r.nextUsagePrepared, r.nextApply = false, nil
+			apply()
+		}
+		return
+	}
 	if factory, ok := r.child.(lossyAllCompiler[T]); ok {
 		ladder, err := factory.newLossyAllPlanner().representationLadder()
 		if err == nil && len(ladder) > 1 {

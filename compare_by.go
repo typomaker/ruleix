@@ -37,6 +37,9 @@ type compareByRule[T any, V any] struct {
 	indexes              [5]*orderedIndex[V]
 	hints                [5]orderedBuildStatistics
 	lossyCapacity        [5]int
+	quantizers           [5]*orderedQuantizer[V]
+	boundaries           [5]*orderedBoundaryQuantizer[V]
+	levels               [5]uint32
 	eqMinimum, eqMaximum V
 	eqHasRange           bool
 }
@@ -67,37 +70,21 @@ func (r *compareByRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		items += indexItems
 		distinct += indexDistinct
 	}
-	exact := Rule[T](&inspectionDetailsRule[T]{
-		child:   r,
-		details: representationDetails(memory, items, distinct, 0, false),
-	})
-	candidates := make([]Rule[T], 0, lossyMaxBucketBits+1)
-	for bucketBits := uint(0); bucketBits <= lossyMaxBucketBits; bucketBits++ {
-		candidate := &compareByRule[T, V]{
-			nodeID: r.nodeID, value: r.value, operator: r.operator, compare: r.compare,
-			wildcard: r.wildcard, eqMinimum: r.eqMinimum, eqMaximum: r.eqMaximum, eqHasRange: r.eqHasRange,
+	exactDetails := representationDetails(memory, items, distinct, 0, false)
+	ladder := []lossyRepresentation[T]{{compiled: &inspectionDetailsRule[T]{child: r, details: exactDetails}, details: exactDetails}}
+	candidate := &quantizedCompareByRule[T, V]{cloneCompareByRule(r)}
+	for {
+		_, apply, ok := candidate.prepareStreamingNext()
+		if !ok {
+			break
 		}
-		usage := uint64(24) + bitmapBytes(r.wildcard)
-		var granularity uint64
-		for operator, index := range r.indexes {
-			if index == nil {
-				continue
-			}
-			dir := compareByDirection(Operator(operator))
-			template := &orderedRule[T, V]{compare: r.compare, dir: dir, index: *index}
-			quantized := buildQuantizedOrderedRule(template, 1<<bucketBits)
-			candidate.indexes[operator] = &quantized.index
-			candidate.lossyCapacity[operator] = quantized.lossyCapacity
-			indexMemory, _, _ := quantizedOrderedAccounting(&quantized.index, roaring.New())
-			usage += indexMemory
-			granularity += uint64(quantized.index.buildStatistics().uniqueValues)
-		}
-		details := representationDetails(usage, items, distinct, granularity, true)
-		candidates = append(candidates, &inspectionDetailsRule[T]{
-			child: &quantizedCompareByRule[T, V]{candidate}, details: details,
-		})
+		apply()
+		details := candidate.refreshedStreamingDetails(inspectionDetails{})
+		copy := &quantizedCompareByRule[T, V]{cloneCompareByRule(candidate.compareByRule)}
+		compiled := Rule[T](&inspectionDetailsRule[T]{child: copy, details: details})
+		ladder = append(ladder, lossyRepresentation[T]{compiled: compiled, details: details})
 	}
-	return fixedLossyAllPlanner[T]{ladder: buildLossyRepresentationLadder(exact, candidates)}
+	return fixedLossyAllPlanner[T]{ladder: ladder}
 }
 
 type quantizedCompareByRule[T any, V any] struct{ *compareByRule[T, V] }
@@ -107,6 +94,10 @@ func compareByDirection(operator Operator) direction {
 		return greaterThan
 	}
 	return lessThan
+}
+
+func compareByStorageUpward(operator Operator) bool {
+	return operator == OperatorLT || operator == OperatorLTE
 }
 
 func (*compareByRule[T, V]) rule() {}
@@ -178,12 +169,30 @@ func (r *compareByRule[T, V]) insert(v T, id uint32) {
 		index = &created
 		r.indexes[operator] = index
 	}
-	index.insert(value, id)
-	if capacity := r.lossyCapacity[operator]; capacity > 0 {
-		for index.buildStatistics().uniqueValues > capacity {
-			index.coarsenOne(compareByDirection(operator))
-		}
+	index.insert(r.storageValue(operator, value), id)
+}
+
+func (r *compareByRule[T, V]) storageValue(operator Operator, value V) V {
+	if quantizer := r.quantizers[operator]; quantizer != nil {
+		return quantizer.rounded(value, r.levels[operator], compareByStorageUpward(operator))
 	}
+	if r.boundaries[operator] != nil {
+		return roundedOrderedBoundary(r.indexes[operator], value, compareByStorageUpward(operator))
+	}
+	return value
+}
+
+func (r *compareByRule[T, V]) searchValue(operator Operator, value V) V {
+	if operator == OperatorEQ {
+		return r.storageValue(operator, value)
+	}
+	if quantizer := r.quantizers[operator]; quantizer != nil {
+		return quantizer.rounded(value, r.levels[operator], compareByDirection(operator) == greaterThan)
+	}
+	if r.boundaries[operator] != nil {
+		return roundedOrderedBoundary(r.indexes[operator], value, compareByDirection(operator) == greaterThan)
+	}
+	return value
 }
 
 func (r *compareByRule[T, V]) equalityBits(value V) *roaring.Bitmap {
@@ -191,13 +200,13 @@ func (r *compareByRule[T, V]) equalityBits(value V) *roaring.Bitmap {
 	if index == nil {
 		return nil
 	}
-	if r.lossyCapacity[OperatorEQ] == 0 {
+	if r.levels[OperatorEQ] == 0 {
 		return index.exact(value)
 	}
 	if !r.eqHasRange || r.compare(value, r.eqMinimum) < 0 || r.compare(value, r.eqMaximum) > 0 {
 		return nil
 	}
-	return index.ceiling(value)
+	return index.exact(r.searchValue(OperatorEQ, value))
 }
 func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 	value, ok := r.value(v)
@@ -212,17 +221,17 @@ func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 	}
 	// query < stored / query <= stored
 	if index := r.indexes[OperatorLT]; index != nil {
-		index.walk(value, true, false, visit)
+		index.walk(r.searchValue(OperatorLT, value), true, false, visit)
 	}
 	if index := r.indexes[OperatorLTE]; index != nil {
-		index.walk(value, true, true, visit)
+		index.walk(r.searchValue(OperatorLTE, value), true, true, visit)
 	}
 	// query > stored / query >= stored
 	if index := r.indexes[OperatorGT]; index != nil {
-		index.walk(value, false, false, visit)
+		index.walk(r.searchValue(OperatorGT, value), false, false, visit)
 	}
 	if index := r.indexes[OperatorGTE]; index != nil {
-		index.walk(value, false, true, visit)
+		index.walk(r.searchValue(OperatorGTE, value), false, true, visit)
 	}
 }
 func (r *compareByRule[T, V]) appendMatchingBitmaps(v T, dst []*roaring.Bitmap) []*roaring.Bitmap {
@@ -237,16 +246,16 @@ func (r *compareByRule[T, V]) appendMatchingBitmaps(v T, dst []*roaring.Bitmap) 
 		}
 	}
 	if index := r.indexes[OperatorLT]; index != nil {
-		index.walk(value, true, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+		index.walk(r.searchValue(OperatorLT, value), true, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
 	}
 	if index := r.indexes[OperatorLTE]; index != nil {
-		index.walk(value, true, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+		index.walk(r.searchValue(OperatorLTE, value), true, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
 	}
 	if index := r.indexes[OperatorGT]; index != nil {
-		index.walk(value, false, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+		index.walk(r.searchValue(OperatorGT, value), false, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
 	}
 	if index := r.indexes[OperatorGTE]; index != nil {
-		index.walk(value, false, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+		index.walk(r.searchValue(OperatorGTE, value), false, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
 	}
 	return dst
 }
@@ -265,16 +274,16 @@ func (r *compareByRule[T, V]) estimateCardinality(v T) uint64 {
 		}
 	}
 	if index := r.indexes[OperatorLT]; index != nil {
-		n += index.estimateCardinality(value, true, false)
+		n += index.estimateCardinality(r.searchValue(OperatorLT, value), true, false)
 	}
 	if index := r.indexes[OperatorLTE]; index != nil {
-		n += index.estimateCardinality(value, true, true)
+		n += index.estimateCardinality(r.searchValue(OperatorLTE, value), true, true)
 	}
 	if index := r.indexes[OperatorGT]; index != nil {
-		n += index.estimateCardinality(value, false, false)
+		n += index.estimateCardinality(r.searchValue(OperatorGT, value), false, false)
 	}
 	if index := r.indexes[OperatorGTE]; index != nil {
-		n += index.estimateCardinality(value, false, true)
+		n += index.estimateCardinality(r.searchValue(OperatorGTE, value), false, true)
 	}
 	return n
 }

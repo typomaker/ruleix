@@ -222,7 +222,12 @@ benchmark и layout tuning отложены.
 
 ### 6. Перевести `Between` и `CompareBy`
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-03`
+
+Результат: `Between` получил независимые уровни нижней и верхней стороны, а
+`CompareBy` — отдельные nested outward levels для всех пяти операторов;
+operator-specific pairwise coarsening удалён из streaming path, а missing,
+duplicates, wildcards, strict/inclusive и differential hard-limit gates прошли.
 
 - `Between` хранит независимые current levels нижней и верхней стороны и
   перестраивает за один pressure step только одну полную сторону.

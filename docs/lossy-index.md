@@ -159,6 +159,35 @@ coverage. No benchmark or layout tuning is part of this step. Verification on
 -coverprofile=/tmp/ruleix-step5.cover`, `go test -race ./...`, and
 `git diff --check`; changed executable production lines exceeded 90% coverage.
 
+### Compound ordered levels
+
+`Between` owns two independent ordered generations: the lower (`from`) side
+and the upper (`until`) side. A pressure transition selects exactly one side,
+rebuilds that complete side through the shared ordered quantizer, and leaves
+the other side and its level unchanged. Stored lower bounds round down and
+stored upper bounds round up; query bounds use the corresponding opposite
+edge through the same fused `Between` matcher and cache path.
+
+`CompareBy` similarly owns one level for each stored operator (`EQ`, `LT`,
+`LTE`, `GT`, and `GTE`). Pressure advances one complete operator index at a
+time. Range operators use their outward lower/upper direction; equality maps
+both inserted and searched values to the same physical bucket. All five
+indexes remain the common `orderedIndex`, and search, aggregate blocks,
+routing, candidate filtering, and Local caching remain shared with Exact.
+
+The compatibility planner now derives any required representations by
+replaying these whole-generation transitions; it no longer constructs
+`Between` or `CompareBy` candidates with capacity-based adjacent merges.
+Late inserts are transformed immediately at the selected per-side or
+per-operator level. Verification for roadmap step 6 covers missing values,
+wildcards, duplicate IDs, all strict and inclusive operators, repeated
+downgrades, hard accounting, and the central Exact/Lossy differential matrix.
+Verification on 2026-09-03 used `go test ./...
+-coverprofile=/tmp/ruleix-step6.cover`, `go test -race ./...`, and
+`git diff --check`; executable changed-line coverage was 100% (the extracted
+adaptive wrapper methods were also fully covered). No performance benchmark or
+layout tuning is part of this step.
+
 ## Public API direction
 
 Lossy behavior should decorate an existing `Rule[T]`:
