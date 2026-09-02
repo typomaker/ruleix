@@ -20,6 +20,12 @@ type orderedQuantizer[V any] struct {
 func compileOrderedQuantizer[V any]() (orderedQuantizer[V], bool) {
 	typeOf := reflect.TypeOf((*V)(nil)).Elem()
 	if typeOf == reflect.TypeOf(time.Time{}) {
+		// TODO: Consider logical time levels (for example minute, hour, and
+		// day) instead of only binary second widths. A lower boundary can use
+		// time.Truncate(granularity); an upper boundary needs the corresponding
+		// ceiling (truncate, then add one granularity unit when it changed the
+		// value). Any such sequence must still keep adjacent levels nested and
+		// define whether calendar boundaries use UTC or the value's location.
 		return orderedQuantizer[V]{
 			encode: func(value V) uint64 {
 				instant := any(value).(time.Time)

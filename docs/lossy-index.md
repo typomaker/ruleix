@@ -99,6 +99,10 @@ fixed domain-wide monotonic key grid. `time.Time` uses its Unix-second order,
 with the first lossy level expanding fractional seconds outward. The grid
 origin and widths do not depend on observed minima or maxima, so values arriving
 after a pressure transition cannot change the meaning of an existing level.
+The implementation records a follow-up consideration for logical time levels
+such as minutes, hours, and days: left boundaries could use `time.Truncate`,
+while right boundaries require a ceiling operation. Such levels must retain
+the nesting invariant and define their timezone semantics before adoption.
 
 Stored lower bounds round downward and stored upper bounds round upward. Query
 keys use the opposite outward edge; this preserves strict as well as inclusive
