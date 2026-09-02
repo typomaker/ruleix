@@ -315,6 +315,16 @@ Exact, identity-Lossy и lossy equality проходят одну реализа
 
 - Заменить семантику `nil quantizer означает Exact` единым обязательным key
   transformer для equality и ordered families.
+- Удалить `quantizedOrderedRule` как отдельный production/build-lifecycle тип;
+  Exact и Lossy должны публиковать один `orderedRule` и выполнять одни методы
+  insert, search, cardinality, `matchesID`, range walk и Local cache.
+- Удалить из `orderedRule` и `orderedIndex` lossy-специфичные понятия и
+  ветвления (`nil quantizer`, `boundaries != nil`, проверку режима по level).
+  Общий `orderedIndex` хранит и сравнивает только уже преобразованные physical
+  keys и не знает ни о Lossy, ни об уровнях, ни о способе округления.
+- Хранить в общем rule обязательный mode-neutral key transformer и его current
+  level. Для Exact transformer находится на identity level 0; различие режима
+  не должно менять тип rule, index или вызываемый search-код.
 - Определить level 0 формально и в коде как `quantize(key, 0) = key`; Exact
   всегда использует этот уровень, Lossy начинает с него и меняет только номер
   уровня при pressure.
@@ -325,8 +335,9 @@ Exact, identity-Lossy и lossy equality проходят одну реализа
   одной границы.
 
 Gate: unit tests напрямую подтверждают identity level 0 для всех семейств;
-Exact и identity-Lossy имеют одинаковые rule/index/search types и поведение, а
-в production search code нет ветвления по Exact/Lossy. Benchmarks не запускаются.
+Exact и identity-Lossy имеют одинаковые rule/index/search types и поведение,
+`quantizedOrderedRule` отсутствует, `orderedIndex` не содержит lossy state, а в
+production search code нет ветвления по Exact/Lossy. Benchmarks не запускаются.
 
 ### 11. Закрыть семантику arbitrary comparator и финальный functional gate
 
