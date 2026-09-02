@@ -1,6 +1,11 @@
 package ruleix
 
-import "github.com/RoaringBitmap/roaring/v2"
+import (
+	"cmp"
+	"slices"
+
+	"github.com/RoaringBitmap/roaring/v2"
+)
 
 // bitmapInterner replaces equal immutable posting lists with one canonical
 // bitmap. Checksum narrows candidates cheaply; Equals preserves correctness in
@@ -136,17 +141,20 @@ func compileAllEqualityClasses[T any](rule Rule[T]) {
 		counter.owner = childIndex + 1
 		compiler.visitEqualitySources(counter.visit)
 	}
-	repeatedCount := 0
-	for _, entry := range occurrences {
+	pairs := make([]equalitySourcePair, 0, len(occurrences))
+	for pair, entry := range occurrences {
 		if entry.owners >= 2 {
-			repeatedCount++
+			pairs = append(pairs, pair)
 		}
 	}
-	classes := make(map[equalitySourcePair]uint32, repeatedCount)
-	for pair, entry := range occurrences {
-		if entry.owners < 2 {
-			continue
+	slices.SortFunc(pairs, func(a, b equalitySourcePair) int {
+		if a.wildcard != b.wildcard {
+			return cmp.Compare(a.wildcard, b.wildcard)
 		}
+		return cmp.Compare(a.posting, b.posting)
+	})
+	classes := make(map[equalitySourcePair]uint32, len(pairs))
+	for _, pair := range pairs {
 		all.equalityClassCount++
 		classes[pair] = all.equalityClassCount
 	}

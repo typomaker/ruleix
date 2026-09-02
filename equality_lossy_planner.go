@@ -28,27 +28,28 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	distinct := uint64(0)
 	codec, codecErr := compileEqualityCodec[V]()
 	type hashedSet struct {
-		hash uint64
-		set  *equalitySet
+		hash   uint64
+		offset uint32
+		set    *equalitySet
 	}
 	hashed := make([]hashedSet, 0, len(r.values.sets))
-	addHash := func(value V, set *equalitySet) {
+	addHash := func(value V, offset uint32, set *equalitySet) {
 		if codecErr == nil {
-			hashed = append(hashed, hashedSet{hash: codec.hash(value), set: set})
+			hashed = append(hashed, hashedSet{hash: codec.hash(value), offset: offset, set: set})
 		}
 	}
 	if r.values.offsets == nil {
 		for n := range int(r.values.count) {
 			items += equalitySetCardinality(&r.values.sets[n])
 			distinct++
-			addHash(r.values.keys[n], &r.values.sets[n])
+			addHash(r.values.keys[n], uint32(n), &r.values.sets[n])
 			exact += comparableValueBytes(any(r.values.keys[n])) + 16 + equalitySetBytes(&r.values.sets[n])
 		}
 	} else {
 		for value, offset := range r.values.offsets {
 			items += equalitySetCardinality(&r.values.sets[offset])
 			distinct++
-			addHash(value, &r.values.sets[offset])
+			addHash(value, offset, &r.values.sets[offset])
 			exact += comparableValueBytes(any(value)) + 16 + equalitySetBytes(&r.values.sets[offset])
 		}
 	}
@@ -60,7 +61,12 @@ func (r *eqRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	if codecErr != nil {
 		return planner
 	}
-	sort.Slice(hashed, func(i, j int) bool { return hashed[i].hash < hashed[j].hash })
+	sort.Slice(hashed, func(i, j int) bool {
+		if hashed[i].hash != hashed[j].hash {
+			return hashed[i].hash < hashed[j].hash
+		}
+		return hashed[i].offset < hashed[j].offset
+	})
 	planner.prepare = func() []Rule[T] {
 		bucketCounts := equalityBucketCounts(lossyMaxBucketBits)
 		representations := make([]Rule[T], 0, len(bucketCounts))

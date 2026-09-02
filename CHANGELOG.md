@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Lossy string equality now uses a stable hash, so identical builds select the
+  same buckets and memory plan across processes; build-time map inputs are
+  ordered before they can define physical layout or dense class identifiers.
 - `Inspect.Strategy` now reports the shared physical family for exact and lossy
   equality, ordered, `Between`, and `CompareBy` indexes; `Mode` continues to
   distinguish approximation, while `Granularity` reports quantized key classes.

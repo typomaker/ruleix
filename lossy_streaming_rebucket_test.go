@@ -220,8 +220,10 @@ func TestStreamingPlanningHelperWrapperPaths(t *testing.T) {
 }
 
 func TestLossyStreamingRechecksBudgetAndDowngradesRemainingExactLeaves(t *testing.T) {
-	constraints, ids := lossyAllBenchmarkData(lossyAllBenchmarkEntries)
+	constraints, ids := lossyAllBenchmarkData(lossyBuildPressureInterval*3 + 512)
 	exactBytes := lossyAllBenchmarkExactBytes(t, constraints, ids, 4)
+	// Include three pressure intervals so stable hashing still exercises a
+	// second downgrade after the initial exact-to-streaming transition.
 	limit := exactBytes / 4
 	inspectors := make([]Inspector, 4)
 	var aggregate Inspector

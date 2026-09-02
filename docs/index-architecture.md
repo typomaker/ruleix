@@ -418,8 +418,10 @@ Equality использует hash buckets для встроенных скал�
 полный hash для именованных скаляров, fixed-byte массивов/UUID, рекурсивных
 массивов и структур. Структуры читаются только по смещениям семантических полей,
 без padding; pointer и channel следуют Go identity, включая поле location у
-`time.Time`. Готовый leaf хранит типизированную функцию codec и неизменяемое
-число buckets. Полный 64-битный hash сводится к произвольному числу buckets
+`time.Time`. String codec использует стабильный tagged FNV без process-local
+seed; map-backed build inputs сортируются до создания физического порядка.
+Готовый leaf хранит типизированную функцию codec и неизменяемое число buckets.
+Полный 64-битный hash сводится к произвольному числу buckets
 через multiply-high; четыре уровня на каждый степенной интервал дают более
 плавное соотношение retained memory и collision candidates. В search path нет
 reflection. Интерфейсы остаются типизированной

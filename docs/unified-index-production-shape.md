@@ -93,9 +93,7 @@ GOMAXPROCS=1 go test -run '^$' \
 сохранили один search allocation class: 23 497–23 498 B/op и 20 allocs/op.
 Lossy50 в выбранном CPU процессе получил 19 105 B/op, 20 allocs/op, 241 415
 accounted bytes и 2,466 candidates/query; отдельный allocation process —
-16 577 B/op, 18 allocs/op, 243 064 bytes и 3,069 candidates/query. Такая
-вариативность не позволяет интерпретировать различие Lossy50 profiles как
-устойчивое улучшение.
+16 577 B/op, 18 allocs/op, 243 064 bytes и 3,069 candidates/query.
 
 В CPU profiles Exact/identity/Lossy50 Roaring `union2by2` занимал соответственно
 23,2%, 40,2% и 67,6% flat samples. Allocation-space profiles во всех режимах
@@ -121,20 +119,34 @@ Full, race, differential, identity, production superset и streaming fixtures
 B/index ordered, 1 310 752 B/index shuffled; Local — 2 968 B cold, 92 432 B
 warm, 111 056 B adaptive и 74 256 B adversarial.
 
+## Детерминизация string equality 2026-09-02
+
+Расследование показало, что межпроцессная вариативность вызвана не порядком
+обхода Go map, а `hash/maphash.MakeSeed()` в string codec. Один string получал
+разные lossy buckets и физический план в каждом процессе. Codec переведён на
+стабильный tagged FNV; обычные, именованные и вложенные строки используют один
+контракт. Build-time map inputs дополнительно упорядочены: equality candidates
+по `(hash, insertion offset)`, equality classes по physical source pair,
+posting rebuild по ключу.
+
+Три отдельных Lossy50-запуска дали одинаковые 220 790 accounted bytes и 3,155
+candidates/query. Серия `300ms x5`: median 70 788 ns/op, 25 720 B/op, 20
+allocs/op; warm Local 64,04 ns/op, 0 B/op, 0 allocs/op. Exact/identity остались
+в одном классе: 51 328/51 846 ns/op и 61,15/60,81 ns/op Local. Production
+Lossy: 47 770 ns/op и 5 482 ns/op Local. Deterministic-build gate закрыт, но
+общий performance gate шага 6 остаётся открыт.
+
 ## Возможные пути решения
 
-1. Сначала локализовать process-order dependency: записать выбранный downgrade
-   trace по schema path и сравнить первые расходящиеся checkpoint-ы; затем
-   заменить оставшийся unordered input сортированным stable key/order.
-2. После детерминизации добавить quality-aware score aggregate planner-а:
+1. Добавить quality-aware score aggregate planner-а:
    учитывать ожидаемую candidate amplification вместе с released bytes, не
    меняя hard retained cap. Проверять на production, mixed shared-key и
    adversarial distributions, чтобы не оптимизироваться под один запрос.
-3. Сделать common `orderedIndex` компактнее: хранить immutable ordered items
+2. Сделать common `orderedIndex` компактнее: хранить immutable ordered items
    плотным массивом вместо per-item pointers/objects. Освобождённый retained
    budget позволит сохранить больше interval classes без возврата отдельного
    lossy search type.
-4. Добавить auxiliary compact membership metadata к common ordered blocks,
+3. Добавить auxiliary compact membership metadata к common ordered blocks,
    если CPU profiles после улучшения planner-а всё ещё показывают
    `matchesChildID`; metadata должна входить в accounting и использоваться
    одинаковым matcher-ом, а не создавать отдельный lossy engine.

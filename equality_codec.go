@@ -2,7 +2,6 @@ package ruleix
 
 import (
 	"fmt"
-	"hash/maphash"
 	"math/bits"
 	"reflect"
 	"unsafe"
@@ -62,9 +61,8 @@ func (q equalityQuantizer) coarsen(key uint64, next equalityQuantizer) uint64 {
 func compileEqualityCodec[V comparable]() (equalityCodec[V], error) {
 	var zero V
 	if _, ok := any(zero).(string); ok {
-		seed := maphash.MakeSeed()
 		return equalityCodec[V]{hash: func(value V) uint64 {
-			return maphash.String(seed, any(value).(string))
+			return stableStringEqualityHash(any(value).(string))
 		}}, nil
 	}
 	if _, ok := hashScalar(any(zero)); ok {
@@ -105,9 +103,8 @@ func compileNamedScalarCodec[V comparable](typeOf reflect.Type) (equalityCodec[V
 			return fnvHashByte(fnvHashByte(fnvOffset64, canonicalBool), encoded)
 		}}, true
 	case reflect.String:
-		seed := maphash.MakeSeed()
 		return equalityCodec[V]{hash: func(value V) uint64 {
-			return maphash.String(seed, *(*string)(unsafe.Pointer(&value)))
+			return stableStringEqualityHash(*(*string)(unsafe.Pointer(&value)))
 		}}, true
 	case reflect.Int:
 		return integerEqualityCodec[V, int](canonicalInt), true
@@ -162,8 +159,9 @@ func compileEqualityPointerCodec(typeOf reflect.Type) (equalityPointerCodec, str
 			return fnvHashByte(fnvHashByte(fnvOffset64, canonicalBool), encoded)
 		}, ""
 	case reflect.String:
-		seed := maphash.MakeSeed()
-		return func(ptr unsafe.Pointer) uint64 { return maphash.String(seed, *(*string)(ptr)) }, ""
+		return func(ptr unsafe.Pointer) uint64 {
+			return stableStringEqualityHash(*(*string)(ptr))
+		}, ""
 	case reflect.Int:
 		return pointerIntegerCodec[int](canonicalInt), ""
 	case reflect.Int8:
@@ -255,6 +253,17 @@ func compileEqualityPointerCodec(typeOf reflect.Type) (equalityPointerCodec, str
 	default:
 		return nil, fmt.Sprintf("unsupported underlying kind %s", typeOf.Kind())
 	}
+}
+
+// stableStringEqualityHash deliberately avoids hash/maphash: its randomized
+// process-local seed changed lossy bucket membership and therefore the chosen
+// memory-budget plan between otherwise identical Builds.
+func stableStringEqualityHash(value string) uint64 {
+	hash := fnvHashUint64(fnvHashByte(fnvOffset64, canonicalString), uint64(len(value)))
+	for index := range len(value) {
+		hash = fnvHashByte(hash, value[index])
+	}
+	return hash
 }
 
 func hashFixedBytes(hash uint64, ptr unsafe.Pointer, length int) uint64 {

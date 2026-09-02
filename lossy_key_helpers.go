@@ -24,11 +24,7 @@ func hashScalar(value any) (uint64, bool) {
 		}
 		return fnvHashByte(fnvHashByte(fnvOffset64, canonicalBool), encoded), true
 	case string:
-		hash := fnvHashUint64(fnvHashByte(fnvOffset64, canonicalString), uint64(len(value)))
-		for index := range len(value) {
-			hash = fnvHashByte(hash, value[index])
-		}
-		return hash, true
+		return stableStringEqualityHash(value), true
 	case int:
 		return avalancheTaggedEqualityHash(canonicalInt, uint64(int64(value))), true
 	case int8:

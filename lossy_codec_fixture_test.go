@@ -60,6 +60,17 @@ func TestLossyCodecScalarFixtures(t *testing.T) {
 	testCodecFixture(t, "time", []time.Time{time.Unix(0, 0), time.Unix(1, 2), time.Unix(1, 2).In(time.FixedZone("x", 60))}, true)
 }
 
+func TestEqualityStringCodecUsesStableHash(t *testing.T) {
+	plain, err := compileEqualityCodec[string]()
+	require.NoError(t, err)
+	named, err := compileEqualityCodec[fixtureNamedString]()
+	require.NoError(t, err)
+
+	const expected = uint64(4214903206039616220)
+	require.Equal(t, expected, plain.hash("ruleix"))
+	require.Equal(t, expected, named.hash("ruleix"))
+}
+
 func TestLossyCodecUnsupportedCompositeErrors(t *testing.T) {
 	testUnsupportedCodecFixture(t, "interface-field", fixtureInterfaceStruct{})
 }
