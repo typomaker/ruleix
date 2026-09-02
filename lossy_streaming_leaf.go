@@ -109,7 +109,7 @@ func refreshStreamingLossyDetails[T any](rule Rule[T]) (Rule[T], inspectionDetai
 		if typed.details.MemoryLimitAvailable {
 			details.MemoryLimitBytes, details.MemoryLimitAvailable = typed.details.MemoryLimitBytes, true
 			if details.MemoryUsageBytes > details.MemoryLimitBytes {
-				fitStreamingAggregate(child, details.MemoryLimitBytes)
+				fitStreamingAggregateHard(child, details.MemoryLimitBytes)
 				child, details, err = refreshStreamingLossyDetails(child)
 				if err != nil {
 					return nil, inspectionDetails{}, err

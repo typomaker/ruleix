@@ -106,6 +106,7 @@ func TestEqualityIndexBitmapInsertConvertsCompactPosting(t *testing.T) {
 
 type streamingSelectionFixture struct {
 	usage, next uint64
+	granularity uint64
 	fits        int
 }
 
@@ -121,7 +122,10 @@ func (*streamingSelectionFixture) exclude(streamingOrderedFixture, *roaring.Bitm
 func (*streamingSelectionFixture) collectBuildStatistics([]nodeBuildStatistics)                  {}
 func (r *streamingSelectionFixture) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = r.usage, true
-	details.GranularityValue, details.GranularityAvailable = 2, true
+	details.GranularityValue, details.GranularityAvailable = r.granularity, true
+	if details.GranularityValue == 0 {
+		details.GranularityValue = 2
+	}
 	return details
 }
 func (r *streamingSelectionFixture) nextStreamingUsage() (uint64, bool) {
@@ -147,6 +151,53 @@ func TestStreamingAggregateSelectsLargestReleaseAcrossExactAndLossyCandidates(t 
 	require.Equal(t, 1, largeRelease.fits)
 	var candidates []streamingFitCandidate
 	require.Equal(t, uint64(140), collectStreamingFitCandidates(rule, &candidates))
+}
+
+func TestStreamingAggregateTieBreaksBySchemaOrderAfterCurrentUsage(t *testing.T) {
+	first := &streamingSelectionFixture{usage: 100, next: 80, granularity: 2}
+	second := &streamingSelectionFixture{usage: 100, next: 80, granularity: 99}
+
+	fitStreamingAggregate(All[streamingOrderedFixture](first, second), 180)
+
+	require.Equal(t, 1, first.fits)
+	require.Zero(t, second.fits)
+}
+
+func TestStreamingPressureStopsAtSoftTarget(t *testing.T) {
+	leaf := &streamingSelectionFixture{usage: 130, next: 110}
+	policy := &inspectionDetailsRule[streamingOrderedFixture]{
+		child: leaf,
+		details: inspectionDetails{
+			MemoryLimitBytes: 100, MemoryLimitAvailable: true,
+		},
+	}
+
+	fitStreamingPolicies(policy)
+
+	require.Equal(t, uint64(110), leaf.usage)
+	require.Equal(t, 1, leaf.fits)
+}
+
+func TestStreamingPressureHonorsNestedPolicyBeforeAncestorPool(t *testing.T) {
+	innerLeaf := &streamingSelectionFixture{usage: 130, next: 100}
+	inner := &inspectionDetailsRule[streamingOrderedFixture]{
+		child: innerLeaf,
+		details: inspectionDetails{
+			MemoryLimitBytes: 100, MemoryLimitAvailable: true,
+		},
+	}
+	sibling := &streamingSelectionFixture{usage: 150, next: 120}
+	outer := &inspectionDetailsRule[streamingOrderedFixture]{
+		child: All[streamingOrderedFixture](inner, sibling),
+		details: inspectionDetails{
+			MemoryLimitBytes: 200, MemoryLimitAvailable: true,
+		},
+	}
+
+	fitStreamingPolicies(outer)
+
+	require.Equal(t, 1, innerLeaf.fits)
+	require.Zero(t, sibling.fits, "the descendant transition reaches the ancestor soft target")
 }
 
 func TestStreamingAdaptiveLeafDelegatesCachesAndUnwraps(t *testing.T) {
@@ -179,7 +230,7 @@ func TestStreamingAdaptiveLeafDelegatesCachesAndUnwraps(t *testing.T) {
 
 	stuck := &streamingSelectionFixture{usage: 10, next: 10}
 	fitStreamingAggregate[streamingOrderedFixture](stuck, 5)
-	require.Equal(t, 1, stuck.fits)
+	require.Zero(t, stuck.fits, "a terminal leaf must not trigger an emergency fallback")
 }
 
 func TestStreamingPlanningHelperWrapperPaths(t *testing.T) {

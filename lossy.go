@@ -342,11 +342,10 @@ func fitStreamingRule[T any](rule Rule[T], limit uint64) {
 }
 
 type streamingFitCandidate struct {
-	fitter      streamingLimitFitter
-	stepper     streamingStepFitter
-	usage       uint64
-	released    uint64
-	granularity uint64
+	fitter   streamingLimitFitter
+	stepper  streamingStepFitter
+	usage    uint64
+	released uint64
 }
 
 func collectStreamingFitCandidates[T any](rule Rule[T], candidates *[]streamingFitCandidate) uint64 {
@@ -380,7 +379,7 @@ func collectStreamingFitCandidates[T any](rule Rule[T], candidates *[]streamingF
 			stepper, _ := any(rule).(streamingStepFitter)
 			*candidates = append(*candidates, streamingFitCandidate{
 				fitter: fitter, stepper: stepper, usage: details.MemoryUsageBytes,
-				released: released, granularity: details.GranularityValue,
+				released: released,
 			})
 		}
 		return details.MemoryUsageBytes
@@ -392,6 +391,19 @@ func collectStreamingFitCandidates[T any](rule Rule[T], candidates *[]streamingF
 // limit. It avoids the old emergency path that collapsed every lossy child to
 // its minimum representation at once.
 func fitStreamingAggregate[T any](rule Rule[T], limit uint64) {
+	fitStreamingAggregateTo(rule, limit, false)
+}
+
+// fitStreamingAggregateHard is used only by final publication. Unlike a
+// pressure checkpoint, it may ask leaves already at the end of their ordinary
+// levels for their conservative terminal representation. The caller still
+// verifies the resulting retained total and reports an error when it cannot
+// fit.
+func fitStreamingAggregateHard[T any](rule Rule[T], limit uint64) {
+	fitStreamingAggregateTo(rule, limit, true)
+}
+
+func fitStreamingAggregateTo[T any](rule Rule[T], limit uint64, allowTerminal bool) {
 	for {
 		var candidates []streamingFitCandidate
 		usage := collectStreamingFitCandidates(rule, &candidates)
@@ -399,20 +411,20 @@ func fitStreamingAggregate[T any](rule Rule[T], limit uint64) {
 			return
 		}
 		if len(candidates) == 0 {
-			fitStreamingRule(rule, 0)
-			var refreshed []streamingFitCandidate
-			if collectStreamingFitCandidates(rule, &refreshed) >= usage {
-				return
+			if allowTerminal {
+				fitStreamingRule(rule, 0)
+				var refreshed []streamingFitCandidate
+				if collectStreamingFitCandidates(rule, &refreshed) < usage {
+					continue
+				}
 			}
-			continue
+			return
 		}
 		selected := 0
 		for i := 1; i < len(candidates); i++ {
 			if candidates[i].released > candidates[selected].released ||
 				(candidates[i].released == candidates[selected].released &&
-					(candidates[i].usage > candidates[selected].usage ||
-						(candidates[i].usage == candidates[selected].usage &&
-							candidates[i].granularity > candidates[selected].granularity))) {
+					candidates[i].usage > candidates[selected].usage) {
 				selected = i
 			}
 		}
@@ -456,10 +468,11 @@ func lossyStreamingBuildPressure[T any](rule Rule[T]) (usage, target uint64, ava
 	return usage, target, available
 }
 
-// fitStreamingPolicies enforces descendant limits before ancestor limits.
-// Each aggregate fit repeatedly chooses the live leaf with the largest current
-// release opportunity, regardless of whether that leaf is still exact or has
-// already entered its lossy ladder.
+// fitStreamingPolicies handles a pressure checkpoint, not final hard-limit
+// enforcement. Descendant policies are considered before ancestors, and each
+// pressured aggregate advances one complete generation at a time only until
+// it returns beneath its 125% soft target. Final publication separately checks
+// every hard limit in refreshStreamingLossyDetails.
 func fitStreamingPolicies[T any](rule Rule[T]) {
 	switch typed := rule.(type) {
 	case *allRule[T]:
@@ -471,7 +484,11 @@ func fitStreamingPolicies[T any](rule Rule[T]) {
 	case *inspectionDetailsRule[T]:
 		fitStreamingPolicies(typed.child)
 		if typed.details.MemoryLimitAvailable {
-			fitStreamingAggregate(typed.child, typed.details.MemoryLimitBytes)
+			target := lossyBuildTarget(typed.details.MemoryLimitBytes)
+			var candidates []streamingFitCandidate
+			if collectStreamingFitCandidates(typed.child, &candidates) > target {
+				fitStreamingAggregate(typed.child, target)
+			}
 		}
 	}
 }

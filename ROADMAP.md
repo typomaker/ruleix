@@ -244,7 +244,13 @@ Exact. Performance не измеряется и не оптимизируетс�
 
 ### 7. Переписать aggregate pressure selector
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-03`
+
+Результат: aggregate selector переведён на фактический next-generation release
+с deterministic release/current-usage/schema-order выбором; pressure останавливается
+на soft target, nested caps применяются от потомка к предку, а отдельный финальный
+gate обеспечивает hard limit и допускает terminal fallback только при публикации;
+full, race, deterministic и 100% diff-coverage проверки пройдены.
 
 - На каждом checkpoint получать для каждого доступного листа реальный либо
   точно рассчитанный `nextLevelUsage` полного следующего поколения.
