@@ -174,6 +174,31 @@ end-to-end выигрыша. Для ordered правил hash отсутству
 До реализации и сопоставимого повторного профилирования принятого решения шаг
 6 нельзя завершить.
 
+## Отклонённый статический Pareto frontier 2026-09-02
+
+После greedy-пробы проверен детерминированный build-only Pareto frontier по
+всем комбинациям leaf ladders. Equality quality вычислялась из measured
+false-positive estimate, ordered quality — из доли сохранённых границ; обе
+метрики взвешивались числом postings. При равном измеренном качестве retained
+bytes использовались только как детерминированный tie-breaker. Код прототипа и
+его fallback удалены после функциональной проверки.
+
+Эксперимент остановлен до performance-серий: обязательный streaming gate
+`go test -run '^(TestProductionShapeLossyNeverDropsExactMatches|TestLossyAllFrontier|TestLossyAllUUIDTakesConsecutiveFinerDowngrades)$' -count=1 .`
+стабильно завершался ошибкой hard limit
+`Lossy streaming state cannot fit the memory limit: 319453 > 309122`.
+Глобальная комбинация выбиралась при первом pressure event по наблюдаемому
+префиксу. Она меняла распределение exact/lossy leaves и допускала рост
+минимальных postings оставшегося потока выше cap; последующее огрубление всех
+доступных ladders уже не могло освободить достаточно памяти. Дополнительный
+minimum-representation fallback воспроизвёл ту же ошибку и также удалён.
+
+Статический frontier отклонён как нарушающий streaming correctness. Следующий
+planner не может оптимизировать только опубликованный snapshot первого pressure
+event: состояние frontier должно включать консервативную стоимость будущего
+роста postings либо выбор комбинации нужно уметь безопасно пересобирать на
+последующих pressure events. Hard retained limit не ослабляется.
+
 ## Ordered precision shape 2026-09-02
 
 Добавлен диагностический `BenchmarkProductionOrderedPrecisionShape`. Он
