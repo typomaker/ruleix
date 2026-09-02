@@ -35,6 +35,10 @@ func roundedOrderedBoundary[V any](index *orderedIndex[V], value V, upward bool)
 }
 
 func rebuildOrderedBoundaries[V any](index *orderedIndex[V], dir direction) orderedIndex[V] {
+	// TODO: Compare two selective compaction policies before replacing this
+	// full-generation rebuild: (1) compact new depth-0 keys until they catch up
+	// with older keys, or (2) compact the adjacent pair with the largest actual
+	// retained-byte release. Both require deterministic and superset-safe gates.
 	items := make([]*orderedItem[V], 0, index.buildStatistics().uniqueValues)
 	for _, block := range index.blocks {
 		items = append(items, block.items...)

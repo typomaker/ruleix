@@ -138,6 +138,12 @@ level `N+1` is a boundary from level `N`, and the parent is computable without
 an exact value. The ordered postings, block aggregates, routing, matcher and
 Local cache remain the Exact implementations.
 
+Two selective-compaction follow-ups remain explicit experiments: compact only
+new keys until their depth catches the older generation, or choose the adjacent
+pair with the largest measured retained-byte release. Either alternative must
+first define deterministic mixed-depth semantics and preserve the exact-result
+superset before it can replace the current full-generation rebuild.
+
 Boundary lookup searches the physical index directly. No parallel boundary
 array is retained or omitted from memory accounting. A value inside the known
 range maps to the nearest outward boundary. A late value beyond either open
