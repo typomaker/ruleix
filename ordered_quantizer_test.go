@@ -119,7 +119,7 @@ func TestQuantizedOrderedRepeatedRebuildAndLateValuesHaveNoFalseNegatives(t *tes
 	}
 }
 
-func TestNumericQuantizerRejectsDescendingComparator(t *testing.T) {
+func TestNumericQuantizerFallsBackToBoundariesForDescendingComparator(t *testing.T) {
 	type fixture struct{ value int }
 	rule := &orderedRule[fixture, int]{
 		get:      func(v fixture) (int, bool) { return v.value, true },
@@ -129,8 +129,12 @@ func TestNumericQuantizerRejectsDescendingComparator(t *testing.T) {
 	for id, value := range []int{1, 2, 3} {
 		rule.insert(fixture{value}, uint32(id))
 	}
-	_, _, ok := rule.prepareStreamingFirstGeneration()
-	require.False(t, ok)
+	_, first, ok := rule.prepareStreamingFirstGeneration()
+	require.True(t, ok)
+	lossy := first.(*quantizedOrderedRule[fixture, int])
+	require.Nil(t, lossy.quantizer)
+	require.NotNil(t, lossy.boundaries)
+	require.Equal(t, 2, lossy.index.buildStatistics().uniqueValues)
 }
 
 func TestQuantizedTimeStrictBoundariesHaveNoFalseNegatives(t *testing.T) {

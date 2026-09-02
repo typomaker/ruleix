@@ -196,7 +196,13 @@ performance conclusions на этом шаге не делается.
 
 ### 5. Поддержать arbitrary comparator через boundary levels
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-02`
+
+Результат: arbitrary stable total-order comparators переведены на вложенные
+outward boundary levels непосредственно в общем orderedIndex; structs,
+case-insensitive strings, composite и descending orders, late extremes и все
+strict/inclusive направления прошли differential, hard-accounting, full-test
+и diff-coverage gates без benchmarks.
 
 - Для стабильного total-order `Compare[V]` строить вложенные уровни outward
   boundaries, где каждый следующий уровень является подмножеством предыдущего.

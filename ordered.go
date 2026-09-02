@@ -85,6 +85,7 @@ type orderedRule[T any, V any] struct {
 	index         orderedIndex[V]
 	lossyCapacity int
 	quantizer     *orderedQuantizer[V]
+	boundaries    *orderedBoundaryQuantizer[V]
 	level         uint32
 }
 
@@ -351,7 +352,10 @@ func (r *orderedRule[T, V]) insert(v T, id uint32) {
 		return
 	}
 	r.index.insert(r.storageValue(value), id)
-	if r.lossyCapacity > 0 {
+	// Streaming quantizers may add a new edge key after a downgrade. It remains
+	// part of the current generation until the next whole-generation pressure
+	// step; only legacy planner representations enforce a fixed pairwise cap.
+	if r.lossyCapacity > 0 && r.quantizer == nil && r.boundaries == nil {
 		for r.index.buildStatistics().uniqueValues > r.lossyCapacity {
 			r.index.coarsenOne(r.dir)
 		}

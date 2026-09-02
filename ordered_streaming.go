@@ -4,17 +4,23 @@ func (r *quantizedOrderedRule[T, V]) newState(*nodeIDAllocator, *buildStatistics
 func (r *quantizedOrderedRule[T, V]) streamingLossyAccumulator()                          {}
 
 func (r *orderedRule[T, V]) storageValue(value V) V {
-	if r.quantizer == nil {
-		return value
+	if r.quantizer != nil {
+		return r.quantizer.rounded(value, r.level, r.dir == lessThan)
 	}
-	return r.quantizer.rounded(value, r.level, r.dir == lessThan)
+	if r.boundaries != nil {
+		return roundedOrderedBoundary(&r.index, value, r.dir == lessThan)
+	}
+	return value
 }
 
 func (r *orderedRule[T, V]) searchValue(value V) V {
-	if r.quantizer == nil {
-		return value
+	if r.quantizer != nil {
+		return r.quantizer.rounded(value, r.level, r.dir == greaterThan)
 	}
-	return r.quantizer.rounded(value, r.level, r.dir == greaterThan)
+	if r.boundaries != nil {
+		return roundedOrderedBoundary(&r.index, value, r.dir == greaterThan)
+	}
+	return value
 }
 
 func (r *quantizedOrderedRule[T, V]) fitStreamingLimit(limit uint64) {
@@ -39,14 +45,19 @@ func (r *quantizedOrderedRule[T, V]) nextStreamingUsage() (uint64, bool) {
 }
 
 func (r *quantizedOrderedRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
-	if r.quantizer == nil || r.level >= r.quantizer.terminalLevel() {
+	if r.quantizer == nil && (r.boundaries == nil || r.index.buildStatistics().uniqueValues <= 1) ||
+		r.quantizer != nil && r.level >= r.quantizer.terminalLevel() {
 		return 0, nil, false
 	}
 	next := newOrderedIndex(r.compare)
-	for _, block := range r.index.blocks {
-		for _, item := range block.items {
-			boundary := r.quantizer.rounded(item.value, r.level+1, r.dir == lessThan)
-			next.insertPosting(boundary, item.bits)
+	if r.boundaries != nil {
+		next = rebuildOrderedBoundaries(&r.index, r.dir)
+	} else {
+		for _, block := range r.index.blocks {
+			for _, item := range block.items {
+				boundary := r.quantizer.rounded(item.value, r.level+1, r.dir == lessThan)
+				next.insertPosting(boundary, item.bits)
+			}
 		}
 	}
 	details := (&orderedRule[T, V]{index: next, wildcard: r.wildcard, lossyCapacity: 1}).
@@ -63,7 +74,7 @@ func (r *quantizedOrderedRule[T, V]) prepareStreamingNext() (uint64, func(), boo
 func (r *orderedRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
 	quantizer, ok := compileOrderedQuantizer[V]()
 	if !ok {
-		return 0, nil, false
+		return r.prepareBoundaryFirstGeneration()
 	}
 	var previous V
 	havePrevious := false
@@ -72,7 +83,7 @@ func (r *orderedRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], 
 			comparatorReversed := havePrevious && r.compare(previous, item.value) >= 0
 			encodingReversed := havePrevious && quantizer.encode(previous) > quantizer.encode(item.value)
 			if comparatorReversed || encodingReversed {
-				return 0, nil, false
+				return r.prepareBoundaryFirstGeneration()
 			}
 			previous, havePrevious = item.value, true
 		}
@@ -87,6 +98,20 @@ func (r *orderedRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], 
 			candidate.index.insertPosting(candidate.storageValue(item.value), item.bits)
 		}
 	}
+	details := candidate.refreshedStreamingDetails(inspectionDetails{})
+	return details.MemoryUsageBytes, &quantizedOrderedRule[T, V]{candidate}, true
+}
+
+func (r *orderedRule[T, V]) prepareBoundaryFirstGeneration() (uint64, Rule[T], bool) {
+	if r.index.buildStatistics().uniqueValues <= 1 {
+		return 0, nil, false
+	}
+	candidate := &orderedRule[T, V]{
+		nodeID: r.nodeID, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
+		wildcard: r.wildcard, index: newOrderedIndex(r.compare), lossyCapacity: 1,
+		boundaries: &orderedBoundaryQuantizer[V]{}, level: 1,
+	}
+	candidate.index = rebuildOrderedBoundaries(&r.index, r.dir)
 	details := candidate.refreshedStreamingDetails(inspectionDetails{})
 	return details.MemoryUsageBytes, &quantizedOrderedRule[T, V]{candidate}, true
 }

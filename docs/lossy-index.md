@@ -113,15 +113,45 @@ boundary as direct quantization from the exact value, and no exact keys or
 future grids are retained.
 
 The numeric codec is enabled only when the supplied comparator agrees with the
-natural monotonic encoding of the collected values. Other total orders remain
-on the comparator-backed compatibility path until boundary levels are added in
-roadmap step 5. The step 4 gate covers integer extremes, negative and positive
+natural monotonic encoding of the collected values. Other total orders use the
+comparator-backed boundary levels described below. The step 4 gate covers
+integer extremes, negative and positive
 time boundaries, strict and inclusive operators, late values outside the
 initial range, repeated rebuilds, full tests, and changed-line coverage. No
 benchmark or performance conclusion is part of this step. Verification on
 2026-09-02 used `go test ./... -coverprofile=/tmp/ruleix-step4.cover` and
 reported 96.2% executable changed-line coverage (175/182), followed by
 `git diff --check`.
+
+### Comparator-backed boundary levels
+
+An ordered rule whose value type has no proven scalar codec, or whose supplied
+comparator disagrees with that codec, uses boundaries taken from the keys in
+the current shared `orderedIndex`. The comparator must define one stable,
+transitive total order across every Build and Search value. Ruleix does not try
+to recover an order from reflection, a getter, or the equality codec.
+
+Each transition groups adjacent current keys in comparator order. A stored
+lower bound uses the first key of its group and a stored upper bound uses the
+last; search values use the opposite nearest boundary. Thus every boundary in
+level `N+1` is a boundary from level `N`, and the parent is computable without
+an exact value. The ordered postings, block aggregates, routing, matcher and
+Local cache remain the Exact implementations.
+
+Boundary lookup searches the physical index directly. No parallel boundary
+array is retained or omitted from memory accounting. A value inside the known
+range maps to the nearest outward boundary. A late value beyond either open
+edge remains its own new extreme key, because mapping it inward could create a
+false negative; the next pressure transition includes that key in the normal
+whole-generation rebuild. Late insertion never invokes pairwise coarsening.
+
+The step 5 gate covers comparator-ordered structs and composite keys,
+case-insensitive strings, descending order, strict and inclusive directions,
+range extremes, late values on both sides, nesting, full tests and changed-line
+coverage. No benchmark or layout tuning is part of this step. Verification on
+2026-09-02 used focused comparator tests, `go test ./...
+-coverprofile=/tmp/ruleix-step5.cover`, `go test -race ./...`, and
+`git diff --check`; changed executable production lines exceeded 90% coverage.
 
 ## Public API direction
 
@@ -302,103 +332,14 @@ Every `Build` plans only from its current input and publishes a new immutable
 index. Adding data or changing a schema affects the next build; published
 indexes never replan in place, and concurrent `Index.Search` remains lock-free.
 
-## Compiled equality codecs and streaming decision
+## Compiled equality codecs
 
-Equality separates full-value encoding from precision reduction. During
-`Build`, direct codecs remain for built-in scalars, `[16]byte`, and
-`[2]string`. When the direct type switch misses, reflection inspects the
-static type once and compiles named scalars, fixed-byte arrays, recursive
-arrays, and structs from verified element sizes and field offsets. Fixed-byte
-paths specialize 8/16/20/24/32-byte widths and mix every byte; structs never
-hash padding. Complex zero values are canonicalized component-wise; pointers
-and channels use identity. `time.Time` is handled as its comparable fields,
-including location identity. Interfaces are rejected because their dynamic
-type would require search-time inspection. The published leaf retains only a
-typed full-hash function and immutable bucket count; search retains no
-`reflect.Value`. Equality precision has four levels per power-of-two interval:
-`8/8`, `7/8`, `6/8`, and `5/8` of its upper bound. Multiply-high reduction
-maps the full hash to non-power-of-two counts without modulo bias. Planning
-uses actual accounted Roaring and logical map-slot bytes and discards levels
-that release no additional retained memory.
-
-The scalar fixture requires selective lossy `equality` behavior, exact-
-result superset semantics, deterministic repeated/shuffled planning, and zero
-warm `Local.Search` allocations for ordinary and named scalar types.
-Unsupported dynamic composites return an internal typed `equalityCodecError`
-from `Build` instead of silently selecting a complete-leaf bitmap.
-
-The companion 32,768-entry named-int64 fixture makes exact-first working state
-materially exceed the active 125% pressure target. This is deterministic Ruleix
-accounting, not a claim about Go heap or RSS. Reproduce the fixtures with:
-
-```sh
-go test -run 'TestLossyCodec(ScalarFixtures|UnsupportedCompositeErrors|FixtureBuildOrderAndWorkingPressure)$' -v
-```
-
-Apple M1 Max, Go 1.26.0, 10,000 entries, `MemoryLimit(200000)`, 500ms x5:
-built-in `int64` measured 185.0 ns/op and named `int64` 185.3 ns/op; both reported
-0 B/op and 0 allocs/op. Reproduce with `go test -run '^$' -bench
-'^BenchmarkLossyCompiledScalarCodec$' -benchmem -benchtime=500ms -count=5 .`.
-Escape-analysis inspection uses `go test -gcflags='all=-m=2' -run
-'^TestLossyCodecScalarFixtures$' .`.
-
-Apple M1 Max, Go 1.26.0, 10,000 entries, `MemoryLimit(200000)`, 500ms x5:
-ordinary `[16]byte` measured 51.88–53.33 ns/op, named UUID 59.75–61.80,
-string 46.71–51.59, `[3]int` 53.84–54.37, and a representative struct
-42.51–55.52; all reported 0 B/op and 0 allocs/op. The 10,000-value UUID
-distribution fixture requires more than 8,000 occupied high-16-bit buckets for
-both ordinary and named forms and verifies every byte changes the hash.
-Reproduce with `go test -run '^$' -bench
-'^BenchmarkLossyCompiledCompositeCodec$' -benchmem -benchtime=500ms -count=5 .`.
-Go 1.26 escape diagnostics conservatively report the temporary generic value
-passed to the compiled unsafe plan as moved to heap; the inlined production
-call sites nevertheless report 0 B/op and 0 allocs/op in every warm benchmark.
-This compiler diagnostic remains an audited caveat rather than a claim that
-the closure itself is proven non-escaping.
-
-Equality codecs produce a full `uint64` hash. Precision remains a build-time
-representation choice and is applied afterward. In particular, UUID hashing
-mixes all 16 bytes; it never truncates one 64-bit half. Finer planned levels use
-arbitrary bucket counts and multiply-high reduction rather than only power-of-
-two prefixes. Search therefore performs a compiled hash, one immutable bucket
-reduction, lookup, and bitmap operation without recalculating precision or
-allocating. Types for which no safe codec exists report a codec error instead
-of silently losing all equality selectivity.
-
-Aggregate planning keeps its accepted selector. Every leaf starts exact; while
-the total exceeds the hard retained limit, the planner chooses the next step
-that releases the most bytes, then the larger current leaf, then schema order.
-The same large leaf may take consecutive finer downgrade steps while other
-leaves remain exact. Planning stops immediately when the total fits.
-
-The first streaming prototype used a universal tail and was rejected after it
-produced complete candidate sets, poor scaling, and ordered fit failures. The
-accepted design instead mutates the same operator-specific representation that
-will be published. On the 10K four-equality benchmark it retained 9.797
-candidates/query and zero observed false positives in both ordered and shuffled
-input, instead of the prototype's 10,000 candidates and 1.0 false-positive
-rate. Build time and transient allocations may be higher; search behavior and
-the absence of full exact materialization take priority.
-
-The detailed dependency order and acceptance gates are maintained in
-[`ROADMAP.md`](../ROADMAP.md).
-
-The active roadmap now targets a shared physical search layout for exact and
-lossy modes. Lossy will remain a build-time memory policy, but approximation
-will be expressed by a compiled key quantizer: identity for exact and an
-outward, precision-specific transform for lossy. Equality and ordered postings,
-matchers, range traversal, and local caches are to be shared. Streaming memory
-pressure will continue to rebuild the current keys and merge their postings at
-a coarser nested precision without retaining the complete original exact
-values. The migration order, operator-specific rounding rules, and correctness,
-retained-memory, and performance gates are maintained in the roadmap.
-
-On 2026-09-01 this milestone was explicitly reactivated from step 1. Previous
-implementations and measurements are historical evidence only: every step must
-re-audit its complete scope and pass its gate against the current revision
-before it can be marked complete. Work already present in the tree may be
-retained when it passes that renewed verification, but it does not advance the
-roadmap status by itself.
+Equality separates a typed full-value hash from nested precision reduction.
+Build may compile codecs for scalar and comparable composite types; interfaces
+whose dynamic values would require search-time reflection are rejected. The
+published leaf retains only its typed hash function, current quantizer and
+physical postings. Detailed performance evidence and rejected prototypes live
+in `performance-history.md` and `optimization-decisions.md`.
 
 ## Build-time planning
 

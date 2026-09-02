@@ -282,8 +282,13 @@ filtering и Local cache у него являются promoted-методами 
 
 Quantized класс хранит один outward-rounded boundary и объединённый posting.
 Для `Greater*` сохраняется нижняя граница класса, для `Less*` — верхняя;
-strict/inclusive семантика matcher не меняется. Огрубление независимо
-пересобирает `orderedIndex`, объединяя наименее заполненную соседнюю пару.
+strict/inclusive семантика matcher не меняется. Numeric/time уровни используют
+фиксированную монотонную сетку. Произвольный стабильный total-order comparator
+использует вложенные boundaries непосредственно из текущих ключей общего
+`orderedIndex`: новый уровень группирует соседние ключи и выбирает наружный
+край. Отдельный boundary-массив не хранится и reflection/getter codec не
+определяют порядок. Поздний внешний extreme остаётся новым крайним ключом до
+следующего полного rebuild, а не запускает pairwise coarsening при insert.
 Последний `prepareSearch` строит обычные block aggregates, prefix sums и
 routing, поэтому finest lossy больше не выполняет линейный union legacy
 buckets. `Between` и `CompareBy` теперь используют те же `orderedRule` и

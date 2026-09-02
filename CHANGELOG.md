@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Lossy standalone ordered rules with arbitrary stable total-order comparators
+  now use nested outward boundary levels in the shared Exact ordered index;
+  custom structs, collation orders, descending orders, and late edge values no
+  longer depend on a numeric/reflection codec or pairwise insertion coarsening.
 - Lossy string equality now uses a stable hash, so identical builds select the
   same buckets and memory plan across processes; build-time map inputs are
   ordered before they can define physical layout or dense class identifiers.

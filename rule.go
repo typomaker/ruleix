@@ -5,7 +5,9 @@ import "github.com/RoaringBitmap/roaring/v2"
 
 // Compare defines an ordering for values used by ordered filters. It returns a
 // negative number when a < b, zero when a == b, and a positive number when
-// a > b. The standard library's cmp.Compare is suitable for ordered types.
+// a > b. Compare must define a stable, transitive total order for every value
+// supplied during Build and Search. The standard library's cmp.Compare is
+// suitable for ordered types.
 type Compare[V any] func(a, b V) int
 
 // Getter returns a value and reports whether it is present. A missing value is
