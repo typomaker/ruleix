@@ -37,6 +37,31 @@ GOMAXPROCS=1 go test -run '^$' \
 `orderedIndex` prototype не является кандидатом: его доказанно медленный
 aggregate membership path сначала заменяется leaf/aggregate range traversal.
 
+### Повторная проверка общего ordered layout
+
+Восстановленный прототип поверх `8ce6ca6` после исправления shared-bitmap
+accounting прошёл exact-superset, identity, boundary и minimum-memory tests.
+На той же production fixture он, однако, дал медиану около 94 966 ns/op,
+13 304 B/op и 14 allocs/op при 58 candidates/query; warm Local улучшился до
+233,4 ns/op. Quantized leaf-only membership дал 93 040–96 192 ns/op, то есть
+не устранил uncached-регрессию. Принудительный leaf-only path для exact и
+lossy дал 101 490–102 208 ns/op и был хуже.
+
+Профиль снят командой:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeLossySearch/Index$' \
+  -benchtime=3s -cpuprofile=/tmp/ruleix-step5.cpu .
+go tool pprof -top ./ruleix.test /tmp/ruleix-step5.cpu
+```
+
+В candidate profile `runContainer16.searchRange` занял 24,7% samples;
+`orderedIndex.walk`, `Bitmap.Contains` и `allRule.matchesChildID` подтвердили
+тот же широкий aggregate membership path, что и в первой отклонённой серии.
+Экспериментальный код удалён, поскольку ни одна проверенная leaf-стратегия не
+вернула baseline latency. Следующее направление — общий bucket-shaped layout.
+
 ## 2026-09-01: exact-first против one-pass streaming
 
 Исправление streaming rebucketing устранило аварийный one-bucket collapse.

@@ -42,6 +42,17 @@ range layout выбирает между широким aggregate lookup и не
 lookups. Прототип удалён; шаг 5 roadmap остаётся запланированным до появления
 общего layout, который не ухудшает ни один search path.
 
+Повторная проверка на `8ce6ca6` после добавления lossy range aggregates также
+не изменила вывод. Восстановленный общий layout прошёл boundary/differential
+tests после устранения двойного accounting общего one-item bitmap, но
+production `Index.Search` получил медиану около 95,0 мкс против baseline
+27,46 мкс. Quantized leaf-only membership сохранил 93–96 мкс, а leaf-only
+membership для всех ordered indexes ухудшил результат до 101–102 мкс.
+CPU profile снова показал `runContainer16.searchRange` первым hot spot с 24,7%
+samples. Следующий кандидат не должен основываться на этом layout: требуется
+общая bucket-shaped физическая структура, сохраняющая fused lossy membership,
+а не ещё один вариант обхода агрегатов текущего `orderedIndex`.
+
 ## 2026-09-01: удалены крупные build/memory benchmark-матрицы
 
 `BenchmarkLossySelectionMatrix` удалён: один запуск разворачивал 120 дорогих
