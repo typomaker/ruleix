@@ -14,13 +14,12 @@ import (
 func TestLossyOrderedEstimateAndIDMatchAgreeWithSearch(t *testing.T) {
 	wildcard := roaring.BitmapOf(8)
 	rule := &orderedRule[lossyConstraint, int64]{
-		get:           func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
-		compare:       cmp.Compare[int64],
-		dir:           greaterThan,
-		inclusive:     true,
-		wildcard:      wildcard,
-		index:         newOrderedIndex(cmp.Compare[int64]),
-		lossyCapacity: 3,
+		get:       func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
+		compare:   cmp.Compare[int64],
+		dir:       greaterThan,
+		inclusive: true,
+		wildcard:  wildcard,
+		index:     newOrderedIndex(cmp.Compare[int64]),
 	}
 	rule.index.insertPosting(0, roaring.BitmapOf(0, 1))
 	rule.index.insertPosting(10, roaring.BitmapOf(2, 3))
@@ -49,13 +48,12 @@ func BenchmarkLossyAllSelectiveOrderedPlanning(b *testing.B) {
 	broad := roaring.New()
 	broad.AddRange(0, entries)
 	selective := &orderedRule[lossyConstraint, int64]{
-		get:           func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
-		compare:       cmp.Compare[int64],
-		dir:           lessThan,
-		inclusive:     true,
-		wildcard:      roaring.New(),
-		index:         newOrderedIndex(cmp.Compare[int64]),
-		lossyCapacity: entries,
+		get:       func(v lossyConstraint) (int64, bool) { return v.minimum, v.present },
+		compare:   cmp.Compare[int64],
+		dir:       lessThan,
+		inclusive: true,
+		wildcard:  roaring.New(),
+		index:     newOrderedIndex(cmp.Compare[int64]),
 	}
 	selective.index.insertPosting(entries-1, roaring.BitmapOf(entries-1))
 	children := make([]Rule[lossyConstraint], 0, 8)

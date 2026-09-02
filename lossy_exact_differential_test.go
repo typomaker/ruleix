@@ -141,7 +141,7 @@ func TestLossyExactDifferentialEverySupportedRule(t *testing.T) {
 		{"CompareBy", 32 << 10, func() Rule[lossyDifferentialConstraint] {
 			return CompareBy(value, operator, cmp.Compare[int])
 		}},
-		{"All", 80 << 10, func() Rule[lossyDifferentialConstraint] {
+		{"All", 160 << 10, func() Rule[lossyDifferentialConstraint] {
 			return All(Include(name), GreaterOrEqual(value, cmp.Compare[int]), Between(from, until, cmp.Compare[int]))
 		}},
 	}

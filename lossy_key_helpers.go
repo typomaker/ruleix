@@ -147,6 +147,3 @@ func avalancheEqualityHash(hash uint64) uint64 {
 	hash *= 0x94d049bb133111eb
 	return hash ^ hash>>31
 }
-
-// lossyUniversalRule is the terminal conservative representation for an
-// operator whose comparator cannot be projected onto an order-preserving key.

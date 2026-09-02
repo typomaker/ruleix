@@ -94,14 +94,25 @@ func (r *lossyRule[T]) collectBuildStatistics(s []nodeBuildStatistics) {
 	r.child.collectBuildStatistics(s)
 }
 
-type lossyCompiler[T any] interface{ compileLossy(uint64) (Rule[T], error) }
+const lossyBuildPressureInterval = 4096
 
-type lossyRepresentation[T any] struct {
-	compiled Rule[T]
-	details  inspectionDetails
+func addLossyMemory(total, usage uint64) (uint64, bool) {
+	if math.MaxUint64-total < usage {
+		return 0, false
+	}
+	return total + usage, true
 }
 
-const lossyBuildPressureInterval = 4096
+func aggregateLossyDetails(dst *inspectionDetails, value inspectionDetails) {
+	dst.MemoryUsageBytes += value.MemoryUsageBytes
+	dst.Items += value.Items
+	dst.DistinctValues += value.DistinctValues
+	dst.GranularityValue += value.GranularityValue
+	dst.MemoryUsageAvailable = dst.MemoryUsageAvailable || value.MemoryUsageAvailable
+	dst.ItemsAvailable = dst.ItemsAvailable || value.ItemsAvailable
+	dst.DistinctValuesAvailable = dst.DistinctValuesAvailable || value.DistinctValuesAvailable
+	dst.GranularityAvailable = dst.GranularityAvailable || value.GranularityAvailable
+}
 
 // lossyBuildTarget is deliberately private: MemoryLimit remains the only
 // public and hard retained-memory contract. Saturation keeps MaxUint64 limits
@@ -121,12 +132,7 @@ func lossyBuildTarget(limit uint64) uint64 {
 func lossyBuildPressure[T any](rule Rule[T]) (usage, target uint64, available bool, err error) {
 	switch typed := rule.(type) {
 	case *lossyRule[T]:
-		var leaves []lossyAllLeaf[T]
-		_, err = analyzeLossyPolicy(typed, "Lossy", &leaves)
-		if err != nil {
-			return 0, 0, false, err
-		}
-		usage, available = lossyLeafRangeUsage(leaves, 0, len(leaves))
+		usage, available = currentLossyUsage(typed.child)
 		if !available {
 			return 0, 0, false, fmt.Errorf("ruleix: Lossy build working memory accounting overflow")
 		}
@@ -153,17 +159,30 @@ func lossyBuildPressure[T any](rule Rule[T]) (usage, target uint64, available bo
 	return usage, target, available, nil
 }
 
-// streamingLossyLeaf is a conservative safety net for a future lossy
-// representation that does not yet implement operator-specific insertion.
-// Every built-in representation implements streamingLossyAccumulator, so this
-// wrapper is not present in production indexes built from the public rules.
-type streamingLossyLeaf[T any] struct {
-	child Rule[T]
-	tail  *roaring.Bitmap
-}
-
-type streamingUniversalProvider interface {
-	streamingUniversal() (nodeID, *roaring.Bitmap, string)
+func currentLossyUsage[T any](rule Rule[T]) (uint64, bool) {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		var total uint64
+		for _, child := range typed.children {
+			usage, ok := currentLossyUsage(child)
+			if !ok || math.MaxUint64-total < usage {
+				return 0, false
+			}
+			total += usage
+		}
+		return total, true
+	case *inspectRule[T]:
+		return currentLossyUsage(typed.child)
+	case *lossyRule[T]:
+		return currentLossyUsage(typed.child)
+	default:
+		provider, ok := any(rule).(streamingDetailsProvider)
+		if !ok {
+			return 0, false
+		}
+		details := provider.refreshedStreamingDetails(inspectionDetails{})
+		return details.MemoryUsageBytes, details.MemoryUsageAvailable
+	}
 }
 
 // streamingLossyAccumulator marks a compiled lossy search representation that
@@ -189,17 +208,6 @@ func (r *streamingAdaptiveLeaf[T]) nextStreamingUsage() (uint64, bool) {
 		r.nextUsage, r.nextUsageOK, r.nextApply = usage, true, func() { r.child = next }
 		return usage, true
 	}
-	if factory, ok := r.child.(lossyAllCompiler[T]); ok {
-		ladder, err := factory.newLossyAllPlanner().representationLadder()
-		if err != nil || len(ladder) < 2 {
-			r.nextUsageOK = false
-			return 0, false
-		}
-		r.nextUsage, r.nextUsageOK = ladder[1].details.MemoryUsageBytes, true
-		next := ladder[1].compiled
-		r.nextApply = func() { r.child = next }
-		return r.nextUsage, true
-	}
 	if preparer, ok := streamingRuleNextPreparer(r.child); ok {
 		r.nextUsage, r.nextApply, r.nextUsageOK = preparer.prepareStreamingNext()
 	} else {
@@ -219,13 +227,6 @@ func (r *streamingAdaptiveLeaf[T]) fitStreamingLimit(limit uint64) {
 		}
 		return
 	}
-	if factory, ok := r.child.(lossyAllCompiler[T]); ok {
-		compiled, err := factory.newLossyAllPlanner().compile(limit)
-		if err == nil {
-			r.child = compiled
-		}
-		return
-	}
 	fitStreamingRule(r.child, limit)
 }
 
@@ -242,13 +243,6 @@ func (r *streamingAdaptiveLeaf[T]) fitStreamingNext() {
 			apply := r.nextApply
 			r.nextUsagePrepared, r.nextApply = false, nil
 			apply()
-		}
-		return
-	}
-	if factory, ok := r.child.(lossyAllCompiler[T]); ok {
-		ladder, err := factory.newLossyAllPlanner().representationLadder()
-		if err == nil && len(ladder) > 1 {
-			r.child = ladder[1].compiled
 		}
 		return
 	}

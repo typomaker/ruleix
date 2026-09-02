@@ -9,6 +9,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Lossy build no longer contains the legacy representation planner, static
+  ladders, capacity-based pairwise ordered merges, or universal-tail wrapper.
+  Policies now publish one current generation and derive only its next nested
+  level under pressure; Inspect memory and granularity describe that published
+  generation.
+- Lossy equality planning now handles singleton/small postings through the
+  common search materialization path instead of mistaking them for an empty
+  bitmap. Floating-point ordered rules use comparator boundary levels, keeping
+  NaN conservative under the supplied order.
 - Lossy standalone ordered rules with arbitrary stable total-order comparators
   now use nested outward boundary levels in the shared Exact ordered index;
   custom structs, collation orders, descending orders, and late edge values no

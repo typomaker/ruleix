@@ -60,12 +60,11 @@ func (r *quantizedOrderedRule[T, V]) prepareStreamingNext() (uint64, func(), boo
 			}
 		}
 	}
-	details := (&orderedRule[T, V]{index: next, wildcard: r.wildcard, lossyCapacity: 1}).
+	details := (&orderedRule[T, V]{index: next, wildcard: r.wildcard}).
 		refreshedStreamingDetails(inspectionDetails{})
 	return details.MemoryUsageBytes, func() {
 		r.index = next
 		r.level++
-		r.lossyCapacity = r.index.buildStatistics().uniqueValues
 	}, true
 }
 
@@ -90,7 +89,7 @@ func (r *orderedRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], 
 	}
 	candidate := &orderedRule[T, V]{
 		nodeID: r.nodeID, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
-		wildcard: r.wildcard, index: newOrderedIndex(r.compare), lossyCapacity: 1,
+		wildcard: r.wildcard, index: newOrderedIndex(r.compare),
 		quantizer: &quantizer, level: 1,
 	}
 	for _, block := range r.index.blocks {
@@ -108,7 +107,7 @@ func (r *orderedRule[T, V]) prepareBoundaryFirstGeneration() (uint64, Rule[T], b
 	}
 	candidate := &orderedRule[T, V]{
 		nodeID: r.nodeID, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
-		wildcard: r.wildcard, index: newOrderedIndex(r.compare), lossyCapacity: 1,
+		wildcard: r.wildcard, index: newOrderedIndex(r.compare),
 		boundaries: &orderedBoundaryQuantizer[V]{}, level: 1,
 	}
 	candidate.index = rebuildOrderedBoundaries(&r.index, r.dir)

@@ -23,14 +23,6 @@ type quantizedEqualityRule[T any, V comparable] struct {
 
 func (r *quantizedEqualityRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
-func (r *quantizedEqualityRule[T, V]) streamingUniversal() (nodeID, *roaring.Bitmap, string) {
-	bits := r.wildcard.Clone()
-	for index := range r.values.sets {
-		r.values.sets[index].addTo(bits)
-	}
-	return r.nodeID, bits, "lossy-streaming-universal"
-}
-
 func (*quantizedEqualityRule[T, V]) streamingLossyAccumulator() {}
 func (r *quantizedEqualityRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
 	usage := uint64(40) + bitmapBytes(r.wildcard)
@@ -127,8 +119,11 @@ func (r *quantizedEqualityRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap
 	}
 	hash := r.codec.hash(value)
 	set := r.values.get(r.quantizer.key(hash))
-	if set == nil || set.bits == nil {
+	if set == nil {
 		return r.wildcard, true
+	}
+	if set.bits == nil {
+		return nil, false
 	}
 	return set.bits, true
 }

@@ -23,13 +23,13 @@ func streamingOrderedValue(v streamingOrderedFixture) (int, bool) { return v.val
 func TestLossyOrderedStreamingRegridsExpandedRange(t *testing.T) {
 	rule := &orderedRule[streamingOrderedFixture, int]{
 		get: streamingOrderedValue, compare: cmp.Compare[int], dir: greaterThan, inclusive: true,
-		index: newOrderedIndex(cmp.Compare[int]), lossyCapacity: 2, wildcard: roaring.New(),
+		index: newOrderedIndex(cmp.Compare[int]), wildcard: roaring.New(),
 	}
 	rule.index.insertPosting(10, roaring.BitmapOf(0))
 	rule.index.insertPosting(19, roaring.BitmapOf(1))
 	rule.insert(streamingOrderedFixture{value: 30}, 2)
-	if got := rule.index.buildStatistics().uniqueValues; got != 2 {
-		t.Fatalf("expanded index has %d classes, want 2", got)
+	if got := rule.index.buildStatistics().uniqueValues; got != 3 {
+		t.Fatalf("expanded index has %d classes, want 3", got)
 	}
 	for id, stored := range []int{10, 19, 30} {
 		for query := stored; query <= 35; query++ {
@@ -38,15 +38,6 @@ func TestLossyOrderedStreamingRegridsExpandedRange(t *testing.T) {
 			}
 		}
 	}
-}
-
-func TestQuantizedOrderedStreamingFitsGradually(t *testing.T) {
-	index := newOrderedIndex(cmp.Compare[int])
-	for value := 1; value <= 4; value++ {
-		index.insertPosting(value, roaring.BitmapOf(uint32(value)))
-	}
-	require.True(t, index.coarsenOne(lessThan))
-	require.Equal(t, 3, index.buildStatistics().uniqueValues)
 }
 
 func TestLossyEqualityStreamingRebucketsWithoutDroppingIDs(t *testing.T) {
@@ -226,7 +217,6 @@ func TestStreamingAdaptiveLeafDelegatesCachesAndUnwraps(t *testing.T) {
 	}}
 	unwrapped := unwrapStreamingAdaptiveLeaves[streamingOrderedFixture](All(wrapped))
 	require.NotNil(t, unwrapped)
-	require.False(t, streamingRuleCanFit(&lossyUniversalRule[streamingOrderedFixture]{bits: roaring.New()}))
 
 	stuck := &streamingSelectionFixture{usage: 10, next: 10}
 	fitStreamingAggregate[streamingOrderedFixture](stuck, 5)
@@ -317,7 +307,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 	orderedSide := func(dir direction) *orderedRule[streamingOrderedFixture, int] {
 		side := &orderedRule[streamingOrderedFixture, int]{
 			get: streamingOrderedValue, compare: cmp.Compare[int], dir: dir,
-			wildcard: roaring.New(), index: newOrderedIndex(cmp.Compare[int]), lossyCapacity: 3,
+			wildcard: roaring.New(), index: newOrderedIndex(cmp.Compare[int]),
 		}
 		for value := 1; value <= 3; value++ {
 			side.index.insertPosting(value, roaring.BitmapOf(uint32(value)))
@@ -343,7 +333,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 	t.Run("numeric ordered", func(t *testing.T) {
 		common := &orderedRule[streamingOrderedFixture, int]{
 			get: streamingOrderedValue, compare: cmp.Compare[int], wildcard: roaring.New(),
-			index: newOrderedIndex(cmp.Compare[int]), lossyCapacity: 3,
+			index: newOrderedIndex(cmp.Compare[int]),
 		}
 		common.index.insertPosting(1, roaring.BitmapOf(1))
 		common.index.insertPosting(2, roaring.BitmapOf(2))
@@ -380,11 +370,12 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		require.True(t, ok)
 		rule.fitStreamingNext()
 		rule.from = orderedSide(greaterThan)
-		rule.from.index.coarsenOne(greaterThan)
-		rule.from.index.coarsenOne(greaterThan)
+		wrappedFrom := &quantizedOrderedRule[streamingOrderedFixture, int]{rule.from}
+		wrappedFrom.fitStreamingNext()
+		wrappedFrom.fitStreamingNext()
 		rule.until = orderedSide(lessThan)
 		rule.fitStreamingNext()
-		require.Equal(t, 2, rule.until.index.buildStatistics().uniqueValues)
+		require.Equal(t, 3, rule.until.index.buildStatistics().uniqueValues)
 		rule.fitStreamingLimit(0)
 		require.Equal(t, 2, rule.from.index.buildStatistics().uniqueValues+
 			rule.until.index.buildStatistics().uniqueValues)
@@ -396,7 +387,6 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 			eqMinimum: 1, eqMaximum: 3,
 		}
 		common.indexes[0] = &orderedSide(lessThan).index
-		common.lossyCapacity[0] = 3
 		rule := &quantizedCompareByRule[streamingOrderedFixture, int]{common}
 		require.Same(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
 		require.Equal(t, canonicalCompareBy, rule.canonicalDescriptor().representation)

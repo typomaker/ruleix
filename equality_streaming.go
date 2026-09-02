@@ -6,15 +6,47 @@ type streamingFirstGenerationFactory[T any] interface {
 	prepareStreamingFirstGeneration() (uint64, Rule[T], bool)
 }
 
+func (*eqRule[T, V]) validateStreamingLossy() error {
+	_, err := compileEqualityCodec[V]()
+	return err
+}
+
+func equalityBucketCounts(maxBits uint) []uint64 {
+	counts := make([]uint64, 0, int(maxBits)*4+1)
+	for bit := maxBits; bit > 0; bit-- {
+		upper := uint64(1) << bit
+		for numerator := uint64(8); numerator >= 5; numerator-- {
+			count := upper / 8 * numerator
+			if len(counts) == 0 || counts[len(counts)-1] != count {
+				counts = append(counts, count)
+			}
+		}
+	}
+	return append(counts, 1)
+}
+
+func equalitySetBytes(s *equalitySet) uint64 {
+	if s.bits != nil {
+		return bitmapBytes(s.bits)
+	}
+	if s.small != nil {
+		return uint64(len(s.small)) * 4
+	}
+	return 4
+}
+
 func (r *eqRule[T, V]) streamingExactDetails(details inspectionDetails) inspectionDetails {
 	usage := uint64(24) + bitmapBytes(r.wildcard)
 	items := r.wildcard.GetCardinality()
+	distinct := uint64(0)
 	r.values.visit(func(value V, set *equalitySet) {
 		usage += comparableValueBytes(any(value)) + 16 + equalitySetBytes(set)
 		items += set.cardinality()
+		distinct++
 	})
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = usage, true
 	details.Items, details.ItemsAvailable = items, true
+	details.DistinctValues, details.DistinctValuesAvailable = distinct, true
 	return details
 }
 

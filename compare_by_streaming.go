@@ -124,12 +124,10 @@ func (r *quantizedCompareByRule[T, V]) prepareStreamingNext() (uint64, func(), b
 	clone := cloneCompareByRule(r.compareByRule)
 	clone.indexes[selected] = &next
 	clone.quantizers[selected], clone.boundaries[selected], clone.levels[selected] = quantizer, boundaries, nextLevel
-	clone.lossyCapacity[selected] = next.buildStatistics().uniqueValues
 	usage := (&quantizedCompareByRule[T, V]{clone}).refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
 	return usage, func() {
 		r.indexes[selected] = &next
 		r.quantizers[selected], r.boundaries[selected], r.levels[selected] = quantizer, boundaries, nextLevel
-		r.lossyCapacity[selected] = next.buildStatistics().uniqueValues
 	}, true
 }
 

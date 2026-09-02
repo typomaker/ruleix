@@ -124,23 +124,6 @@ func BenchmarkOrderedIndexTimeBlockLookup(b *testing.B) {
 	})
 }
 
-func TestOrderedLossyLadderPublishesCommonIndex(t *testing.T) {
-	get := func(v streamingOrderedFixture) (int, bool) { return v.value, true }
-	rule := newOrderedRule(get, cmp.Compare[int], greaterThan, true).
-		newStateWithID(0, orderedBuildStatistics{})
-	for id := range 256 {
-		rule.insert(streamingOrderedFixture{value: id}, uint32(id))
-	}
-	ladder, err := rule.newLossyAllPlanner().representationLadder()
-	require.NoError(t, err)
-	require.Greater(t, len(ladder), 1)
-	wrapped := ladder[1].compiled.(*inspectionDetailsRule[streamingOrderedFixture])
-	quantized := wrapped.child.(*quantizedOrderedRule[streamingOrderedFixture, int])
-	require.NotEmpty(t, quantized.index.blocks)
-	require.Equal(t, "ordered", quantized.inspectionStrategy())
-	require.Equal(t, RuleModeLossy, quantized.inspectionMode())
-}
-
 func TestOrderedIndexInsertPostingMergesAndIgnoresNil(t *testing.T) {
 	index := newOrderedIndex(cmp.Compare[int])
 	index.insertPosting(1, nil)

@@ -154,14 +154,6 @@ edge remains its own new extreme key, because mapping it inward could create a
 false negative; the next pressure transition includes that key in the normal
 whole-generation rebuild. Late insertion never invokes pairwise coarsening.
 
-The step 5 gate covers comparator-ordered structs and composite keys,
-case-insensitive strings, descending order, strict and inclusive directions,
-range extremes, late values on both sides, nesting, full tests and changed-line
-coverage. No benchmark or layout tuning is part of this step. Verification on
-2026-09-02 used focused comparator tests, `go test ./...
--coverprofile=/tmp/ruleix-step5.cover`, `go test -race ./...`, and
-`git diff --check`; changed executable production lines exceeded 90% coverage.
-
 ### Compound ordered levels
 
 `Between` owns two independent ordered generations: the lower (`from`) side
@@ -178,18 +170,12 @@ both inserted and searched values to the same physical bucket. All five
 indexes remain the common `orderedIndex`, and search, aggregate blocks,
 routing, candidate filtering, and Local caching remain shared with Exact.
 
-The compatibility planner now derives any required representations by
-replaying these whole-generation transitions; it no longer constructs
-`Between` or `CompareBy` candidates with capacity-based adjacent merges.
+No compatibility planner remains. `Between` and `CompareBy` enter the same
+single-current-generation streaming state as standalone leaves and derive
+only the next complete side/operator generation when pressure requests it.
 Late inserts are transformed immediately at the selected per-side or
-per-operator level. Verification for roadmap step 6 covers missing values,
-wildcards, duplicate IDs, all strict and inclusive operators, repeated
-downgrades, hard accounting, and the central Exact/Lossy differential matrix.
-Verification on 2026-09-03 used `go test ./...
--coverprofile=/tmp/ruleix-step6.cover`, `go test -race ./...`, and
-`git diff --check`; executable changed-line coverage was 100% (the extracted
-adaptive wrapper methods were also fully covered). No performance benchmark or
-layout tuning is part of this step.
+per-operator level. Missing values, duplicates, strict/inclusive operators,
+repeated downgrades and hard accounting are covered by the differential gate.
 
 ## Public API direction
 
@@ -207,21 +193,8 @@ The same policy applies to `Include`, ordered comparisons, `Between`, and
 policy may also bound an entire `All`. `Exclude` remains outside the current
 lossy representation set.
 
-The initial public configuration should contain only `MemoryLimit(bytes)`. False
-positive rate, hash-function count, bucket count, segment size, prefix length,
-and retained bit count are implementation choices. Adding strategies must not
-require changing the public API.
-
-The first implementation will expose this shape:
-
-```go
-type LossyOption interface {
-	// sealed by an unexported method
-}
-
-func Lossy[T any](rule Rule[T], options ...LossyOption) Rule[T]
-func MemoryLimit(bytes uint64) LossyOption
-```
+The public configuration contains only `MemoryLimit(bytes)`; approximation
+quality does not override the hard retained-memory contract.
 
 `LossyOption` is sealed so configuration can grow without accepting arbitrary
 third-party implementations. `Lossy` panics when `rule` is nil, consistently
@@ -293,9 +266,9 @@ actual process heap remain benchmark metrics reported separately. The explicit
 model makes the build decision reproducible and lets callers compare usage to
 the configured limit without allocator noise.
 
-The policy selects the exact representation whenever its planned retained size
-fits. Otherwise it selects a supported lossy representation whose planned size
-fits and whose result is a superset of the exact result. `Lossy` therefore
+The policy retains the exact current generation whenever its accounted size
+fits. Otherwise it repeatedly rebuilds one complete leaf generation through
+its next nested level until the published state fits. `Lossy` therefore
 never forces approximation and does not promise that every positive budget is
 usable.
 
@@ -334,6 +307,30 @@ expands. `CompareBy` builds comparator buckets independently for `EQ`, `LT`,
 Both terminal levels retain the exact-or-superset contract without the former
 complete-leaf universal fallback. Custom rule implementations cannot occur
 because `Rule` is sealed.
+
+### Step 8 legacy removal and final correctness gate
+
+The static representation planner and all of its production state have been
+removed: there are no leaf ladders, prebuilt future candidates, capacity-driven
+pairwise merges, universal-tail wrappers, or separate universal rule type.
+Initial policy materialization publishes accounted exact leaves inside the
+same adaptive wrapper used by later checkpoints. The hard-limit pass advances
+the live generation with the deterministic release selector; a terminal
+one-key generation is reached only by those ordinary nested transitions.
+
+`Inspect.Strategy` is always the common physical family. Exact leaves expose
+no granularity; lossy leaves report the number of currently published rounded
+keys, and `DistinctValueCount` for ordered lossy leaves describes that same
+published generation. Memory details and nested effective limits are refreshed
+after final fitting. Equality planning refuses to borrow a singleton/small
+posting as a bitmap, preventing the empty-candidate false negative exposed by
+the aggregate regression fixture. Floating-point ordered rules use comparator
+boundary levels so NaN follows the supplied stable total order.
+
+Verification on 2026-09-03 used `go test ./... -count=1`, `go test -race
+./... -count=1`, targeted differential/streaming/determinism tests, and `git
+diff --check`. Coverage over added or modified executable production lines was
+92.7% (140/151). No benchmark or profile result was used as a gate.
 
 No search-time reflection is used. Composite equality accounting reflects over
 keys only during `Build` and charges architecture-independent logical scalar,

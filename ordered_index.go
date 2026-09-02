@@ -289,42 +289,6 @@ func (i *orderedIndex[V]) cloneBuild() orderedIndex[V] {
 	return clone
 }
 
-// coarsenOne is retained for comparator-boundary migration in roadmap step 5.
-func (i *orderedIndex[V]) coarsenOne(dir direction) bool {
-	items := make([]*orderedItem[V], 0, i.buildStatistics().uniqueValues)
-	for _, block := range i.blocks {
-		items = append(items, block.items...)
-	}
-	if len(items) <= 1 {
-		return false
-	}
-	merge := 0
-	best := items[0].bits.GetCardinality() + items[1].bits.GetCardinality()
-	for pos := 1; pos+1 < len(items); pos++ {
-		n := items[pos].bits.GetCardinality() + items[pos+1].bits.GetCardinality()
-		if n < best {
-			merge, best = pos, n
-		}
-	}
-	next := newOrderedIndex(i.compare)
-	for pos := 0; pos < len(items); pos++ {
-		if pos == merge {
-			bits := items[pos].bits.Clone()
-			bits.Or(items[pos+1].bits)
-			boundary := items[pos].value
-			if dir == lessThan {
-				boundary = items[pos+1].value
-			}
-			next.insertPosting(boundary, bits)
-			pos++
-			continue
-		}
-		next.insertPosting(items[pos].value, items[pos].bits.Clone())
-	}
-	*i = next
-	return true
-}
-
 func (i *orderedIndex[V]) searchBlock(block *orderedBlock[V], value V) int {
 	lo, hi := 0, len(block.items)
 	for lo < hi {

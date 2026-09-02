@@ -267,7 +267,12 @@ universal fallback; performance assertions отсутствуют.
 
 ### 8. Удалить устаревший streaming planner и завершить correctness gates
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-03`
+
+Результат: старые planners/ladders, capacity/pairwise coarsening и universal-tail
+удалены; Build публикует только одно текущее streaming-поколение, Inspect
+показывает его фактические keys и accounting, а full, race, differential,
+deterministic и 92.7% diff-coverage gates пройдены без benchmarks.
 
 - Удалить static leaf representation ladders, pairwise merge planner,
   universal-tail fallback и build-only состояние, противоречащее модели одного

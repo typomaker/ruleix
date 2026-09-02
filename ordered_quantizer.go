@@ -73,31 +73,9 @@ func compileOrderedQuantizer[V any]() (orderedQuantizer[V], bool) {
 	case reflect.Uintptr:
 		q.encode, q.decode = unsignedQuantizerCodec[V, uintptr](width)
 	case reflect.Float32:
-		q.encode = func(value V) uint64 {
-			return uint64(orderedFloat32Bits(*(*float32)(unsafe.Pointer(&value)))) << 32
-		}
-		q.decode = func(key uint64) V {
-			bits := uint32(key >> 32)
-			if bits&(uint32(1)<<31) != 0 {
-				bits ^= uint32(1) << 31
-			} else {
-				bits = ^bits
-			}
-			value := math.Float32frombits(bits)
-			return *(*V)(unsafe.Pointer(&value))
-		}
+		return orderedQuantizer[V]{}, false
 	case reflect.Float64:
-		q.encode = func(value V) uint64 { return orderedFloat64Bits(*(*float64)(unsafe.Pointer(&value))) }
-		q.decode = func(key uint64) V {
-			bits := key
-			if bits&(uint64(1)<<63) != 0 {
-				bits ^= uint64(1) << 63
-			} else {
-				bits = ^bits
-			}
-			value := math.Float64frombits(bits)
-			return *(*V)(unsafe.Pointer(&value))
-		}
+		return orderedQuantizer[V]{}, false
 	}
 	return q, true
 }

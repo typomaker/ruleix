@@ -42,32 +42,10 @@ func (r *betweenRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
 func (r *betweenRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
-	ladder, err := r.newLossyAllPlanner().representationLadder()
-	if err != nil || len(ladder) == 0 {
-		return details
-	}
-	return ladder[0].details
-}
-
-func (r *betweenRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	fromMemory, fromItems, fromDistinct, _ := orderedIndexLossyAccounting(&r.from.index, r.from.wildcard)
 	untilMemory, untilItems, untilDistinct, _ := orderedIndexLossyAccounting(&r.until.index, r.until.wildcard)
-	exactDetails := representationDetails(fromMemory+untilMemory, fromItems+untilItems,
+	return representationDetails(fromMemory+untilMemory, fromItems+untilItems,
 		fromDistinct+untilDistinct, 0, false)
-	ladder := []lossyRepresentation[T]{{compiled: &inspectionDetailsRule[T]{child: r, details: exactDetails}, details: exactDetails}}
-	candidate := &quantizedBetweenRule[T, V]{cloneBetweenRule(r)}
-	for {
-		_, apply, ok := candidate.prepareStreamingNext()
-		if !ok {
-			break
-		}
-		apply()
-		details := candidate.refreshedStreamingDetails(inspectionDetails{})
-		copy := &quantizedBetweenRule[T, V]{cloneBetweenRule(candidate.betweenRule)}
-		compiled := Rule[T](&inspectionDetailsRule[T]{child: copy, details: details})
-		ladder = append(ladder, lossyRepresentation[T]{compiled: compiled, details: details})
-	}
-	return fixedLossyAllPlanner[T]{ladder: ladder}
 }
 
 type quantizedBetweenRule[T any, V any] struct{ *betweenRule[T, V] }

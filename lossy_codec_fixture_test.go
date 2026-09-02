@@ -152,118 +152,6 @@ func TestEqualityBucketLadderIsNested(t *testing.T) {
 	}
 }
 
-func TestLossyUUIDUsesFinerBucketCounts(t *testing.T) {
-	const entries = 10_000
-	state := Include(func(value codecFixtureConstraint[fixtureUUID]) (fixtureUUID, bool) {
-		return value.value, value.present
-	}).newState(&nodeIDAllocator{}, &buildStatistics{}).(*eqRule[codecFixtureConstraint[fixtureUUID], fixtureUUID])
-	for i := range entries {
-		var value fixtureUUID
-		binary.BigEndian.PutUint64(value[8:], uint64(i))
-		state.insert(codecFixtureConstraint[fixtureUUID]{value: value, present: true}, uint32(i))
-	}
-	ladder, err := state.newLossyAllPlanner().representationLadder()
-	require.NoError(t, err)
-
-	counts := make([]uint64, 0, len(ladder)-1)
-	for _, level := range ladder[1:] {
-		detailed := level.compiled.(*inspectionDetailsRule[codecFixtureConstraint[fixtureUUID]])
-		counts = append(counts, detailed.child.(*quantizedEqualityRule[codecFixtureConstraint[fixtureUUID], fixtureUUID]).quantizer.bucketCount)
-	}
-	for _, want := range []uint64{65536, 57344, 49152, 40960, 32768} {
-		require.Contains(t, counts, want)
-	}
-}
-
-func TestLossyAllUUIDTakesConsecutiveFinerDowngrades(t *testing.T) {
-	const entries = 10_000
-	constraints := make([]fixtureUUIDAggregateConstraint, entries)
-	ids := make([]int, entries)
-	for row := range constraints {
-		ids[row] = row
-		for column := range constraints[row].values {
-			value := uint64(row)
-			if column != 0 {
-				value = uint64(row % 2)
-			}
-			binary.BigEndian.PutUint64(constraints[row].values[column][8:], value)
-		}
-	}
-
-	makeRules := func(inspectors *[16]Inspector) Rule[fixtureUUIDAggregateConstraint] {
-		children := make([]Rule[fixtureUUIDAggregateConstraint], len(inspectors))
-		for column := range children {
-			column := column
-			get := func(value fixtureUUIDAggregateConstraint) (fixtureUUID, bool) {
-				return value.values[column], true
-			}
-			child := Rule[fixtureUUIDAggregateConstraint](Include(get))
-			if inspectors != nil {
-				child = Inspect(&inspectors[column], child)
-			}
-			children[column] = child
-		}
-		return All(children...)
-	}
-
-	state := makeRules(nil).newState(&nodeIDAllocator{}, &buildStatistics{})
-	for row, constraint := range constraints {
-		state.insert(constraint, uint32(row))
-	}
-	leaves := []lossyAllLeaf[fixtureUUIDAggregateConstraint]{}
-	require.NoError(t, collectLossyAllLeaves(state, &leaves))
-	require.Len(t, leaves, 16)
-
-	var total uint64
-	for _, leaf := range leaves {
-		total += leaf.exact
-	}
-	for step := 0; step < 3; step++ {
-		best := selectLossyAllDowngrade(leaves)
-		require.Equal(t, 0, best, "downgrade step %d must keep the 15 small UUID leaves exact", step+1)
-		current := leaves[best].ladder[leaves[best].selected].details.MemoryUsageBytes
-		leaves[best].selected++
-		next := leaves[best].ladder[leaves[best].selected].details.MemoryUsageBytes
-		total -= current - next
-	}
-	exact, err := New[fixtureUUIDAggregateConstraint, int](makeRules(nil)).Build(Zip(constraints, ids))
-	require.NoError(t, err)
-	var aggregate Inspector
-	var inspectors [16]Inspector
-	approximate, err := New[fixtureUUIDAggregateConstraint, int](
-		Inspect(&aggregate, Lossy(makeRules(&inspectors), MemoryLimit(total))),
-	).Build(Zip(constraints, ids))
-	require.NoError(t, err)
-	usage, ok := aggregate.Snapshot().MemoryUsage()
-	require.True(t, ok)
-	require.LessOrEqual(t, usage, total)
-	require.Equal(t, RuleModeLossy, inspectors[0].Snapshot().Mode())
-	granularity, ok := inspectors[0].Snapshot().Granularity()
-	require.True(t, ok)
-	// Streaming selects precision from the observed prefix and may therefore
-	// retain a different (including finer) level than exact-first planning. The
-	// hard aggregate limit and deterministic repeated build are the contract.
-	require.Positive(t, granularity)
-	for column := 1; column < len(inspectors); column++ {
-		require.Equal(t, RuleModeExact, inspectors[column].Snapshot().Mode(), "leaf %d", column)
-	}
-	var repeatedInspectors [16]Inspector
-	_, err = New[fixtureUUIDAggregateConstraint, int](
-		Lossy(makeRules(&repeatedInspectors), MemoryLimit(total)),
-	).Build(Zip(constraints, ids))
-	require.NoError(t, err)
-	for column := range inspectors {
-		require.Equal(t, inspectors[column].Snapshot(), repeatedInspectors[column].Snapshot())
-	}
-
-	for row := 0; row < entries; row += 997 {
-		var want, got []int
-		exact.Search(constraints[row], &want)
-		approximate.Search(constraints[row], &got)
-		requireSupersetComparable(t, want, got)
-	}
-}
-
 func testUnsupportedCodecFixture[V comparable](t *testing.T, name string, value V) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
@@ -289,14 +177,7 @@ func testCodecFixture[V comparable](t *testing.T, name string, values []V, wantS
 		get := func(value codecFixtureConstraint[V]) (V, bool) { return value.value, value.present }
 		exact := buildCodecFixtureIndex(t, constraints, ids, Include(get))
 
-		state := Include(get).newState(&nodeIDAllocator{}, &buildStatistics{}).(*eqRule[codecFixtureConstraint[V], V])
-		for i, constraint := range constraints {
-			state.insert(constraint, uint32(i))
-		}
-		ladder, err := state.newLossyAllPlanner().representationLadder()
-		require.NoError(t, err)
-		require.GreaterOrEqual(t, len(ladder), 2)
-		minimum := ladder[len(ladder)-1].details.MemoryUsageBytes
+		minimum := codecFixtureUsage(t, constraints, ids, get, math.MaxUint64) - 1
 
 		var inspector Inspector
 		lossy := buildCodecFixtureIndex(t, constraints, ids, Inspect(&inspector,
@@ -341,8 +222,8 @@ func testCodecFixture[V comparable](t *testing.T, name string, values []V, wantS
 		if !codecFixtureRaceEnabled {
 			require.Zero(t, allocs)
 		}
-		t.Logf("exact-accounted=%d retained=%d strategy=%s granularity=%d candidates/query=%.2f warm-allocs=%.0f",
-			ladder[0].details.MemoryUsageBytes, retained, snapshot.Strategy(), granularity,
+		t.Logf("retained=%d strategy=%s granularity=%d candidates/query=%.2f warm-allocs=%.0f",
+			retained, snapshot.Strategy(), granularity,
 			float64(candidateTotal)/float64(queryCount), allocs)
 	})
 }
@@ -372,13 +253,7 @@ func TestLossyCodecFixtureBuildOrderAndWorkingPressure(t *testing.T) {
 	}
 
 	exactUsage := codecFixtureUsage(t, constraints, ids, get, math.MaxUint64)
-	state := Include(get).newState(&nodeIDAllocator{}, &buildStatistics{}).(*eqRule[codecFixtureConstraint[fixtureNamedInt], fixtureNamedInt])
-	for i, constraint := range constraints {
-		state.insert(constraint, uint32(i))
-	}
-	ladder, err := state.newLossyAllPlanner().representationLadder()
-	require.NoError(t, err)
-	limit := ladder[len(ladder)-1].details.MemoryUsageBytes
+	limit := uint64(16 << 10)
 	require.Greater(t, exactUsage, limit+limit/5, "exact-first working state must materially exceed the experimental soft target")
 	t.Logf("exact-first-accounted-working=%d retained-limit=%d experimental-soft-target=%d checkpoints=%d",
 		exactUsage, limit, limit+limit/5, entries/4096)

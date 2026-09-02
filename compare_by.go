@@ -36,7 +36,6 @@ type compareByRule[T any, V any] struct {
 	wildcard             *roaring.Bitmap
 	indexes              [5]*orderedIndex[V]
 	hints                [5]orderedBuildStatistics
-	lossyCapacity        [5]int
 	quantizers           [5]*orderedQuantizer[V]
 	boundaries           [5]*orderedBoundaryQuantizer[V]
 	levels               [5]uint32
@@ -53,14 +52,6 @@ func (r *compareByRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
 func (r *compareByRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
-	ladder, err := r.newLossyAllPlanner().representationLadder()
-	if err != nil || len(ladder) == 0 {
-		return details
-	}
-	return ladder[0].details
-}
-
-func (r *compareByRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	memory := uint64(24) + bitmapBytes(r.wildcard)
 	items := r.wildcard.GetCardinality()
 	var distinct uint64
@@ -70,21 +61,7 @@ func (r *compareByRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 		items += indexItems
 		distinct += indexDistinct
 	}
-	exactDetails := representationDetails(memory, items, distinct, 0, false)
-	ladder := []lossyRepresentation[T]{{compiled: &inspectionDetailsRule[T]{child: r, details: exactDetails}, details: exactDetails}}
-	candidate := &quantizedCompareByRule[T, V]{cloneCompareByRule(r)}
-	for {
-		_, apply, ok := candidate.prepareStreamingNext()
-		if !ok {
-			break
-		}
-		apply()
-		details := candidate.refreshedStreamingDetails(inspectionDetails{})
-		copy := &quantizedCompareByRule[T, V]{cloneCompareByRule(candidate.compareByRule)}
-		compiled := Rule[T](&inspectionDetailsRule[T]{child: copy, details: details})
-		ladder = append(ladder, lossyRepresentation[T]{compiled: compiled, details: details})
-	}
-	return fixedLossyAllPlanner[T]{ladder: ladder}
+	return representationDetails(memory, items, distinct, 0, false)
 }
 
 type quantizedCompareByRule[T any, V any] struct{ *compareByRule[T, V] }

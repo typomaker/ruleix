@@ -473,7 +473,8 @@ reflection. Интерфейсы остаются типизированной
 | `between.go`, `compare_by.go` | Составные ordered-представления. |
 | `all.go`, `execution_capabilities.go`, `execution_cost.go` | Планирование и выполнение конъюнкции. |
 | `bitmap_pool.go`, `bitmap_intern.go` | Scratch-пулы, Local-кэши, интернирование и equality-классы. |
-| `lossy.go`, `canonical_value.go` | Выбор ограниченных по памяти представлений и канонизация значений. |
+| `lossy.go`, `lossy_policy.go`, `*_streaming.go` | Потоковый pressure selector, policy limits и полные переходы единственного текущего lossy-поколения. |
+| `canonical_value.go`, `ordered_quantizer.go`, `ordered_boundary_quantizer.go` | Канонизация equality и вложенные outward-преобразования ordered keys. |
 | `inspect.go` | Build snapshots и выборочная runtime-телеметрия. |
 
 ## Инварианты корректности

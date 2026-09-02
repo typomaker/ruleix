@@ -76,17 +76,16 @@ const (
 )
 
 type orderedRule[T any, V any] struct {
-	nodeID        nodeID
-	get           Getter[T, V]
-	compare       Compare[V]
-	dir           direction
-	inclusive     bool
-	wildcard      *roaring.Bitmap
-	index         orderedIndex[V]
-	lossyCapacity int
-	quantizer     *orderedQuantizer[V]
-	boundaries    *orderedBoundaryQuantizer[V]
-	level         uint32
+	nodeID     nodeID
+	get        Getter[T, V]
+	compare    Compare[V]
+	dir        direction
+	inclusive  bool
+	wildcard   *roaring.Bitmap
+	index      orderedIndex[V]
+	quantizer  *orderedQuantizer[V]
+	boundaries *orderedBoundaryQuantizer[V]
+	level      uint32
 }
 
 type orderedLocalQueryKey[V any] struct {
@@ -99,150 +98,6 @@ type orderedLocalQueryKey[V any] struct {
 type quantizedOrderedRule[T any, V any] struct{ *orderedRule[T, V] }
 
 func (r *orderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
-
-func (r *orderedRule[T, V]) compileLossy(limit uint64) (Rule[T], error) {
-	return r.newLossyAllPlanner().compile(limit)
-}
-
-type orderedLossyAllPlanner[T any, V any] struct {
-	representations []Rule[T]
-	ladder          []lossyRepresentation[T]
-	exact           Rule[T]
-	prepare         func() []Rule[T]
-	err             error
-}
-
-//nolint:gocognit,lll // Planning keeps representation construction directly beside its accounting.
-func (r *orderedRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
-	// Ordered exact accounting is conservative and stable: key encodings,
-	// logical slots, aggregate postings, and wildcard payload.
-	exact := uint64(24) + bitmapBytes(r.wildcard)
-	items := r.wildcard.GetCardinality()
-	distinct := uint64(0)
-	var comparedValues []orderedItem[V]
-	for _, block := range r.index.blocks {
-		exact += bitmapBytes(block.bits) + 8
-		for _, item := range block.items {
-			comparedValues = append(comparedValues, orderedItem[V]{value: item.value, bits: item.bits})
-			items += item.bits.GetCardinality()
-			distinct++
-			encoded, ok := canonicalScalar(nil, any(item.value))
-			if !ok {
-				continue
-			}
-			exact += uint64(len(encoded)) + 8 + bitmapBytes(item.bits)
-		}
-	}
-	exactRepresentation := Rule[T](&inspectionDetailsRule[T]{child: r, details: representationDetails(exact, items, distinct, 0, false)})
-	planner := &orderedLossyAllPlanner[T, V]{exact: exactRepresentation}
-	planner.prepare = func() []Rule[T] {
-		return buildComparedOrderedRepresentations(r, comparedValues, items, distinct)
-	}
-	return planner
-}
-
-func buildComparedOrderedRepresentations[T any, V any](
-	r *orderedRule[T, V],
-	values []orderedItem[V],
-	items, distinct uint64,
-) []Rule[T] {
-	if len(values) == 0 {
-		candidate := &orderedRule[T, V]{
-			nodeID: r.nodeID, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
-			wildcard: r.wildcard, index: newOrderedIndex(r.compare), lossyCapacity: 1,
-		}
-		details := representationDetails(uint64(24)+bitmapBytes(r.wildcard), items, distinct, 0, true)
-		return []Rule[T]{&inspectionDetailsRule[T]{
-			child: &quantizedOrderedRule[T, V]{candidate}, details: details,
-		}}
-	}
-	representations := make([]Rule[T], 0, lossyMaxBucketBits+1)
-	for bucketBits := uint(0); bucketBits <= lossyMaxBucketBits; bucketBits++ {
-		wanted := 1 << bucketBits
-		count := min(wanted, len(values))
-		width := (len(values) + count - 1) / count
-		candidate := &orderedRule[T, V]{
-			nodeID: r.nodeID, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
-			wildcard: r.wildcard, index: newOrderedIndex(r.compare), lossyCapacity: count,
-		}
-		for first := 0; first < len(values); first += width {
-			last := min(first+width, len(values))
-			bits := roaring.New()
-			for _, value := range values[first:last] {
-				bits.Or(value.bits)
-			}
-			boundary := values[first].value
-			if r.dir == lessThan {
-				boundary = values[last-1].value
-			}
-			candidate.index.insertPosting(boundary, bits)
-		}
-		usage := uint64(24) + bitmapBytes(r.wildcard)
-		for _, block := range candidate.index.blocks {
-			if len(block.items) > 1 {
-				usage += bitmapBytes(block.bits) + 8
-			}
-			for _, item := range block.items {
-				usage += bitmapBytes(item.bits) + comparableValueBytes(any(item.value)) + 8
-			}
-		}
-		details := representationDetails(usage, items, distinct, uint64(count), true)
-		representations = append(representations, &inspectionDetailsRule[T]{child: &quantizedOrderedRule[T, V]{candidate}, details: details})
-	}
-	return representations
-}
-
-func buildQuantizedOrderedRule[T any, V any](r *orderedRule[T, V], wanted int) *orderedRule[T, V] {
-	values := make([]orderedItem[V], 0, r.index.buildStatistics().uniqueValues)
-	for _, block := range r.index.blocks {
-		for _, item := range block.items {
-			values = append(values, orderedItem[V]{value: item.value, bits: item.bits})
-		}
-	}
-	candidate := &orderedRule[T, V]{
-		nodeID: r.nodeID, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
-		wildcard: r.wildcard, index: newOrderedIndex(r.compare), lossyCapacity: max(wanted, 1),
-	}
-	if len(values) == 0 {
-		return candidate
-	}
-	count := min(candidate.lossyCapacity, len(values))
-	width := (len(values) + count - 1) / count
-	for first := 0; first < len(values); first += width {
-		last := min(first+width, len(values))
-		bits := roaring.New()
-		for _, value := range values[first:last] {
-			bits.Or(value.bits)
-		}
-		boundary := values[first].value
-		if r.dir == lessThan {
-			boundary = values[last-1].value
-		}
-		candidate.index.insertPosting(boundary, bits)
-	}
-	candidate.lossyCapacity = count
-	return candidate
-}
-
-func (p *orderedLossyAllPlanner[T, V]) compile(limit uint64) (Rule[T], error) {
-	ladder, err := p.representationLadder()
-	if err != nil {
-		return nil, err
-	}
-	return selectLossyRepresentation(ladder, limit, "ruleix: Lossy ordered comparison cannot fit the memory limit")
-}
-
-func (p *orderedLossyAllPlanner[T, V]) representationLadder() ([]lossyRepresentation[T], error) {
-	if p.err != nil {
-		return nil, p.err
-	}
-	if p.ladder == nil {
-		p.representations = p.prepare()
-		p.prepare = nil
-		p.ladder = buildLossyRepresentationLadder(p.exact, p.representations)
-	}
-	return p.ladder, nil
-}
 
 func orderedIndexLossyAccounting[V any](index *orderedIndex[V], wildcard *roaring.Bitmap) (
 	memory, items, distinct uint64,
@@ -286,35 +141,31 @@ func (r *orderedRule[T, V]) inspectionStrategy() string {
 	return "ordered"
 }
 func (r *orderedRule[T, V]) inspectionMode() RuleMode {
-	if r.quantizer == nil && r.lossyCapacity > 0 {
+	if r.level > 0 || r.quantizer != nil || r.boundaries != nil {
 		return RuleModeLossy
 	}
 	return RuleModeExact
 }
 func (r *orderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
-	if r.lossyCapacity > 0 {
-		memory := uint64(24) + bitmapBytes(r.wildcard)
-		items, distinct := uint64(r.wildcard.GetCardinality()), uint64(0)
-		for _, block := range r.index.blocks {
-			if len(block.items) > 1 {
-				memory += bitmapBytes(block.bits) + 8
-			}
-			for _, item := range block.items {
-				memory += comparableValueBytes(any(item.value)) + 8 + bitmapBytes(item.bits)
-				items += item.bits.GetCardinality()
-				distinct++
-			}
+	memory := uint64(24) + bitmapBytes(r.wildcard)
+	items, distinct := uint64(r.wildcard.GetCardinality()), uint64(0)
+	for _, block := range r.index.blocks {
+		if len(block.items) > 1 {
+			memory += bitmapBytes(block.bits) + 8
 		}
-		details.MemoryUsageBytes, details.MemoryUsageAvailable = memory, true
-		details.Items, details.ItemsAvailable = items, true
+		for _, item := range block.items {
+			memory += comparableValueBytes(any(item.value)) + 8 + bitmapBytes(item.bits)
+			items += item.bits.GetCardinality()
+			distinct++
+		}
+	}
+	details.MemoryUsageBytes, details.MemoryUsageAvailable = memory, true
+	details.Items, details.ItemsAvailable = items, true
+	details.DistinctValues, details.DistinctValuesAvailable = distinct, true
+	if r.inspectionMode() == RuleModeLossy {
 		details.GranularityValue, details.GranularityAvailable = distinct, true
-		return details
 	}
-	ladder, err := r.newLossyAllPlanner().representationLadder()
-	if err != nil || len(ladder) == 0 {
-		return details
-	}
-	return ladder[0].details
+	return details
 }
 
 func (*orderedRule[T, V]) rule() {}
@@ -332,9 +183,6 @@ func (r *orderedRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
 	}
 }
 func (r *orderedRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
-	if r.lossyCapacity > 0 {
-		return r
-	}
 	id := ids.allocate()
 	return r.newStateWithID(id, hints.node(id).ordered)
 }
@@ -352,14 +200,6 @@ func (r *orderedRule[T, V]) insert(v T, id uint32) {
 		return
 	}
 	r.index.insert(r.storageValue(value), id)
-	// Streaming quantizers may add a new edge key after a downgrade. It remains
-	// part of the current generation until the next whole-generation pressure
-	// step; only legacy planner representations enforce a fixed pairwise cap.
-	if r.lossyCapacity > 0 && r.quantizer == nil && r.boundaries == nil {
-		for r.index.buildStatistics().uniqueValues > r.lossyCapacity {
-			r.index.coarsenOne(r.dir)
-		}
-	}
 }
 
 func (r *orderedRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
