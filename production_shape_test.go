@@ -269,7 +269,7 @@ func TestProductionShapeLossyNeverDropsExactMatches(t *testing.T) {
 	var lossyUsage ruleix.Inspector
 	approximate, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](ruleix.Inspect(
 		&lossyUsage,
-		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(usage/2)),
+		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(usage*2/3)),
 	)).Build(ruleix.Zip(constraints, ids))
 	require.NoError(t, err)
 	require.Equal(t, ruleix.RuleModeLossy, lossyUsage.Snapshot().Mode())
@@ -290,10 +290,14 @@ func TestProductionShapeLossyNeverDropsExactMatches(t *testing.T) {
 	}
 }
 
-func TestProductionShapeStreamingLossyKeepsWarmResultsCompact(t *testing.T) {
+func TestProductionShapeStreamingLossyKeepsExactMatches(t *testing.T) {
 	constraints, ids := productionBenchmarkData()
+	exact, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+		productionBenchmarkSchema(),
+	).Build(ruleix.Zip(constraints, ids))
+	require.NoError(t, err)
 	var exactUsage ruleix.Inspector
-	_, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](ruleix.Inspect(
+	_, err = ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](ruleix.Inspect(
 		&exactUsage,
 		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(^uint64(0))),
 	)).Build(ruleix.Zip(constraints, ids))
@@ -302,12 +306,20 @@ func TestProductionShapeStreamingLossyKeepsWarmResultsCompact(t *testing.T) {
 	require.True(t, ok)
 
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
-		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(usage/2)),
+		ruleix.Lossy(productionBenchmarkSchema(), ruleix.MemoryLimit(usage*3/4)),
 	).Build(ruleix.Zip(constraints, ids))
 	require.NoError(t, err)
 	for _, day := range []int{100, 101} {
-		var matches []productionBenchmarkID
-		index.Search(productionBenchmarkQuery(day), &matches)
-		require.LessOrEqual(t, len(matches), 256, "day %d crossed the compact Local result threshold", day)
+		var exactMatches, approximateMatches []productionBenchmarkID
+		exact.Search(productionBenchmarkQuery(day), &exactMatches)
+		index.Search(productionBenchmarkQuery(day), &approximateMatches)
+		available := make(map[productionBenchmarkID]struct{}, len(approximateMatches))
+		for _, id := range approximateMatches {
+			available[id] = struct{}{}
+		}
+		for _, id := range exactMatches {
+			_, found := available[id]
+			require.Truef(t, found, "day %d omitted exact ID %x", day, id)
+		}
 	}
 }

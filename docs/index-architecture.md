@@ -280,13 +280,16 @@ strict/inclusive семантика matcher не меняется. Огрубл�
 пересобирает `orderedIndex`, объединяя наименее заполненную соседнюю пару.
 Последний `prepareSearch` строит обычные block aggregates, prefix sums и
 routing, поэтому finest lossy больше не выполняет линейный union legacy
-buckets. Between и CompareBy сохраняют fused layouts до шага 5 roadmap. Их
-`lossyComparedBuckets` дополнительно строит один уровень immutable aggregates
-по 128 leaf buckets. Полностью покрытая группа обслуживается одним bitmap
-`Or`, cardinality lookup или `Contains`; неполные края по-прежнему используют
-leaf postings и сохраняют прежний outward-boundary matcher. Aggregates входят
-в retained accounting и перестраиваются вместе с postings при streaming
-coarsening; минимальная одно-bucket ступень память не дублирует.
+buckets. `Between` и `CompareBy` теперь используют те же `orderedRule` и
+`orderedIndex`: build-only wrappers `quantizedBetweenRule` и
+`quantizedCompareByRule` управляют precision и streaming coarsening, а search,
+matcher и Local cache остаются exact-реализацией. Для сторон `Between` нижняя
+граница округляется вниз, верхняя вверх. `CompareBy` выбирает направление
+отдельно для каждого оператора; quantized `EQ` находит первый верхний boundary
+не ниже query и ограничивает lookup сохранённой оболочкой observed domain.
+Legacy `lossyComparedBuckets`, `lossyBetweenRule` и `lossyCompareByRule`
+удалены. Повторное огрубление независимо клонирует текущее поколение postings,
+объединяет соседнюю пару и не требует исходных exact values.
 Ordered gate дополнительно зафиксировал детерминированный порядок equality
 posting rebuild: planner и повторное streaming coarsening сортируют `uint64`
 keys перед merge и публикацией, чтобы соседний aggregate pressure не зависел

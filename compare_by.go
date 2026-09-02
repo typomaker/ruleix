@@ -29,13 +29,16 @@ func CompareBy[T any, V any](
 }
 
 type compareByRule[T any, V any] struct {
-	nodeID   nodeID
-	value    Getter[T, V]
-	operator Getter[T, Operator]
-	compare  Compare[V]
-	wildcard *roaring.Bitmap
-	indexes  [5]*orderedIndex[V]
-	hints    [5]orderedBuildStatistics
+	nodeID               nodeID
+	value                Getter[T, V]
+	operator             Getter[T, Operator]
+	compare              Compare[V]
+	wildcard             *roaring.Bitmap
+	indexes              [5]*orderedIndex[V]
+	hints                [5]orderedBuildStatistics
+	lossyCapacity        [5]int
+	eqMinimum, eqMaximum V
+	eqHasRange           bool
 }
 
 type compareByLocalQueryKey[V any] struct {
@@ -70,284 +73,40 @@ func (r *compareByRule[T, V]) newLossyAllPlanner() lossyAllPlanner[T] {
 	})
 	candidates := make([]Rule[T], 0, lossyMaxBucketBits+1)
 	for bucketBits := uint(0); bucketBits <= lossyMaxBucketBits; bucketBits++ {
-		candidate := &lossyCompareByRule[T, V]{
-			nodeID: r.nodeID, value: r.value, operator: r.operator,
-			compare: r.compare, wildcard: r.wildcard,
+		candidate := &compareByRule[T, V]{
+			nodeID: r.nodeID, value: r.value, operator: r.operator, compare: r.compare,
+			wildcard: r.wildcard, eqMinimum: r.eqMinimum, eqMaximum: r.eqMaximum, eqHasRange: r.eqHasRange,
 		}
-		usage := uint64(48) + bitmapBytes(r.wildcard)
+		usage := uint64(24) + bitmapBytes(r.wildcard)
 		var granularity uint64
 		for operator, index := range r.indexes {
 			if index == nil {
 				continue
 			}
-			candidate.present[operator] = true
-			candidate.indexes[operator] = buildLossyComparedBuckets(index, 1<<bucketBits)
-			usage += candidate.indexes[operator].memoryUsage()
-			granularity += uint64(len(candidate.indexes[operator].buckets))
+			dir := compareByDirection(Operator(operator))
+			template := &orderedRule[T, V]{compare: r.compare, dir: dir, index: *index}
+			quantized := buildQuantizedOrderedRule(template, 1<<bucketBits)
+			candidate.indexes[operator] = &quantized.index
+			candidate.lossyCapacity[operator] = quantized.lossyCapacity
+			indexMemory, _, _ := quantizedOrderedAccounting(&quantized.index, roaring.New())
+			usage += indexMemory
+			granularity += uint64(quantized.index.buildStatistics().uniqueValues)
 		}
 		details := representationDetails(usage, items, distinct, granularity, true)
-		candidates = append(candidates, &inspectionDetailsRule[T]{child: candidate, details: details})
+		candidates = append(candidates, &inspectionDetailsRule[T]{
+			child: &quantizedCompareByRule[T, V]{candidate}, details: details,
+		})
 	}
 	return fixedLossyAllPlanner[T]{ladder: buildLossyRepresentationLadder(exact, candidates)}
 }
 
-type lossyCompareByRule[T any, V any] struct {
-	nodeID   nodeID
-	value    Getter[T, V]
-	operator Getter[T, Operator]
-	compare  Compare[V]
-	wildcard *roaring.Bitmap
-	indexes  [5]lossyComparedBuckets[V]
-	present  [5]bool
-}
+type quantizedCompareByRule[T any, V any] struct{ *compareByRule[T, V] }
 
-func (r *lossyCompareByRule[T, V]) runtimeNodeID() nodeID                               { return r.nodeID }
-func (*lossyCompareByRule[T, V]) rule()                                                 {}
-func (r *lossyCompareByRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
-func (*lossyCompareByRule[T, V]) validate(T) error                                      { return nil }
-func (*lossyCompareByRule[T, V]) streamingLossyAccumulator()                            {}
-func (r *lossyCompareByRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
-	usage := uint64(48) + bitmapBytes(r.wildcard)
-	items := r.wildcard.GetCardinality()
-	var granularity uint64
-	for operator := range r.indexes {
-		if !r.present[operator] {
-			continue
-		}
-		usage += r.indexes[operator].memoryUsage()
-		granularity += uint64(len(r.indexes[operator].buckets))
-		for _, bucket := range r.indexes[operator].buckets {
-			items += bucket.GetCardinality()
-		}
+func compareByDirection(operator Operator) direction {
+	if operator == OperatorGT || operator == OperatorGTE {
+		return greaterThan
 	}
-	details.MemoryUsageBytes, details.MemoryUsageAvailable = usage, true
-	details.Items, details.ItemsAvailable = items, true
-	details.GranularityValue, details.GranularityAvailable = granularity, true
-	return details
-}
-func (r *lossyCompareByRule[T, V]) fitStreamingLimit(limit uint64) {
-	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit {
-		selected := -1
-		for operator := range r.indexes {
-			if r.present[operator] && len(r.indexes[operator].buckets) > 1 &&
-				(selected < 0 || len(r.indexes[operator].buckets) > len(r.indexes[selected].buckets)) {
-				selected = operator
-			}
-		}
-		if selected < 0 {
-			return
-		}
-		r.indexes[selected].coarsenOne()
-		r.indexes[selected].capacity = min(max(r.indexes[selected].capacity, 1), len(r.indexes[selected].buckets))
-	}
-}
-func (r *lossyCompareByRule[T, V]) fitStreamingNext() {
-	selected := -1
-	for operator := range r.indexes {
-		if r.present[operator] && len(r.indexes[operator].buckets) > 1 &&
-			(selected < 0 || len(r.indexes[operator].buckets) > len(r.indexes[selected].buckets)) {
-			selected = operator
-		}
-	}
-	if selected >= 0 {
-		r.indexes[selected].coarsenOne()
-		r.indexes[selected].capacity = min(
-			max(r.indexes[selected].capacity, 1), len(r.indexes[selected].buckets),
-		)
-	}
-}
-func (r *lossyCompareByRule[T, V]) nextStreamingUsage() (uint64, bool) {
-	usage, _, ok := r.prepareStreamingNext()
-	return usage, ok
-}
-func (r *lossyCompareByRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
-	selected := -1
-	for operator := range r.indexes {
-		if r.present[operator] && len(r.indexes[operator].buckets) > 1 &&
-			(selected < 0 || len(r.indexes[operator].buckets) > len(r.indexes[selected].buckets)) {
-			selected = operator
-		}
-	}
-	if selected < 0 {
-		return 0, nil, false
-	}
-	clone := *r
-	for operator := range r.indexes {
-		clone.indexes[operator] = cloneLossyComparedBuckets(r.indexes[operator])
-	}
-	clone.indexes[selected].coarsenOne()
-	clone.indexes[selected].capacity = min(
-		max(clone.indexes[selected].capacity, 1), len(clone.indexes[selected].buckets),
-	)
-	usage := clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
-	return usage, func() { r.indexes = clone.indexes }, true
-}
-func (r *lossyCompareByRule[T, V]) insert(v T, id uint32) {
-	value, ok := r.value(v)
-	if !ok {
-		r.wildcard.Add(id)
-		return
-	}
-	operator, _ := r.operator(v)
-	r.present[operator] = true
-	if r.indexes[operator].compare == nil {
-		r.indexes[operator].compare = r.compare
-	}
-	r.indexes[operator].insert(value, id)
-}
-func (r *lossyCompareByRule[T, V]) localQueryKey(v T) (any, uint64) {
-	value, hasValue := r.value(v)
-	key := compareByLocalQueryKey[V]{value: value, hasValue: hasValue}
-	return key, uint64(16 + unsafe.Sizeof(key))
-}
-func (r *lossyCompareByRule[T, V]) localQueryKeyMatches(v T, key any) bool {
-	want, ok := key.(compareByLocalQueryKey[V])
-	if !ok {
-		return false
-	}
-	value, hasValue := r.value(v)
-	return want.hasValue == hasValue && (!hasValue || r.compare(want.value, value) == 0)
-}
-func compareByLossyRange[V any](
-	index *lossyComparedBuckets[V],
-	operator Operator,
-	value V,
-) (int, int, bool) {
-	switch operator {
-	case OperatorEQ:
-		return index.exactRange(value)
-	case OperatorLT:
-		return index.matchingRange(value, lessThan, false)
-	case OperatorLTE:
-		return index.matchingRange(value, lessThan, true)
-	case OperatorGT:
-		return index.matchingRange(value, greaterThan, false)
-	case OperatorGTE:
-		return index.matchingRange(value, greaterThan, true)
-	default:
-		return 0, 0, false
-	}
-}
-func (r *lossyCompareByRule[T, V]) addMatches(v T, dst *roaring.Bitmap) {
-	dst.Or(r.wildcard)
-	value, ok := r.value(v)
-	if !ok {
-		return
-	}
-	for operator := range r.indexes {
-		if !r.present[operator] {
-			continue
-		}
-		first, last, matched := compareByLossyRange(&r.indexes[operator], Operator(operator), value)
-		if matched {
-			r.indexes[operator].addRange(first, last, dst)
-		}
-	}
-}
-func (r *lossyCompareByRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
-	if pool.local == nil {
-		return 0, false
-	}
-	cache, _ := pool.local[int(r.nodeID)].compareBy.(*valueBitmapCache[V])
-	if cache == nil {
-		return 0, false
-	}
-	bits, found := comparedValueCachePeek(cache, getOptional(r.value, v), r.compare)
-	if !found {
-		return 0, false
-	}
-	return bits.GetCardinality(), true
-}
-func (r *lossyCompareByRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
-	if pool.local == nil {
-		return nil, false
-	}
-	cache, _ := pool.local[int(r.nodeID)].compareBy.(*valueBitmapCache[V])
-	if cache == nil {
-		return nil, false
-	}
-	value := getOptional(r.value, v)
-	if _, found := comparedValueCachePeek(cache, value, r.compare); !found {
-		return nil, false
-	}
-	return comparedValueCacheLookup(cache, value, r.compare)
-}
-func (r *lossyCompareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	value := getOptional(r.value, v)
-	if pool.local == nil {
-		r.addMatches(v, dst)
-		return
-	}
-	node := &pool.local[int(r.nodeID)]
-	cache, _ := node.compareBy.(*valueBitmapCache[V])
-	if cache == nil {
-		cache = newValueBitmapCache[V](pool, r.nodeID)
-		node.compareBy = cache
-	}
-	if bits, found := comparedValueCacheLookup(cache, value, r.compare); found {
-		dst.Or(bits)
-		return
-	}
-	if !comparedValueCacheAdmit(cache, value, r.compare) {
-		r.addMatches(v, dst)
-		return
-	}
-	bits := cache.replace(value, pool)
-	r.addMatches(v, bits)
-	dst.Or(bits)
-	cache.commit(bits, pool)
-}
-func (r *lossyCompareByRule[T, V]) estimateCardinality(v T) uint64 {
-	n := r.wildcard.GetCardinality()
-	value, ok := r.value(v)
-	if !ok {
-		return n
-	}
-	for operator := range r.indexes {
-		if !r.present[operator] {
-			continue
-		}
-		first, last, matched := compareByLossyRange(&r.indexes[operator], Operator(operator), value)
-		if matched {
-			n += r.indexes[operator].rangeCardinality(first, last)
-		}
-	}
-	return n
-}
-func (r *lossyCompareByRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
-	return r.estimateCardinality(v)
-}
-func (r *lossyCompareByRule[T, V]) isCardinalityZero(v T) bool { return r.estimateCardinality(v) == 0 }
-func (r *lossyCompareByRule[T, V]) matchesID(v T, id uint32) bool {
-	if r.wildcard.Contains(id) {
-		return true
-	}
-	value, ok := r.value(v)
-	if !ok {
-		return false
-	}
-	for operator := range r.indexes {
-		if !r.present[operator] {
-			continue
-		}
-		first, last, matched := compareByLossyRange(&r.indexes[operator], Operator(operator), value)
-		if matched && r.indexes[operator].rangeContains(first, last, id) {
-			return true
-		}
-	}
-	return false
-}
-func (*lossyCompareByRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
-func (*lossyCompareByRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
-func (*lossyCompareByRule[T, V]) inspectionStrategy() string                   { return "lossy-compare-by" }
-func (*lossyCompareByRule[T, V]) inspectionMode() RuleMode                     { return RuleModeLossy }
-func (r *lossyCompareByRule[T, V]) prepareSearch() {
-	prepareBitmapForSearch(r.wildcard)
-	for operator := range r.indexes {
-		if r.present[operator] {
-			r.indexes[operator].prepareSearch()
-		}
-	}
+	return lessThan
 }
 
 func (*compareByRule[T, V]) rule() {}
@@ -401,6 +160,18 @@ func (r *compareByRule[T, V]) insert(v T, id uint32) {
 		return
 	}
 	operator, _ := r.operator(v)
+	if operator == OperatorEQ {
+		if !r.eqHasRange {
+			r.eqMinimum, r.eqMaximum, r.eqHasRange = value, value, true
+		} else {
+			if r.compare(value, r.eqMinimum) < 0 {
+				r.eqMinimum = value
+			}
+			if r.compare(value, r.eqMaximum) > 0 {
+				r.eqMaximum = value
+			}
+		}
+	}
 	index := r.indexes[operator]
 	if index == nil {
 		created := newOrderedIndexWithHint(r.compare, r.hints[operator])
@@ -408,6 +179,25 @@ func (r *compareByRule[T, V]) insert(v T, id uint32) {
 		r.indexes[operator] = index
 	}
 	index.insert(value, id)
+	if capacity := r.lossyCapacity[operator]; capacity > 0 {
+		for index.buildStatistics().uniqueValues > capacity {
+			index.coarsenOne(compareByDirection(operator))
+		}
+	}
+}
+
+func (r *compareByRule[T, V]) equalityBits(value V) *roaring.Bitmap {
+	index := r.indexes[OperatorEQ]
+	if index == nil {
+		return nil
+	}
+	if r.lossyCapacity[OperatorEQ] == 0 {
+		return index.exact(value)
+	}
+	if !r.eqHasRange || r.compare(value, r.eqMinimum) < 0 || r.compare(value, r.eqMaximum) > 0 {
+		return nil
+	}
+	return index.ceiling(value)
 }
 func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 	value, ok := r.value(v)
@@ -415,8 +205,8 @@ func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 	if !ok {
 		return
 	}
-	if index := r.indexes[OperatorEQ]; index != nil {
-		if bits := index.exact(value); bits != nil {
+	if r.indexes[OperatorEQ] != nil {
+		if bits := r.equalityBits(value); bits != nil {
 			visit(bits)
 		}
 	}
@@ -441,8 +231,8 @@ func (r *compareByRule[T, V]) appendMatchingBitmaps(v T, dst []*roaring.Bitmap) 
 	if !ok {
 		return dst
 	}
-	if index := r.indexes[OperatorEQ]; index != nil {
-		if bits := index.exact(value); bits != nil {
+	if r.indexes[OperatorEQ] != nil {
+		if bits := r.equalityBits(value); bits != nil {
 			dst = append(dst, bits)
 		}
 	}
@@ -469,8 +259,8 @@ func (r *compareByRule[T, V]) estimateCardinality(v T) uint64 {
 	if !ok {
 		return n
 	}
-	if index := r.indexes[OperatorEQ]; index != nil {
-		if bits := index.exact(value); bits != nil {
+	if r.indexes[OperatorEQ] != nil {
+		if bits := r.equalityBits(value); bits != nil {
 			n += bits.GetCardinality()
 		}
 	}

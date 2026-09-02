@@ -230,6 +230,23 @@ focused-сценариях разных кардинальностей, `go test
 сравнение с `v0.8.1` — в
 [`BENCHMARK_V0.8.1_VS_MAIN.md`](../BENCHMARK_V0.8.1_VS_MAIN.md).
 
+## 2026-09-02: `Between` и `CompareBy` переведены на exact ordered layout
+
+По решению владельца шаг 5 завершён с приоритетом унификации и корректности:
+оставшиеся lossy-представления используют общие `orderedIndex`, matcher-ы и
+Local caches независимо от возможной деградации latency, allocations,
+candidate quality или retained memory. Отдельный performance gate не
+выполнялся.
+
+Удалены `lossyComparedBuckets`, `lossyBetweenRule`, `lossyCompareByRule` и их
+aggregate-тесты. Минимальный составной layout стал больше: differential `All`
+учитывает около 70 KiB вместо прежнего лимита 64 KiB, а production fixtures
+используют достижимые доли exact budget. Hard `MemoryLimit` не ослаблен:
+невмещающееся физическое представление по-прежнему возвращает ошибку.
+Корректность подтверждена полной differential-матрицей, включая strict
+boundaries, missing values, duplicate IDs, все `CompareBy`-операторы и
+streaming downgrade; полный и race test gates пройдены.
+
 ## Отклонённые решения
 
 | Эксперимент | Результат | Почему отклонён |

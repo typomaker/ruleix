@@ -245,3 +245,13 @@ func TestOrderedIndexRangeAggregatesPreserveWalkResults(t *testing.T) {
 		}
 	}
 }
+
+func TestOrderedIndexExactAndCeilingOutsideDomain(t *testing.T) {
+	index := newOrderedIndex(cmp.Compare[int])
+	require.Nil(t, index.exact(1))
+	require.Nil(t, index.ceiling(1))
+	index.insertPosting(10, roaring.BitmapOf(1))
+	require.Nil(t, index.exact(9))
+	require.Equal(t, []uint32{1}, index.ceiling(9).ToArray())
+	require.Nil(t, index.ceiling(11))
+}

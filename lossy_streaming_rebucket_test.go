@@ -40,41 +40,13 @@ func TestLossyOrderedStreamingRegridsExpandedRange(t *testing.T) {
 	}
 }
 
-func TestLossyComparedStreamingRegridsBothEdges(t *testing.T) {
-	buckets := lossyComparedBuckets[int]{
-		compare: cmp.Compare[int], minimum: 10, maximum: 30, capacity: 3,
-		boundaries: []int{10, 20, 30},
-		buckets:    []*roaring.Bitmap{roaring.BitmapOf(0), roaring.BitmapOf(1), roaring.BitmapOf(2)},
+func TestQuantizedOrderedStreamingFitsGradually(t *testing.T) {
+	index := newOrderedIndex(cmp.Compare[int])
+	for value := 1; value <= 4; value++ {
+		index.insertPosting(value, roaring.BitmapOf(uint32(value)))
 	}
-	buckets.insert(40, 3)
-	buckets.insert(0, 4)
-	if len(buckets.buckets) != 3 {
-		t.Fatalf("expanded comparator grid has %d buckets, want 3", len(buckets.buckets))
-	}
-	for id, stored := range []int{10, 20, 30, 40, 0} {
-		first, last, ok := buckets.matchingRange(stored, greaterThan, true)
-		if !ok || !buckets.rangeContains(first, last, uint32(id)) {
-			t.Fatalf("stored %d disappeared after comparator rebucketing", stored)
-		}
-	}
-}
-
-func TestLossyComparedStreamingFitsGradually(t *testing.T) {
-	buckets := lossyComparedBuckets[int]{
-		compare: cmp.Compare[int], minimum: 10, maximum: 40, capacity: 4,
-		boundaries: []int{10, 20, 30, 40},
-		buckets: []*roaring.Bitmap{
-			roaring.BitmapOf(0), roaring.BitmapOf(1), roaring.BitmapOf(2), roaring.BitmapOf(3),
-		},
-	}
-	before := buckets.memoryUsage()
-	buckets.coarsenOne()
-	if len(buckets.buckets) != 3 {
-		t.Fatalf("one pressure step has %d buckets, want 3", len(buckets.buckets))
-	}
-	if after := buckets.memoryUsage(); after >= before {
-		t.Fatalf("one pressure step used %d bytes, want less than %d", after, before)
-	}
+	require.True(t, index.coarsenOne(lessThan))
+	require.Equal(t, 3, index.buildStatistics().uniqueValues)
 }
 
 func TestLossyEqualityStreamingRebucketsWithoutDroppingIDs(t *testing.T) {
@@ -289,14 +261,15 @@ func TestLossyStreamingRechecksBudgetAndDowngradesRemainingExactLeaves(t *testin
 }
 
 func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T) {
-	comparedBuckets := func() lossyComparedBuckets[int] {
-		return lossyComparedBuckets[int]{
-			compare: cmp.Compare[int], minimum: 1, maximum: 3, capacity: 3,
-			boundaries: []int{1, 2, 3},
-			buckets: []*roaring.Bitmap{
-				roaring.BitmapOf(1), roaring.BitmapOf(2), roaring.BitmapOf(3),
-			},
+	orderedSide := func(dir direction) *orderedRule[streamingOrderedFixture, int] {
+		side := &orderedRule[streamingOrderedFixture, int]{
+			get: streamingOrderedValue, compare: cmp.Compare[int], dir: dir,
+			wildcard: roaring.New(), index: newOrderedIndex(cmp.Compare[int]), lossyCapacity: 3,
 		}
+		for value := 1; value <= 3; value++ {
+			side.index.insertPosting(value, roaring.BitmapOf(uint32(value)))
+		}
+		return side
 	}
 	t.Run("equality", func(t *testing.T) {
 		rule := &quantizedEqualityRule[streamingOrderedFixture, int]{
@@ -337,32 +310,51 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		require.Same(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
 	})
 	t.Run("between", func(t *testing.T) {
-		rule := &lossyBetweenRule[streamingOrderedFixture, int]{
-			fromWildcard: roaring.New(), untilWildcard: roaring.New(),
-			from: comparedBuckets(), until: comparedBuckets(),
-		}
+		rule := &quantizedBetweenRule[streamingOrderedFixture, int]{&betweenRule[streamingOrderedFixture, int]{
+			from: orderedSide(greaterThan), until: orderedSide(lessThan), compare: cmp.Compare[int],
+		}}
+		require.Same(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
+		require.Equal(t, canonicalBetween, rule.canonicalDescriptor().representation)
+		require.IsType(t, &matchAllRule[streamingOrderedFixture]{}, rule.optimize(0))
 		_, apply, ok := rule.prepareStreamingNext()
 		require.True(t, ok)
 		apply()
-		require.Equal(t, 5, len(rule.from.buckets)+len(rule.until.buckets))
+		require.Equal(t, 5, rule.from.index.buildStatistics().uniqueValues+
+			rule.until.index.buildStatistics().uniqueValues)
 		_, ok = rule.nextStreamingUsage()
 		require.True(t, ok)
 		rule.fitStreamingNext()
-		rule.from = lossyComparedBuckets[int]{compare: cmp.Compare[int], capacity: 1,
-			boundaries: []int{1}, buckets: []*roaring.Bitmap{roaring.BitmapOf(1)}}
-		rule.until = comparedBuckets()
+		rule.from = orderedSide(greaterThan)
+		rule.from.index.coarsenOne(greaterThan)
+		rule.from.index.coarsenOne(greaterThan)
+		rule.until = orderedSide(lessThan)
 		rule.fitStreamingNext()
-		require.Len(t, rule.until.buckets, 2)
+		require.Equal(t, 2, rule.until.index.buildStatistics().uniqueValues)
+		rule.fitStreamingLimit(0)
+		require.Equal(t, 2, rule.from.index.buildStatistics().uniqueValues+
+			rule.until.index.buildStatistics().uniqueValues)
+		rule.fitStreamingNext()
 	})
 	t.Run("compare by", func(t *testing.T) {
-		rule := &lossyCompareByRule[streamingOrderedFixture, int]{wildcard: roaring.New()}
-		rule.present[0], rule.indexes[0] = true, comparedBuckets()
+		common := &compareByRule[streamingOrderedFixture, int]{
+			value: streamingOrderedValue, compare: cmp.Compare[int], wildcard: roaring.New(), eqHasRange: true,
+			eqMinimum: 1, eqMaximum: 3,
+		}
+		common.indexes[0] = &orderedSide(lessThan).index
+		common.lossyCapacity[0] = 3
+		rule := &quantizedCompareByRule[streamingOrderedFixture, int]{common}
+		require.Same(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
+		require.Equal(t, canonicalCompareBy, rule.canonicalDescriptor().representation)
+		require.IsType(t, &matchAllRule[streamingOrderedFixture]{}, rule.optimize(0))
 		_, apply, ok := rule.prepareStreamingNext()
 		require.True(t, ok)
 		apply()
-		require.Len(t, rule.indexes[0].buckets, 2)
+		require.Equal(t, 2, rule.indexes[0].buildStatistics().uniqueValues)
 		_, ok = rule.nextStreamingUsage()
 		require.True(t, ok)
+		rule.fitStreamingNext()
+		rule.fitStreamingLimit(0)
+		require.Equal(t, 1, rule.indexes[0].buildStatistics().uniqueValues)
 		rule.fitStreamingNext()
 	})
 }

@@ -189,6 +189,38 @@ func buildComparedOrderedRepresentations[T any, V any](
 	return representations
 }
 
+func buildQuantizedOrderedRule[T any, V any](r *orderedRule[T, V], wanted int) *orderedRule[T, V] {
+	values := make([]orderedItem[V], 0, r.index.buildStatistics().uniqueValues)
+	for _, block := range r.index.blocks {
+		for _, item := range block.items {
+			values = append(values, orderedItem[V]{value: item.value, bits: item.bits})
+		}
+	}
+	candidate := &orderedRule[T, V]{
+		nodeID: r.nodeID, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
+		wildcard: r.wildcard, index: newOrderedIndex(r.compare), lossyCapacity: max(wanted, 1),
+	}
+	if len(values) == 0 {
+		return candidate
+	}
+	count := min(candidate.lossyCapacity, len(values))
+	width := (len(values) + count - 1) / count
+	for first := 0; first < len(values); first += width {
+		last := min(first+width, len(values))
+		bits := roaring.New()
+		for _, value := range values[first:last] {
+			bits.Or(value.bits)
+		}
+		boundary := values[first].value
+		if r.dir == lessThan {
+			boundary = values[last-1].value
+		}
+		candidate.index.insertPosting(boundary, bits)
+	}
+	candidate.lossyCapacity = count
+	return candidate
+}
+
 func (p *orderedLossyAllPlanner[T, V]) compile(limit uint64) (Rule[T], error) {
 	ladder, err := p.representationLadder()
 	if err != nil {
@@ -233,6 +265,18 @@ func orderedIndexLossyAccounting[V any](index *orderedIndex[V], wildcard *roarin
 	}
 	memory += uint64(len(index.blockPrefix))*8 + uint64(len(index.routing.blocks))*8
 	return memory, items, distinct, all
+}
+
+func quantizedOrderedAccounting[V any](index *orderedIndex[V], wildcard *roaring.Bitmap) (
+	memory, items, distinct uint64,
+) {
+	memory, items, distinct, _ = orderedIndexLossyAccounting(index, wildcard)
+	for _, block := range index.blocks {
+		if len(block.items) == 1 {
+			memory -= bitmapBytes(block.bits) + 8
+		}
+	}
+	return memory, items, distinct
 }
 
 func (r *orderedRule[T, V]) inspectionStrategy() string {

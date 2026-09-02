@@ -494,14 +494,3 @@ func (i *orderedIndex[V]) matches(value V, ascending, inclusive bool, id uint32)
 	})
 	return found
 }
-func (i *orderedIndex[V]) exact(value V) *roaring.Bitmap {
-	if len(i.blocks) == 0 {
-		return nil
-	}
-	block := &i.blocks[i.blockFor(value)]
-	pos := i.searchBlock(block, value)
-	if pos == len(block.items) || i.compare(block.items[pos].value, value) != 0 {
-		return nil
-	}
-	return block.items[pos].bits
-}

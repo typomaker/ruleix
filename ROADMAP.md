@@ -168,7 +168,13 @@ Gate: finest/identity-lossy `Index.Search` больше не выполняет 
 
 ### 5. Унифицировать `Between` и `CompareBy`
 
-Статус: `в работе`
+Статус: `завершён — 2026-09-02`
+
+Результат: `Between` и `CompareBy` переведены на общие exact
+`orderedRule`/`orderedIndex`, отдельные lossy search types и bucket layout
+удалены; differential, boundary, full и race gates подтвердили корректность.
+Performance gate пропущен, а деградация physical shape принята по явному
+решению владельца.
 
 - `Between` хранит нижний и верхний преобразованные ключи в общих ordered
   структурах: lower округляется вниз, upper вверх; используется общий fused
@@ -180,7 +186,8 @@ Gate: finest/identity-lossy `Index.Search` больше не выполняет 
   исходных exact values. Граница должна сохранять представляемый диапазон,
   чтобы повторное огрубление оставалось безопасным.
 - Удалить `lossyBetweenRule`, `lossyCompareByRule` и их отдельные query-key
-  matcher-ы после функционального и performance parity.
+  matcher-ы после функциональной проверки; performance parity для этого шага
+  отменён решением владельца.
 
 Gate: boundary/adversarial differential tests не дают false negatives;
 identity-lossy полностью равен exact, включая strict boundaries, missing

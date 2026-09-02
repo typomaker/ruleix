@@ -116,7 +116,10 @@ func refreshStreamingLossyDetails[T any](rule Rule[T]) (Rule[T], inspectionDetai
 				}
 				details.MemoryLimitBytes, details.MemoryLimitAvailable = typed.details.MemoryLimitBytes, true
 				if details.MemoryUsageBytes > details.MemoryLimitBytes {
-					return nil, inspectionDetails{}, fmt.Errorf("ruleix: Lossy streaming state cannot fit the memory limit")
+					return nil, inspectionDetails{}, fmt.Errorf(
+						"ruleix: Lossy streaming state cannot fit the memory limit: %d > %d",
+						details.MemoryUsageBytes, details.MemoryLimitBytes,
+					)
 				}
 			}
 		}
