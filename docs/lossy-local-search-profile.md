@@ -91,8 +91,8 @@ candidate amplification, изменения публичного результ�
 или состав работы и не являются эквивалентной search-оптимизацией.
 
 Диагностический тест candidate counts был временным и удалён после измерения;
-production и benchmark code не менялись. Результаты корректности по-прежнему
-проверены `TestProductionShapeLossyNeverDropsExactMatches` и
+production и benchmark code не менялись. Результаты корректности были
+проверены существовавшим тогда `TestProductionShapeLossyNeverDropsExactMatches` и
 `TestLossyExactDifferentialEverySupportedRule`.
 
 ## Контекст
@@ -171,10 +171,11 @@ loop; долю каждого concrete matcher следует считать о�
 Корректность проверена командами:
 
 ```sh
-go test -run '^(TestProductionShapeLossyNeverDropsExactMatches|TestLossyExactDifferentialEverySupportedRule)$' -count=1 .
+go test -run '^TestLossyExactDifferentialEverySupportedRule$' -count=1 .
 ```
 
-Оба теста прошли.
+Актуальный differential-тест проходит; удалённый production-shape тест прошёл
+в зафиксированной исторической ревизии.
 
 ## Comparator experiments
 

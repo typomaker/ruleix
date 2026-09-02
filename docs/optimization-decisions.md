@@ -6,6 +6,28 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-02: общий ordered layout для Between/CompareBy отклонён
+
+Прототип перевёл Lossy `Between` и `CompareBy` на общий `orderedIndex`, сохранив
+outward-rounded boundaries, fused `Between` matcher и operator-specific
+`CompareBy` indexes. Differential, boundary и streaming tests прошли, однако
+production-shaped `Index.Search` регрессировал с медианы 26,1 до 76,4 мкс
+при неизменном классе 50% budget. Warm `Local.Search` улучшился примерно с
+252 до 232 нс и сохранил 0 B/op, но это не компенсирует uncached-регрессию.
+
+CPU profiles локализовали дополнительную работу в candidate validation:
+`betweenRule.matchesID` проходил через широкие common block aggregates, а
+`runContainer16.searchRange` занял 18,4% candidate samples. Проверены
+short-circuit после первого найденного ID, блоки 1/4/8, прямые posting probes,
+принудительная bitmap-форма aggregates и bitmap materialization/filtering.
+Лучший общий вариант оставался около 46,8 мкс (+79%), а bitmap-варианты либо
+увеличивали allocations с 14 до 22, либо переставали укладываться в hard
+retained limit. Причина является следствием несовместимых membership shapes:
+legacy fused buckets дают ранний выход по компактному posting, тогда как общий
+range layout выбирает между широким aggregate lookup и несколькими posting
+lookups. Прототип удалён; шаг 5 roadmap остаётся запланированным до появления
+общего layout, который не ухудшает ни один search path.
+
 ## 2026-09-01: удалены крупные build/memory benchmark-матрицы
 
 `BenchmarkLossySelectionMatrix` удалён: один запуск разворачивал 120 дорогих
@@ -20,6 +42,11 @@ build-сценариев на 10 000 записей, дублируя уже з�
 конкретное изменение; исторические build/memory результаты и команды остаются
 в этом документе, `performance-history.md` и Git. Корректность planner-а
 продолжают проверять production-shaped и exact-superset/streaming fixtures.
+
+`TestProductionShapeLossyNeverDropsExactMatches` удалён 2026-09-02: он
+дублировал общий exact-superset differential gate, но добавлял сборки
+production shape на 10 000 записей и 365 поисковых сравнений. Исторические
+упоминания теста ниже относятся к ревизиям, в которых он ещё существовал.
 
 ## 2026-09-01: общий ordered layout принят для standalone operators
 
