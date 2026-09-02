@@ -23,6 +23,18 @@ Exact `CompareBy` регрессировал с 52,8 до 71,1 мкс и с 7 д
 Вернуться к bitmap-only модели можно после появления allocation-free fused
 union/intersection primitive, который не строит временный range bitmap.
 
+Проверка modified Roaring `AndAny` уточнила границу решения. Пул временных
+filter/key-container slices и union array/bitmap containers снизил production
+bitmap-only путь с 34 до 21 allocations/op и с 71 433 до 38 265 B/op. Явный
+caller-owned scratch в `bitmapPool`, переживающий GC, улучшил latency до
+медианы 23,40 мкс, но не снизил 21 allocations/op и 38 264 B/op. Allocation
+profile отнёс остаток к `bitmapContainer.clone`, `arrayContainer.clone` и
+созданию writable containers: это COW-копии самого candidate destination, а не
+временного union. Следовательно, пул scratch bitmap/containers недостаточен.
+Настоящий allocation-free primitive должен писать в reusable non-COW result
+containers либо уметь переиспользовать payload destination; такого API в
+Roaring v2.4.4 нет. Временный fork и Ruleix integration удалены.
+
 ## 2026-09-02: один уровень aggregates принят для lossy range buckets
 
 В `lossyComparedBuckets` принят один accounted aggregate на каждую полную

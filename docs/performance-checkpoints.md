@@ -80,6 +80,22 @@ Canonical lossy leaf/aggregate postings передавались непосре�
 13 allocations/op. Таким образом, bitmap-only вариант иногда сокращает CPU,
 но нарушает allocation gate во всех проверенных конфигурациях. Код удалён.
 
+### Fused `AndAny` scratch prototype
+
+Во временной копии Roaring v2.4.4 `AndAny` получил reusable scratch для cursor
+slices и временных array/bitmap union containers. `sync.Pool`-вариант дал
+production median 25 288 ns/op, 38 265 B/op и 21 allocations/op. Затем scratch
+был закреплён непосредственно за Ruleix `bitmapPool`; median улучшилась до
+23 398 ns/op, но allocation shape остался 38 264 B/op и 21 allocations/op.
+Baseline был 27 456 ns/op, 13 592 B/op и 15 allocations/op.
+
+`-memprofile`/`pprof -alloc_space` локализовал дополнительный payload в
+`bitmapContainer.clone`, `arrayContainer.clone` и writable-container paths.
+Следовательно, оставшиеся шесть allocations создаёт COW mutation candidate
+bitmap, а не временное представление union. Для нулевой добавочной аллокации
+нужен Roaring API, принимающий reusable destination container storage; пул
+только верхнего bitmap или scratch union не закрывает gate. Прототип удалён.
+
 ## 2026-09-01: exact-first против one-pass streaming
 
 Исправление streaming rebucketing устранило аварийный one-bucket collapse.
