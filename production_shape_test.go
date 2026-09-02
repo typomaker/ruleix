@@ -1,12 +1,68 @@
 package ruleix_test
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/typomaker/ruleix"
 )
+
+func productionPhysicalRuleShape(index any) string {
+	value := reflect.ValueOf(index).Elem().FieldByName("root").Elem()
+	var visit func(reflect.Value) string
+	visit = func(node reflect.Value) string {
+		if node.Kind() == reflect.Interface {
+			node = node.Elem()
+		}
+		if node.Kind() == reflect.Pointer {
+			node = node.Elem()
+		}
+		shape := node.Type().String()
+		if children := node.FieldByName("children"); children.IsValid() {
+			shape += "["
+			for index := range children.Len() {
+				if index != 0 {
+					shape += ","
+				}
+				shape += visit(children.Index(index))
+			}
+			shape += "]"
+		}
+		return shape
+	}
+	return visit(value)
+}
+
+func productionAllPhysicalStats(index any) map[string]int {
+	root := reflect.ValueOf(index).Elem().FieldByName("root").Elem().Elem()
+	stats := make(map[string]int)
+	for _, name := range []string{
+		"children", "execution", "planningProviders", "sharedWildcardGroups",
+		"duplicateBitmapIDs", "duplicateEqualityProviders",
+	} {
+		field := root.FieldByName(name)
+		if field.IsValid() && (field.Kind() == reflect.Slice || field.Kind() == reflect.Map) {
+			stats[name] = field.Len()
+		}
+	}
+	return stats
+}
+
+func TestProductionEqualityIdentityUsesExactPhysicalRuleShape(t *testing.T) {
+	constraints, ids := productionBenchmarkDataN(10_000)
+	exact, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
+		productionBenchmarkEqualityOnlySchema(),
+	).Build(ruleix.Zip(constraints, ids))
+	require.NoError(t, err)
+	identity, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](ruleix.Lossy(
+		productionBenchmarkEqualityOnlySchema(), ruleix.MemoryLimit(^uint64(0)),
+	)).Build(ruleix.Zip(constraints, ids))
+	require.NoError(t, err)
+	require.Equal(t, productionPhysicalRuleShape(exact), productionPhysicalRuleShape(identity))
+	require.Equal(t, productionAllPhysicalStats(exact), productionAllPhysicalStats(identity))
+}
 
 func productionLogicConstraint() productionBenchmarkConstraint {
 	base := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)

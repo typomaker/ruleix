@@ -237,3 +237,39 @@ codec.
 максимальный bucket, estimated false-positive rate и candidates/query. После
 этого можно оценивать stable hash/salt и quality-aware score только по
 end-to-end `Index.Search` и `Local.Search`.
+
+## Профилирование equality identity parity 2026-09-02
+
+Parity-нарушение из attribution-серии воспроизведено отдельными процессами:
+Exact `Index.Search` — 18 320 ns/op, identity-lossy — 25 317 ns/op при
+одинаковых 419 451 accounted bytes, 150 candidates/query, 22 640 B/op и
+20 allocs/op. CPU profiles сняты командами:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeAttribution/Equality/<Mode>/IndexSearch$' \
+  -benchtime=3s -count=1 -cpuprofile=/tmp/ruleix-eq-<mode>.cpu .
+go tool pprof -top -nodecount=18 ./ruleix.test /tmp/ruleix-eq-<mode>.cpu
+```
+
+В identity profile `allRule.validateCandidateBitmap` занимает 28,95%
+cumulative против 13,00% у Exact, `Bitmap.Contains` — 13,85% cumulative, а
+`bitmapContainer.contains` — 5,51% flat против 2,08%. Одновременно оба профиля
+содержат заметную работу GC и ОС (`scanObject`, `madvise`, `kevent`), поэтому
+проценты не используются как самостоятельное доказательство причины.
+
+Добавлен production gate
+`TestProductionEqualityIdentityUsesExactPhysicalRuleShape`: он подтверждает
+одинаковые concrete rule types, число children/execution/planning providers,
+shared-wildcard groups и duplicate-bitmap metadata у Exact и identity-lossy.
+Следовательно, расхождение не объясняется отдельным search type, потерянным
+executor capability или отличающимся числом alias-групп.
+
+Попытка атрибутировать профиль через root и child `Inspector.CandidateCheck`
+дала ноль в обоих режимах: этот production equality workload проходит через
+bitmap materialization/validation, а счётчик отражает только прямой
+child-ID membership path. Диагностический benchmark не сохранён, поскольку
+метрика не наблюдает исследуемую работу. Текущая локализация — различающаяся
+стоимость физически одинакового bitmap validation path; до сравнения container
+shape и порядка выбранных operands это остаётся измеренным симптомом, а не
+установленной причиной.
