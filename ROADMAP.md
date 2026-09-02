@@ -214,6 +214,35 @@ values, duplicate IDs и все операторы.
 - Обновить архитектуру, performance history, optimization decisions и
   changelog только после принятия реализации.
 
+Порядок выполнения оставшейся работы:
+
+1. Зафиксировать search-first baseline и атрибуцию amplification отдельно для
+   equality, standalone ordered, `Between`, `CompareBy` и их production `All`.
+   `Local.Search` и `Index.Search` являются приоритетными gates; Build time и
+   build-time allocations могут регрессировать ради доказанного улучшения
+   поиска, но hard retained limit и streaming correctness не ослабляются.
+2. Проверить equality hash и quantizer независимо от ordered path: измерить
+   распределение posting cardinality, weighted collision cost, максимальный
+   bucket, false-positive rate и candidates/query на каждой реально выбираемой
+   ступени. Альтернативный стабильный hash или build-selected salt принимается
+   только при улучшении end-to-end поиска, а не одной collision-метрики.
+3. Доработать ordered key quantizer: выбирать безопасные соседние классы по
+   ожидаемому расширению postings на границах и сохранять достаточный
+   представляемый диапазон для повторного streaming coarsening без исходных
+   exact values. Проверять lower/upper и strict/inclusive направления отдельно.
+4. Повторить aggregate planning после улучшения leaf quantizers: распределять
+   retained budget с учётом измеренной candidate amplification, не только
+   освобождаемых bytes. Более дорогой глобальный анализ во время Build допустим.
+5. Если после улучшения physical shape профили всё ещё указывают на common
+   ordered membership, добавить только универсальную оптимизацию общего
+   `orderedIndex` — dense layout или compact membership metadata, применимую
+   тем же кодом также к Exact. Режимные поля, `if lossy`, отдельные matcher-ы,
+   caches, tree branches и search algorithms запрещены.
+6. Для каждого принятого изменения повторить production, mixed shared-key,
+   range-heavy и adversarial серии, а затем финальные differential, race,
+   streaming-scale, retained-memory, CPU и allocation gates. Exact и
+   identity-lossy должны оставаться физически и поведенчески эквивалентными.
+
 Финальный gate: ни один публичный search path не регрессирует по корректности,
 latency, allocations или retained memory. Если общий layout ухудшает exact или
 lossy workload, unified-реализация сохраняется, а шаг нельзя завершить, пока

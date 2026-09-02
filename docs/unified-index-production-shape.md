@@ -138,6 +138,18 @@ Lossy: 47 770 ns/op и 5 482 ns/op Local. Deterministic-build gate закрыт,
 
 ## Возможные пути решения
 
+Решение владельца от 2026-09-02 задаёт search-first порядок: latency и
+allocations `Local.Search`/`Index.Search` приоритетнее стоимости Build. Более
+дорогие build-time анализ, выбор quantizer-а и allocations допустимы, если
+улучшают оба публичных search path; hard retained-memory limit, correctness и
+streaming downgrade остаются обязательными.
+
+Exact и Lossy не могут расходиться внутри дерева или executor-а. Lossy остаётся
+только build-скомпилированным преобразованием ключа. Любые новые layout,
+membership metadata, matcher, routing и cache допустимы лишь как универсальные
+механизмы общего индекса, используемые тем же кодом также для Exact. Отдельные
+lossy branches, search types и проверки режима запрещены.
+
 1. Добавить quality-aware score aggregate planner-а:
    учитывать ожидаемую candidate amplification вместе с released bytes, не
    меняя hard retained cap. Проверять на production, mixed shared-key и
@@ -150,6 +162,14 @@ Lossy: 47 770 ns/op и 5 482 ns/op Local. Deterministic-build gate закрыт,
    если CPU profiles после улучшения planner-а всё ещё показывают
    `matchesChildID`; metadata должна входить в accounting и использоваться
    одинаковым matcher-ом, а не создавать отдельный lossy engine.
+
+Equality hash проверяется отдельно от ordered quantization. Для equality gate
+нужно сравнивать weighted bucket collisions, максимальный posting, estimated
+false-positive rate и candidates/query на реально выбранных precision levels.
+Смена стабильного hash или build-selected salt не считается исправлением без
+end-to-end выигрыша. Для ordered правил hash отсутствует: следующий quantizer
+должен минимизировать расширение postings у outward-rounded lower/upper
+границ, сохраняя key-only повторное огрубление.
 
 До реализации и сопоставимого повторного профилирования принятого решения шаг
 6 нельзя завершить.
