@@ -70,15 +70,70 @@ cache структур. Он всегда использует те же стр�
 сохранённый уровень её точности:
 
 ```text
-physical key = quantize(input key, current level)
-level 0: quantize(key, 0) = key
-level N: quantize(key, N) = outward/coarser key
+physical key = quantize(semantic key, current level, role)
+level 0: quantize(key, 0, role) = exact physical key for key
+level N: quantize(key, N, role) = conservative coarser physical key
 ```
 
 Exact всегда работает на identity level 0. Lossy также начинается с level 0 и
-переходит на следующий уровень только при memory pressure. Insert, rebuild и
-search обязаны применять одну и ту же функцию текущего уровня; за пределами
-этого преобразования режим не должен быть виден общим exact-структурам.
+переходит на следующий уровень только при memory pressure. Quantizer имеет две
+однозначные операции одного контракта:
+
+```text
+key(value, level, role) -> physical key for insert/search
+next(current physical key, level, role) -> physical key at level + 1
+```
+
+Для любого значения и role обязателен закон вложенности:
+
+```text
+next(key(value, N, role), N, role) == key(value, N+1, role)
+```
+
+Insert и search используют `key`; полный rebuild использует `next`. За
+пределами этих преобразований режим не должен быть виден общим exact-
+структурам.
+
+`role` не обозначает Exact/Lossy. Для equality он один. Для ordered он явно
+задаёт сторону консервативного преобразования: stored lower округляется вниз,
+его query boundary — вверх; stored upper округляется вверх, его query boundary
+— вниз. Strict/inclusive остаётся параметром общего matcher-а и не выбирает
+другой physical layout. Таким образом insert и search вызывают один transformer
+с разным направлением одной и той же boundary-семантики, а не разные lossy
+алгоритмы.
+
+Общий equality physical key задаётся заранее и не меняет Go-тип между уровнями:
+
+```text
+equalityPhysicalKey[V] = exact(V) | bucket(uint64)
+level 0 -> exact(V)
+level N -> bucket(hashPrefix(V, N))
+```
+
+На level 0 tagged key содержит исходное `V`. После полного rebuild на level 1+
+новое поколение содержит только bucket payload; exact `V` старого поколения не
+удерживается. Exact и Lossy используют один `equalityIndex[equalityPhysicalKey[V]]`
+и один `eqRule`; запрещено переключать generic specialization или rule type при
+downgrade.
+
+Операция смены уровня всегда транзакционна и имеет один порядок действий:
+
+1. Построить пустое поколение того же exact index type.
+2. Для каждого текущего `(physical key, bitmap)` вычислить ключ уровня `N+1`.
+3. Вставить bitmap под новым ключом либо объединить его с существующим.
+4. Проверить accounting и сохранение всех IDs.
+5. Одним присваиванием опубликовать новое поколение и `current level = N+1`.
+6. Удалить все ссылки на старое поколение и продолжить чтение input.
+
+Частичное изменение текущего поколения, параллельная публикация двух уровней и
+fallback к заранее подготовленному representation запрещены.
+
+Режим задаётся только внешней Build-политикой: отсутствие `Lossy` означает, что
+контроллер никогда не инициирует переход с level 0; `Lossy(MemoryLimit)`
+разрешает контроллеру повышать уровень. Сам `eqRule`, `orderedRule` и их indexes
+не определяют режим по level, наличию quantizer-а или другому флагу. Ветвление
+по номеру уровня разрешено только внутри обязательного key transformer.
+`Inspect.Mode` получает Exact/Lossy из policy metadata, а не из physical rule.
 
 Текущий уровень сохраняется в правиле и одинаково применяется к последующим
 insert и search values. Исходные exact keys после успешного перехода не
@@ -163,6 +218,12 @@ downgrade прошли correctness, accounting, hard-limit и diff-coverage gate
   сразу преобразуются текущим equality quantizer.
 - Сделать hash-prefix/bucket levels вложенными, чтобы следующий storage key
   вычислялся только из текущего storage key.
+- Использовать одну фиксированную equality ladder: level 0 хранит exact key;
+  level 1 хранит старшие 16 бит стабильного полного hash; каждый следующий
+  уровень удаляет ровно один младший retained bit; level 17 хранит 0 bits и
+  является единственным universal equality bucket. Нестепенные bucket counts,
+  build-selected salts и дополнительные промежуточные representations в этот
+  milestone не входят.
 - При повышении уровня полностью перекладывать текущий `equalityIndex`, сливая
   bitmap только у ключей с одинаковым новым значением.
 - Удалить static representation ladder и параллельное хранение equality
@@ -252,8 +313,13 @@ Exact. Performance не измеряется и не оптимизируетс�
 gate обеспечивает hard limit и допускает terminal fallback только при публикации;
 full, race, deterministic и 100% diff-coverage проверки пройдены.
 
-- На каждом checkpoint получать для каждого доступного листа реальный либо
-  точно рассчитанный `nextLevelUsage` полного следующего поколения.
+- На каждом checkpoint для каждого доступного листа материализовать ровно одно
+  временное полное поколение уровня `N+1` тем же rebuild primitive и измерить
+  его фактический accounted `nextLevelUsage`; формула-оценка, выборка keys и
+  заранее сохранённый candidate запрещены.
+- До выбора сохранить не более одного временного поколения на лист. После
+  выбора опубликовать поколение выбранного листа, а временные поколения всех
+  остальных листьев немедленно освободить.
 - Выбирать один лист по максимальному `currentUsage - nextLevelUsage`, затем
   применять ровно один глобальный переход уровня и повторять до soft target.
 - Сохранить nested `MemoryLimit`, deterministic tie-break и ошибку Build, если
@@ -300,7 +366,14 @@ Gate: все функциональные и memory gates проходят, prod
   search, cardinality, `matchesID`, planning lookup, Local cache и bitmap
   interning; mode-specific методы поиска запрещены.
 - Использовать один общий `equalityIndex` physical layout. Тип и форма storage
-  key задаются общей key transformation, а не выбором отдельного lossy rule.
+  key — `equalityPhysicalKey[V]` с взаимоисключающими exact/bucket payload;
+  они задаются общей key transformation, а не выбором отдельного lossy rule.
+- На level 0 общий `eqRule` записывает `exact(V)`. Первый полный rebuild
+  преобразует каждый такой ключ в `bucket(hashPrefix(V, 1))`; последующие
+  rebuild вычисляют родительский bucket только из текущего bucket payload.
+- После level 1 ни один опубликованный key или build-state не должен удерживать
+  exact `V`; смена generic specialization `equalityIndex[V] ->
+  equalityIndex[uint64]` запрещена.
 - Сохранить build-only полный rebuild поколения, не вводя отдельный runtime
   wrapper или search branch для Lossy.
 
@@ -330,9 +403,12 @@ Exact, identity-Lossy и lossy equality проходят одну реализа
   уровня при pressure.
 - Убрать проверки режима из общих posting/index/matcher/range/cache структур:
   они получают уже преобразованный physical key и не знают источник уровня.
-- Свести storage и query transformation к одному контракту с явно заданным
-  outward-направлением там, где ordered insert и search требуют разных сторон
-  одной границы.
+- Оставить решение о разрешении pressure переходов во внешнем Lossy Build-
+  controller; общий rule не выводит Exact/Lossy из current level, а inspection
+  получает mode из metadata соответствующего policy decorator-а.
+- Свести storage и query transformation к одному `quantize(key, level, role)`;
+  допустимые ordered roles и их направления полностью заданы в общей цели
+  milestone, а отдельные mode-specific функции или wrappers запрещены.
 
 Gate: unit tests напрямую подтверждают identity level 0 для всех семейств;
 Exact и identity-Lossy имеют одинаковые rule/index/search types и поведение,
@@ -343,9 +419,18 @@ production search code нет ветвления по Exact/Lossy. Benchmarks н
 
 Статус: `запланирован`
 
-- Уточнить функцию текущего boundary level для значений внутри и за пределами
-  наблюдаемого диапазона: поздний insert обязан пройти тот же уровень
-  округления, что query, и не может неявно добавлять exact key в coarser index.
+- Реализовать однозначную функцию текущего boundary level для arbitrary
+  comparator. Внутри наблюдаемого диапазона она выбирает ближайшую retained
+  boundary в заданном outward-направлении. За пределами диапазона, когда
+  существующей outward boundary нет, `key` возвращает само значение; во время
+  Build insert сохраняет его как новую крайнюю boundary текущего уровня, а
+  immutable search использует тот же возвращённый ключ только как transient
+  lookup/range boundary и не изменяет index. Это часть quantizer-а, а не обход
+  округления.
+- Новая крайняя boundary участвует в следующем полном `N -> N+1` rebuild на
+  общих основаниях. Нельзя немедленно перестраивать остальные boundaries,
+  менять номер уровня или сохранять отдельный exact tail только из-за позднего
+  extreme value.
 - Обеспечить вложенность boundary levels и эквивалентность последовательного
   `N -> N+1` прямому округлению exact value на `N+1` без сохранения exact keys.
 - Исправить оставшиеся inspection, numeric-kind и compound-downgrade failures;
@@ -356,10 +441,11 @@ production search code нет ветвления по Exact/Lossy. Benchmarks н
 - Обновить canonical architecture и lossy contract в соответствии с реально
   общей Exact/Lossy реализацией.
 
-Gate: `go test ./...` и race проходят; late comparator values не создают
-неокруглённые keys, `Lossy ⊇ Exact` сохраняется на всех уровнях, отдельные
-lossy search types отсутствуют и diff coverage изменённого production-кода не
-ниже 90%. Performance benchmarks и оптимизация всё ещё запрещены.
+Gate: `go test ./...` и race проходят; late comparator values следуют явно
+заданному edge-правилу и после следующего pressure rebuild входят в общий более
+грубый уровень, `Lossy ⊇ Exact` сохраняется на всех уровнях, отдельные lossy
+search types отсутствуют и diff coverage изменённого production-кода не ниже
+90%. Performance benchmarks и оптимизация всё ещё запрещены.
 
 ### 12. Выполнить benchmarks, profiles и только затем оптимизацию
 
