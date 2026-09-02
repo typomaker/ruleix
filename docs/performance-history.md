@@ -1,5 +1,12 @@
 # История производительности
 
+## 2026-09-02: baseline шага 5 Between/CompareBy
+
+Baseline на `0598735` зафиксировал production Lossy50: 27 456 ns/op для Index,
+248,2 ns/op для warm Local, 80 candidates/query и прежние allocation classes.
+Полный focused/shared-key протокол и команды находятся в
+[`performance-checkpoints.md`](performance-checkpoints.md).
+
 ## 2026-09-02: lossy range aggregate checkpoint
 
 Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Baseline

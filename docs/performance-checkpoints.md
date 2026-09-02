@@ -4,6 +4,39 @@
 [`performance-history.md`](performance-history.md) и хранит подробные серии,
 не относящиеся к текущему release summary.
 
+## 2026-09-02: baseline шага 5 Between/CompareBy
+
+Перед повторной унификацией `Between` и `CompareBy` снят baseline на `0598735`:
+Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Production Lossy50 с
+бюджетом 377 122 bytes и 80 candidates/query получил медианы 27 456 ns/op,
+13 592 B/op, 15 allocs/op для `Index.Search` и 248,2 ns/op, 0 B/op,
+0 allocs/op для warm `Local.Search`. Focused candidate filtering `CompareBy`
+получил медиану 52 812 ns/op, 21 056 B/op и 7 allocs/op; selective exact
+`Between` — 35 198 ns/op, 19 497 B/op и 14 allocs/op.
+
+Shared-key checkpoint подтвердил identity gate: Exact/identity-lossy дали
+медианы 54 387/54 742 ns/op для Index и 59,92/60,03 ns/op для warm Local при
+одинаковых 486 463 accounted bytes, 2,121 candidates/query и allocation
+classes. Lossy50 дал 50 142 ns/op и 1 620 ns/op соответственно, 241 472
+accounted bytes и 3,069 candidates/query. Команды:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeLossySearch/(Index|Local)$' \
+  -benchmem -benchtime=500ms -count=5 .
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^(BenchmarkAllCompareByCandidateFiltering|BenchmarkBetweenSelectiveSide)$' \
+  -benchmem -benchtime=300ms -count=5 .
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkSharedKeyBaseline/(Exact|IdentityLossy|Lossy50)/(IndexSearch|WarmLocalSearch)$' \
+  -benchmem -benchtime=300ms -count=3 .
+```
+
+Следующий кандидат обязан сохранить эти allocation classes, candidate quality
+и retained budget без регрессии любого search path. Предыдущий общий
+`orderedIndex` prototype не является кандидатом: его доказанно медленный
+aggregate membership path сначала заменяется leaf/aggregate range traversal.
+
 ## 2026-09-01: exact-first против one-pass streaming
 
 Исправление streaming rebucketing устранило аварийный one-bucket collapse.
