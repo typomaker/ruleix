@@ -357,3 +357,34 @@ child-ID membership path. Диагностический benchmark не сохр
 стоимость физически одинакового bitmap validation path; до сравнения container
 shape и порядка выбранных operands это остаётся измеренным симптомом, а не
 установленной причиной.
+
+## Отклонённый greedy quality score 2026-09-02
+
+Проверен build-only selector, минимизирующий оценённый рост candidates на
+освобождённый байт. Equality использовал weighted collision estimate, ordered
+семейства — отношение исходных boundaries к сохранённым классам. Дополнительно
+проверено ограничение знаменателя только байтами, нужными до hard limit. Код
+эксперимента удалён после измерений.
+
+На production `All` кандидат улучшил physical shape с 1 722 до 1 210
+candidates/query. Сопоставимая серия против `d010cf2`, Apple M1 Max, macOS
+arm64, Go 1.26.0, `GOMAXPROCS=1`, `500ms x5`, дала median `Index.Search`
+48 421 → 47 081 ns/op, 95 658 → 94 042 B/op, 29 → 30 allocs/op; warm
+`Local.Search` 5 482 → 4 067 ns/op, без allocations. Однако обязательный mixed
+shared-key gate регрессировал: сопоставимые `3s x1` процессы дали 68 474 →
+106 702 ns/op (+55,8%), 25 720 → 28 825 B/op и 20 → 23 allocs/op; accounted
+shape уменьшился с 220 790 до 161 534 bytes при доступном 50%-лимите, а
+candidates/query выросли 3,155 → 3,414.
+
+CPU profiles сняты `BenchmarkSharedKeyBaseline/Lossy50/IndexSearch` с
+`-benchtime=3s -cpuprofile`. В baseline/candidate Roaring `union2by2` занимал
+53,27%/56,05% flat, `Bitmap.AndAny` — 58,41%/62,09% cumulative. Это связывает
+регрессию с более грубой дискретной комбинацией posting representations и
+дополнительной bitmap union/intersection работой, а не с runtime scoring:
+selector выполнялся только во время Build.
+
+Локальный greedy ratio отклонён: он не учитывает глобальный дискретный frontier
+комбинаций и может заметно недоиспользовать retained budget. Следующий planner
+эксперимент должен выбирать комбинацию уровней глобально (Pareto frontier или
+bounded knapsack), сохранять детерминизм и проверяться одновременно на
+production, mixed shared-key и adversarial сериях.
