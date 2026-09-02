@@ -1,12 +1,12 @@
 # История производительности
 
-## 2026-09-02: baseline шага 5 Between/CompareBy
+## 2026-09-02: незавершённый production gate общей реализации
 
-Baseline на `0598735` зафиксировал production Lossy50: 27 456 ns/op для Index,
-248,2 ns/op для warm Local, 80 candidates/query и прежние allocation classes.
-Полный focused/shared-key протокол и команды находятся в
-[`performance-checkpoints.md`](performance-checkpoints.md).
-
+Unified `6855a8a` против `0598735`: production Lossy50 median вырос
+27 456 → 46 344 ns/op для Index и 248,2 → 318,1 ns/op для warm Local;
+candidates 80 → 150, allocations 15 → 16. Реализация сохранена, причины,
+профили, пройденные gates и пути исправления записаны в
+[`unified-index-production-shape.md`](unified-index-production-shape.md).
 ## 2026-09-02: lossy range aggregate checkpoint
 
 Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Baseline

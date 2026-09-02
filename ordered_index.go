@@ -52,6 +52,7 @@ type orderedRangeBlock struct {
 func newOrderedIndex[V any](compare Compare[V]) orderedIndex[V] {
 	return orderedIndex[V]{compare: compare}
 }
+
 func newOrderedIndexWithHint[V any](compare Compare[V], hint orderedBuildStatistics) orderedIndex[V] {
 	itemCapacity := capacityHint(hint.uniqueValues)
 	if itemCapacity > orderedBlockSize*2 {
@@ -417,80 +418,4 @@ func (i *orderedIndex[V]) insertItem(item *orderedItem[V]) {
 	i.blocks = append(i.blocks, orderedBlock[V]{})
 	copy(i.blocks[blockIndex+2:], i.blocks[blockIndex+1:])
 	i.blocks[blockIndex+1] = right
-}
-
-func (i *orderedIndex[V]) walk(value V, ascending, inclusive bool, visit func(*roaring.Bitmap)) {
-	if len(i.blocks) == 0 {
-		return
-	}
-	blockIndex := i.blockFor(value)
-	block := &i.blocks[blockIndex]
-	if ascending {
-		lo, hi := 0, len(block.items)
-		for lo < hi {
-			mid := int(uint(lo+hi) >> 1)
-			cmp := i.compare(block.items[mid].value, value)
-			if cmp < 0 || !inclusive && cmp == 0 {
-				lo = mid + 1
-			} else {
-				hi = mid
-			}
-		}
-		if lo == 0 {
-			visit(block.bits)
-		} else {
-			for pos := lo; pos < len(block.items); pos++ {
-				visit(block.items[pos].bits)
-			}
-		}
-		i.walkBlockRange(blockIndex+1, len(i.blocks), visit)
-		return
-	}
-	lo, hi := 0, len(block.items)
-	for lo < hi {
-		mid := int(uint(lo+hi) >> 1)
-		cmp := i.compare(block.items[mid].value, value)
-		if cmp < 0 || inclusive && cmp == 0 {
-			lo = mid + 1
-		} else {
-			hi = mid
-		}
-	}
-	if lo == len(block.items) {
-		visit(block.bits)
-	} else {
-		for pos := lo - 1; pos >= 0; pos-- {
-			visit(block.items[pos].bits)
-		}
-	}
-	i.walkBlockRange(0, blockIndex, visit)
-}
-
-func (i *orderedIndex[V]) walkBlockRange(first, last int, visit func(*roaring.Bitmap)) {
-	for first < last && first%orderedRangeBlockSize != 0 {
-		visit(i.blocks[first].bits)
-		first++
-	}
-	for first+orderedRangeBlockSize <= last {
-		rangeIndex := first / orderedRangeBlockSize
-		if rangeIndex >= len(i.rangeBlocks) || i.rangeBlocks[rangeIndex].first != first {
-			break
-		}
-		visit(i.rangeBlocks[rangeIndex].bits)
-		first += orderedRangeBlockSize
-	}
-	for first < last {
-		visit(i.blocks[first].bits)
-		first++
-	}
-}
-
-func (i *orderedIndex[V]) matches(value V, ascending, inclusive bool, id uint32) bool {
-	found := false
-	i.walk(value, ascending, inclusive, func(bits *roaring.Bitmap) {
-		if !found && bits.Contains(id) {
-			found = true
-		}
-	})
-	return found
 }

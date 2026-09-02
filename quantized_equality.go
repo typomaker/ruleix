@@ -257,7 +257,7 @@ func (r *quantizedEqualityRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 }
 func (*quantizedEqualityRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool)      {}
 func (*quantizedEqualityRule[T, V]) collectBuildStatistics([]nodeBuildStatistics) {}
-func (*quantizedEqualityRule[T, V]) inspectionStrategy() string                   { return "lossy-grouped-hash" }
+func (*quantizedEqualityRule[T, V]) inspectionStrategy() string                   { return "equality" }
 func (*quantizedEqualityRule[T, V]) inspectionMode() RuleMode                     { return RuleModeLossy }
 func (r *quantizedEqualityRule[T, V]) prepareSearch() {
 	prepareBitmapForSearch(r.wildcard)

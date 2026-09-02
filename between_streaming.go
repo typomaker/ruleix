@@ -9,8 +9,7 @@ func (r *quantizedBetweenRule[T, V]) canonicalDescriptor() canonicalRuleDescript
 	return descriptor
 }
 
-func (r *quantizedBetweenRule[T, V]) inspectionStrategy() string { return "lossy-between-ordered" }
-func (*quantizedBetweenRule[T, V]) inspectionMode() RuleMode     { return RuleModeLossy }
+func (*quantizedBetweenRule[T, V]) inspectionMode() RuleMode { return RuleModeLossy }
 func (r *quantizedBetweenRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.from.wildcard.GetCardinality() == total && r.until.wildcard.GetCardinality() == total {
 		return newMatchAllRule[T](r.from.wildcard)

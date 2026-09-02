@@ -203,8 +203,8 @@ exact equality, хотя postings внутри индекса адресуютс
 
 ### Целевой контракт ключей общей exact/lossy-архитектуры
 
-Этот контракт задаёт форму миграции к общим posting-структурам. Он не
-утверждает, что текущие отдельные `lossy*Rule` уже ей соответствуют.
+Этот контракт описывает действующие общие posting-структуры; `quantized*Rule`
+остаются только build/streaming wrappers и не задают отдельный search engine.
 
 `exact key` — полное build-скомпилированное представление значения, достаточное
 для сохранения семантики оператора без коллизий. Для equality два значения
@@ -240,11 +240,8 @@ bitmap-ы совпавших ключей и считает новое поко�
 Старые bitmap-ы не изменяются, поэтому владелец либо атомарно принимает
 полностью собранную пару `(generation, accounting)` и освобождает прежнюю map,
 либо при ошибке продолжает использовать прежнее поколение. Primitive является
-общей build-only границей для последующей миграции equality и ordered
-layout-ов. На шаге 2 повторно проверены его независимость поколения, слияние
-коллизий и checked accounting; перенос equality rebucket остаётся scope шага
-3, а numeric regrid и comparator coarsening — шага 4. До соответствующих
-performance gates их специализированные rebuild-пути остаются действующими.
+общей build-only границей equality и ordered layout-ов. Последующие шаги
+перевели equality rebucket и ordered comparator coarsening на эти primitives.
 
 Для equality диапазоном класса служит вложенный интервал полного hash-space.
 Лестница сохраняет четыре уровня на каждый двукратный диапазон bucket count:
@@ -254,9 +251,8 @@ performance gates их специализированные rebuild-пути о�
 или исходного значения. Для
 ordered-ключей класс хранит замкнутую оболочку представимых exact keys.
 Огрубление объединяет соседние оболочки. Это позволяет безопасно повторять
-преобразование после удаления исходных значений. Пересчитываемые numeric grids
-этому более строгому требованию пока не соответствуют; они остаются
-действующим legacy-путём до замены последующими шагами ROADMAP.
+преобразование после удаления исходных значений. Numeric и comparator-backed
+ordered classes используют один и тот же envelope/rebuild контракт.
 
 Нулевое значение с `ok == true` всегда кодируется как конкретный ключ;
 `ok == false` остаётся отдельным wildcard posting и не проходит quantizer.
@@ -290,6 +286,14 @@ matcher и Local cache остаются exact-реализацией. Для с�
 Legacy `lossyComparedBuckets`, `lossyBetweenRule` и `lossyCompareByRule`
 удалены. Повторное огрубление независимо клонирует текущее поколение postings,
 объединяет соседнюю пару и не требует исходных exact values.
+
+`Inspect.Strategy` называет общее физическое семейство (`equality`, `ordered`,
+`between`, `compare-by`), а не lossy-вариант layout. Exact/lossy различаются
+через `Inspect.Mode`; `Granularity` сообщает число выбранных quantized key
+classes. Финальная production-shape проверка обнаружила незавершённые latency,
+candidate-quality и deterministic-build gates; реализация сохраняется до
+исправления по отчёту
+[`unified-index-production-shape.md`](unified-index-production-shape.md).
 Ordered gate дополнительно зафиксировал детерминированный порядок equality
 posting rebuild: planner и повторное streaming coarsening сортируют `uint64`
 keys перед merge и публикацией, чтобы соседний aggregate pressure не зависел
@@ -420,14 +424,11 @@ Equality использует hash buckets для встроенных скал�
 плавное соотношение retained memory и collision candidates. В search path нет
 reflection. Интерфейсы остаются типизированной
 ошибкой `Build`: их динамический тип нельзя безопасно кодировать без runtime
-диспетчеризации. Ordered-правила используют `uint64` mapping для
-чисел и comparator-ordered buckets для произвольного `V`. `Between` компилирует обе
-стороны в одно fused-представление: хранимая нижняя граница округляется вниз к
-началу comparator-bucket, верхняя — вверх к его концу. `CompareBy` сохраняет
-отдельные bucket-индексы пяти операторов и объединяет подходящие диапазоны.
-Оба представления имеют локальный query cache; после прогрева поиск не
-аллоцирует. В search path нет reflection; структурный обход применяется только
-при build-time accounting.
+диспетчеризации. Ordered-правила используют общий `orderedIndex` для чисел и
+произвольного `V`. `Between` хранит две outward-rounded ordered стороны;
+`CompareBy` — до пяти ordered-индексов операторов. Exact и lossy используют
+одни matcher-ы и Local caches. В search path нет reflection; структурный обход
+применяется только при build-time accounting.
 
 ## Параллелизм и жизненный цикл
 

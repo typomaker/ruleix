@@ -234,7 +234,7 @@ maps the full hash to non-power-of-two counts without modulo bias. Planning
 uses actual accounted Roaring and logical map-slot bytes and discards levels
 that release no additional retained memory.
 
-The scalar fixture requires selective `lossy-grouped-hash` behavior, exact-
+The scalar fixture requires selective lossy `equality` behavior, exact-
 result superset semantics, deterministic repeated/shuffled planning, and zero
 warm `Local.Search` allocations for ordinary and named scalar types.
 Unsupported dynamic composites return an internal typed `equalityCodecError`

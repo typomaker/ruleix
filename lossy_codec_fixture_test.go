@@ -298,7 +298,7 @@ func testCodecFixture[V comparable](t *testing.T, name string, values []V, wantS
 		granularity, ok := snapshot.Granularity()
 		require.True(t, ok)
 		if wantSelective {
-			require.Equal(t, "lossy-grouped-hash", snapshot.Strategy())
+			require.Equal(t, "equality", snapshot.Strategy())
 		} else {
 			require.Equal(t, uint64(1), granularity)
 			require.Equal(t, "lossy-equality", snapshot.Strategy())
@@ -384,7 +384,7 @@ func TestLossyCodecFixtureBuildOrderAndWorkingPressure(t *testing.T) {
 	}
 	shuffled := codecFixtureSnapshot(t, shuffledConstraints, shuffledIDs, get, limit)
 	require.Equal(t, baseline, shuffled)
-	require.Equal(t, "lossy-grouped-hash", baseline.strategy)
+	require.Equal(t, "equality", baseline.strategy)
 	require.LessOrEqual(t, baseline.usage, limit)
 }
 

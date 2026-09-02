@@ -280,9 +280,6 @@ func quantizedOrderedAccounting[V any](index *orderedIndex[V], wildcard *roaring
 }
 
 func (r *orderedRule[T, V]) inspectionStrategy() string {
-	if r.lossyCapacity > 0 {
-		return "lossy-ordered-buckets"
-	}
 	return "ordered"
 }
 func (r *orderedRule[T, V]) inspectionMode() RuleMode {

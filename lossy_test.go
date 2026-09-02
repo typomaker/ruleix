@@ -219,7 +219,7 @@ func TestLossyEqualityNeverDropsExactMatches(t *testing.T) {
 		requireSuperset(t, want, got)
 	}
 	require.Equal(t, RuleModeLossy, inspector.Snapshot().Mode())
-	require.Equal(t, "lossy-grouped-hash", inspector.Snapshot().Strategy())
+	require.Equal(t, "equality", inspector.Snapshot().Strategy())
 }
 
 //nolint:lll // Full exact and lossy constructors are kept adjacent for comparison.

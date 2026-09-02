@@ -137,7 +137,7 @@ func TestOrderedLossyLadderPublishesCommonIndex(t *testing.T) {
 	wrapped := ladder[1].compiled.(*inspectionDetailsRule[streamingOrderedFixture])
 	quantized := wrapped.child.(*quantizedOrderedRule[streamingOrderedFixture, int])
 	require.NotEmpty(t, quantized.index.blocks)
-	require.Equal(t, "lossy-ordered-buckets", quantized.inspectionStrategy())
+	require.Equal(t, "ordered", quantized.inspectionStrategy())
 	require.Equal(t, RuleModeLossy, quantized.inspectionMode())
 }
 

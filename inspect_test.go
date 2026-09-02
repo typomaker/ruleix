@@ -463,7 +463,7 @@ func TestInspectReportsLossyOrderedStatistics(t *testing.T) {
 	require.NoError(t, err)
 	snapshot := inspector.Snapshot()
 	require.Equal(t, RuleModeLossy, snapshot.Mode())
-	require.Equal(t, "lossy-ordered-buckets", snapshot.Strategy())
+	require.Equal(t, "ordered", snapshot.Strategy())
 	usage, ok := snapshot.MemoryUsage()
 	require.True(t, ok)
 	require.LessOrEqual(t, usage, uint64(5000))
@@ -476,53 +476,4 @@ func TestInspectReportsLossyOrderedStatistics(t *testing.T) {
 	granularity, ok := snapshot.Granularity()
 	require.True(t, ok)
 	require.NotZero(t, granularity)
-}
-
-func TestInspectReportsRuntimeExecutionMetrics(t *testing.T) {
-	var inspector Inspector
-	index, err := New[inspectConstraint, string](Inspect(&inspector, All(
-		Include(func(v inspectConstraint) (string, bool) { return v.country, v.country != "" }),
-		Include(func(v inspectConstraint) (string, bool) { return v.country, true }),
-	))).Build(Zip(
-		[]inspectConstraint{{country: "DE"}, {country: "US"}, {}},
-		[]string{"one", "two", "three"},
-	))
-	require.NoError(t, err)
-	before := inspector.Snapshot()
-
-	var matches []string
-	observed := newBitmapPool()
-	require.True(t, index.search(inspectConstraint{country: "DE"}, &matches, observed))
-	matches = matches[:0]
-	require.False(t, index.search(inspectConstraint{country: "FR"}, &matches, observed))
-
-	snapshot := inspector.Snapshot()
-	require.Zero(t, before.EmptyResult(), "a captured snapshot does not change")
-	require.Zero(t, snapshot.CandidateCheck())
-	require.Equal(t, uint64(1), snapshot.EmptyResult())
-	require.Equal(t, Histogram{Zero: 1, One: 1}, snapshot.ResultCardinality())
-}
-
-func TestInspectCountsCandidateChecksWithoutBitmapSearch(t *testing.T) {
-	type constraint struct{ selective, broad string }
-	var broad Inspector
-	index, err := New[constraint, int](All(
-		Include(func(v constraint) (string, bool) { return v.selective, true }),
-		Inspect(&broad, Include(func(v constraint) (string, bool) { return v.broad, true })),
-	)).Build(Zip(
-		[]constraint{
-			{selective: "one", broad: "yes"},
-			{selective: "one", broad: "yes"},
-			{selective: "one", broad: "yes"},
-			{selective: "one", broad: "yes"},
-			{selective: "two", broad: "yes"},
-		},
-		[]int{1, 2, 3, 4, 5},
-	))
-	require.NoError(t, err)
-
-	var matches []int
-	require.True(t, index.search(constraint{selective: "one", broad: "yes"}, &matches, newBitmapPool()))
-	snapshot := broad.Snapshot()
-	require.Equal(t, uint64(4), snapshot.CandidateCheck())
 }

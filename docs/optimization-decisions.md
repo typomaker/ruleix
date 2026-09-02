@@ -50,6 +50,22 @@ profile отнёс остаток к `bitmapContainer.clone`, `arrayContainer.cl
 containers либо уметь переиспользовать payload destination; такого API в
 Roaring v2.4.4 нет. Временный fork и Ruleix integration удалены.
 
+## 2026-09-02: unified production shape сохранён для исправления
+
+Финальная проверка шага 6 воспроизвела regression общего layout: production
+Lossy50 `Index.Search` 27,456 → 46,344 мкс, warm Local 248,2 → 318,1 нс,
+80 → 150 candidates и 15 → 16 allocations. В отличие от прежних
+экспериментов, unified implementation не удаляется и не отклоняется.
+
+Прямой range membership дал лишь небольшое улучшение, а bucket-shaped common
+blocks не изменили amplification и ухудшили latency. Профили локализовали
+работу в candidate membership и Roaring union; child-level inspection показал
+granularity 3 у selective activity `Between`. Дополнительно найден
+межпроцессный разброс Lossy50 plan. Решение отложено до детерминизации
+streaming downgrade и проверки quality-aware allocation либо более компактного
+common ordered storage. Полный отчёт:
+[`unified-index-production-shape.md`](unified-index-production-shape.md).
+
 ## 2026-09-02: один уровень aggregates принят для lossy range buckets
 
 В `lossyComparedBuckets` принят один accounted aggregate на каждую полную

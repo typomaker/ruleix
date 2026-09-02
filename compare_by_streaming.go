@@ -11,8 +11,7 @@ func (r *quantizedCompareByRule[T, V]) canonicalDescriptor() canonicalRuleDescri
 	return descriptor
 }
 
-func (r *quantizedCompareByRule[T, V]) inspectionStrategy() string { return "lossy-compare-by-ordered" }
-func (*quantizedCompareByRule[T, V]) inspectionMode() RuleMode     { return RuleModeLossy }
+func (*quantizedCompareByRule[T, V]) inspectionMode() RuleMode { return RuleModeLossy }
 func (r *quantizedCompareByRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {
 		return newMatchAllRule[T](r.wildcard)

@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `Inspect.Strategy` now reports the shared physical family for exact and lossy
+  equality, ordered, `Between`, and `CompareBy` indexes; `Mode` continues to
+  distinguish approximation, while `Granularity` reports quantized key classes.
+- Ordered candidate membership now traverses common block/range aggregates
+  directly instead of rebuilding the same traversal through a callback.
 - Lossy `Greater*` and `Less*` now publish the exact ordered index, matcher,
   routing, block aggregates, and Local cache, with outward build-time
   coarsening under memory pressure.

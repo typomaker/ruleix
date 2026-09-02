@@ -195,7 +195,7 @@ values, duplicate IDs и все операторы.
 
 ### 6. Завершить миграцию и подтвердить production shape
 
-Статус: `запланирован`
+Статус: `в работе`
 
 - Удалить неиспользуемые lossy search types, отдельные caches и bucket-union
   helpers; оставить lossy planner, quantizers, accounting и build-time rebuild.
@@ -209,6 +209,8 @@ values, duplicate IDs и все операторы.
   локализовать её причину и составить отчёт с измерениями, профилями,
   затронутыми workloads и возможными путями исправления. До принятия и
   реализации решения шаг остаётся незавершённым.
+- Текущие причины, измерения и варианты исправления поддерживать в
+  [`docs/unified-index-production-shape.md`](docs/unified-index-production-shape.md).
 - Обновить архитектуру, performance history, optimization decisions и
   changelog только после принятия реализации.
 
