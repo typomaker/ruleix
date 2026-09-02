@@ -88,9 +88,9 @@ insert и search values. Исходные exact keys после успешног
 
 До последнего шага milestone запрещены performance-оптимизации, benchmark-
 driven изменения layout и решения по промежуточным `ns/op`, allocations или
-candidate count. Шаги 1–8 реализуют и проверяют только контракт, корректность,
+candidate count. Шаги 1–11 реализуют и проверяют только контракт, корректность,
 детерминизм, hard memory limit и отсутствие удержания старых поколений. Все
-performance benchmarks, profiles и оптимизации выполняются только в шаге 9.
+performance benchmarks, profiles и оптимизации выполняются только в шаге 12.
 
 ### 1. Зафиксировать контракт потокового округления
 
@@ -290,11 +290,71 @@ Gate: все функциональные и memory gates проходят, prod
 переогрубляется относительно доступного hard limit, старый planner недостижим
 из production code, а performance benchmarks ещё не использовались как gate.
 
-### 9. Выполнить benchmarks, profiles и только затем оптимизацию
+### 9. Унифицировать equality rule и search execution
 
 Статус: `запланирован`
 
-- После завершения шагов 1–8 снять сопоставимые Exact, identity-lossy и Lossy
+- Удалить `quantizedEqualityRule` как самостоятельный production rule и
+  перенести преобразование ключа в общий `eqRule`.
+- Exact и Lossy должны использовать один тип правила, одни реализации insert,
+  search, cardinality, `matchesID`, planning lookup, Local cache и bitmap
+  interning; mode-specific методы поиска запрещены.
+- Использовать один общий `equalityIndex` physical layout. Тип и форма storage
+  key задаются общей key transformation, а не выбором отдельного lossy rule.
+- Сохранить build-only полный rebuild поколения, не вводя отдельный runtime
+  wrapper или search branch для Lossy.
+
+Gate: production tree не содержит отдельного lossy equality search type;
+Exact, identity-Lossy и lossy equality проходят одну реализацию всех search-
+методов, а differential, cache, inspection и retained-memory tests проходят
+без benchmarks и performance tuning.
+
+### 10. Сделать level 0 явной identity-функцией
+
+Статус: `запланирован`
+
+- Заменить семантику `nil quantizer означает Exact` единым обязательным key
+  transformer для equality и ordered families.
+- Определить level 0 формально и в коде как `quantize(key, 0) = key`; Exact
+  всегда использует этот уровень, Lossy начинает с него и меняет только номер
+  уровня при pressure.
+- Убрать проверки режима из общих posting/index/matcher/range/cache структур:
+  они получают уже преобразованный physical key и не знают источник уровня.
+- Свести storage и query transformation к одному контракту с явно заданным
+  outward-направлением там, где ordered insert и search требуют разных сторон
+  одной границы.
+
+Gate: unit tests напрямую подтверждают identity level 0 для всех семейств;
+Exact и identity-Lossy имеют одинаковые rule/index/search types и поведение, а
+в production search code нет ветвления по Exact/Lossy. Benchmarks не запускаются.
+
+### 11. Закрыть семантику arbitrary comparator и финальный functional gate
+
+Статус: `запланирован`
+
+- Уточнить функцию текущего boundary level для значений внутри и за пределами
+  наблюдаемого диапазона: поздний insert обязан пройти тот же уровень
+  округления, что query, и не может неявно добавлять exact key в coarser index.
+- Обеспечить вложенность boundary levels и эквивалентность последовательного
+  `N -> N+1` прямому округлению exact value на `N+1` без сохранения exact keys.
+- Исправить оставшиеся inspection, numeric-kind и compound-downgrade failures;
+  не ослаблять assertions, выражающие публичный или новый streaming-контракт.
+- Повторить full tests, race, differential matrix, streaming scale,
+  deterministic-build, hard/retained accounting и diff coverage после шагов
+  9–10.
+- Обновить canonical architecture и lossy contract в соответствии с реально
+  общей Exact/Lossy реализацией.
+
+Gate: `go test ./...` и race проходят; late comparator values не создают
+неокруглённые keys, `Lossy ⊇ Exact` сохраняется на всех уровнях, отдельные
+lossy search types отсутствуют и diff coverage изменённого production-кода не
+ниже 90%. Performance benchmarks и оптимизация всё ещё запрещены.
+
+### 12. Выполнить benchmarks, profiles и только затем оптимизацию
+
+Статус: `запланирован`
+
+- После завершения шагов 1–11 снять сопоставимые Exact, identity-lossy и Lossy
   серии для equality, standalone ordered, `Between`, `CompareBy`, production
   `All`, mixed shared-key, range-heavy и adversarial workloads.
 - Измерить `Index.Search`, warm `Local.Search`, Build time, allocations,
@@ -303,18 +363,18 @@ Gate: все функциональные и memory gates проходят, prod
   profiles для каждого обнаруженного search regression.
 - Только на этом шаге выполнять performance-оптимизации; каждая оптимизация
   должна сохранять streaming-контракт и заново проходить correctness/memory
-  gates шага 8.
+  gates шага 11.
 - Зафиксировать результаты в performance history и optimization decisions,
   обновить changelog и финальную архитектуру.
 
 Gate: ни один публичный search path не регрессирует по корректности, latency,
 allocations или retained memory; измерения воспроизводимы и документированы,
-а все принятые оптимизации повторно прошли полный gate шага 8.
+а все принятые оптимизации повторно прошли полный gate шага 11.
 
 ## Порядок поставки
 
 Шаги выполняются небольшими коммитами строго в указанном порядке. Каждый шаг
 содержит документацию, tests и измерение diff coverage для изменённого
-production-кода. До шага 9 benchmarks и profiles не являются gate, а
-performance-оптимизации запрещены; шаг 9 выполняет все сопоставимые измерения и
+production-кода. До шага 12 benchmarks и profiles не являются gate, а
+performance-оптимизации запрещены; шаг 12 выполняет все сопоставимые измерения и
 последующую оптимизацию завершённой функциональной реализации.
