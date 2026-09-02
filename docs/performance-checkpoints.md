@@ -62,6 +62,24 @@ go tool pprof -top ./ruleix.test /tmp/ruleix-step5.cpu
 Экспериментальный код удалён, поскольку ни одна проверенная leaf-стратегия не
 вернула baseline latency. Следующее направление — общий bucket-shaped layout.
 
+### Bitmap-only candidate filtering
+
+На baseline `8ce6ca6` проверен отказ от `matchesID` для compound range rules.
+Canonical lossy leaf/aggregate postings передавались непосредственно в
+`Bitmap.AndAny`; среда и production fixture совпадают с baseline шага 5.
+
+| Отключённый direct-ID path | ns/op | B/op | allocs/op |
+| --- | ---: | ---: | ---: |
+| baseline | 27 456 | 13 592 | 15 |
+| только Lossy `Between` | 25 385 | 30 216 | 22 |
+| только Lossy `CompareBy` | 26 910 | 71 433 | 34 |
+| оба Lossy rules | 29 901 | 71 433 | 34 |
+
+Отдельный Exact `BenchmarkAllCompareByCandidateFiltering` ухудшился с baseline
+52 812 ns/op, 21 056 B/op и 7 allocations/op до 71 081 ns/op, 41 929 B/op и
+13 allocations/op. Таким образом, bitmap-only вариант иногда сокращает CPU,
+но нарушает allocation gate во всех проверенных конфигурациях. Код удалён.
+
 ## 2026-09-01: exact-first против one-pass streaming
 
 Исправление streaming rebucketing устранило аварийный one-bucket collapse.

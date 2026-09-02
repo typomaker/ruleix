@@ -6,6 +6,23 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-02: bitmap-only Between/CompareBy отклонён
+
+Проверен полный отказ от per-ID validation для `Between` и `CompareBy`: `All`
+применял canonical leaf/aggregate postings напрямую через `Bitmap.AndAny`.
+Exact `CompareBy` регрессировал с 52,8 до 71,1 мкс и с 7 до 13 allocations.
+Ограничение эксперимента только Lossy сохранило или улучшило latency, но
+материализация union дала неприемлемый allocation traffic: отключённый
+`Between` получил 25,39 мкс, 30 216 B/op и 22 allocations против baseline
+27,46 мкс, 13 592 B/op и 15 allocations; отключённый `CompareBy` — 26,91 мкс,
+71 433 B/op и 34 allocations. При отключении обоих production Index получил
+около 29,9–30,7 мкс и те же 34 allocations.
+
+Эксперимент удалён. Per-ID validation пока остаётся обязательным не как
+семантическое требование, а как единственный allocation-efficient путь.
+Вернуться к bitmap-only модели можно после появления allocation-free fused
+union/intersection primitive, который не строит временный range bitmap.
+
 ## 2026-09-02: один уровень aggregates принят для lossy range buckets
 
 В `lossyComparedBuckets` принят один accounted aggregate на каждую полную
