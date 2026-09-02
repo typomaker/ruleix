@@ -43,220 +43,202 @@ Gate: проверяемые критерии завершения и обяза
 milestone не создаются: для восстановления используется Git. Нельзя объединять
 pre-cleanup snapshot и post-activation cleanup в один коммит.
 
-## Общие exact/lossy-индексы
+## Потоковый Build для `Lossy`
 
-Статус milestone: `активирован заново — 2026-09-01`.
+Статус milestone: `активен`.
 
-Milestone выполняется повторно с шага 1. Результаты и код предыдущего прохода
-не засчитываются автоматически: на каждом шаге нужно заново проверить весь
-scope и пройти Gate на текущем `HEAD`. Уже реализованные части разрешено
-переиспользовать только после такой проверки; незавершённые изменения следующих
-шагов не переводят их в статус `в работе`, пока шаг 1 не завершён.
-
-Цель — оставить `Lossy` политикой преобразования ключей, а не отдельным
-search engine. Exact и lossy должны использовать одни физические posting
-структуры, matcher-ы, range search и `Local`-кэши. Lossy отличается только
-скомпилированным преобразованием ключа и выбранной точностью:
+Цель — реализовать `Lossy` как однопроходное хранение единственного текущего
+представления каждого правила. Пока хватает памяти, правило хранит
+`exact key -> bitmap`. После pressure checkpoint всё сохранённое представление
+правила целиком перекладывается через следующий вложенный уровень округления:
 
 ```text
-stored value -> exact key -> quantizer(identity | lossy precision)
-             -> common equalityIndex / orderedIndex -> common matcher
+current key -> quantize(next level) -> same physical index -> merge bitmaps
 ```
 
-Streaming downgrade остаётся обязательным. При memory pressure текущие
-`(key, posting)` перекладываются в индекс того же типа через более грубый
-quantizer; postings одинаковых новых ключей объединяются. После завершения
-`Build` build-only состояние удаляется, а search получает ту же immutable
-структуру независимо от режима.
+Текущий уровень сохраняется в правиле и одинаково применяется к последующим
+insert и search values. Исходные exact keys после успешного перехода не
+удерживаются. Уникальные округлённые ключи могут называться buckets/classes
+только в диагностике: planner не вычисляет отдельное разбиение, не строит все
+будущие representations и не сливает соседние postings по одной паре.
 
-### 1. Зафиксировать семантику ключей и baseline
+До последнего шага milestone запрещены performance-оптимизации, benchmark-
+driven изменения layout и решения по промежуточным `ns/op`, allocations или
+candidate count. Шаги 1–8 реализуют и проверяют только контракт, корректность,
+детерминизм, hard memory limit и отсутствие удержания старых поколений. Все
+performance benchmarks, profiles и оптимизации выполняются только в шаге 9.
 
-Статус: `завершён — 2026-09-01`
+### 1. Зафиксировать контракт потокового округления
 
-Результат: на чистом `97c9e00` повторно подтверждены key/precision/rounding
-контракты; differential-матрица доказала identity-lossy = Exact и
-Lossy ⊇ Exact, а сопоставимый lifecycle baseline зафиксирован в канонической
-документации с командами воспроизведения.
+Статус: `запланирован`
 
-- Заново описать и проверить внутренние контракты exact key, quantized key и
-  precision ladder на фактической реализации текущего `HEAD`.
-- Подтвердить вложенность уровней precision: каждый ключ текущего уровня должен
-  однозначно переводиться в следующий без исходного значения.
-- Зафиксировать направленное округление для `Greater*`, `Less*`, `Between` и
-  каждого оператора `CompareBy`; преобразование может только расширять
-  множество совпадений.
-- Повторно проверить контрольный `identity quantizer`, проходящий общий lossy
-  pipeline и сохраняющий те же ключи и результаты, что exact.
-- Снять новые Exact, Lossy 50% и identity-lossy baseline для build time,
-  accounted retained memory, `Index.Search`, warm `Local.Search`, allocations
-  и candidate count. Старые замеры остаются историческим контекстом.
+- Описать единый контракт current level, next level, преобразования нового
+  значения и повторного преобразования уже сохранённого ключа.
+- Потребовать вложенность уровней: переход `N -> N+1` без exact value должен
+  совпадать с прямым округлением exact value на уровень `N+1`.
+- Зафиксировать общий алгоритм checkpoint: при accounted usage выше 125%
+  soft target выбрать правило с максимальным освобождением, перестроить всё
+  его текущее представление и продолжить чтение input.
+- Разделить retained accounting опубликованного поколения и transient память
+  перестройки; hard `MemoryLimit` относится к финальному retained состоянию.
+- Зафиксировать, что один universal bitmap допустим только как терминальный
+  уровень, когда более точное доступное представление не помещается в hard
+  limit, а не как следствие локальных последовательных merge.
 
-Gate: на текущем `HEAD` differential-матрица всех поддерживаемых правил
-доказывает равенство identity-lossy и exact, обычный lossy сохраняет
-`result ⊇ exact result`, а новые baseline и команды воспроизведения записаны в
-канонической документации.
+Gate: контракт записан в канонической lossy-архитектуре; unit tests выражают
+вложенность и монотонность уровней без performance assertions и benchmarks.
 
-### 2. Выделить общие key transformation и rebuild primitives
+### 2. Ввести единый state и rebuild primitive
 
-Статус: `завершён — 2026-09-01`
+Статус: `запланирован`
 
-Результат: повторно подтверждены build-скомпилированные equality/ordered key
-transformations, общий checked rebuild независимых posting generations и
-финализация immutable routing/aggregates только после streaming downgrade;
-hard-limit, order, race, full-test и сопоставимый build gate пройдены без
-изменения allocation class.
+- Представлять каждый lossy-лист одним mutable build index, current level и
+  преобразователями insert/search key текущего уровня.
+- Реализовать checked rebuild всего поколения: пройти текущие `(key, bitmap)`,
+  применить следующий уровень, объединить совпавшие keys и заменить старое
+  поколение только после успешной сборки нового.
+- Немедленно освобождать ссылки на старое поколение и не сохранять исходный
+  exact index, список exact postings или заранее построенные будущие уровни.
+- Финализировать immutable aggregates, routing и search metadata только после
+  последнего streaming downgrade.
 
-- Проверить заново и при необходимости переработать build-скомпилированный
-  equality encoder/quantizer, затем распространить общий контракт на ordered
-  key transformations без reflection и interface dispatch в search path.
-- Реализовать общую операцию `old key -> coarser key -> merge postings` с
-  checked accounting и освобождением старого поколения после успешной сборки.
-- Отделить mutable build layout от финализации immutable search layout:
-  агрегаты блоков, routing и range blocks строятся один раз после последнего
-  streaming downgrade.
-- Сохранить текущий aggregate selector, nested `MemoryLimit`, `Inspect` и
-  детерминированный выбор следующей ступени.
+Gate: повторные rebuild сохраняют каждый ID, не удерживают старые поколения,
+корректно обновляют accounting и проходят targeted tests; benchmarks не
+запускаются и layout не оптимизируется.
 
-Gate: повторные streaming downgrade укладываются в hard retained limit,
-не зависят от порядка входа сверх уже задокументированного контракта и не
-удерживают полное exact-представление после перехода.
+### 3. Перевести equality на вложенные уровни
 
-### 3. Унифицировать equality
+Статус: `запланирован`
 
-Статус: `завершён — 2026-09-01`
+- Exact-фаза хранит точные значения; после первого downgrade новые значения
+  сразу преобразуются текущим equality quantizer.
+- Сделать hash-prefix/bucket levels вложенными, чтобы следующий storage key
+  вычислялся только из текущего storage key.
+- При повышении уровня полностью перекладывать текущий `equalityIndex`, сливая
+  bitmap только у ключей с одинаковым новым значением.
+- Удалить static representation ladder и параллельное хранение equality
+  candidates из streaming path.
 
-Результат: exact и quantized equality переведены на общие
-`equalityIndex`/`equalitySet`, Local cache и checked streaming rebuild;
-отдельный `lossyEqualityRule` удалён, а correctness, race, retained и
-сопоставимый identity-lossy performance gate прошли без регрессии.
+Gate: ordered/shuffled input, duplicates, wildcards, late values и повторные
+downgrade дают `Lossy ⊇ Exact`, детерминированную форму и соблюдают hard
+limit; выполняются только correctness и accounting checks.
 
-- Научить `equalityIndex` принимать уже преобразованный ключ и объединять
-  `equalitySet` при коллизии quantized keys.
-- Exact использует identity key; lossy использует полный compiled hash и
-  выбранное сокращение класса, но lookup, postings, matcher и Local cache
-  остаются общими.
-- Перенести streaming `rebucket` на общий rebuild primitive.
-- После прохождения gates удалить опубликованный search type
-  `lossyEqualityRule` и дублирующую логику его matcher/cache.
+### 4. Перевести numeric и time ordered rules
 
-Gate: correctness, retained accounting и streaming fixtures проходят;
-identity-lossy equality не хуже exact по latency, allocations и retained
-memory за пределами шума сравнимой серии.
+Статус: `запланирован`
 
-### 4. Унифицировать ordered rules
+- Реализовать вложенные уровни монотонного ключа с устойчивыми origin и width;
+  расширение наблюдаемого диапазона не должно менять уже выбранный уровень.
+- Для lower bounds округлять наружу вниз, для upper bounds — наружу вверх;
+  strict/inclusive используют один уровень с корректной boundary-семантикой.
+- На downgrade перекладывать все текущие keys через следующий уровень вместо
+  последовательного слияния соседних postings.
+- Удалить `orderedIndex.coarsenOne`, `orderedMergeExpansion`, управление через
+  `lossyCapacity` и тесты, фиксирующие выбор конкретной соседней пары.
 
-Статус: `завершён — 2026-09-01`
+Gate: boundary/adversarial differential matrix, поздние значения за исходным
+диапазоном и последовательные переходы не дают false negatives; никаких
+performance conclusions на этом шаге не делается.
 
-Результат: standalone exact/lossy ordered переведены на общий
-`orderedRule`/`orderedIndex` и Local cache; legacy numeric/comparator search
-types удалены, streaming/differential/race/full-test gates прошли, а focused
-performance gate ускорился на 12–15% без новых allocations; nested planning
-остаётся детерминированным при повторных builds.
+### 5. Поддержать arbitrary comparator через boundary levels
 
-- Хранить exact и округлённые monotonic keys в общем `orderedIndex`.
-- При lossy downgrade округлять хранимую границу наружу в зависимости от
-  направления и inclusive/exclusive семантики.
-- При совпадении новых ключей объединять postings, затем использовать
-  существующие block aggregates, routing, `walk` и range blocks.
-- Перенести numeric regrid и comparator coarsening на общий rebuild primitive.
-- Удалить отдельные search paths `lossyOrderedRule` и
-  `lossyComparedOrderedRule` после прохождения gates.
+Статус: `запланирован`
 
-Gate: finest/identity-lossy `Index.Search` больше не выполняет линейный union
-мелких lossy buckets и не регрессирует относительно exact; обычные lossy
-ступени сохраняют текущую или лучшую latency/allocations/candidate quality.
+- Для стабильного total-order `Compare[V]` строить вложенные уровни outward
+  boundaries, где каждый следующий уровень является подмножеством предыдущего.
+- Округлять insert и search values бинарным поиском к boundary текущего уровня;
+  storage key должен позволять перейти к родительской boundary без exact value.
+- Корректно включать новые значения внутри и за пределами наблюдаемого диапазона
+  без перестройки ранее выбранной семантики уровня.
+- Не пытаться выводить порядок из reflection/getter codec. Автоматический
+  ordered codec разрешён только для типов и comparator-ов с доказанной общей
+  семантикой; иначе используется boundary quantizer.
+- Задокументировать требование стабильного транзитивного total order как часть
+  существующего контракта пользовательского comparator-а.
 
-### 5. Унифицировать `Between` и `CompareBy`
+Gate: пользовательские structs, strings/custom collation, composite keys,
+descending order и range extremes проходят differential tests на всех уровнях;
+benchmark и layout tuning отложены.
 
-Статус: `завершён — 2026-09-02`
+### 6. Перевести `Between` и `CompareBy`
 
-Результат: `Between` и `CompareBy` переведены на общие exact
-`orderedRule`/`orderedIndex`, отдельные lossy search types и bucket layout
-удалены; differential, boundary, full и race gates подтвердили корректность.
-Performance gate пропущен, а деградация physical shape принята по явному
-решению владельца.
+Статус: `запланирован`
 
-- `Between` хранит нижний и верхний преобразованные ключи в общих ordered
-  структурах: lower округляется вниз, upper вверх; используется общий fused
-  matcher exact-пути.
-- `CompareBy` компилирует безопасное направление quantization отдельно для
-  `EQ`, `LT`, `LTE`, `GT`, `GTE`, но использует общий тип ordered index и
-  общий operator matcher.
-- Streaming downgrade перекладывает текущие интервалы/границы без хранения
-  исходных exact values. Граница должна сохранять представляемый диапазон,
-  чтобы повторное огрубление оставалось безопасным.
-- Удалить `lossyBetweenRule`, `lossyCompareByRule` и их отдельные query-key
-  matcher-ы после функциональной проверки; performance parity для этого шага
-  отменён решением владельца.
+- `Between` хранит независимые current levels нижней и верхней стороны и
+  перестраивает за один pressure step только одну полную сторону.
+- `CompareBy` хранит уровень отдельно для `EQ`, `LT`, `LTE`, `GT`, `GTE` и
+  применяет соответствующее направление outward rounding.
+- Сохранить общий fused matcher/search path; lossy отличается только текущим
+  преобразованием ключа и физическими postings после build-time rebuild.
+- Удалить оставшиеся operator-specific pairwise coarsening и static ladder
+  helpers после переноса correctness coverage.
 
-Gate: boundary/adversarial differential tests не дают false negatives;
-identity-lossy полностью равен exact, включая strict boundaries, missing
-values, duplicate IDs и все операторы.
+Gate: missing values, duplicate IDs, wildcards, strict/inclusive boundaries и
+все операторы сохраняют `Lossy ⊇ Exact`; identity level полностью равен
+Exact. Performance не измеряется и не оптимизируется.
 
-### 6. Завершить миграцию и подтвердить production shape
+### 7. Переписать aggregate pressure selector
 
-Статус: `в работе`
+Статус: `запланирован`
 
-- Удалить неиспользуемые lossy search types, отдельные caches и bucket-union
-  helpers; оставить lossy planner, quantizers, accounting и build-time rebuild.
-- Обновить `Inspect.Strategy`/`Granularity`, не меняя публичный API без
-  отдельного решения.
-- Выполнить race, full test, differential, retained-memory, streaming-scale и
-  production-shaped benchmark gates.
-- Снять сопоставимые CPU/allocation profiles Exact, identity-lossy и Lossy 50%.
-- При обнаружении деградации не удалять и не откатывать unified-реализацию.
-  Воспроизвести деградацию на сопоставимых baseline/candidate revisions,
-  локализовать её причину и составить отчёт с измерениями, профилями,
-  затронутыми workloads и возможными путями исправления. До принятия и
-  реализации решения шаг остаётся незавершённым.
-- Текущие причины, измерения и варианты исправления поддерживать в
-  [`docs/unified-index-production-shape.md`](docs/unified-index-production-shape.md).
-- Обновить архитектуру, performance history, optimization decisions и
-  changelog только после принятия реализации.
+- На каждом checkpoint получать для каждого доступного листа реальный либо
+  точно рассчитанный `nextLevelUsage` полного следующего поколения.
+- Выбирать один лист по максимальному `currentUsage - nextLevelUsage`, затем
+  применять ровно один глобальный переход уровня и повторять до soft target.
+- Сохранить nested `MemoryLimit`, deterministic tie-break и ошибку Build, если
+  сумма терминальных представлений превышает hard limit.
+- Не учитывать candidate quality, search latency или результаты benchmarks в
+  selector до завершения функциональной реализации.
 
-Порядок выполнения оставшейся работы:
+Gate: multi-leaf и nested-policy tests подтверждают правильный выбор по
+освобождённым байтам, детерминизм, hard limit и отсутствие преждевременного
+universal fallback; performance assertions отсутствуют.
 
-1. Зафиксировать search-first baseline и атрибуцию amplification отдельно для
-   equality, standalone ordered, `Between`, `CompareBy` и их production `All`.
-   `Local.Search` и `Index.Search` являются приоритетными gates; Build time и
-   build-time allocations могут регрессировать ради доказанного улучшения
-   поиска, но hard retained limit и streaming correctness не ослабляются.
-2. Проверить equality hash и quantizer независимо от ordered path: измерить
-   распределение posting cardinality, weighted collision cost, максимальный
-   bucket, false-positive rate и candidates/query на каждой реально выбираемой
-   ступени. Альтернативный стабильный hash или build-selected salt принимается
-   только при улучшении end-to-end поиска, а не одной collision-метрики.
-3. Доработать ordered key quantizer: выбирать безопасные соседние классы по
-   ожидаемому расширению postings на границах и сохранять достаточный
-   представляемый диапазон для повторного streaming coarsening без исходных
-   exact values. Проверять lower/upper и strict/inclusive направления отдельно.
-4. Повторить aggregate planning после улучшения leaf quantizers: распределять
-   retained budget с учётом измеренной candidate amplification, не только
-   освобождаемых bytes. Более дорогой глобальный анализ во время Build допустим.
-5. Если после улучшения physical shape профили всё ещё указывают на common
-   ordered membership, добавить только универсальную оптимизацию общего
-   `orderedIndex` — dense layout или compact membership metadata, применимую
-   тем же кодом также к Exact. Режимные поля, `if lossy`, отдельные matcher-ы,
-   caches, tree branches и search algorithms запрещены.
-6. Для каждого принятого изменения повторить production, mixed shared-key,
-   range-heavy и adversarial серии, а затем финальные differential, race,
-   streaming-scale, retained-memory, CPU и allocation gates. Exact и
-   identity-lossy должны оставаться физически и поведенчески эквивалентными.
+### 8. Удалить устаревший streaming planner и завершить correctness gates
 
-Финальный gate: ни один публичный search path не регрессирует по корректности,
-latency, allocations или retained memory. Если общий layout ухудшает exact или
-lossy workload, unified-реализация сохраняется, а шаг нельзя завершить, пока
-причина деградации не подтверждена сопоставимыми измерениями и профилями, не
-оформлен отчёт с возможными путями решения и не реализовано принятое
-исправление. Для этого milestone отклонение или удаление реализации из-за
-деградации не допускается, даже если общие правила экспериментов в
-[`docs/project-governance.md`](docs/project-governance.md) допускают отклонение
-после исчерпывающего расследования.
+Статус: `запланирован`
+
+- Удалить static leaf representation ladders, pairwise merge planner,
+  universal-tail fallback и build-only состояние, противоречащее модели одного
+  текущего поколения.
+- Обновить `Inspect.Strategy`, `Granularity` и memory details так, чтобы они
+  описывали реально опубликованный level и число текущих rounded keys.
+- Добавить общий регрессионный test: если многоключевое представление реально
+  помещается в hard limit, streaming Build не должен публиковать один bitmap.
+- Выполнить full tests, race, differential matrix, streaming scale,
+  deterministic-build, retained accounting и diff coverage.
+- Обновить архитектуру и пользовательский lossy contract; промежуточные
+  performance observations не использовать для изменения реализации.
+
+Gate: все функциональные и memory gates проходят, production fixture не
+переогрубляется относительно доступного hard limit, старый planner недостижим
+из production code, а performance benchmarks ещё не использовались как gate.
+
+### 9. Выполнить benchmarks, profiles и только затем оптимизацию
+
+Статус: `запланирован`
+
+- После завершения шагов 1–8 снять сопоставимые Exact, identity-lossy и Lossy
+  серии для equality, standalone ordered, `Between`, `CompareBy`, production
+  `All`, mixed shared-key, range-heavy и adversarial workloads.
+- Измерить `Index.Search`, warm `Local.Search`, Build time, allocations,
+  accounted retained memory, candidates/query и observed false-positive rate.
+- Воспроизвести baseline/candidate interleaved runs и снять CPU/allocation
+  profiles для каждого обнаруженного search regression.
+- Только на этом шаге выполнять performance-оптимизации; каждая оптимизация
+  должна сохранять streaming-контракт и заново проходить correctness/memory
+  gates шага 8.
+- Зафиксировать результаты в performance history и optimization decisions,
+  обновить changelog и финальную архитектуру.
+
+Gate: ни один публичный search path не регрессирует по корректности, latency,
+allocations или retained memory; измерения воспроизводимы и документированы,
+а все принятые оптимизации повторно прошли полный gate шага 8.
 
 ## Порядок поставки
 
-Шаги выполняются небольшими коммитами в указанном порядке. Старый lossy search
-path остаётся рабочим до прохождения gate соответствующего семейства правил;
-одновременная замена всех операторов не требуется. Каждый шаг должен содержать
-документацию, тесты, сравнимый benchmark при изменении performance path и
-измерение diff coverage для production-кода.
+Шаги выполняются небольшими коммитами строго в указанном порядке. Каждый шаг
+содержит документацию, tests и измерение diff coverage для изменённого
+production-кода. До шага 9 benchmarks и profiles не являются gate, а
+performance-оптимизации запрещены; шаг 9 выполняет все сопоставимые измерения и
+последующую оптимизацию завершённой функциональной реализации.
