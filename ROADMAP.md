@@ -128,7 +128,13 @@ identity level 0, полную общность physical/search структур
 
 ### 2. Ввести единый state и rebuild primitive
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-02`
+
+Результат: добавлен единый mutable build-state с current level и общим
+преобразованием insert/search; атомарный полный rebuild сохраняет ID, раздельно
+учитывает retained/transient bytes, откатывается при ошибке и освобождает ссылки
+старого поколения. Targeted и full tests, diff coverage и `git diff --check`
+прошли без запуска benchmarks.
 
 - Представлять каждый lossy-лист одним mutable build index, current level и
   преобразователями insert/search key текущего уровня.

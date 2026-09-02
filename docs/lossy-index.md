@@ -72,6 +72,26 @@ from `go test ./... -coverprofile=/tmp/ruleix-step1.cover`: every executable
 line added in `lossy_levels.go` was covered (100%). No benchmarks or
 performance assertions were run or used for this step.
 
+### Mutable generation state
+
+The build-only `lossyBuildState` owns exactly one mutable posting generation,
+its current level, and deterministic retained accounting. Insert and search
+keys use the same current-level transformation. A downgrade builds a complete,
+independent candidate generation, merges colliding postings, and checks its
+accounting before a single assignment publishes it. A failed build leaves the
+current level and generation unchanged; a successful build clears every old
+map entry so the state retains no bitmap from the prior generation.
+
+Candidate posting bytes are reported separately as transient rebuild memory.
+They become the new retained accounting only when publication succeeds; no
+transient allocation is included in the published retained total. Immutable
+aggregates, routing, and other search metadata remain finalized after the last
+streaming downgrade by the existing shared Exact publication path.
+
+The step 2 gate was verified on 2026-09-02 with focused state/rebuild tests and
+the full test suite. Diff coverage for changed executable production lines was
+measured above 90%. No benchmark was run and no layout decision was made.
+
 ## Public API direction
 
 Lossy behavior should decorate an existing `Rule[T]`:
@@ -180,27 +200,10 @@ fits and whose result is a superset of the exact result. `Lossy` therefore
 never forces approximation and does not promise that every positive budget is
 usable.
 
-Build planning is one-pass streaming. At every fixed 4096-entry checkpoint,
-live exact and lossy accounting above the private saturating target
-`MemoryLimit + MemoryLimit/4` advances the candidate whose next representation
-releases the most accounted bytes. Checkpoints continue after the first
-selective compilation: exact leaves remain eligible for their first downgrade,
-and lossy leaves remain eligible for later ladder levels. The compiled equality,
-numeric ordered, comparator ordered, `Between`, and `CompareBy` leaves accept
-subsequent values directly. This replaces the rejected universal-tail
-prototype: no additional node or bitmap union is added to published search.
-When a later ordered value expands the prefix range, numeric grids are
-recomputed and each old posting is conservatively copied to every overlapping
-new interval. Comparator grids add a new edge boundary and merge the least
-populated adjacent pair when their configured capacity is reached. Equality
-hash intervals and final aggregate pressure are likewise coarsened in discrete
-steps. A one-bucket representation is only the terminal ladder level, not the
-response to the first out-of-range value. All rebucketing remains build-only.
-Temporary adaptive holders are removed before publication and add no search
-node or operation. The final accounting pass fails rather than publish an index above the hard
-retained `MemoryLimit`. The target bounds
-Ruleix-accounted build state opportunistically; neither it nor `MemoryLimit`
-is a Go heap or RSS guarantee.
+Build planning is one-pass streaming and follows the current-generation
+checkpoint algorithm defined above. The final accounting pass fails rather
+than publish an index above the hard retained `MemoryLimit`; neither the soft
+target nor `MemoryLimit` is a Go heap or RSS guarantee.
 
 `Build` fails, without publishing an index or a new inspector snapshot, when:
 
