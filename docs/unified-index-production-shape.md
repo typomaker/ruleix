@@ -174,6 +174,55 @@ end-to-end выигрыша. Для ordered правил hash отсутству
 До реализации и сопоставимого повторного профилирования принятого решения шаг
 6 нельзя завершить.
 
+## Ordered precision shape 2026-09-02
+
+Добавлен диагностический `BenchmarkProductionOrderedPrecisionShape`. Он
+изолирует фактические lower/upper поля production `Between`, отдельно проверяет
+strict/inclusive направления и все пять операторов `CompareBy`. В отличие от
+двух соседних запросов search-attribution, отчёт проходит 365 наблюдаемых
+временных границ и пять version keys. `ns/op` включает сборку и серию запросов
+и не является performance gate.
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionOrderedPrecisionShape/' \
+  -benchtime=1x -count=1 .
+```
+
+Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`, 38 098 entries.
+Результаты первого сопоставимого запуска:
+
+| Граница | Budget | Classes | Exact candidates/query | Lossy candidates/query | Amplification |
+|---|---:|---:|---:|---:|---:|
+| lower GT strict | 75% / 50% | 2 / 1 | 19 048 | 34 311 / 37 994 | 1,801x / 1,995x |
+| lower GTE inclusive | 75% / 50% | 2 / 1 | 19 152 | 34 415 / 38 098 | 1,797x / 1,989x |
+| upper LT strict | 75% / 50% | 2 / 1 | 18 970 | 28 447 / 37 994 | 1,500x / 2,003x |
+| upper LTE inclusive | 75% / 50% | 2 / 1 | 19 074 | 28 551 / 38 098 | 1,497x / 1,997x |
+| CompareBy EQ | 75% / 57% | 1 / 1 | 33 168 | 35 633 / 35 633 | 1,074x / 1,074x |
+| CompareBy LT/GT strict | 75% / 57% | 1 / 1 | 34 400 | 35 633 / 35 633 | 1,036x / 1,036x |
+| CompareBy LTE/GTE inclusive | 75% / 57% | 1 / 1 | 35 633 | 36 865 / 36 865 | 1,035x / 1,035x |
+
+Lower и upper уже расходятся на двух классах: equal-key-count разбиение даёт
+примерно 1,80x против 1,52x, поэтому направление outward rounding должно
+участвовать в выборе соседних классов. Strict/inclusive внутри одного
+направления отличаются только ожидаемой boundary cardinality и требуют одного
+общего алгоритма с явной семантикой включения.
+
+Одновременно измерение ограничивает следующий эксперимент: на production
+50%-точке standalone ordered и на обеих проверенных точках `CompareBy` выбран
+ровно один класс. При одном классе перестановка внутренних границ невозможна;
+она не исправит около 2x standalone amplification. Значит, улучшение leaf
+quantizer нужно проверять на многоклассовой 75%-точке, а для 50% после этого
+необходим quality-aware aggregate planner, сохраняющий больше одного класса у
+селективного ordered leaf. Это измеренный structural limit, а не гипотеза о
+конкретной scoring formula.
+
+Проверки изменения: `go test ./...`, `go test -race ./...` и
+`git diff --check` прошли. `make lint` остаётся красным на 26 ранее
+существовавших замечаниях в не изменённых этим экспериментом файлах (13 `lll`,
+4 `gocognit`, 4 `nestif`, 2 `staticcheck`, 2 `unconvert`, 1 `revive`); новый
+benchmark дополнительных замечаний не добавил.
+
 ## Equality precision shape 2026-09-02
 
 Добавлен test-only физический отчёт `BenchmarkProductionEqualityPrecisionShape`.
