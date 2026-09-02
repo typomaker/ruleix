@@ -6,6 +6,21 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-02: Roaring обновлён до v2.26.0
+
+Зависимость обновлена с v2.4.4 до актуальной v2.26.0. Проверка официальных
+release notes и исходников показала новые оптимизации array intersections,
+lazy bitmap unions и container word operations, но архитектура `AndAny`
+сохраняет временные cursor/container slices, array/bitmap union container и
+COW writable intersection. Поэтому обновление полезно само по себе, но не
+предоставляет требуемый allocation-free fused range API.
+
+Новый transitive dependency set требует Go 1.24 и `testify` v1.11.1. Тест
+независимости schema state адаптирован к строгому pointer-контракту `NotSame`.
+Полный и race suites прошли. По указанию владельца проекта отдельный
+performance gate обновления не выполнялся; performance-выводы для шага 5 из
+этого обновления не делаются.
+
 ## 2026-09-02: bitmap-only Between/CompareBy отклонён
 
 Проверен полный отказ от per-ID validation для `Between` и `CompareBy`: `All`

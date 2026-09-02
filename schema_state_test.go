@@ -40,5 +40,5 @@ func TestSchemaStateUsesStableSequentialNodeIDs(t *testing.T) {
 	require.Equal(t, firstNot.nodeID, secondNot.nodeID)
 	require.NotSame(t, firstEq.wildcard, secondEq.wildcard)
 	require.NotSame(t, firstOrdered.wildcard, secondOrdered.wildcard)
-	require.NotSame(t, firstNot.values, secondNot.values)
+	require.NotSame(t, &firstNot.values, &secondNot.values)
 }
