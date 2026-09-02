@@ -174,6 +174,65 @@ end-to-end выигрыша. Для ordered правил hash отсутству
 До реализации и сопоставимого повторного профилирования принятого решения шаг
 6 нельзя завершить.
 
+## Отклонённое posting-mass разбиение ordered keys 2026-09-02
+
+Проверен общий build-only quantizer, который сохранял непрерывные ordered
+классы, но делил их по суммарной cardinality postings вместо равного числа
+ключей. На `BenchmarkProductionOrderedPrecisionShape`, Apple M1 Max, macOS
+arm64, Go 1.26.0, `GOMAXPROCS=1`, `-benchtime=1x -count=1`, lower 75% стал
+лучше: GT `1,801x → 1,624x`, GTE `1,797x → 1,621x`. Однако первоначальное
+симметричное разбиение ухудшило upper: LT `1,500x → 1,999x`, LTE
+`1,497x → 1,994x`.
+
+Direction-aware вариант строил классы с противоположного края для upper, но
+не прошёл обязательный streaming differential:
+`TestLossyExactDifferentialEverySupportedRule/All` получил hard-limit ошибку
+`122968 > 81920`. Изменившийся bitmap shape недооценивал стоимость будущего
+потока; даже после последовательного coarsening состояние не помещалось в
+заданный предел. Эксперимент удалён до search performance серий. Следующая
+версия quantizer-а должна включать консервативную streaming reserve/cost и
+оптимизировать lower/upper раздельно; один snapshot postings недостаточен.
+
+## Отклонённый dense ordered item layout 2026-09-02
+
+Проверено универсальное хранение `orderedBlock.items` как плотного массива
+`orderedItem` вместо массива указателей. Search semantics, accounted bytes,
+candidates и allocations/op не изменились. Сравнение выполнялось отдельными
+test binaries baseline `2e3ae79` и candidate рабочего дерева, чередующимися
+запусками `GOMAXPROCS=1`, production `500ms x5` и shared-key `300ms x5`.
+
+Production median `Index.Search` был `46 416 → 46 809 ns/op` (+0,85%), warm
+Local `5 376 → 5 369 ns/op`. Shared-key Exact был `49 893 → 49 470 ns/op`,
+identity `49 868 → 49 809 ns/op`, Lossy50 `69 084 → 68 534 ns/op`; изменения
+меньше 1% и не образуют устойчивого выигрыша. CPU profiles с одинаковым
+physical shape остались сосредоточены в runtime/GC и Roaring `union2by2`, а не
+в чтении ordered items.
+
+Allocation-space profiles (`5s`, `memprofilerate=1`) локализовали обратный
+эффект плотного массива: flat allocation в `orderedIndex.insertItem` выросла
+примерно с `0,10 GB` до `0,42 GB`, а cumulative `coarsenOne` — с `4,29 GB` до
+`4,54 GB`; копирование более крупных slice elements съело ожидаемую экономию
+объектов. Эксперимент удалён как не улучшающий ни search, ни build allocation
+shape. Компактный layout имеет смысл возвращать только вместе с иной структурой
+build/finalize, которая не копирует dense elements при вставках и coarsening.
+
+## Отклонённая build-selected equality salt 2026-09-02
+
+Проверен один детерминированно выбранный salt общего equality quantizer-а.
+Шестнадцать стабильных кандидатов оценивались по posting-weight collision cost
+на всей nested precision ladder; выбранный salt применялся одинаково ко всем
+ступеням, поэтому key-only streaming coarsening оставался корректным. Focused
+differential и streaming gates прошли.
+
+На production данных selector выбрал исходный нулевой salt. Диагностика 50%
+осталась без изменений: шесть buckets, max posting 38 097, weighted collision
+34 764, 38 098 candidates/query и observed false-positive rate 1,0. Production
+All сохранил 1 722 candidates/query; mixed shared-key — 3,155. Следовательно,
+даже оптимизация перестановки по полной posting distribution не меняет реально
+выбранную physical shape. Эксперимент удалён без CPU/profile сравнения,
+поскольку candidate search code и опубликованный quantizer были побитово теми
+же (salt 0); оставался только неиспользуемый дополнительный Build-анализ.
+
 ## Отклонённый статический Pareto frontier 2026-09-02
 
 После greedy-пробы проверен детерминированный build-only Pareto frontier по
