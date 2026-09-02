@@ -173,3 +173,67 @@ end-to-end выигрыша. Для ordered правил hash отсутству
 
 До реализации и сопоставимого повторного профилирования принятого решения шаг
 6 нельзя завершить.
+
+## Search-first атрибуция по семействам 2026-09-02
+
+Добавлен отдельный `BenchmarkProductionShapeAttribution`, который на одинаковых
+38 098 production constraints изолирует equality, standalone ordered,
+`Between`, `CompareBy` и полный production `All`. Для каждого семейства
+сравниваются Exact, finest/identity Lossy и половинный retained budget;
+`CompareBy` не имеет представления, помещающегося в 50%, поэтому для него
+используется измеренный минимально достижимый budget 57% (16 508 из 29 090
+accounted bytes). Timed search использует один запрос, а candidates/query и
+amplification вычисляются по двум соседним production-запросам.
+
+Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`, текущий рабочий
+tree после `6855a8a`. Команда серии:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkProductionShapeAttribution/' \
+  -benchmem -benchtime=200ms -count=3 .
+```
+
+Медианы серии (время в ns/op):
+
+| Семейство | Режим | Index | B/op; allocs | warm Local | Local B/op; allocs | Accounted | Candidates | Amplification |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Equality | Exact | 18 639 | 22 640; 20 | 215,6 | 0; 0 | 419 451 | 150 | 1,000x |
+| Equality | identity | 25 908 | 22 640; 20 | 495,5 | 0; 0 | 419 451 | 150 | 1,000x |
+| Equality | Lossy 50% | 171 993 | 66 946; 18 | 131 773 | 1 152; 2 | 140 347 | 38 098 | 254,0x |
+| Standalone ordered | Exact | 94 835 | 28 120; 10 | 38 884 | 1 152; 2 | 41 168 | 10 682 | 1,000x |
+| Standalone ordered | identity | 95 215 | 28 120; 10 | 38 513 | 1 152; 2 | 41 168 | 10 682 | 1,000x |
+| Standalone ordered | Lossy 50% | 134 894 | 9 376; 4 | 130 888 | 1 152; 2 | 8 332 | 38 098 | 3,567x |
+| Between | Exact | 103 257 | 36 584; 14 | 38 484 | 1 152; 2 | 272 592 | 10 682 | 1,000x |
+| Between | identity | 104 011 | 36 584; 14 | 38 408 | 1 152; 2 | 272 592 | 10 682 | 1,000x |
+| Between | Lossy 50% | 110 435 | 17 648; 7 | 98 767 | 1 152; 2 | 135 976 | 28 195 | 2,640x |
+| CompareBy | Exact | 137 695 | 9 376; 4 | 125 254 | 1 152; 2 | 29 090 | 36 044 | 1,000x |
+| CompareBy | identity | 138 010 | 9 376; 4 | 125 408 | 1 152; 2 | 29 090 | 36 044 | 1,000x |
+| CompareBy | Lossy minimum 57% | 135 413 | 9 376; 4 | 131 642 | 1 152; 2 | 16 508 | 38 098 | 1,057x |
+| Production All | Exact | 34 924 | 40 769; 28 | 196,4 | 0; 0 | 754 244 | 45 | 1,000x |
+| Production All | identity | 39 937 | 40 769; 28 | 549,2 | 0; 0 | 754 244 | 45 | 1,000x |
+| Production All | Lossy 50% | 69 575 | 103 881; 31 | 5 450 | 0; 0 | 376 925 | 1 722 | 38,27x |
+
+Измерения локализуют основной candidate-quality дефект в equality: отдельный
+50%-индекс выбирает единственный класс и возвращает все 38 098 правил. В полном
+`All` пересечение ограничивает результат до 1 722, но это всё ещё 38,27x exact
+cardinality и объясняет рост bitmap union и candidate checks. `Between` и
+standalone ordered также требуют улучшения quantizer-а, однако дают существенно
+меньшую amplification. Изолированный `CompareBy` на своей минимальной ступени
+расширяет результат только на 5,7%; универсальную ordered membership
+оптимизацию преждевременно ставить перед equality и leaf quantizers.
+
+Finest/identity Lossy полностью совпал с Exact по accounted bytes, candidates
+и allocation classes во всех семействах. Ordered, `Between` и `CompareBy`
+совпали также по latency в пределах шума. Однако equality показал 25 908 против
+18 639 ns/op для `Index.Search` и 495,5 против 215,6 ns/op для warm
+`Local.Search`; production `All` — 39 937 против 34 924 ns/op и 549,2 против
+196,4 ns/op. Это измеренное parity-нарушение требует отдельной чередующейся
+серии и CPU profiles; до такой проверки причина не приписывается layout или
+codec.
+
+Следующий эксперимент по roadmap — equality-only анализ реально выбранных
+ступеней: posting cardinality distribution, weighted collision cost,
+максимальный bucket, estimated false-positive rate и candidates/query. После
+этого можно оценивать stable hash/salt и quality-aware score только по
+end-to-end `Index.Search` и `Local.Search`.
