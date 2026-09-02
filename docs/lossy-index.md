@@ -143,6 +143,9 @@ new keys until their depth catches the older generation, or choose the adjacent
 pair with the largest measured retained-byte release. Either alternative must
 first define deterministic mixed-depth semantics and preserve the exact-result
 superset before it can replace the current full-generation rebuild.
+Additionally, test a quality floor that rejects merges whose bitmap exceeds a
+limit such as the square root of the leaf's concrete unique-ID count. This is
+an experimental candidate-quality guard, not a fixed formula or API contract.
 
 Boundary lookup searches the physical index directly. No parallel boundary
 array is retained or omitted from memory accounting. A value inside the known
@@ -492,16 +495,6 @@ rate because their false-positive boundary depends on the query value.
 
 ## Validation and rollout
 
-Start with one equality shape and one ordered-range shape before broad operator
-coverage. For every supported combination, compare exact and lossy results over
-generated and adversarial data and assert that every exact match appears in the
-lossy result. Include wildcards, duplicate external IDs, empty data, skewed
-distributions, minimum budgets, range boundaries, and repeated builder use.
-
-Benchmarks should measure 10K, 100K, and 1M rules initially, then larger data
-sets where practical. Record analysis and materialization time, peak build
-memory, retained index bytes, search latency and allocations, and observed
-false-positive rate. A strategy is ready only when it respects the configured
-budget within a documented accounting tolerance, preserves immutable lock-free
-search, and offers a useful memory tradeoff without an unacceptable search
-regression.
+Correctness gates compare exact and lossy results on generated and adversarial
+data; performance gates measure retained memory, candidate quality, latency and
+allocations. The active requirements and sequencing live in `ROADMAP.md`.

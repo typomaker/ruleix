@@ -38,7 +38,10 @@ func rebuildOrderedBoundaries[V any](index *orderedIndex[V], dir direction) orde
 	// TODO: Compare two selective compaction policies before replacing this
 	// full-generation rebuild: (1) compact new depth-0 keys until they catch up
 	// with older keys, or (2) compact the adjacent pair with the largest actual
-	// retained-byte release. Both require deterministic and superset-safe gates.
+	// retained-byte release. Also test a quality floor that rejects a merge when
+	// its bitmap exceeds a limit such as sqrt(concrete unique IDs), preventing
+	// very long boundary postings. All require deterministic, superset-safe,
+	// retained-memory, and candidate-quality gates; sqrt is not yet a contract.
 	items := make([]*orderedItem[V], 0, index.buildStatistics().uniqueValues)
 	for _, block := range index.blocks {
 		items = append(items, block.items...)
