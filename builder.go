@@ -26,6 +26,7 @@ type Index[C any, ID comparable] struct {
 	observedRoot       Rule[C]
 	rootMetrics        *inspectorRuntime
 	values             []ID
+	idChunkShift       uint8
 	pool               *bitmapPool
 	nodes              int
 	exclusions         []exclusionRule[C]
@@ -96,7 +97,11 @@ type buildOptions struct {
 	// identityLossy selects the exact-key head of every Lossy representation
 	// ladder after normal policy analysis. It is a test/benchmark control, not
 	// a public memory-limit mode.
-	identityLossy       bool
+	identityLossy bool
+	// idChunkShift is an experimental lossy-build control. Positive postings
+	// receive dense ID chunks while the rule tree continues to operate on
+	// ordinary uint32 values. Search expands matching chunks at the boundary.
+	idChunkShift        uint8
 	observeWorkingUsage func(usage, target uint64)
 }
 
@@ -110,6 +115,9 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 ) (*Index[C, ID], buildStatistics, error) {
 	if entries == nil {
 		return nil, buildStatistics{}, fmt.Errorf("ruleix: nil entry sequence")
+	}
+	if options.idChunkShift >= 32 {
+		return nil, buildStatistics{}, fmt.Errorf("ruleix: ID chunk shift must be below 32")
 	}
 	ids := &nodeIDAllocator{}
 	state := schema.newState(ids, hints)
@@ -140,7 +148,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 			internalIDs[id] = internalID
 			values = append(values, id)
 		}
-		state.insert(constraint, internalID)
+		state.insert(constraint, internalID>>options.idChunkShift)
 		entryIndex++
 		if options.enableStreaming && !options.identityLossy && entryIndex%lossyBuildPressureInterval == 0 {
 			var usage, target uint64
@@ -187,7 +195,9 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 			options.observeWorkingUsage(usage, target)
 		}
 	}
-	ix := &Index[C, ID]{root: state, values: values, pool: newBitmapPool()}
+	ix := &Index[C, ID]{
+		root: state, values: values, idChunkShift: options.idChunkShift, pool: newBitmapPool(),
+	}
 	var err error
 	ix.root, err = compileLossyRules(ix.root, options.identityLossy)
 	if err != nil {
@@ -203,7 +213,11 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		statistics.nodes = make([]nodeBuildStatistics, int(ids.next))
 		ix.root.collectBuildStatistics(statistics.nodes)
 	}
-	ix.root = optimizeRule(ix.root, uint64(len(ix.values)))
+	internalCount := uint64(len(ix.values))
+	if options.idChunkShift != 0 && internalCount != 0 {
+		internalCount = (internalCount-1)/(uint64(1)<<options.idChunkShift) + 1
+	}
+	ix.root = optimizeRule(ix.root, internalCount)
 	var inspections []pendingInspection
 	ix.root, err = stripInspectors(ix.root, make(map[*inspectorState]struct{}), &inspections)
 	if err != nil {
@@ -214,8 +228,11 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	}
 	// Removing transparent decorators can expose All simplifications that were
 	// intentionally hidden while retaining the inspector-to-child association.
-	ix.root = optimizeRule(ix.root, uint64(len(ix.values)))
+	ix.root = optimizeRule(ix.root, internalCount)
 	ix.exclusions = collectExclusionRules(ix.root, nil)
+	if options.idChunkShift != 0 && len(ix.exclusions) != 0 {
+		return nil, buildStatistics{}, fmt.Errorf("ruleix: experimental ID chunking does not support exclusions")
+	}
 	if len(ix.exclusions) != 0 {
 		universe := roaring.New()
 		universe.AddRange(0, uint64(len(ix.values)))
@@ -291,482 +308,4 @@ func Zip[C any, ID any](constraints []C, ids []ID) iter.Seq2[C, ID] {
 			}
 		}
 	}
-}
-
-// Search appends the unique IDs of every stored rule matching value to dst,
-// reports whether this call found any matches, and updates the slice through
-// its pointer if append allocates a larger backing array. Existing elements in
-// dst do not affect the reported result. Results preserve first-insertion
-// order. Search panics when dst is nil.
-func (ix *Index[C, ID]) Search(value C, dst *[]ID) bool {
-	if dst == nil {
-		panic("ruleix: nil search destination")
-	}
-	return ix.search(value, dst, ix.pool)
-}
-
-// Local returns a search context that initially caches up to two recently
-// repeated intermediate bitmap results per filter node and can adapt to four
-// for a repeatedly reused working set. A value is admitted after its second
-// recent use, so one-off queries do not retain their result bitmaps. It
-// can reduce repeated work when adjacent searches share constraint values, at
-// the cost of retaining admitted bitmaps for the lifetime of the Local.
-//
-// A Local is not safe for concurrent use. Create one per goroutine:
-//
-//	local := index.Local()
-//	var matches []ID
-//	for value := range values {
-//		local.Search(value, &matches)
-//	}
-//
-// Call Close when the context is no longer needed so its internal resources
-// can be reused. The Index remains immutable and may be shared by all of those
-// goroutines.
-func (ix *Index[C, ID]) Local() *Local[C, ID] {
-	localOrdinal := ix.localTelemetry.Add(1)
-	sampled := localOrdinal%64 == 0
-	observed := (ix.rootMetrics != nil || ix.localInspectors != nil) && sampled
-	pools := &ix.locals
-	if observed {
-		pools = &ix.observedLocals
-	}
-	pool, _ := pools.Get().(*bitmapPool)
-	if pool == nil {
-		if observed {
-			pool = newLocalBitmapPool(ix.nodes, ix.localInspectors)
-		} else {
-			pool = newLocalBitmapPool(ix.nodes)
-		}
-	}
-	if observed {
-		pool.bindRootInspector(ix.rootMetrics)
-	}
-	return &Local[C, ID]{index: ix, pool: pool, observed: observed}
-}
-
-// Search appends matching IDs to dst while reusing this Local's cached state
-// and reports whether this call found any matches. Existing elements in dst do
-// not affect the reported result. Search panics when dst is nil.
-func (local *Local[C, ID]) Search(value C, dst *[]ID) bool {
-	local.requireOpen()
-	if dst == nil {
-		panic("ruleix: nil search destination")
-	}
-	return local.index.search(value, dst, local.pool)
-}
-
-// Close releases cached search results and returns the internal context to the
-// originating Index for reuse. Empty per-node cache structures and learned All
-// child orders remain with that recyclable context, while all admission and
-// replacement state is reset so its next Local lifetime starts cold. A closed
-// Local must not be used again. Repeated calls to Close are safe.
-func (local *Local[C, ID]) Close() {
-	if local == nil || local.closed || local.index == nil {
-		return
-	}
-	local.requireOpen()
-	index := local.index
-	local.pool.resetLocal()
-	if local.observed {
-		index.observedLocals.Put(local.pool)
-	} else {
-		index.locals.Put(local.pool)
-	}
-	local.index = nil
-	local.pool = nil
-	local.closed = true
-}
-
-// Visit calls yield for matching IDs while reusing this Local's cached state.
-// A nil yield function is a no-op.
-func (local *Local[C, ID]) Visit(value C, yield func(ID) bool) {
-	local.requireOpen()
-	if yield == nil {
-		return
-	}
-	root, exclusions := local.index.root, local.index.exclusions
-	if local.observed {
-		root, exclusions = local.index.observedRoot, local.index.observedExclusions
-	}
-	visitMatches(root, local.index.values, local.pool, exclusions, value, yield)
-}
-
-func (local *Local[C, ID]) requireOpen() {
-	if local == nil || local.index == nil || local.closed {
-		panic("ruleix: closed Local")
-	}
-}
-
-// Visit calls yield once for each unique matching ID in first-match order.
-// Iteration stops immediately when yield returns false. A nil yield function is
-// a no-op.
-func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
-	if yield == nil {
-		return
-	}
-	visitMatches(ix.root, ix.values, ix.pool, ix.exclusions, value, yield)
-}
-
-func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
-	before := len(*dst)
-	root, exclusions := ix.root, ix.exclusions
-	if pool.observeRuntime {
-		root, exclusions = ix.observedRoot, ix.observedExclusions
-	}
-	if pool.observeRuntime && ix.rootMetrics != nil {
-		if root, ok := root.(*allRule[C]); ok {
-			metrics := pool.rootInspectorObserver(ix.rootMetrics)
-			searchAllMatches(root, ix.values, pool, exclusions, value, dst, ix.rootMetrics)
-			metrics.observeCardinality(uint64(len(*dst) - before))
-			return len(*dst) != before
-		}
-	}
-	if all, ok := root.(*allRule[C]); ok {
-		searchAllMatches(all, ix.values, pool, exclusions, value, dst, nil)
-		return len(*dst) != before
-	}
-	bits := pool.get()
-	defer pool.put(bits)
-	root.search(value, bits, pool)
-	if len(exclusions) != 0 {
-		excluded := pool.get()
-		addExclusions(exclusions, value, excluded, pool)
-		bits.AndNot(excluded)
-		pool.put(excluded)
-	}
-	*dst = appendBitmapValues(bits, ix.values, *dst)
-	if pool.observeRuntime && ix.rootMetrics != nil {
-		pool.rootInspectorObserver(ix.rootMetrics).observeCardinality(uint64(len(*dst) - before))
-	}
-	return len(*dst) != before
-}
-
-//nolint:gocognit // The specialized execution branches avoid allocations in hot paths.
-func searchAllMatches[C any, ID comparable](
-	root *allRule[C],
-	values []ID,
-	pool *bitmapPool,
-	exclusions []exclusionRule[C],
-	value C,
-	dst *[]ID,
-	metrics *inspectorRuntime,
-) {
-	result := *dst
-	if len(exclusions) == 0 {
-		if cached := root.loadLocalQueryResult(pool, value); cached != nil {
-			for _, id := range cached.ids {
-				result = append(result, values[id])
-			}
-			*dst = result
-			return
-		}
-	}
-	var inline [8]rankedBitmap
-	var inlineChecked [1]uint64
-	var rankedChildren []rankedBitmap
-	var buffer *rankedBitmapBuffer
-	if len(root.children) > len(inline) || root.equalityClassCount > 64 {
-		buffer = pool.getRanked(len(root.children))
-		rankedChildren = buffer.items
-	} else {
-		rankedChildren = inline[:len(root.children)]
-	}
-	if !root.rankChildren(value, pool, rankedChildren) || len(rankedChildren) == 0 {
-		if buffer != nil {
-			pool.putRanked(buffer)
-		}
-		*dst = result
-		return
-	}
-	// Dense identity lookup pays for itself while operands are cold. Once the
-	// first ranked Local operand is cached, let the ordinary child caches admit
-	// the remaining logical operands; stable warm searches then avoid both the
-	// class lookup and physical materialization work.
-	useEqualityClasses := root.equalityClassCount != 0 &&
-		(pool.local == nil || rankedChildren[0].bits == nil)
-	if useEqualityClasses {
-		checked := inlineChecked[:]
-		if buffer != nil {
-			words := int((root.equalityClassCount + 63) / 64)
-			if cap(buffer.mask) < words {
-				buffer.mask = make([]uint64, words)
-			} else {
-				buffer.mask = buffer.mask[:words]
-				clear(buffer.mask)
-			}
-			checked = buffer.mask
-		}
-		rankedChildren = root.deduplicateEqualityClasses(value, rankedChildren, checked)
-	}
-	initiallyBroad := rankedChildren[0].card > allCandidateScanLimit
-	var candidates *roaring.Bitmap
-	var cachedResult *localAllResult
-	if initiallyBroad {
-		cachedResult = root.loadLocalResult(pool, rankedChildren)
-		if cachedResult == nil {
-			candidates = pool.get()
-		}
-	}
-	if cachedResult == nil && !prepareRankedAllCandidates(root, value, pool, rankedChildren, candidates, metrics) {
-		if candidates != nil {
-			pool.put(candidates)
-		}
-		root.releaseRanked(pool, rankedChildren)
-		if buffer != nil {
-			pool.putRanked(buffer)
-		}
-		*dst = result
-		return
-	}
-	if candidates != nil && cachedResult == nil {
-		root.storeLocalResult(pool, rankedChildren, candidates, value)
-	}
-
-	excluded := buildAllExclusions(exclusions, value, rankedChildren[0].card, pool)
-	broad := rankedChildren[0].card > allCandidateScanLimit
-	//nolint:nestif // Broad result assembly keeps ownership and exclusion handling together.
-	if broad {
-		if candidates != nil || cachedResult != nil {
-			if cachedResult != nil && cachedResult.idsSet && excluded == nil {
-				for _, id := range cachedResult.ids {
-					result = append(result, values[id])
-				}
-			} else {
-				if cachedResult != nil {
-					candidates = pool.get()
-					candidates.Or(cachedResult.bits)
-				}
-				if excluded != nil {
-					candidates.AndNot(excluded)
-				}
-				result = appendBitmapValues(candidates, values, result)
-			}
-			if candidates != nil {
-				pool.put(candidates)
-			}
-		} else {
-			result = appendBitmapAllMatches(rankedChildren, excluded, values, pool, result)
-		}
-	} else {
-		result = appendScannedAllMatches(root, rankedChildren, exclusions, excluded, value, values, pool, result)
-	}
-	if excluded != nil {
-		pool.put(excluded)
-	}
-	root.releaseRanked(pool, rankedChildren)
-	if buffer != nil {
-		pool.putRanked(buffer)
-	}
-	*dst = result
-}
-
-func prepareRankedAllCandidates[C any](
-	root *allRule[C],
-	value C,
-	pool *bitmapPool,
-	rankedChildren []rankedBitmap,
-	candidates *roaring.Bitmap,
-	metrics *inspectorRuntime,
-) bool {
-	if rankedChildren[0].card > allCandidateScanLimit {
-		return root.intersectRankedInOrderObserved(value, candidates, pool, rankedChildren, metrics, nil)
-	}
-	if rankedChildren[0].bits != nil {
-		if root.directIDComplete {
-			return true
-		}
-		return root.materializeUnsupportedRemaining(value, pool, rankedChildren[1:])
-	}
-	bits := pool.get()
-	root.children[rankedChildren[0].childIdx].search(value, bits, pool)
-	rankedChildren[0].bits = bits
-	rankedChildren[0].card = bits.GetCardinality()
-	rankedChildren[0].owned = true
-	if rankedChildren[0].card <= allCandidateScanLimit {
-		if root.directIDComplete {
-			return true
-		}
-		return root.materializeUnsupportedRemaining(value, pool, rankedChildren[1:])
-	}
-	return materializeRankedAfterFirst(root, value, pool, rankedChildren, metrics)
-}
-
-func materializeRankedAfterFirst[C any](
-	root *allRule[C],
-	value C,
-	pool *bitmapPool,
-	rankedChildren []rankedBitmap,
-	metrics *inspectorRuntime,
-) bool {
-	for i := 1; i < len(rankedChildren); i++ {
-		bits := pool.get()
-		root.children[rankedChildren[i].childIdx].search(value, bits, pool)
-		rankedChildren[i].bits = bits
-		rankedChildren[i].card = bits.GetCardinality()
-		rankedChildren[i].owned = true
-		if bits.IsEmpty() {
-			return false
-		}
-		if i == 1 && shouldPruneBitmapRanges(pool) && bitmapRangesDisjoint(rankedChildren[0].bits, bits) {
-			observeRangePruning(metrics, pool)
-			return false
-		}
-	}
-	return true
-}
-
-func buildAllExclusions[C any](
-	rules []exclusionRule[C],
-	value C,
-	candidates uint64,
-	pool *bitmapPool,
-) *roaring.Bitmap {
-	// Direct exclusion checks only run in appendScannedAllMatches. Bitmap
-	// execution always needs an exclusion bitmap, even when the candidate set
-	// is below the otherwise profitable direct-lookup limit.
-	direct := candidates <= allDirectExclusionScanLimit && candidates <= allCandidateScanLimit
-	if len(rules) == 0 || direct {
-		return nil
-	}
-	excluded := pool.get()
-	addExclusions(rules, value, excluded, pool)
-	return excluded
-}
-
-func appendBitmapAllMatches[ID comparable](
-	rankedChildren []rankedBitmap,
-	excluded *roaring.Bitmap,
-	values []ID,
-	pool *bitmapPool,
-	result []ID,
-) []ID {
-	// FastAnd can return the final result directly here. The generic All search
-	// cannot use it efficiently because it must copy that result into dst.
-	var inline [8]*roaring.Bitmap
-	if len(rankedChildren) > len(inline) {
-		bits := pool.get()
-		bits.Or(rankedChildren[0].bits)
-		for _, child := range rankedChildren[1:] {
-			if bits.IsEmpty() {
-				break
-			}
-			bits.And(child.bits)
-		}
-		if excluded != nil {
-			bits.AndNot(excluded)
-		}
-		result = appendBitmapValues(bits, values, result)
-		pool.put(bits)
-		return result
-	}
-	postings := inline[:len(rankedChildren)]
-	for i := range rankedChildren {
-		postings[i] = rankedChildren[i].bits
-	}
-	bits := roaring.FastAnd(postings...)
-	if excluded != nil {
-		bits.AndNot(excluded)
-	}
-	result = appendBitmapValues(bits, values, result)
-	return result
-}
-
-// Below this size Iterate avoids an iterator allocation and its callback cost
-// is lower than the batch setup. Wide results benefit substantially from
-// decoding IDs in batches.
-const manyIteratorCardinalityThreshold = 4 << 10
-
-func appendBitmapValues[ID comparable](bits *roaring.Bitmap, values []ID, result []ID) []ID {
-	if bits.GetCardinality() < manyIteratorCardinalityThreshold {
-		bits.Iterate(func(id uint32) bool {
-			result = append(result, values[id])
-			return true
-		})
-		return result
-	}
-
-	iterator := bits.ManyIterator()
-	var ids [256]uint32
-	for count := iterator.NextMany(ids[:]); count != 0; count = iterator.NextMany(ids[:]) {
-		for _, id := range ids[:count] {
-			result = append(result, values[id])
-		}
-	}
-	return result
-}
-
-func appendScannedAllMatches[C any, ID comparable](
-	root *allRule[C],
-	rankedChildren []rankedBitmap,
-	exclusions []exclusionRule[C],
-	excluded *roaring.Bitmap,
-	value C,
-	values []ID,
-	pool *bitmapPool,
-	result []ID,
-) []ID {
-	rankedChildren[0].bits.Iterate(func(id uint32) bool {
-		if excluded != nil && excluded.Contains(id) || excluded == nil && isExcluded(exclusions, value, id, pool) {
-			return true
-		}
-		matches := true
-		for _, child := range rankedChildren[1:] {
-			if child.bits != nil {
-				if !child.bits.Contains(id) {
-					matches = false
-					break
-				}
-				continue
-			}
-			if !root.matchesChildID(child.childIdx, value, id, pool) {
-				matches = false
-				break
-			}
-		}
-		if matches {
-			result = append(result, values[id])
-		}
-		return true
-	})
-	return result
-}
-
-func visitMatches[C any, ID comparable](
-	root Rule[C],
-	values []ID,
-	pool *bitmapPool,
-	exclusions []exclusionRule[C],
-	value C,
-	yield func(ID) bool,
-) {
-	bits := pool.get()
-	defer pool.put(bits)
-	root.search(value, bits, pool)
-	if len(exclusions) != 0 {
-		excluded := pool.get()
-		addExclusions(exclusions, value, excluded, pool)
-		bits.AndNot(excluded)
-		pool.put(excluded)
-	}
-	bits.Iterate(func(id uint32) bool { return yield(values[id]) })
-}
-
-func addExclusions[C any](rules []exclusionRule[C], value C, dst *roaring.Bitmap, pool *bitmapPool) {
-	for _, rule := range rules {
-		rule.exclude(value, dst, pool)
-	}
-}
-
-func isExcluded[C any](rules []exclusionRule[C], value C, id uint32, pool *bitmapPool) bool {
-	for _, rule := range rules {
-		if observed, ok := rule.(*inspectedExclusionRule[C]); ok {
-			pool.inspectorObserver(observed.metrics).candidateCheck()
-			rule = observed.child
-		}
-		if rule.isExcluded(value, id) {
-			return true
-		}
-	}
-	return false
 }
