@@ -467,7 +467,7 @@ search types отсутствуют и diff coverage изменённого prod
 - В `1508c7c` equality переведён на `equalityIndex[uint64]`; ordered лишён
   level/quantizer/transformer и переведён на merge соседних ключей. Equality level 0 хранит
   полный hash, уровни 1–17 очищают младшие биты; tagged key, исходное `V` в
-  physical index и fixed-arity equality rules удалены.
+  physical index и fixed-arity equality rules удалены; atomic ordered merge и least-release selector приняты ради search за измеренную цену Build.
 - Equality search сопоставлен с `v0.8.2` на Apple M1 Max, Go 1.26.0,
   `300ms x5`: equality-only Index 15 579 → 15 430 ns/op, Local 222,5 → 222,8;
   two-leaf Index 19 035 → 18 748, Local 42,89 → 43,89; allocations прежние.

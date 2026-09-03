@@ -52,11 +52,14 @@ func cloneCompareByRule[T any, V any](r *compareByRule[T, V]) *compareByRule[T, 
 
 func (r *compareByRule[T, V]) selectedStreamingIndex() int {
 	selected := -1
+	var selectedCandidate orderedMergeCandidate
 	for operator, index := range r.indexes {
-		if index == nil || index.buildStatistics().uniqueValues <= 1 {
+		if index == nil {
 			continue
 		}
-		if selected < 0 || index.buildStatistics().uniqueValues > r.indexes[selected].buildStatistics().uniqueValues {
+		candidate, available := bestOrderedMerge(index, compareByDirection(Operator(operator)))
+		if betterOrderedMerge(candidate, available, selectedCandidate, selected >= 0) {
+			selectedCandidate = candidate
 			selected = operator
 		}
 	}
@@ -89,11 +92,18 @@ func (r *compareByRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
 	}
 	operator := Operator(selected)
 	current := r.indexes[selected]
-	next := newOrderedIndex(r.compare)
-	next = rebuildOrderedBoundaries(current, compareByDirection(operator))
-	clone := cloneCompareByRule(r)
-	clone.indexes[selected] = &next
-	usage := clone.quantizedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
+	next := rebuildOrderedBoundaries(current, compareByDirection(operator))
+	usage := uint64(24) + bitmapBytes(r.wildcard)
+	for indexPosition, index := range r.indexes {
+		if index == nil {
+			continue
+		}
+		if indexPosition == selected {
+			index = &next
+		}
+		memory, _, _ := quantizedOrderedAccounting(index, roaring.New())
+		usage += memory
+	}
 	return usage, func() {
 		r.indexes[selected] = &next
 	}, true

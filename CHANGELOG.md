@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Lossy ordered pressure now merges one least-populated adjacent posting pair
+  per step and globally chooses the smallest memory release, allowing
+  another filter to be reconsidered before further precision is discarded.
+
 - Equality level 0 now indexes the original comparable value without Ruleix
   hashing. Its first lossy downgrade replaces the `V`-keyed specialization of
   the common equality rule with a `uint64`-keyed specialization; later levels

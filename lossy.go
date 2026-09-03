@@ -404,9 +404,12 @@ func fitStreamingAggregateTo[T any](rule Rule[T], limit uint64, allowTerminal bo
 			}
 			return
 		}
+		// Rank atomic transitions by the smallest release so the planner consumes
+		// only as much precision as the current deficit needs. A zero-release step
+		// remains eligible because it can expose a useful coarser successor.
 		selected := 0
 		for i := 1; i < len(candidates); i++ {
-			if candidates[i].released > candidates[selected].released ||
+			if candidates[i].released < candidates[selected].released ||
 				(candidates[i].released == candidates[selected].released &&
 					candidates[i].usage > candidates[selected].usage) {
 				selected = i

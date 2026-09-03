@@ -1,5 +1,13 @@
 package ruleix
 
+import "github.com/RoaringBitmap/roaring/v2"
+
+type orderedMergeCandidate struct {
+	position         int
+	cardinality      uint64
+	postingFootprint uint64
+}
+
 func roundedOrderedBoundary[V any](index *orderedIndex[V], value V, upward bool) V {
 	if len(index.blocks) == 0 {
 		return value
@@ -29,31 +37,131 @@ func roundedOrderedBoundary[V any](index *orderedIndex[V], value V, upward bool)
 	return value
 }
 
-func rebuildOrderedBoundaries[V any](index *orderedIndex[V], dir direction) orderedIndex[V] {
-	// TODO: Compare two selective compaction policies before replacing this
-	// full-generation rebuild: (1) compact new depth-0 keys until they catch up
-	// with older keys, or (2) compact the adjacent pair with the largest actual
-	// retained-byte release. Also test a quality floor that rejects a merge when
-	// its bitmap exceeds a limit such as sqrt(concrete unique IDs), preventing
-	// very long boundary postings. All require deterministic, superset-safe,
-	// retained-memory, and candidate-quality gates; sqrt is not yet a contract.
+func bestOrderedMerge[V any](index *orderedIndex[V], _ direction) (orderedMergeCandidate, bool) {
+	// TODO: Compare build-only merge depth for new edge keys and a quality floor
+	// that can make an otherwise impossible hard limit fail explicitly.
 	items := make([]*orderedItem[V], 0, index.buildStatistics().uniqueValues)
 	for _, block := range index.blocks {
 		items = append(items, block.items...)
 	}
-	next := newOrderedIndex(index.compare)
-	next.merged = true
-	for first := 0; first < len(items); first += 2 {
-		last := min(first+2, len(items))
-		boundary := items[first].value
-		if dir == lessThan {
-			boundary = items[last-1].value
-		}
-		bits := items[first].bits.Clone()
-		for position := first + 1; position < last; position++ {
-			bits.Or(items[position].bits)
-		}
-		next.insertPosting(boundary, bits)
+	if len(items) < 2 {
+		return orderedMergeCandidate{}, false
 	}
+	best := orderedMergeCandidate{position: -1}
+	for position := 0; position+1 < len(items); position++ {
+		left, right := items[position], items[position+1]
+		cardinality := left.bits.GetCardinality() + right.bits.GetCardinality() -
+			left.bits.AndCardinality(right.bits)
+		footprint := bitmapBytes(left.bits) + bitmapBytes(right.bits)
+		if best.position < 0 || cardinality < best.cardinality ||
+			cardinality == best.cardinality && footprint > best.postingFootprint {
+			best = orderedMergeCandidate{
+				position: position, cardinality: cardinality, postingFootprint: footprint,
+			}
+		}
+	}
+	return best, true
+}
+
+func betterOrderedMerge(candidate orderedMergeCandidate, candidateOK bool, current orderedMergeCandidate, currentOK bool) bool {
+	return candidateOK && (!currentOK || candidate.cardinality < current.cardinality ||
+		candidate.cardinality == current.cardinality && candidate.postingFootprint > current.postingFootprint)
+}
+
+func rebuildOrderedBoundaries[V any](index *orderedIndex[V], dir direction) orderedIndex[V] {
+	selected, ok := bestOrderedMerge(index, dir)
+	if !ok {
+		return index.cloneBuild()
+	}
+	currentAccounting := orderedQuantizedBuildAccounting(index)
+	next := *index
+	next.blocks = append([]orderedBlock[V](nil), index.blocks...)
+	next.blockPrefix = nil
+	next.rangeBlocks = nil
+	next.routing = orderedRouting{}
+	next.merged = true
+
+	leftBlock, leftPosition := orderedItemPosition(index, selected.position)
+	rightBlock, rightPosition := orderedItemPosition(index, selected.position+1)
+	left := index.blocks[leftBlock].items[leftPosition]
+	right := index.blocks[rightBlock].items[rightPosition]
+	boundary := left.value
+	if dir == lessThan {
+		boundary = right.value
+	}
+	bits := left.bits.Clone()
+	bits.Or(right.bits)
+	merged := &orderedItem[V]{value: boundary, bits: bits}
+
+	if leftBlock == rightBlock {
+		oldAccounting := orderedBlockBuildAccounting(index.blocks[leftBlock])
+		items := append([]*orderedItem[V](nil), index.blocks[leftBlock].items...)
+		items[leftPosition] = merged
+		items = append(items[:rightPosition], items[rightPosition+1:]...)
+		next.blocks[leftBlock] = orderedBlock[V]{items: items, bits: aggregateOrderedItems(items)}
+		next.buildAccounting = addOrderedBuildAccounting(
+			subtractOrderedBuildAccounting(currentAccounting, oldAccounting),
+			orderedBlockBuildAccounting(next.blocks[leftBlock]),
+		)
+		next.accountingValid = true
+		return next
+	}
+
+	oldAccounting := addOrderedBuildAccounting(
+		orderedBlockBuildAccounting(index.blocks[leftBlock]),
+		orderedBlockBuildAccounting(index.blocks[rightBlock]),
+	)
+	leftItems := append([]*orderedItem[V](nil), index.blocks[leftBlock].items...)
+	rightItems := append([]*orderedItem[V](nil), index.blocks[rightBlock].items...)
+	if dir == greaterThan {
+		leftItems[leftPosition] = merged
+		rightItems = append(rightItems[:rightPosition], rightItems[rightPosition+1:]...)
+	} else {
+		leftItems = append(leftItems[:leftPosition], leftItems[leftPosition+1:]...)
+		rightItems[rightPosition] = merged
+	}
+	next.blocks[leftBlock] = orderedBlock[V]{items: leftItems, bits: aggregateOrderedItems(leftItems)}
+	next.blocks[rightBlock] = orderedBlock[V]{items: rightItems, bits: aggregateOrderedItems(rightItems)}
+	if len(leftItems) == 0 {
+		next.blocks = append(next.blocks[:leftBlock], next.blocks[leftBlock+1:]...)
+	} else if len(rightItems) == 0 {
+		next.blocks = append(next.blocks[:rightBlock], next.blocks[rightBlock+1:]...)
+	}
+	newAccounting := orderedBuildAccounting{}
+	if len(leftItems) != 0 {
+		newAccounting = addOrderedBuildAccounting(newAccounting, orderedBlockBuildAccounting(next.blocks[leftBlock]))
+	}
+	if len(rightItems) != 0 {
+		rightIndex := rightBlock
+		if len(leftItems) == 0 {
+			rightIndex--
+		}
+		newAccounting = addOrderedBuildAccounting(newAccounting, orderedBlockBuildAccounting(next.blocks[rightIndex]))
+	}
+	next.buildAccounting = addOrderedBuildAccounting(
+		subtractOrderedBuildAccounting(currentAccounting, oldAccounting), newAccounting,
+	)
+	next.accountingValid = true
 	return next
+}
+
+func orderedItemPosition[V any](index *orderedIndex[V], position int) (int, int) {
+	for blockIndex, block := range index.blocks {
+		if position < len(block.items) {
+			return blockIndex, position
+		}
+		position -= len(block.items)
+	}
+	return -1, -1
+}
+
+func aggregateOrderedItems[V any](items []*orderedItem[V]) *roaring.Bitmap {
+	if len(items) == 1 {
+		return items[0].bits
+	}
+	bits := roaring.New()
+	for _, item := range items {
+		bits.Or(item.bits)
+	}
+	return bits
 }

@@ -70,8 +70,14 @@ func hashScalar(value any) (uint64, bool) {
 }
 
 func comparableValueBytes(value any) uint64 {
-	if encoded, ok := canonicalScalar(nil, value); ok {
-		return uint64(len(encoded))
+	switch value := value.(type) {
+	case bool:
+		return 2
+	case string:
+		return uint64(len(value)) + 9
+	case int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64, uintptr, float32, float64:
+		return 9
 	}
 	var size func(reflect.Value) uint64
 	size = func(current reflect.Value) uint64 {

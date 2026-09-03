@@ -289,8 +289,9 @@ Standalone `Greater*`/`Less*` Exact и Lossy публикуют один `ordere
 `orderedIndex`. В rule нет level, quantizer или key transformer: insert и query
 передают исходный `V` в общие search, cardinality, `matchesID`, range walk,
 candidate filtering и Local cache. Lossy-controller отличается единственной
-build-операцией: он создаёт новое поколение, попарно объединяя соседние текущие
-ключи. Для `Greater*` posting пары хранится под нижним ключом, для `Less*` — под
+build-операцией: он создаёт новое поколение, объединяя одну соседнюю пару с
+минимальной union-cardinality, после чего глобальный selector повторяет выбор.
+Для `Greater*` posting пары хранится под нижним ключом, для `Less*` — под
 верхним, поэтому обычный Exact matcher консервативно читает его без query-time
 округления. Numeric, time и arbitrary comparator используют один алгоритм.
 
@@ -298,8 +299,8 @@ build-операцией: он создаёт новое поколение, п�
 режим. Оно нужно только для корректной вставки оставшейся части streaming input
 в уже объединённый диапазон и для lookup `CompareBy(EQ)`. Поздний внешний ключ
 остаётся новым крайним ключом; поздний внутренний ключ присоединяется к
-ближайшей наружной границе. Следующий pressure rebuild снова обрабатывает все
-текущие соседние ключи. Отдельный boundary-массив не хранится.
+ближайшей наружной границе. Следующий pressure rebuild заново выбирает лучшую
+соседнюю пару. Отдельный boundary-массив не хранится.
 Последний `prepareSearch` строит обычные block aggregates, prefix sums и
 routing, поэтому finest lossy больше не выполняет линейный union legacy
 physical keys. `Between` и `CompareBy` теперь используют те же `orderedRule` и

@@ -79,6 +79,12 @@ updated only when a new canonical entry point is required.
   APIs and their supported modes. Such a regression must be corrected before
   completing the task, or the causing change must be rejected; it must not be
   intentionally accepted.
+- Build latency and transient-allocation regressions may be accepted when they
+  are the measured cost of a material search-quality or search-performance
+  improvement explicitly prioritized by the project owner. The decision must
+  compare both revisions, profile the added Build cost, preserve retained-memory
+  limits and correctness, and be recorded in the canonical performance and
+  optimization documents. This exception never permits a search regression.
 
 ## Documentation ownership
 

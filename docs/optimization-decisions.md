@@ -6,6 +6,29 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-03: атомарное слияние одной ordered-пары принято
+
+Проверен selector, который на каждом шаге объединял только соседнюю пару с
+минимальной union-cardinality и после неё заново сравнивал все lossy-листья.
+Вариант с прежним глобальным максимумом освобождённых байт отклонён: mixed shape
+ухудшился с 3,414 до 175,2 candidates/query, а production Local исходного
+прототипа вырос с 12,1 до 21,6 мкс при 3 802 → 5 698 candidates.
+
+Принят глобальный выбор наименьшего atomic release, включая нулевой шаг,
+открывающий более грубого successor-а. Против `f10fca5`, Apple M1 Max, Go 1.26,
+`GOMAXPROCS=1`, `300ms x3`: mixed candidates 3,414 → 2,121, Index 134,6 →
+40,6 мкс, Local 61,6 → 60,8 нс; production candidates 3 802 → 358, Index
+126,7 → 32,3 мкс, Local 12,1 → 1,59 мкс. Search allocations не регрессировали.
+
+По явному приоритету владельца принят measured Build trade-off: mixed Build
+25,0 → 798,6 мс и 12,57 → 118,34 MB/op. Profiles локализовали его в тысячах
+atomic pair/accounting шагов; structural sharing, allocation-free cardinality,
+direct composite и cached accounting уже сократили ранний прототип. Retained
+limit и `Lossy ⊇ Exact` сохранены. Дальше можно проверить persistent priority
+queue, build-only merge depth и posting quality floor без изменения search shape.
+Full, `-count=5`, race и vet gates прошли; repository coverage 90,9%, а
+diff coverage изменённого production-кода — 125/129 statements (96,9%).
+
 ## 2026-09-02: Roaring обновлён до v2.26.0
 
 Зависимость обновлена с v2.4.4 до актуальной v2.26.0. Проверка официальных

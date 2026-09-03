@@ -19,6 +19,14 @@ type orderedIndex[V any] struct {
 	firstBlockCapacity int
 	routing            orderedRouting
 	merged             bool
+	buildAccounting    orderedBuildAccounting
+	accountingValid    bool
+}
+
+type orderedBuildAccounting struct {
+	memory   uint64
+	items    uint64
+	distinct uint64
 }
 
 // orderedRouting maps an observed-domain monotonic key directly to the
@@ -97,6 +105,7 @@ func (i *orderedIndex[V]) prepareRangeSearch() {
 		return
 	}
 	i.rangeBlocks = make([]orderedRangeBlock, 0, len(i.blocks)/orderedRangeBlockSize)
+	i.accountingValid = false
 	for first := 0; first+orderedRangeBlockSize <= len(i.blocks); first += orderedRangeBlockSize {
 		bits := roaring.New()
 		for block := first; block < first+orderedRangeBlockSize; block++ {
@@ -232,6 +241,7 @@ func (i *orderedIndex[V]) internBitmaps(interner *bitmapInterner) {
 	}
 }
 func (i *orderedIndex[V]) insert(value V, id uint32) {
+	i.accountingValid = false
 	if len(i.blocks) != 0 {
 		blockIndex := i.blockFor(value)
 		block := &i.blocks[blockIndex]
@@ -272,6 +282,7 @@ func (i *orderedIndex[V]) insertPosting(value V, bits *roaring.Bitmap) {
 	if bits == nil {
 		return
 	}
+	i.accountingValid = false
 	if len(i.blocks) == 0 {
 		i.blocks = []orderedBlock[V]{{
 			items: []*orderedItem[V]{{value: value, bits: bits}}, bits: bits,

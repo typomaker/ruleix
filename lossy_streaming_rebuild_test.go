@@ -131,17 +131,17 @@ func (r *streamingSelectionFixture) prepareStreamingNext() (uint64, func(), bool
 	return r.next, r.fitStreamingNext, r.next != r.usage
 }
 
-func TestStreamingAggregateSelectsLargestReleaseAcrossExactAndLossyCandidates(t *testing.T) {
+func TestStreamingAggregateSelectsLeastAggressivePositiveRelease(t *testing.T) {
 	smallRelease := &streamingSelectionFixture{usage: 100, next: 90}
 	largeRelease := &streamingSelectionFixture{usage: 80, next: 40}
 	rule := All[streamingOrderedFixture](smallRelease, largeRelease)
 
-	fitStreamingAggregate(rule, 150)
+	fitStreamingAggregate(rule, 170)
 
-	require.Zero(t, smallRelease.fits)
-	require.Equal(t, 1, largeRelease.fits)
+	require.Equal(t, 1, smallRelease.fits)
+	require.Zero(t, largeRelease.fits)
 	var candidates []streamingFitCandidate
-	require.Equal(t, uint64(140), collectStreamingFitCandidates(rule, &candidates))
+	require.Equal(t, uint64(170), collectStreamingFitCandidates(rule, &candidates))
 }
 
 func TestStreamingAggregateTieBreaksBySchemaOrderAfterCurrentUsage(t *testing.T) {

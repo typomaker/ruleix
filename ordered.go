@@ -121,13 +121,55 @@ func orderedIndexLossyAccounting[V any](index *orderedIndex[V], wildcard *roarin
 func quantizedOrderedAccounting[V any](index *orderedIndex[V], wildcard *roaring.Bitmap) (
 	memory, items, distinct uint64,
 ) {
-	memory, items, distinct, _ = orderedIndexLossyAccounting(index, wildcard)
-	for _, block := range index.blocks {
-		if len(block.items) == 1 {
-			memory -= bitmapBytes(block.bits) + 8
-		}
+	memory = uint64(24) + bitmapBytes(wildcard)
+	items = wildcard.GetCardinality()
+	if index == nil {
+		return memory, items, 0
+	}
+	accounting := orderedQuantizedBuildAccounting(index)
+	memory += accounting.memory
+	items += accounting.items
+	distinct = accounting.distinct
+	for _, block := range index.rangeBlocks {
+		memory += 8 + bitmapBytes(block.bits)
 	}
 	return memory, items, distinct
+}
+
+func orderedQuantizedBuildAccounting[V any](index *orderedIndex[V]) orderedBuildAccounting {
+	if index.accountingValid {
+		return index.buildAccounting
+	}
+	accounting := orderedBuildAccounting{}
+	for _, block := range index.blocks {
+		accounting = addOrderedBuildAccounting(accounting, orderedBlockBuildAccounting(block))
+	}
+	index.buildAccounting, index.accountingValid = accounting, true
+	return accounting
+}
+
+func orderedBlockBuildAccounting[V any](block orderedBlock[V]) orderedBuildAccounting {
+	accounting := orderedBuildAccounting{distinct: uint64(len(block.items))}
+	if len(block.items) > 1 {
+		accounting.memory += bitmapBytes(block.bits) + 8
+	}
+	for _, item := range block.items {
+		accounting.memory += comparableValueBytes(any(item.value)) + 8 + bitmapBytes(item.bits)
+		accounting.items += item.bits.GetCardinality()
+	}
+	return accounting
+}
+
+func addOrderedBuildAccounting(left, right orderedBuildAccounting) orderedBuildAccounting {
+	return orderedBuildAccounting{
+		memory: left.memory + right.memory, items: left.items + right.items, distinct: left.distinct + right.distinct,
+	}
+}
+
+func subtractOrderedBuildAccounting(left, right orderedBuildAccounting) orderedBuildAccounting {
+	return orderedBuildAccounting{
+		memory: left.memory - right.memory, items: left.items - right.items, distinct: left.distinct - right.distinct,
+	}
 }
 
 func (r *orderedRule[T, V]) inspectionStrategy() string {
@@ -140,18 +182,7 @@ func (r *orderedRule[T, V]) inspectionMode() RuleMode {
 	return RuleModeExact
 }
 func (r *orderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
-	memory := uint64(24) + bitmapBytes(r.wildcard)
-	items, distinct := uint64(r.wildcard.GetCardinality()), uint64(0)
-	for _, block := range r.index.blocks {
-		if len(block.items) > 1 {
-			memory += bitmapBytes(block.bits) + 8
-		}
-		for _, item := range block.items {
-			memory += comparableValueBytes(any(item.value)) + 8 + bitmapBytes(item.bits)
-			items += item.bits.GetCardinality()
-			distinct++
-		}
-	}
+	memory, items, distinct := quantizedOrderedAccounting(&r.index, r.wildcard)
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = memory, true
 	details.Items, details.ItemsAvailable = items, true
 	details.DistinctValues, details.DistinctValuesAvailable = distinct, true

@@ -2,15 +2,15 @@
 
 ## 2026-09-03: release gate шага 12 остаётся открыт
 
-Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`).
-Equality-only `300ms x5`: Index 15 579 → 15 430 нс, Local 222,5 → 222,8;
-two-leaf 19 035 → 18 748 и 42,89 → 43,89 нс; allocations не изменились.
-Ordered adjacent-key rewrite сравнен с parent `48e309d`, `500ms x5`: production
-Lossy Index 124 941 → 124 719 нс, Local 11 996 → 11 972 нс; candidates и
-allocations не изменились, accounted budget снизился 322 152 → 317 916 bytes.
-Exact против `v0.8.2`, `300ms x3`: Index 33 945 → 30 473 нс, Local 225,7 → 225,2 нс; allocations прежние.
-Ранее attribution `200ms x3` нашёл terminal-time false negative; исправление
-comparator boundaries и текущий adjacent-key rewrite сохраняют superset.
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`). Equality-only
+`300ms x5`: Index 15 579 → 15 430 нс, Local 222,5 → 222,8; two-leaf 19 035 →
+18 748 и 42,89 → 43,89 нс; allocations прежние. Ordered rewrite против `48e309d`,
+`500ms x5`: production Lossy Index 124 941 → 124 719 нс, Local 11 996 → 11 972,
+shape прежний. Atomic pair/least-release против `f10fca5`, `300ms x3`: mixed
+Build 25,0 → 798,6 мс и 12,57 → 118,34 MB/op, но candidates 3,414 → 2,121,
+Index 134,6 → 40,6 мкс, Local 61,6 → 60,8 нс. Production candidates 3 802 →
+358, Index 126,7 → 32,3 мкс, Local 12,1 → 1,59 мкс. Search allocations не
+регрессировали; Build trade-off принят по явному приоритету владельца.
 ## 2026-09-02: lossy range aggregate checkpoint
 
 Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Baseline

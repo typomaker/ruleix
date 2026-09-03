@@ -96,9 +96,24 @@ func TestComparatorBoundaryRoundingSupportsDescendingStrings(t *testing.T) {
 		index.insert(value, uint32(id))
 	}
 	next := rebuildOrderedBoundaries(&index, greaterThan)
-	require.Equal(t, 2, next.buildStatistics().uniqueValues)
+	require.Equal(t, 3, next.buildStatistics().uniqueValues)
 	require.Equal(t, "bravo", roundedOrderedBoundary(&next, "beta", false))
 	require.Equal(t, "aardvark", roundedOrderedBoundary(&next, "aardvark", true))
+}
+
+func TestOrderedRebuildMergesOnlyTheSmallestAdjacentPostingPair(t *testing.T) {
+	index := newOrderedIndex(cmp.Compare[int])
+	index.insertPosting(10, roaring.BitmapOf(1, 2, 3, 4))
+	index.insertPosting(20, roaring.BitmapOf(5, 6, 7, 8))
+	index.insertPosting(30, roaring.BitmapOf(9))
+	index.insertPosting(40, roaring.BitmapOf(10))
+
+	next := rebuildOrderedBoundaries(&index, greaterThan)
+
+	require.Equal(t, 3, next.buildStatistics().uniqueValues)
+	require.Equal(t, []uint32{9, 10}, next.exact(30).ToArray())
+	require.Equal(t, []uint32{1, 2, 3, 4}, next.exact(10).ToArray())
+	require.Equal(t, []uint32{5, 6, 7, 8}, next.exact(20).ToArray())
 }
 
 func TestComparatorBoundaryLookupCoversBlocksAndOpenEdges(t *testing.T) {

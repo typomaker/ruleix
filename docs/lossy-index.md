@@ -52,9 +52,9 @@ are the Exact implementations. Lossy introduces no parallel search node.
 
 At each fixed checkpoint, accounted usage is compared with the saturating soft
 target `MemoryLimit + MemoryLimit/4`. While usage exceeds that target, the
-aggregate selector evaluates the complete next generation for every eligible
-rule, chooses the rule with the largest deterministic retained-byte release,
-performs exactly one whole-generation transition, and repeats. Ties are broken
+aggregate selector evaluates one atomic transition for every eligible rule,
+chooses the smallest deterministic retained-byte release, performs it, and
+repeats. Zero-release steps may expose a useful coarser successor. Ties are broken
 deterministically by schema order after current usage. The hard `MemoryLimit`
 applies to the final retained published generations. Independent transient
 memory required to construct a checked replacement is tracked separately and
@@ -103,9 +103,10 @@ measured above 90%. No benchmark was run and no layout decision was made.
 
 Every ordered type—numeric, `time.Time`, or an arbitrary stable total-order
 comparator—uses the same `orderedIndex[V]`. There is no numeric grid, quantizer,
-transformer, or precision counter. A pressure transition walks the current
-keys in comparator order and merges adjacent pairs. `Greater*` stores each
-merged posting under the lower key; `Less*` stores it under the upper key.
+transformer, or precision counter. A pressure transition merges exactly one
+adjacent pair with minimum union cardinality; input posting footprint and then
+position break ties. `Greater*` stores the merged posting under the lower key;
+`Less*` stores it under the upper key.
 Consequently the ordinary Exact range walk over the raw query remains a
 conservative superset for strict and inclusive operators.
 
@@ -128,6 +129,7 @@ only the next complete side/operator generation when pressure requests it.
 Late inserts are transformed immediately at the selected per-side or
 per-operator level. Missing values, duplicates, strict/inclusive operators,
 repeated downgrades and hard accounting are covered by the differential gate.
+Every pair returns control to aggregate planning so another filter may be chosen.
 
 ## Public API direction
 
