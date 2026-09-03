@@ -37,16 +37,16 @@ func cloneBetweenRule[T any, V any](r *betweenRule[T, V]) *betweenRule[T, V] {
 	return &clone
 }
 
-func (r *betweenRule[T, V]) selectStreamingSide() *orderedRule[T, V] {
+func (r *betweenRule[T, V]) selectStreamingSide() (*orderedRule[T, V], orderedMergeCandidate) {
 	fromCandidate, fromAvailable := bestOrderedMerge(&r.from.index, r.from.dir)
 	untilCandidate, untilAvailable := bestOrderedMerge(&r.until.index, r.until.dir)
 	if betterOrderedMerge(fromCandidate, fromAvailable, untilCandidate, untilAvailable) {
-		return r.from
+		return r.from, fromCandidate
 	}
 	if untilAvailable {
-		return r.until
+		return r.until, untilCandidate
 	}
-	return nil
+	return nil, orderedMergeCandidate{}
 }
 
 func (r *betweenRule[T, V]) fitStreamingLimit(limit uint64) {
@@ -68,14 +68,14 @@ func (r *betweenRule[T, V]) nextStreamingUsage() (uint64, bool) {
 	return usage, ok
 }
 func (r *betweenRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
-	selected := r.selectStreamingSide()
+	selected, candidate := r.selectStreamingSide()
 	if selected == nil {
 		return 0, nil, false
 	}
 	var usage uint64
 	var replacement *orderedRule[T, V]
 	clone := *selected
-	clone.index = rebuildOrderedBoundaries(&selected.index, selected.dir)
+	clone.index = rebuildSelectedOrderedBoundary(&selected.index, selected.dir, candidate)
 	clone.build = &orderedRuleBuildState{quantized: true}
 	replacement = &clone
 	usage = clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes

@@ -6,6 +6,34 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-03: allocation-free выбор lossy ordered merge принят
+
+Проверена возможность переиспользовать временные данные между поколениями
+lossy rebuild. Allocation profile на baseline `50f5696` показал, что основным
+источником был не payload нового поколения, а создаваемый при каждой оценке
+плоский `[]*orderedItem`: `bestOrderedMerge` занимал 232,02 MB, или 79,55%
+allocation space focused Build с двумя ordered-детьми. Вместо build pool принят
+прямой проход по `orderedIndex.blocks`; выбранная пара также передаётся из
+Between/CompareBy planner в rebuild без повторного поиска.
+
+Apple M1 Max, Go 1.26.0, 10 000 entries, `benchtime=1x`: Children2/Budget75
+снизился с 283 516 256 до 30 740 872 B/op (−89,2%), Children4/Budget75 — с
+745 670 136 до 80 029 336 B/op (−89,3%). Время одиночных контрольных прогонов
+осталось сопоставимым: 654,7 → 659,6 ms и 2,401 → 2,433 s соответственно.
+Число allocations почти не изменилось, поскольку устранены крупные backing
+arrays, а оставшийся traffic создают поколения, Roaring clones и accounting.
+Candidate profile больше не содержит `bestOrderedMerge` среди allocation
+источников.
+
+Долгоживущий `sync.Pool` отклонён для этого этапа: опубликованный `Index`
+продолжает владеть успешным поколением, а пул больших типизированных slices
+увеличивал бы retained-memory риск. Следующий возможный эксперимент — строго
+build-scoped reuse только для отвергнутых candidate generations. Команды:
+`go test -run '^$' -bench '^BenchmarkLossyAllOrderedPlanning/' -benchmem
+-benchtime=1x -count=1 .` и тот же focused Children2 benchmark с
+`-memprofile`. Full suite и 20-кратный allocation/cross-block test прошли;
+изменённые production-функции покрыты на 100%.
+
 ## 2026-09-03: атомарное слияние одной ordered-пары принято
 
 Проверен selector, который на каждом шаге объединял только соседнюю пару с

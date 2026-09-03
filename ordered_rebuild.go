@@ -40,27 +40,28 @@ func roundedOrderedBoundary[V any](index *orderedIndex[V], value V, upward bool)
 func bestOrderedMerge[V any](index *orderedIndex[V], _ direction) (orderedMergeCandidate, bool) {
 	// TODO: Compare build-only merge depth for new edge keys and a quality floor
 	// that can make an otherwise impossible hard limit fail explicitly.
-	items := make([]*orderedItem[V], 0, index.buildStatistics().uniqueValues)
-	for _, block := range index.blocks {
-		items = append(items, block.items...)
-	}
-	if len(items) < 2 {
-		return orderedMergeCandidate{}, false
-	}
+	var previous *orderedItem[V]
+	previousPosition := -1
+	position := 0
 	best := orderedMergeCandidate{position: -1}
-	for position := 0; position+1 < len(items); position++ {
-		left, right := items[position], items[position+1]
-		cardinality := left.bits.GetCardinality() + right.bits.GetCardinality() -
-			left.bits.AndCardinality(right.bits)
-		footprint := bitmapBytes(left.bits) + bitmapBytes(right.bits)
-		if best.position < 0 || cardinality < best.cardinality ||
-			cardinality == best.cardinality && footprint > best.postingFootprint {
-			best = orderedMergeCandidate{
-				position: position, cardinality: cardinality, postingFootprint: footprint,
+	for _, block := range index.blocks {
+		for _, current := range block.items {
+			if previous != nil {
+				cardinality := previous.bits.GetCardinality() + current.bits.GetCardinality() -
+					previous.bits.AndCardinality(current.bits)
+				footprint := bitmapBytes(previous.bits) + bitmapBytes(current.bits)
+				if best.position < 0 || cardinality < best.cardinality ||
+					cardinality == best.cardinality && footprint > best.postingFootprint {
+					best = orderedMergeCandidate{
+						position: previousPosition, cardinality: cardinality, postingFootprint: footprint,
+					}
+				}
 			}
+			previous, previousPosition = current, position
+			position++
 		}
 	}
-	return best, true
+	return best, best.position >= 0
 }
 
 func betterOrderedMerge(candidate orderedMergeCandidate, candidateOK bool, current orderedMergeCandidate, currentOK bool) bool {
@@ -73,6 +74,12 @@ func rebuildOrderedBoundaries[V any](index *orderedIndex[V], dir direction) orde
 	if !ok {
 		return index.cloneBuild()
 	}
+	return rebuildSelectedOrderedBoundary(index, dir, selected)
+}
+
+func rebuildSelectedOrderedBoundary[V any](
+	index *orderedIndex[V], dir direction, selected orderedMergeCandidate,
+) orderedIndex[V] {
 	currentAccounting := orderedQuantizedBuildAccounting(index)
 	next := *index
 	next.blocks = append([]orderedBlock[V](nil), index.blocks...)

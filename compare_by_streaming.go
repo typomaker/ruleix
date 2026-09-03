@@ -54,7 +54,7 @@ func cloneCompareByRule[T any, V any](r *compareByRule[T, V]) *compareByRule[T, 
 	return &clone
 }
 
-func (r *compareByRule[T, V]) selectedStreamingIndex() int {
+func (r *compareByRule[T, V]) selectedStreamingIndex() (int, orderedMergeCandidate) {
 	selected := -1
 	var selectedCandidate orderedMergeCandidate
 	for operator, index := range r.indexes {
@@ -67,7 +67,7 @@ func (r *compareByRule[T, V]) selectedStreamingIndex() int {
 			selected = operator
 		}
 	}
-	return selected
+	return selected, selectedCandidate
 }
 
 func (r *compareByRule[T, V]) fitStreamingLimit(limit uint64) {
@@ -90,13 +90,13 @@ func (r *compareByRule[T, V]) nextStreamingUsage() (uint64, bool) {
 }
 
 func (r *compareByRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
-	selected := r.selectedStreamingIndex()
+	selected, candidate := r.selectedStreamingIndex()
 	if selected < 0 {
 		return 0, nil, false
 	}
 	operator := Operator(selected)
 	current := r.indexes[selected]
-	next := rebuildOrderedBoundaries(current, compareByDirection(operator))
+	next := rebuildSelectedOrderedBoundary(current, compareByDirection(operator), candidate)
 	usage := uint64(24) + bitmapBytes(r.wildcard)
 	for indexPosition, index := range r.indexes {
 		if index == nil {

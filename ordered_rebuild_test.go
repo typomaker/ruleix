@@ -116,6 +116,24 @@ func TestOrderedRebuildMergesOnlyTheSmallestAdjacentPostingPair(t *testing.T) {
 	require.Equal(t, []uint32{5, 6, 7, 8}, next.exact(20).ToArray())
 }
 
+func TestBestOrderedMergeDoesNotAllocateAndCrossesBlocks(t *testing.T) {
+	item := func(value int, ids ...uint32) *orderedItem[int] {
+		return &orderedItem[int]{value: value, bits: roaring.BitmapOf(ids...)}
+	}
+	index := newOrderedIndex(cmp.Compare[int])
+	index.blocks = []orderedBlock[int]{
+		{items: []*orderedItem[int]{item(0, 0, 10, 20), item(1, 99)}},
+		{items: []*orderedItem[int]{item(2, 99), item(3, 3, 13, 23)}},
+	}
+
+	selected, ok := bestOrderedMerge(&index, greaterThan)
+	require.True(t, ok)
+	require.Equal(t, 1, selected.position)
+	require.Zero(t, testing.AllocsPerRun(100, func() {
+		_, _ = bestOrderedMerge(&index, greaterThan)
+	}))
+}
+
 func TestComparatorBoundaryLookupCoversBlocksAndOpenEdges(t *testing.T) {
 	empty := newOrderedIndex(cmp.Compare[int])
 	require.Equal(t, 7, roundedOrderedBoundary(&empty, 7, true))
