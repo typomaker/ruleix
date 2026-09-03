@@ -4,6 +4,33 @@
 [`performance-history.md`](performance-history.md) и хранит подробные серии,
 не относящиеся к текущему release summary.
 
+## 2026-09-03: общий equalityIndex lookup без знания режима
+
+Baseline `4126439`; Apple M1 Max, macOS arm64, Go 1.26.0,
+`GOMAXPROCS=1`. Универсальный для `equalityIndex[K]` one-based offset prototype
+заменил `mapaccess2` на `mapaccess1`, не меняя размер структуры, map capacity,
+physical keys или результаты. Команда и пять интерливированных пар:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkLossyAllSearchRuntime$/^Budget50$' \
+  -benchmem -benchtime=500ms -count=1 .
+```
+
+Медианы baseline/candidate: Index repeated 662,5/665,8 ns, Local repeated
+394,2/396,9 ns, Index rotating 695,5/699,0 ns, Local rotating 875,4/875,1 ns.
+10-секундный Local repeated control дал 396,8/395,1 ns; normalized CPU diff
+показал ожидаемую замену runtime map entry points без устойчивого общего
+выигрыша. Allocation classes не изменились. Вариант удалён.
+
+Сохраняющий точные physical keys восьмибайтовый FNV chunk loop также измерен
+пятью интерливированными парами. Repeated остался в шуме, rotating ухудшился
+примерно на 1–1,5%; 10-секундный Local repeated control дал 393,3 ns/op, а
+profile локализовал дополнительную работу в `stableStringEqualityHash`.
+Вариант удалён. Архитектурное решение и границы следующего frozen-index
+эксперимента записаны в
+[`optimization-decisions.md`](optimization-decisions.md).
+
 ## 2026-09-03: Budget50 Local cache experiments
 
 Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`; baseline

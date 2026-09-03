@@ -6,6 +6,35 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-03: mode-agnostic equality lookup micro-optimizations отклонены
+
+На baseline `4126439` проверены две общие для любого physical key `K`
+оптимизации; `eqRule` не получал `RuleMode`, downgrade checks или отдельную
+Exact/Lossy структуру. Первый вариант хранил offsets как `index+1`, используя
+zero как missing sentinel и заменяя comma-ok lookup на single-result map
+access. Пять интерливированных Budget50 запусков, Apple M1 Max, Go 1.26.0,
+`GOMAXPROCS=1`, `500ms`: baseline/candidate medians составили 662,5/665,8 ns
+для Index repeated, 394,2/396,9 ns для Local repeated, 695,5/699,0 ns для
+Index rotating и 875,4/875,1 ns для Local rotating. Allocation classes и
+retained layout не изменились. 10-секундный profile подтвердил замену
+`mapaccess2_fast{64,str}` на `mapaccess1_fast{64,str}`, но общая CPU-разница
+осталась нулевой; вариант удалён.
+
+Второй вариант сохранил точные прежние FNV keys, развернув обработку строки
+блоками по восемь байт через существующий `fnvHash8`. Интерливированная серия
+не дала repeated-выигрыша и ухудшила rotating примерно на 1–1,5%; длинный
+Local repeated получил 393,3 ns/op. Differential profile показал
+`stableStringEqualityHash` около +0,75% flat, то есть исходный variable-length
+цикл компилируется лучше ручного chunk loop. Вариант удалён.
+
+Compiled lookup function не проверялся как код: дополнительный function field
+увеличивает retained `eqRule`, а замена `encode` лишает streaming insertion и
+rebuild общего key transformer. Frozen open-addressed index также отложен:
+без отдельной mode-aware структуры ему сначала нужен общий mutable/frozen
+container contract, который после публикации освобождает map и доказывает, что
+новые slots не увеличивают retained bytes для любого `K`. Это отдельное layout
+изменение, а не безопасная микрооптимизация текущего lookup.
+
 ## 2026-09-03: Local equality key и wide-result reuse отклонены
 
 На HEAD `092db48` проверены два способа убрать повторный physical equality
