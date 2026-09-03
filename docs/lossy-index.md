@@ -321,11 +321,11 @@ indexes never replan in place, and concurrent `Index.Search` remains lock-free.
 
 ## Compiled equality codecs
 
-Equality separates a typed full-value hash from nested precision reduction.
-Build may compile codecs for scalar and comparable composite types; interfaces
-whose dynamic values would require search-time reflection are rejected. The
-published leaf retains only its typed hash function, current quantizer and
-physical postings. Detailed performance evidence and rejected prototypes live
+Equality level 0 indexes the comparable `V` directly. Build may compile codecs
+for scalar and comparable composite types; interfaces whose dynamic values
+would require search-time reflection are rejected. The first pressure step
+replaces that generation with rounded `uint64` hashes, and later steps operate
+only on those hashes. Detailed performance evidence and rejected prototypes live
 in `performance-history.md` and `optimization-decisions.md`.
 
 ## Build-time planning
@@ -446,3 +446,7 @@ rate because their false-positive boundary depends on the query value.
 
 Correctness gates compare exact and lossy results on generated and adversarial data; performance gates measure retained memory, candidate quality, latency and allocations. The active requirements and sequencing live in `ROADMAP.md`.
 Step 11 verification on 2026-09-03 used `go test ./...`, `go test -race ./...`, `go test ./... -count=5`, and `go test ./... -coverprofile=/tmp/ruleix-step11.cover`; all passed, repository coverage was 90.8%, and the changed production functions reported by `go tool cover -func` were fully covered except the existing `prepareStreamingNext`/limit branches (still above the 90% changed-code gate). No benchmarks or profiles were run.
+
+The comparable level-0 equality change was verified on 2026-09-03 with
+`go test -race ./...` and `go test -count=1 -coverprofile=/tmp/ruleix-eq-comparable.cover ./...`.
+All suites passed; repository coverage was 91.1% and changed production statements reached 101/105 (96.2% diff coverage).

@@ -2,38 +2,39 @@ package ruleix
 
 import (
 	"sort"
+	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
-func (*eqRule[T, V]) streamingLossyAccumulator() {}
+func (*eqRule[T, V, K]) streamingLossyAccumulator() {}
 
-func (r *eqRule[T, V]) inspectionMode() RuleMode {
+func (r *eqRule[T, V, K]) inspectionMode() RuleMode {
 	if r.quantizer.level != 0 {
 		return RuleModeLossy
 	}
 	return RuleModeExact
 }
 
-func (r *eqRule[T, V]) fitStreamingLimit(limit uint64) {
+func (r *eqRule[T, V, K]) fitStreamingLimit(limit uint64) {
 	for r.streamingEqualityDetails(inspectionDetails{}).MemoryUsageBytes > limit && r.quantizer.level < equalityTerminalLevel {
 		r.rebuildEqualityNext()
 	}
 }
 
-func (r *eqRule[T, V]) fitStreamingNext() {
+func (r *eqRule[T, V, K]) fitStreamingNext() {
 	if r.quantizer.level < equalityTerminalLevel {
 		r.rebuildEqualityNext()
 	}
 }
 
-func (r *eqRule[T, V]) nextStreamingUsage() (uint64, bool) {
+func (r *eqRule[T, V, K]) nextStreamingUsage() (uint64, bool) {
 	usage, _, ok := r.prepareStreamingNext()
 	return usage, ok
 }
 
-func (r *eqRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
-	if r.quantizer.level >= equalityTerminalLevel {
+func (r *eqRule[T, V, K]) prepareStreamingNext() (uint64, func(), bool) {
+	if r.coarsen == nil || r.less == nil || r.quantizer.level >= equalityTerminalLevel {
 		return 0, nil, false
 	}
 	clone := *r
@@ -42,41 +43,41 @@ func (r *eqRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
 	return usage, func() { r.quantizer, r.values = clone.quantizer, clone.values }, true
 }
 
-func (r *eqRule[T, V]) rebuildEqualityNext() {
-	if r.quantizer.level >= equalityTerminalLevel {
+func (r *eqRule[T, V, K]) rebuildEqualityNext() {
+	if r.coarsen == nil || r.less == nil || r.quantizer.level >= equalityTerminalLevel {
 		return
 	}
 	nextQuantizer := newEqualityQuantizer(r.quantizer.level + 1)
-	old := make(postingGeneration[uint64], len(r.values.sets))
-	r.values.visit(func(key uint64, set *equalitySet) {
+	old := make(postingGeneration[K], len(r.values.sets))
+	r.values.visit(func(key K, set *equalitySet) {
 		bits := roaring.New()
 		set.addTo(bits)
 		old[key] = bits
 	})
-	keys := make([]uint64, 0, len(old))
+	keys := make([]K, 0, len(old))
 	for key := range old {
 		keys = append(keys, key)
 	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-	next, _, ok := rebuildPostingGenerationInOrder(old, keys, len(old), 8, func(key uint64) uint64 {
-		return r.quantizer.coarsen(key, nextQuantizer)
+	sort.Slice(keys, func(i, j int) bool { return r.less(keys[i], keys[j]) })
+	next, _, ok := rebuildPostingGenerationInOrder(old, keys, len(old), uint64(unsafe.Sizeof(*new(K))), func(key K) K {
+		return r.coarsen(key, nextQuantizer)
 	})
 	if !ok {
 		return
 	}
-	values := newEqualityIndex[uint64](len(next))
+	values := newEqualityIndex[K](len(next))
 	keys = keys[:0]
 	for key := range next {
 		keys = append(keys, key)
 	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	sort.Slice(keys, func(i, j int) bool { return r.less(keys[i], keys[j]) })
 	for _, key := range keys {
 		values.addSet(key, &equalitySet{bits: next[key]})
 	}
 	r.quantizer, r.values = nextQuantizer, values
 }
 
-func (r *eqRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bool) {
+func (r *eqRule[T, V, K]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bool) {
 	if !r.wildcard.IsEmpty() {
 		return nil, false
 	}
@@ -94,7 +95,7 @@ func (r *eqRule[T, V]) lookupPlanningBitmap(v T) (*roaring.Bitmap, bool) {
 	return set.bits, true
 }
 
-func (r *eqRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
+func (r *eqRule[T, V, K]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
 	bits, found := r.lookupCachedBitmap(v, pool)
 	if !found {
 		return 0, false

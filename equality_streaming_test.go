@@ -16,14 +16,16 @@ type streamingEqualityFixture struct {
 
 func streamingEqualityValue(v streamingEqualityFixture) (string, bool) { return v.value, v.present }
 
-func buildExactStreamingEquality(order []int) *eqRule[streamingEqualityFixture, string] {
+func buildExactStreamingEquality(order []int) *eqRule[streamingEqualityFixture, string, string] {
 	codec, err := compileEqualityCodec[string]()
 	if err != nil {
 		panic(err)
 	}
-	rule := &eqRule[streamingEqualityFixture, string]{
+	rule := &eqRule[streamingEqualityFixture, string, string]{
 		get: streamingEqualityValue, wildcard: roaring.New(), codec: codec,
-		values: newEqualityIndex[uint64](len(order)),
+		encode:          func(value string, _ equalityQuantizer) string { return value },
+		firstGeneration: prepareExactEqualityFirstGeneration[streamingEqualityFixture, string],
+		values:          newEqualityIndex[string](len(order)),
 	}
 	values := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta"}
 	for _, id := range order {
@@ -34,20 +36,31 @@ func buildExactStreamingEquality(order []int) *eqRule[streamingEqualityFixture, 
 	return rule
 }
 
-func equalityGenerationShape(rule *eqRule[streamingEqualityFixture, string]) []uint64 {
+func equalityGenerationShape(rule *eqRule[streamingEqualityFixture, string, uint64]) []uint64 {
 	keys := make([]uint64, 0, len(rule.values.sets))
 	rule.values.visit(func(key uint64, _ *equalitySet) { keys = append(keys, key) })
 	slices.Sort(keys)
 	return keys
 }
 
-func TestEqualityLevelZeroStoresFullIntegerHash(t *testing.T) {
+func TestEqualityLevelZeroStoresComparableValue(t *testing.T) {
 	rule := buildExactStreamingEquality([]int{0})
-	want := rule.codec.hash("alpha")
 
 	require.Equal(t, uint32(0), rule.quantizer.level)
-	require.NotNil(t, rule.values.get(want))
-	require.Equal(t, []uint64{want}, equalityGenerationShape(rule))
+	require.NotNil(t, rule.values.get("alpha"))
+}
+
+func TestEqualityLevelZeroDoesNotHash(t *testing.T) {
+	rule := buildExactStreamingEquality(nil)
+	rule.codec.hash = func(string) uint64 { panic("level zero hashed a value") }
+	value := streamingEqualityFixture{value: "alpha", present: true}
+	rule.insert(value, 7)
+
+	require.Equal(t, uint64(2), rule.estimateCardinality(value))
+	require.True(t, rule.matchesID(value, 7))
+	result := roaring.New()
+	rule.search(value, result, newBitmapPool())
+	require.Equal(t, []uint32{7, 99}, result.ToArray())
 }
 
 func TestEqualityStreamingFirstGenerationIsDeterministic(t *testing.T) {
@@ -60,8 +73,8 @@ func TestEqualityStreamingFirstGenerationIsDeterministic(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, orderedUsage, shuffledUsage)
 	require.Equal(t,
-		equalityGenerationShape(orderedNext.(*eqRule[streamingEqualityFixture, string])),
-		equalityGenerationShape(shuffledNext.(*eqRule[streamingEqualityFixture, string])),
+		equalityGenerationShape(orderedNext.(*eqRule[streamingEqualityFixture, string, uint64])),
+		equalityGenerationShape(shuffledNext.(*eqRule[streamingEqualityFixture, string, uint64])),
 	)
 }
 
@@ -74,13 +87,12 @@ func TestEqualityAdaptiveLeafPublishesOnlyPreparedGeneration(t *testing.T) {
 	require.IsType(t, exact, adaptive.child)
 
 	adaptive.fitStreamingNext()
-	require.IsType(t, &eqRule[streamingEqualityFixture, string]{}, adaptive.child)
-	require.IsType(t, exact, adaptive.child, "identity and quantized generations use one rule type")
-	lossy := adaptive.child.(*eqRule[streamingEqualityFixture, string])
+	require.IsType(t, &eqRule[streamingEqualityFixture, string, uint64]{}, adaptive.child)
+	lossy := adaptive.child.(*eqRule[streamingEqualityFixture, string, uint64])
 	require.Equal(t, uint32(1), lossy.quantizer.level)
 
-	unsupported := &eqRule[streamingEqualityFixture, any]{
-		wildcard: roaring.New(), values: newEqualityIndex[uint64](0), codecErr: assert.AnError,
+	unsupported := &eqRule[streamingEqualityFixture, any, any]{
+		wildcard: roaring.New(), values: newEqualityIndex[any](0), codecErr: assert.AnError,
 	}
 	_, _, ok = unsupported.prepareStreamingFirstGeneration()
 	require.False(t, ok)
@@ -90,7 +102,7 @@ func TestEqualityStreamingLateValuesAndRepeatedDowngradesKeepExactMatches(t *tes
 	exact := buildExactStreamingEquality([]int{0, 1, 2, 3, 4, 5})
 	_, next, ok := exact.prepareStreamingFirstGeneration()
 	require.True(t, ok)
-	lossy := next.(*eqRule[streamingEqualityFixture, string])
+	lossy := next.(*eqRule[streamingEqualityFixture, string, uint64])
 
 	late := streamingEqualityFixture{value: "late-value", present: true}
 	lossy.insert(late, 100)

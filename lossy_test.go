@@ -240,13 +240,14 @@ func TestLossyAllReusesPlanningKey(t *testing.T) {
 	children := make([]Rule[lossyConstraint], 2)
 	for i := range children {
 		i := i
-		children[i] = &eqRule[lossyConstraint, string]{
+		children[i] = &eqRule[lossyConstraint, string, uint64]{
 			get: func(v lossyConstraint) (string, bool) {
 				getterCalls[i]++
 				return v.name, v.present
 			},
 			wildcard:  roaring.New(),
 			codec:     codec,
+			encode:    hashedEqualityEncoder(codec),
 			quantizer: newEqualityQuantizer(1),
 			values:    testEqualityValues(map[uint64]*roaring.Bitmap{newEqualityQuantizer(1).key(hash): roaring.BitmapOf(7)}),
 		}
@@ -268,13 +269,14 @@ func TestLossyAllLocalPlanReusesPlanningKey(t *testing.T) {
 	children := make([]Rule[lossyConstraint], 2)
 	for i := range children {
 		i := i
-		children[i] = &eqRule[lossyConstraint, string]{
+		children[i] = &eqRule[lossyConstraint, string, uint64]{
 			get: func(v lossyConstraint) (string, bool) {
 				getterCalls[i]++
 				return v.name, v.present
 			},
 			wildcard:  roaring.New(),
 			codec:     codec,
+			encode:    hashedEqualityEncoder(codec),
 			quantizer: newEqualityQuantizer(1),
 			values:    testEqualityValues(map[uint64]*roaring.Bitmap{newEqualityQuantizer(1).key(hash): roaring.BitmapOf(7)}),
 		}
@@ -295,11 +297,12 @@ func TestLossyEqualityLocalCachesRepeatedValue(t *testing.T) {
 	codec, err := compileEqualityCodec[string]()
 	require.NoError(t, err)
 	hash := codec.hash(value)
-	rule := &eqRule[lossyConstraint, string]{
+	rule := &eqRule[lossyConstraint, string, uint64]{
 		nodeID:    0,
 		get:       func(v lossyConstraint) (string, bool) { return v.name, v.present },
 		wildcard:  roaring.New(),
 		codec:     codec,
+		encode:    hashedEqualityEncoder(codec),
 		quantizer: newEqualityQuantizer(9),
 		values:    testEqualityValues(map[uint64]*roaring.Bitmap{newEqualityQuantizer(9).key(hash): roaring.BitmapOf(7)}),
 	}
@@ -319,7 +322,7 @@ func TestLossyEqualityLocalCachesRepeatedValue(t *testing.T) {
 }
 
 func TestLossyEqualityLocalQueryKeyIsCollisionSafe(t *testing.T) {
-	rule := &eqRule[lossyConstraint, string]{
+	rule := &eqRule[lossyConstraint, string, uint64]{
 		get: func(v lossyConstraint) (string, bool) { return v.name, v.present },
 	}
 	var provider localQueryKeyProvider[lossyConstraint] = rule
@@ -386,10 +389,11 @@ func BenchmarkLossyAllSelectivePlanning(b *testing.B) {
 	hash := codec.hash(query.name)
 	broad := roaring.New()
 	broad.AddRange(0, entries)
-	selective := &eqRule[lossyConstraint, string]{
+	selective := &eqRule[lossyConstraint, string, uint64]{
 		get:       func(v lossyConstraint) (string, bool) { return v.name, v.present },
 		wildcard:  roaring.New(),
 		codec:     codec,
+		encode:    hashedEqualityEncoder(codec),
 		quantizer: newEqualityQuantizer(1),
 		values:    testEqualityValues(map[uint64]*roaring.Bitmap{newEqualityQuantizer(1).key(hash): roaring.BitmapOf(7)}),
 	}

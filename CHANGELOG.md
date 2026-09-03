@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Equality level 0 now indexes the original comparable value without Ruleix
+  hashing. Its first lossy downgrade replaces the `V`-keyed specialization of
+  the common equality rule with a `uint64`-keyed specialization; later levels
+  continue to coarsen the existing hashes.
 - Ordered Exact and Lossy now have the same rule and index state without a
   level, quantizer, or key transformer. Lossy pressure only rebuilds one
   generation by merging adjacent keys under an outward representative;

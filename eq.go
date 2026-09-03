@@ -254,43 +254,48 @@ func (s *equalitySet) internBitmaps(interner *bitmapInterner) {
 	}
 }
 
-type eqRule[T any, V comparable] struct {
-	nodeID         nodeID
-	get            Getter[T, V]
-	wildcard       *roaring.Bitmap
-	wildcardSource physicalSourceID
-	wildcardClass  uint32
-	codec          equalityCodec[V]
-	codecErr       error
-	quantizer      equalityQuantizer
-	values         equalityIndex[uint64]
+type eqRule[T any, V comparable, K comparable] struct {
+	nodeID          nodeID
+	get             Getter[T, V]
+	wildcard        *roaring.Bitmap
+	wildcardSource  physicalSourceID
+	wildcardClass   uint32
+	codec           equalityCodec[V]
+	codecErr        error
+	quantizer       equalityQuantizer
+	encode          func(V, equalityQuantizer) K
+	coarsen         func(K, equalityQuantizer) K
+	less            func(K, K) bool
+	firstGeneration func(*eqRule[T, V, K]) (uint64, Rule[T], bool)
+	values          equalityIndex[K]
 }
 
-func (r *eqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+func (r *eqRule[T, V, K]) runtimeNodeID() nodeID { return r.nodeID }
 
-func (*eqRule[T, V]) inspectionStrategy() string { return "equality" }
-func (r *eqRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+func (*eqRule[T, V, K]) inspectionStrategy() string { return "equality" }
+func (r *eqRule[T, V, K]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
 	return r.streamingEqualityDetails(details)
 }
 
-func (r *eqRule[T, V]) equalityKey(value V) uint64 {
-	return r.quantizer.key(r.codec.hash(value))
+func (r *eqRule[T, V, K]) equalityKey(value V) K {
+	return r.encode(value, r.quantizer)
 }
 
-func (*eqRule[T, V]) rule() {}
-func (r *eqRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
+func (*eqRule[T, V, K]) rule() {}
+func (r *eqRule[T, V, K]) canonicalDescriptor() canonicalRuleDescriptor {
 	return canonicalRuleDescriptor{representation: canonicalEquality, schema: r}
 }
-func (r *eqRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
+func (r *eqRule[T, V, K]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
-	return &eqRule[T, V]{
+	return &eqRule[T, V, K]{
 		nodeID: id, get: r.get, codec: r.codec, codecErr: r.codecErr,
+		encode: r.encode, coarsen: r.coarsen, less: r.less, firstGeneration: r.firstGeneration,
 		wildcard: roaring.New(),
-		values:   newEqualityIndex[uint64](capacityHint(hints.node(id).equalityValues)),
+		values:   newEqualityIndex[K](capacityHint(hints.node(id).equalityValues)),
 	}
 }
-func (r *eqRule[T, V]) validate(T) error { return r.codecErr }
-func (r *eqRule[T, V]) insert(v T, id uint32) {
+func (r *eqRule[T, V, K]) validate(T) error { return r.codecErr }
+func (r *eqRule[T, V, K]) insert(v T, id uint32) {
 	value, ok := r.get(v)
 	if !ok {
 		r.wildcard.Add(id)
@@ -298,10 +303,10 @@ func (r *eqRule[T, V]) insert(v T, id uint32) {
 	}
 	r.values.add(r.equalityKey(value), id)
 }
-func (r *eqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
+func (r *eqRule[T, V, K]) cardinality(v T, _ *bitmapPool) uint64 {
 	return r.estimateCardinality(v)
 }
-func (r *eqRule[T, V]) estimateCardinality(v T) uint64 {
+func (r *eqRule[T, V, K]) estimateCardinality(v T) uint64 {
 	n := r.wildcard.GetCardinality()
 	if value, ok := r.get(v); ok {
 		if set := r.values.get(r.equalityKey(value)); set != nil {
@@ -310,25 +315,25 @@ func (r *eqRule[T, V]) estimateCardinality(v T) uint64 {
 	}
 	return n
 }
-func (r *eqRule[T, V]) estimateCheapCardinality(v T) uint64 { return r.estimateCardinality(v) }
-func (r *eqRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
+func (r *eqRule[T, V, K]) estimateCheapCardinality(v T) uint64 { return r.estimateCardinality(v) }
+func (r *eqRule[T, V, K]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
 	return lookupEqualityCachedBitmap(pool, r.nodeID, getOptional(r.get, v))
 }
-func (r *eqRule[T, V]) localQueryKey(v T) (any, uint64) {
+func (r *eqRule[T, V, K]) localQueryKey(v T) (any, uint64) {
 	return getOptional(r.get, v), uint64(16 + unsafe.Sizeof(optionalValue[V]{}))
 }
-func (r *eqRule[T, V]) localQueryKeyMatches(v T, key any) bool {
+func (r *eqRule[T, V, K]) localQueryKeyMatches(v T, key any) bool {
 	want, ok := key.(optionalValue[V])
 	return ok && want == getOptional(r.get, v)
 }
-func (r *eqRule[T, V]) isCardinalityZero(v T) bool {
+func (r *eqRule[T, V, K]) isCardinalityZero(v T) bool {
 	if !r.wildcard.IsEmpty() {
 		return false
 	}
 	value, ok := r.get(v)
 	return !ok || r.values.get(r.equalityKey(value)) == nil
 }
-func (r *eqRule[T, V]) matchesID(v T, id uint32) bool {
+func (r *eqRule[T, V, K]) matchesID(v T, id uint32) bool {
 	if r.wildcard.Contains(id) {
 		return true
 	}
@@ -339,8 +344,8 @@ func (r *eqRule[T, V]) matchesID(v T, id uint32) bool {
 	set := r.values.get(r.equalityKey(value))
 	return set != nil && set.contains(id)
 }
-func (*eqRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
-func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+func (*eqRule[T, V, K]) directIDWork() uint64 { return allEqualityDirectIDWork }
+func (r *eqRule[T, V, K]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)
 	if pool.local == nil {
 		r.addMatches(value, dst)
@@ -363,15 +368,15 @@ func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	cache.commit(bits, pool)
 }
 
-func (r *eqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
-	key := optionalValue[uint64]{}
+func (r *eqRule[T, V, K]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
+	key := optionalValue[K]{}
 	if value.ok {
-		key = optionalValue[uint64]{value: r.equalityKey(value.value), ok: true}
+		key = optionalValue[K]{value: r.equalityKey(value.value), ok: true}
 	}
 	addEqualityMatches(r.wildcard, &r.values, key, dst)
 }
-func (r *eqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
-func (r *eqRule[T, V]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
+func (r *eqRule[T, V, K]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
+func (r *eqRule[T, V, K]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
 	visit(r.wildcard)
 	for i := range r.values.sets {
 		if bits := r.values.sets[i].bits; bits != nil {
@@ -379,7 +384,7 @@ func (r *eqRule[T, V]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
 		}
 	}
 }
-func (r *eqRule[T, V]) lookupEqualityResultComponents(v T) (*roaring.Bitmap, *roaring.Bitmap, bool) {
+func (r *eqRule[T, V, K]) lookupEqualityResultComponents(v T) (*roaring.Bitmap, *roaring.Bitmap, bool) {
 	value, ok := r.get(v)
 	if !ok {
 		return r.wildcard, nil, true
@@ -388,7 +393,7 @@ func (r *eqRule[T, V]) lookupEqualityResultComponents(v T) (*roaring.Bitmap, *ro
 	posting, deduplicable := equalitySetBitmap(set)
 	return r.wildcard, posting, set == nil || deduplicable
 }
-func (r *eqRule[T, V]) lookupEqualityClass(v T) uint32 {
+func (r *eqRule[T, V, K]) lookupEqualityClass(v T) uint32 {
 	value, ok := r.get(v)
 	if !ok {
 		return r.wildcardClass
@@ -398,7 +403,7 @@ func (r *eqRule[T, V]) lookupEqualityClass(v T) uint32 {
 	}
 	return r.wildcardClass
 }
-func (r *eqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
+func (r *eqRule[T, V, K]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 	value, ok := r.get(v)
 	if ok {
 		if set := r.values.get(r.equalityKey(value)); set != nil {
@@ -406,7 +411,7 @@ func (r *eqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 		}
 	}
 }
-func (r *eqRule[T, V]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *bitmapPool) {
+func (r *eqRule[T, V, K]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value, ok := r.get(v)
 	if !ok {
 		dst.Clear()
@@ -414,30 +419,30 @@ func (r *eqRule[T, V]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *
 	}
 	intersectEqualitySet(r.values.get(r.equalityKey(value)), dst, pool)
 }
-func (*eqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
-func (r *eqRule[T, V]) optimize(total uint64) Rule[T] {
+func (*eqRule[T, V, K]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
+func (r *eqRule[T, V, K]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {
 		return newMatchAllRule[T](r.wildcard)
 	}
 	return r
 }
-func (r *eqRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) {
+func (r *eqRule[T, V, K]) collectBuildStatistics(stats []nodeBuildStatistics) {
 	stats[r.nodeID].equalityValues = len(r.values.sets)
 }
-func (r *eqRule[T, V]) prepareSearch() {
+func (r *eqRule[T, V, K]) prepareSearch() {
 	prepareBitmapForSearch(r.wildcard)
 	for i := range r.values.sets {
 		r.values.sets[i].prepareSearch()
 	}
 }
-func (r *eqRule[T, V]) internBitmaps(interner *bitmapInterner) {
+func (r *eqRule[T, V, K]) internBitmaps(interner *bitmapInterner) {
 	r.wildcardSource = interner.internSource(&r.wildcard)
 	for i := range r.values.sets {
 		r.values.sets[i].internBitmaps(interner)
 	}
 }
-func (r *eqRule[T, V]) equalitySourceCount() int { return 1 + len(r.values.sets) }
-func (r *eqRule[T, V]) visitEqualitySources(visit func(equalitySourcePair)) {
+func (r *eqRule[T, V, K]) equalitySourceCount() int { return 1 + len(r.values.sets) }
+func (r *eqRule[T, V, K]) visitEqualitySources(visit func(equalitySourcePair)) {
 	visit(equalitySourcePair{wildcard: r.wildcardSource})
 	for i := range r.values.sets {
 		set := r.values.sets[i]
@@ -446,7 +451,7 @@ func (r *eqRule[T, V]) visitEqualitySources(visit func(equalitySourcePair)) {
 		}
 	}
 }
-func (r *eqRule[T, V]) assignEqualityClasses(classes map[equalitySourcePair]uint32) {
+func (r *eqRule[T, V, K]) assignEqualityClasses(classes map[equalitySourcePair]uint32) {
 	r.wildcardClass = classes[equalitySourcePair{wildcard: r.wildcardSource}]
 	for i := range r.values.sets {
 		set := &r.values.sets[i]

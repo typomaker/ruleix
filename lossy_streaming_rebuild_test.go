@@ -41,8 +41,9 @@ func TestLossyOrderedStreamingRegridsExpandedRange(t *testing.T) {
 }
 
 func TestLossyEqualityStreamingRoundsKeysWithoutDroppingIDs(t *testing.T) {
-	rule := &eqRule[streamingOrderedFixture, int]{
+	rule := &eqRule[streamingOrderedFixture, int, uint64]{
 		quantizer: newEqualityQuantizer(15),
+		coarsen:   coarsenEqualityHash, less: lessEqualityHash,
 		values: testEqualityValues(map[uint64]*roaring.Bitmap{
 			0: roaring.BitmapOf(0), 1 << 62: roaring.BitmapOf(1),
 			2 << 62: roaring.BitmapOf(2), 3 << 62: roaring.BitmapOf(3),
@@ -65,9 +66,10 @@ func TestLossyEqualityStreamingRoundsKeysWithoutDroppingIDs(t *testing.T) {
 func TestLossyEqualityRepeatedRebuildKeepsEveryPosting(t *testing.T) {
 	codec, err := compileEqualityCodec[[16]byte]()
 	require.NoError(t, err)
-	rule := &eqRule[codecFixtureConstraint[[16]byte], [16]byte]{
+	rule := &eqRule[codecFixtureConstraint[[16]byte], [16]byte, uint64]{
 		get:      func(v codecFixtureConstraint[[16]byte]) ([16]byte, bool) { return v.value, true },
 		wildcard: roaring.New(), codec: codec, quantizer: newEqualityQuantizer(1),
+		encode: hashedEqualityEncoder(codec), coarsen: coarsenEqualityHash, less: lessEqualityHash,
 		values: newEqualityIndex[uint64](5000),
 	}
 	values := make([][16]byte, 5000)
@@ -263,7 +265,7 @@ func TestLossyStreamingRechecksBudgetAndDowngradesRemainingExactLeaves(t *testin
 	exactBytes := lossyAllBenchmarkExactBytes(t, constraints, ids, 4)
 	// Include three pressure intervals so stable hashing still exercises a
 	// second downgrade after the initial exact-to-streaming transition.
-	limit := exactBytes / 4
+	limit := exactBytes / 5
 	inspectors := make([]Inspector, 4)
 	var aggregate Inspector
 	schema := Inspect(&aggregate, Lossy(
@@ -313,8 +315,9 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		return side
 	}
 	t.Run("equality", func(t *testing.T) {
-		rule := &eqRule[streamingOrderedFixture, int]{
+		rule := &eqRule[streamingOrderedFixture, int, uint64]{
 			get: streamingOrderedValue, wildcard: roaring.New(), quantizer: newEqualityQuantizer(8),
+			coarsen: coarsenEqualityHash, less: lessEqualityHash,
 			values: testEqualityValues(map[uint64]*roaring.Bitmap{
 				0: roaring.BitmapOf(0), 1: roaring.BitmapOf(1),
 				2: roaring.BitmapOf(2), 3: roaring.BitmapOf(3),

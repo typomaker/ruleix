@@ -36,7 +36,7 @@ func TestBuildRemovesWildcardChildrenFromAll(t *testing.T) {
 		[]int{1, 2},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &eqRule[constraint, int]{}, index.root)
+	require.IsType(t, &eqRule[constraint, int, int]{}, index.root)
 
 	var matches []int
 	index.Search(constraint{concrete: &two}, &matches)
@@ -51,7 +51,7 @@ func TestBuildKeepsUnaryEqualityOnIntegerKeys(t *testing.T) {
 		[]int{1, 2, 3},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &eqRule[constraint, bool]{}, index.root)
+	require.IsType(t, &eqRule[constraint, bool, bool]{}, index.root)
 
 	for _, tt := range []struct {
 		query constraint
@@ -78,7 +78,7 @@ func TestBuildKeepsBinaryEqualityOnIntegerKeys(t *testing.T) {
 		[]int{1, 2, 3},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &eqRule[constraint, bool]{}, index.root)
+	require.IsType(t, &eqRule[constraint, bool, bool]{}, index.root)
 
 	for _, tt := range []struct {
 		query constraint
@@ -102,7 +102,7 @@ func TestBuildKeepsTernaryEqualityOnIntegerKeys(t *testing.T) {
 		[]int{1, 2, 3, 4},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &eqRule[constraint, int]{}, index.root)
+	require.IsType(t, &eqRule[constraint, int, int]{}, index.root)
 
 	for _, tt := range []struct {
 		query constraint
@@ -131,7 +131,7 @@ func TestBuildKeepsQuaternaryEqualityOnIntegerKeys(t *testing.T) {
 		[]int{1, 2, 3, 4, 5},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &eqRule[constraint, int]{}, index.root)
+	require.IsType(t, &eqRule[constraint, int, int]{}, index.root)
 
 	for i := range 4 {
 		var matches []int
@@ -152,7 +152,7 @@ func TestBuildKeepsFiveValueEqualityMapBacked(t *testing.T) {
 		return value.value, true
 	})).Build(Zip(constraints, []int{1, 2, 3, 4, 5}))
 	require.NoError(t, err)
-	rule := index.root.(*eqRule[constraint, int])
+	rule := index.root.(*eqRule[constraint, int, int])
 	require.NotNil(t, rule.values.offsets)
 }
 
@@ -214,8 +214,8 @@ func TestAllSharesInternedPartialEqualityWildcards(t *testing.T) {
 	index, err := New[constraint, int](schema).Build(Zip(constraints, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}))
 	require.NoError(t, err)
 	root := index.root.(*allRule[constraint])
-	left := root.children[0].(*eqRule[constraint, int])
-	right := root.children[1].(*eqRule[constraint, int])
+	left := root.children[0].(*eqRule[constraint, int, int])
+	right := root.children[1].(*eqRule[constraint, int, int])
 	require.Same(t, left.wildcard, right.wildcard)
 	require.Equal(t, []int{1, 1}, root.sharedWildcardGroups)
 

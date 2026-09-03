@@ -102,19 +102,18 @@ Insert и search используют `key`; полный rebuild использ
 с разным направлением одной и той же boundary-семантики, а не разные lossy
 алгоритмы.
 
-Общий equality physical key всегда является полным или округлённым `uint64`:
+Equality меняет generic physical-key specialization только при первом downgrade:
 
 ```text
-physicalKey(V, level) = round(hash(V), level)
-level 0 -> full 64-bit hash(V)
+physicalKey(V, 0) = V
 level 1 -> retain the high 16 bits
 level N -> clear one more retained low bit
 ```
 
-Исходное `V` не входит в physical index ни на одном уровне. Exact и Lossy
-используют один `equalityIndex[uint64]` и один `eqRule`; level меняет только
-округление integer key. Rebuild следующего уровня работает с текущим `uint64`
-без повторного hash и без сохранения semantic value.
+Exact и начальный Lossy используют `eqRule[T,V,V]` и `equalityIndex[V]` без semantic
+hashing. Первый rebuild создаёт `eqRule[T,V,uint64]` и `equalityIndex[uint64]`;
+следующие уровни работают с текущим `uint64` без повторного hash и без сохранения
+semantic value. Обе специализации используют одни generic методы поиска и lifecycle.
 
 Операция смены уровня всегда транзакционна и имеет один порядок действий:
 
@@ -209,17 +208,18 @@ Gate: повторные rebuild сохраняют каждый ID, не уде
 
 Статус: `завершён — 2026-09-02`
 
-Результат: equality переведён на ленивый identity-to-prefix rebuild одного
-поколения без будущих streaming candidates; текущий quantizer применяется к
-поздним insert/search, а ordered/shuffled, duplicates, wildcards и повторные
-downgrade прошли correctness, accounting, hard-limit и diff-coverage gates.
+Результат: equality переведён на ленивый comparable-to-prefix rebuild одного
+поколения без будущих streaming candidates; после первого downgrade текущий
+quantizer применяется к поздним insert/search, а ordered/shuffled, duplicates,
+wildcards и повторные downgrade прошли correctness, accounting, hard-limit и
+diff-coverage gates.
 
-- Exact-фаза хранит полный integer hash; после первого downgrade новые значения
-  сразу хешируются и округляются текущим equality quantizer.
+- Exact-фаза хранит исходный comparable key; после первого downgrade новые
+  значения сразу хешируются и округляются текущим equality quantizer.
 - Сделать hash-prefix levels вложенными, чтобы следующий storage key
   вычислялся только из текущего storage key.
-- Использовать одну фиксированную equality ladder: level 0 хранит полный hash;
-  level 1 хранит старшие 16 бит стабильного полного hash; каждый следующий
+- Использовать одну фиксированную equality ladder: level 0 хранит comparable
+  value; level 1 хранит старшие 16 бит стабильного полного hash; каждый следующий
   уровень удаляет ровно один младший retained bit; level 17 хранит 0 bits и
   является единственным universal equality key. Нестепенные разбиения,
   build-selected salts и дополнительные representations не входят.
@@ -359,9 +359,9 @@ Gate: все функциональные и memory gates проходят, prod
 
 Статус: `завершён — 2026-09-03`
 
-Результат: Exact и Lossy equality объединены в одном `eqRule` и одном
-`equalityIndex[uint64]`; physical index не удерживает исходный `V`, а общие
-search, planning, cache,
+Результат: Exact и Lossy equality объединены в одном generic `eqRule`; level 0
+использует `equalityIndex[V]`, а первый downgrade заменяет его специализацией
+`equalityIndex[uint64]`. Общие search, planning, cache,
 inspection и bitmap paths прошли full, race и 96.8% diff-coverage gates без
 benchmarks.
 
@@ -370,17 +370,17 @@ benchmarks.
 - Exact и Lossy должны использовать один тип правила, одни реализации insert,
   search, cardinality, `matchesID`, planning lookup, Local cache и bitmap
   interning; mode-specific методы поиска запрещены.
-- Использовать один `equalityIndex[uint64]`: level 0 записывает полный hash,
-  первый rebuild очищает младшие биты до level 1, последующие rebuild очищают
-  ещё один retained bit только из текущего integer key.
-- Ни один опубликованный key или build-state не удерживает исходное `V`;
-  generic specialization и physical layout между уровнями не меняются.
+- Использовать `equalityIndex[V]` на level 0 без codec hashing; первый rebuild
+  создаёт `equalityIndex[uint64]`, а последующие rebuild очищают ещё один
+  retained bit только из текущего integer key.
+- После первого downgrade ни один опубликованный key или build-state не
+  удерживает исходное `V`; дальнейший generic type и physical layout не меняются.
 - Сохранить build-only полный rebuild поколения, не вводя отдельный runtime
   wrapper или search branch для Lossy.
 
 Gate: production tree не содержит отдельного lossy equality search type;
-Exact, identity-Lossy и lossy equality проходят одну реализацию всех search-
-методов, а differential, cache, inspection и retained-memory tests проходят
+Exact, identity-Lossy и lossy equality проходят одни generic реализации всех
+search-методов, а differential, cache, inspection и retained-memory tests проходят
 без benchmarks и performance tuning.
 
 ### 10. Сделать level 0 явной identity-функцией

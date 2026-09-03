@@ -204,17 +204,17 @@ exact equality, хотя postings внутри индекса адресуютс
 ### Целевой контракт ключей общей exact/lossy-архитектуры
 
 Этот контракт описывает действующие общие posting-структуры. Equality больше
-не имеет `quantizedEqualityRule`: Exact и Lossy публикуют один `eqRule` и один
-`equalityIndex[uint64]`. На level 0 ключ равен полному 64-битному hash
-семантического значения; каждый следующий уровень очищает дополнительные
-младшие биты. Оставшиеся ordered `quantized*Rule`
+не имеет `quantizedEqualityRule`: Exact и Lossy публикуют один generic
+`eqRule[T,V,K]` с общей логикой. На level 0 `K=V` и ключом служит исходное
+comparable-значение; после первого downgrade `K=uint64`, а каждый следующий
+уровень очищает дополнительные младшие биты. Оставшиеся ordered `quantized*Rule`
 пока являются только build/streaming wrappers и не задают отдельный search
 engine.
 
-Для equality физический ключ всегда является числом. Level 0 использует полный
-64-битный hash с принятой канонизацией float (`-0 == +0`); уровни 1–17
-последовательно очищают младшие биты. Поэтому rebuild получает следующий ключ
-только из текущего числа и не сохраняет semantic value или отдельный tag. Для ordered
+Для equality level 0 использует `V` напрямую и не вызывает semantic codec.
+Первый переход хеширует каждый distinct `V` и создаёт новое поколение с
+`uint64`; уровни 1–17 последовательно очищают младшие биты. Поэтому после
+первого rebuild следующий ключ получается только из текущего числа. Для ordered
 скаляров exact key сохраняет порядок `Compare`; для произвольного `V` ту же
 роль играет значение вместе с build-скомпилированным comparator-ом.
 
@@ -247,17 +247,17 @@ bitmap-ы совпавших ключей и считает новое поко�
 
 Для equality диапазоном класса служит вложенный интервал полного hash-space.
 
-Equality на каждом уровне использует один `equalityIndex[uint64]`. Codec
-преобразует semantic value в полный 64-битный hash; level 0 хранит этот hash
-без округления. Первый streaming-переход очищает младшие 48 бит, оставляя 16
-старших, а каждый следующий уровень очищает ещё один retained bit. Поэтому
-индекс никогда не удерживает исходное `V`, а rebuild вычисляет следующий ключ
-только из текущего integer key. Публикация заменяет поколение целиком; поздние
-insert и query проходят через тот же hash-and-round transformer.
-Сортировка полных hash перед сборкой делает физическую форму одинаковой для
+Equality использует `equalityIndex[V]` на level 0 и `equalityIndex[uint64]` на
+уровнях 1–17. Это две специализации одного `eqRule[T,V,K]` и одной реализации
+insert/search/cardinality/matching. Первый streaming-переход хеширует exact
+ключи и очищает младшие 48 бит, оставляя 16 старших; каждый следующий уровень
+очищает ещё один retained bit. После перехода индекс не удерживает исходное
+`V`, а rebuild вычисляет следующий ключ только из текущего integer key.
+Публикация заменяет поколение целиком; поздние insert и query проходят через
+hash-and-round transformer. Сортировка полных hash перед сборкой делает форму одинаковой для
 ordered и shuffled input. Дубликаты ID объединяются общим `equalitySet`, а
 wildcard остаётся общей posting-семантикой Exact и Lossy.
-Лестница имеет уровни 0–17: полный hash, 16 старших бит и последовательное
+Лестница имеет уровни 0–17: исходное `V`, 16 старших бит hash и последовательное
 удаление одного младшего retained bit до универсального нулевого ключа. Каждый
 текущий ключ однозначно преобразуется в следующий без повторного hash или
 исходного значения. Для
@@ -270,11 +270,9 @@ ordered classes используют один и тот же envelope/rebuild к
 `ok == false` остаётся отдельным wildcard posting и не проходит quantizer.
 Компиляция encoder/quantizer выполняется в `Build`; опубликованный search path
 не должен применять reflection или выбирать уровень precision динамически.
-Equality уже следует этой форме: полный hash вычисляет конкретный
-`equalityCodec`, а сохранённый рядом конкретный `equalityQuantizer` переводит
-его в ключ выбранного вложенного класса. Тот же quantizer используется при
-build insertion, search lookup и преобразовании текущего ключа на следующую
-ступень streaming downgrade; policy interface в эти пути не попадает.
+Equality уже следует этой форме: identity encoder возвращает `V` на level 0,
+а hash encoder и `equalityQuantizer` используются после первого downgrade.
+Policy interface в insert, search и последующее coarsening не попадает.
 
 Standalone `Greater*`/`Less*` Exact и Lossy публикуют один `orderedRule` с одним
 `orderedIndex`. В rule нет level, quantizer или key transformer: insert и query
@@ -352,11 +350,12 @@ baseline приведены в [`performance-history.md`](performance-history.md
 Equality unification step 9 завершил этот переход: единственный `eqRule`
 выполняет insert, search, cardinality, `matchesID`, planning lookup, Local cache,
 bitmap preparation/interning и equality-class assignment на всех уровнях.
-Его единственный `equalityIndex[uint64]` получает полный hash на level 0 и
-округлённый integer после pressure. Коллизии transformed keys
+Его specialization `equalityIndex[V]` получает comparable value на level 0, а
+после pressure атомарно заменяется `equalityIndex[uint64]`. Коллизии transformed keys
 объединяются `equalityIndex.addSet`, а streaming pressure публикует независимое
 поколение через общий checked `rebuildPostingGeneration`. Смена generic
-specialization и отдельный lossy equality runtime/search wrapper отсутствуют.
+specialization не меняет generic search-логику и не вводит отдельный lossy
+equality runtime/search wrapper.
 
 Функциональный gate шага 9 проверен 2026-09-03 командами `go test ./...`,
 `go test -race ./...` и `go test -count=1 -coverprofile=... ./...`; все suites
@@ -427,15 +426,15 @@ numeric-значения за prefix range
 не зависит от размеров выбранных представлений и не добавляет обход дерева на
 каждую входную запись.
 
-Equality использует hash physical keys для встроенных скаляров и составных comparable
-значений. Во время `Build` один рефлексивный разбор статического типа компилирует
+Equality level 0 использует исходные comparable-ключи. Для Lossy во время
+`Build` один рефлексивный разбор статического типа компилирует
 полный hash для именованных скаляров, fixed-byte массивов/UUID, рекурсивных
 массивов и структур. Структуры читаются только по смещениям семантических полей,
 без padding; pointer и channel следуют Go identity, включая поле location у
 `time.Time`. String codec использует стабильный tagged FNV без process-local
 seed; map-backed build inputs сортируются до создания физического порядка.
 Готовый leaf хранит типизированную функцию codec и один текущий уровень.
-Level 0 использует полный 64-битный hash; level 1 сохраняет старшие 16 бит, а
+Level 0 не вызывает codec; level 1 сохраняет старшие 16 бит полного hash, а
 каждый следующий уровень очищает ещё один младший retained bit до нуля. В
 search path нет reflection. Интерфейсы остаются типизированной
 ошибкой `Build`: их динамический тип нельзя безопасно кодировать без runtime

@@ -18,7 +18,7 @@ type equalityDiagnosticProvider interface {
 	equalityDiagnostic() EqualityDiagnostic
 }
 
-func (r *eqRule[T, V]) equalityDiagnostic() EqualityDiagnostic {
+func (r *eqRule[T, V, K]) equalityDiagnostic() EqualityDiagnostic {
 	postings := make([]uint64, len(r.values.sets))
 	var items, squared uint64
 	for i := range r.values.sets {

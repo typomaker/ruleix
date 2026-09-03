@@ -60,7 +60,7 @@ func TestExecutionCapabilityCompilesOuterCachedBitmapProvider(t *testing.T) {
 }
 
 func TestEqualityDirectIDWorkIsBoundedButLargeCandidateSetsStayOnBitmapPath(t *testing.T) {
-	equality := &eqRule[int, int]{wildcard: roaring.BitmapOf(1)}
+	equality := &eqRule[int, int, int]{wildcard: roaring.BitmapOf(1)}
 	capability := describeExecutionCapability[int](equality)
 	require.Equal(t, uint64(32), capability.directIDWork)
 

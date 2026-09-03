@@ -9,5 +9,9 @@ package ruleix
 //	ruleix.Include(func(c Constraint) (string, bool) { return c.Country, true })
 func Include[T any, V comparable](get Getter[T, V]) Rule[T] {
 	codec, err := compileEqualityCodec[V]()
-	return &eqRule[T, V]{get: get, codec: codec, codecErr: err}
+	return &eqRule[T, V, V]{
+		get: get, codec: codec, codecErr: err,
+		encode:          func(value V, _ equalityQuantizer) V { return value },
+		firstGeneration: prepareExactEqualityFirstGeneration[T, V],
+	}
 }

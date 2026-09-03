@@ -187,13 +187,14 @@ current input on every `Build`. If all minimum viable representations still
 exceed any applicable limit, `Build` returns an error and does not publish the
 failed index or its diagnostics.
 
-Equality codecs cover built-in and named scalars, byte arrays such as UUIDs,
-recursive arrays, comparable structs, complex values, pointer and channel
-identity, and `time.Time`. Reflection is limited to codec compilation during
-`Build`. Published equality indexes always use `uint64`: level 0 stores the
-complete hash, while each later level clears more low bits so equal rounded
-integers share one posting list. Interfaces are rejected because their
-dynamic values cannot be encoded safely without query-time dispatch.
+Equality level 0 stores the original comparable value and uses Go map equality
+without hashing it in Ruleix code. Under memory pressure, the first downgrade
+uses the compiled semantic codec to replace `equalityIndex[V]` with
+`equalityIndex[uint64]`; later levels clear more low bits so equal rounded
+integers share one posting list. Codecs cover built-in and named scalars, byte
+arrays such as UUIDs, recursive arrays, comparable structs, complex values,
+pointer and channel identity, and `time.Time`. Interfaces are rejected because
+their dynamic values cannot be encoded safely without query-time dispatch.
 
 Lossy build planning is streaming. At fixed checkpoints, accounted exact state
 above a private 125% pressure target advances an equality integer level or

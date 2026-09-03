@@ -149,7 +149,7 @@ func TestIntegratedIdentityCompilesDenseEqualityClassOrdinals(t *testing.T) {
 
 			classes := make(map[uint32]struct{}, root.equalityClassCount)
 			for _, child := range root.children {
-				equality := child.(*eqRule[identityABConstraint, int])
+				equality := child.(*eqRule[identityABConstraint, int, int])
 				require.NotZero(t, equality.wildcardClass)
 				classes[equality.wildcardClass] = struct{}{}
 				for i := range equality.values.sets {

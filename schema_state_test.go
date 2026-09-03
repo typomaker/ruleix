@@ -24,12 +24,12 @@ func TestSchemaStateUsesStableSequentialNodeIDs(t *testing.T) {
 	first := schema.newState(&nodeIDAllocator{}, nil).(*allRule[schemaStateConstraint])
 	second := schema.newState(&nodeIDAllocator{}, nil).(*allRule[schemaStateConstraint])
 
-	firstEq := first.children[0].(*eqRule[schemaStateConstraint, string])
+	firstEq := first.children[0].(*eqRule[schemaStateConstraint, string, string])
 	firstNested := first.children[1].(*allRule[schemaStateConstraint])
 	firstOrdered := firstNested.children[0].(*orderedRule[schemaStateConstraint, int])
 	firstNot := firstNested.children[1].(*notRule[schemaStateConstraint, string])
 
-	secondEq := second.children[0].(*eqRule[schemaStateConstraint, string])
+	secondEq := second.children[0].(*eqRule[schemaStateConstraint, string, string])
 	secondNested := second.children[1].(*allRule[schemaStateConstraint])
 	secondOrdered := secondNested.children[0].(*orderedRule[schemaStateConstraint, int])
 	secondNot := secondNested.children[1].(*notRule[schemaStateConstraint, string])

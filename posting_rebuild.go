@@ -11,7 +11,7 @@ import (
 // postingGeneration is mutable build-only state. A successful rebuild returns
 // an independent generation, allowing its owner to publish it with one
 // assignment and release the old map afterwards.
-type postingGeneration[K cmp.Ordered] map[K]*roaring.Bitmap
+type postingGeneration[K comparable] map[K]*roaring.Bitmap
 
 // lossyBuildState owns the only mutable posting generation for one lossy
 // list. Exact input and search keys pass through the same current level. The
@@ -133,7 +133,7 @@ func rebuildPostingGeneration[K cmp.Ordered](
 	return rebuildPostingGenerationInOrder(old, keys, capacity, entryBytes, coarsen)
 }
 
-func rebuildPostingGenerationInOrder[K cmp.Ordered](
+func rebuildPostingGenerationInOrder[K comparable](
 	old postingGeneration[K], keys []K, capacity int, entryBytes uint64, coarsen func(K) K,
 ) (postingGeneration[K], uint64, bool) {
 	if capacity < 0 {
@@ -150,14 +150,8 @@ func rebuildPostingGenerationInOrder[K cmp.Ordered](
 		}
 	}
 
-	keys = keys[:0]
-	for key := range next {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
 	usage := uint64(0)
-	for _, key := range keys {
-		bits := next[key]
+	for _, bits := range next {
 		if math.MaxUint64-usage < entryBytes {
 			return nil, 0, false
 		}
