@@ -25,7 +25,7 @@ func lossyDifferentialData() ([]lossyDifferentialConstraint, []int) {
 	ids := make([]int, entries)
 	for id := range constraints {
 		// The prefix is deliberately narrow. Values after the streaming checkpoint
-		// expand both edges, exercising build-time rebucketing rather than only the
+		// expand both edges, exercising build-time rebuilding rather than only the
 		// ordinary exact-first compiler.
 		value := id%257 - 128
 		if id >= lossyBuildPressureInterval {

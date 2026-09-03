@@ -269,7 +269,7 @@ func TestLossyCompositeProductionValueTypesNeverDropExactMatches(t *testing.T) {
 	}
 }
 
-func TestLossyBetweenOutwardBucketsNeverDropBoundaryMatches(t *testing.T) {
+func TestLossyBetweenOutwardKeysNeverDropBoundaryMatches(t *testing.T) {
 	type interval struct {
 		from, until int
 		present     bool
@@ -296,7 +296,7 @@ func TestLossyBetweenOutwardBucketsNeverDropBoundaryMatches(t *testing.T) {
 	)
 }
 
-func TestLossyCompareByBucketsNeverDropAnyOperatorMatch(t *testing.T) {
+func TestLossyCompareByKeysNeverDropAnyOperatorMatch(t *testing.T) {
 	type comparison struct {
 		value   int
 		op      Operator

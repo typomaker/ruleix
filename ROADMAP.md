@@ -102,19 +102,19 @@ Insert и search используют `key`; полный rebuild использ
 с разным направлением одной и той же boundary-семантики, а не разные lossy
 алгоритмы.
 
-Общий equality physical key задаётся заранее и не меняет Go-тип между уровнями:
+Общий equality physical key всегда является полным или округлённым `uint64`:
 
 ```text
-equalityPhysicalKey[V] = exact(V) | bucket(uint64)
-level 0 -> exact(V)
-level N -> bucket(hashPrefix(V, N))
+physicalKey(V, level) = round(hash(V), level)
+level 0 -> full 64-bit hash(V)
+level 1 -> retain the high 16 bits
+level N -> clear one more retained low bit
 ```
 
-На level 0 tagged key содержит исходное `V`. После полного rebuild на level 1+
-новое поколение содержит только bucket payload; exact `V` старого поколения не
-удерживается. Exact и Lossy используют один `equalityIndex[equalityPhysicalKey[V]]`
-и один `eqRule`; запрещено переключать generic specialization или rule type при
-downgrade.
+Исходное `V` не входит в physical index ни на одном уровне. Exact и Lossy
+используют один `equalityIndex[uint64]` и один `eqRule`; level меняет только
+округление integer key. Rebuild следующего уровня работает с текущим `uint64`
+без повторного hash и без сохранения semantic value.
 
 Операция смены уровня всегда транзакционна и имеет один порядок действий:
 
@@ -137,8 +137,8 @@ fallback к заранее подготовленному representation зап�
 
 Текущий уровень сохраняется в правиле и одинаково применяется к последующим
 insert и search values. Исходные exact keys после успешного перехода не
-удерживаются. Уникальные округлённые ключи могут называться buckets/classes
-только в диагностике: planner не вычисляет отдельное разбиение, не строит все
+удерживаются. Диагностика сообщает число уникальных physical keys: planner не
+вычисляет отдельное разбиение, не строит все
 будущие representations и не сливает соседние postings по одной паре.
 
 До последнего шага milestone запрещены performance-оптимизации, benchmark-
@@ -214,16 +214,15 @@ Gate: повторные rebuild сохраняют каждый ID, не уде
 поздним insert/search, а ordered/shuffled, duplicates, wildcards и повторные
 downgrade прошли correctness, accounting, hard-limit и diff-coverage gates.
 
-- Exact-фаза хранит точные значения; после первого downgrade новые значения
-  сразу преобразуются текущим equality quantizer.
-- Сделать hash-prefix/bucket levels вложенными, чтобы следующий storage key
+- Exact-фаза хранит полный integer hash; после первого downgrade новые значения
+  сразу хешируются и округляются текущим equality quantizer.
+- Сделать hash-prefix levels вложенными, чтобы следующий storage key
   вычислялся только из текущего storage key.
-- Использовать одну фиксированную equality ladder: level 0 хранит exact key;
+- Использовать одну фиксированную equality ladder: level 0 хранит полный hash;
   level 1 хранит старшие 16 бит стабильного полного hash; каждый следующий
   уровень удаляет ровно один младший retained bit; level 17 хранит 0 bits и
-  является единственным universal equality bucket. Нестепенные bucket counts,
-  build-selected salts и дополнительные промежуточные representations в этот
-  milestone не входят.
+  является единственным universal equality key. Нестепенные разбиения,
+  build-selected salts и дополнительные representations не входят.
 - При повышении уровня полностью перекладывать текущий `equalityIndex`, сливая
   bitmap только у ключей с одинаковым новым значением.
 - Удалить static representation ladder и параллельное хранение equality
@@ -361,8 +360,8 @@ Gate: все функциональные и memory gates проходят, prod
 Статус: `завершён — 2026-09-03`
 
 Результат: Exact и Lossy equality объединены в одном `eqRule` и одном
-`equalityIndex[equalityPhysicalKey[V]]`; tagged exact/bucket payload не
-удерживает исходный `V` после level 1, а общие search, planning, cache,
+`equalityIndex[uint64]`; physical index не удерживает исходный `V`, а общие
+search, planning, cache,
 inspection и bitmap paths прошли full, race и 96.8% diff-coverage gates без
 benchmarks.
 
@@ -371,15 +370,11 @@ benchmarks.
 - Exact и Lossy должны использовать один тип правила, одни реализации insert,
   search, cardinality, `matchesID`, planning lookup, Local cache и bitmap
   interning; mode-specific методы поиска запрещены.
-- Использовать один общий `equalityIndex` physical layout. Тип и форма storage
-  key — `equalityPhysicalKey[V]` с взаимоисключающими exact/bucket payload;
-  они задаются общей key transformation, а не выбором отдельного lossy rule.
-- На level 0 общий `eqRule` записывает `exact(V)`. Первый полный rebuild
-  преобразует каждый такой ключ в `bucket(hashPrefix(V, 1))`; последующие
-  rebuild вычисляют родительский bucket только из текущего bucket payload.
-- После level 1 ни один опубликованный key или build-state не должен удерживать
-  exact `V`; смена generic specialization `equalityIndex[V] ->
-  equalityIndex[uint64]` запрещена.
+- Использовать один `equalityIndex[uint64]`: level 0 записывает полный hash,
+  первый rebuild очищает младшие биты до level 1, последующие rebuild очищают
+  ещё один retained bit только из текущего integer key.
+- Ни один опубликованный key или build-state не удерживает исходное `V`;
+  generic specialization и physical layout между уровнями не меняются.
 - Сохранить build-only полный rebuild поколения, не вводя отдельный runtime
   wrapper или search branch для Lossy.
 

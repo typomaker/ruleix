@@ -60,7 +60,7 @@ go tool pprof -top ./ruleix.test /tmp/ruleix-step5.cpu
 `orderedIndex.walk`, `Bitmap.Contains` и `allRule.matchesChildID` подтвердили
 тот же широкий aggregate membership path, что и в первой отклонённой серии.
 Экспериментальный код удалён, поскольку ни одна проверенная leaf-стратегия не
-вернула baseline latency. Следующее направление — общий bucket-shaped layout.
+вернула baseline latency. Следующее направление — общий common physical-key layout.
 
 ### Bitmap-only candidate filtering
 
@@ -98,7 +98,7 @@ bitmap, а не временное представление union. Для ну
 
 ## 2026-09-01: exact-first против one-pass streaming
 
-Исправление streaming rebucketing устранило аварийный one-bucket collapse.
+Исправление streaming rebuilding устранило аварийный one-physical key collapse.
 Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, 38,098 entries, 377,122-byte budget,
 `go test -run '^$' -bench '^BenchmarkProductionShapeLossySearch/(Index|Local)$' -benchmem -benchtime=500ms -count=5 .`:
 `Index.Search` 42,927–43,423 ns/op (median 43,075), 38,909 B/op и 22 allocs/op;
@@ -201,7 +201,7 @@ go tool pprof -top -cum /tmp/ruleix-streaming-step8.cpu
 [`optimization-decisions.md`](optimization-decisions.md), чтобы история чисел
 и история архитектурных выводов оставались связанными.
 
-## 2026-09-01: finer equality bucket counts
+## 2026-09-01: finer equality physical key counts
 
 На Apple M1 Max, macOS arm64, Go 1.26.0, 10 000 entries и
 `MemoryLimit(200000)` fixed-byte поиск занял 55,65–56,94 ns/op, named UUID —

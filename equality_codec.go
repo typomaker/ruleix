@@ -2,7 +2,6 @@ package ruleix
 
 import (
 	"fmt"
-	"math/bits"
 	"reflect"
 	"unsafe"
 )
@@ -31,31 +30,28 @@ type equalityCodec[V comparable] struct {
 // search path a direct hash-to-key transformation with no policy lookup or
 // interface dispatch.
 type equalityQuantizer struct {
-	bucketCount uint64
+	level uint32
 }
 
-func newEqualityQuantizer(bucketCount uint64) equalityQuantizer {
-	return equalityQuantizer{bucketCount: max(bucketCount, 1)}
+const equalityTerminalLevel uint32 = 17
+
+func newEqualityQuantizer(level uint32) equalityQuantizer {
+	return equalityQuantizer{level: min(level, equalityTerminalLevel)}
 }
 
 func (q equalityQuantizer) key(hash uint64) uint64 {
-	upper := equalityBucketUpper(q.bucketCount)
-	high, _ := bits.Mul64(hash, upper)
-	return reduceEqualityBaseBucket(high, upper, q.bucketCount)
+	if q.level == 0 {
+		return hash
+	}
+	retained := equalityTerminalLevel - q.level
+	if retained == 0 {
+		return 0
+	}
+	return hash & ^(uint64(1)<<(64-retained) - 1)
 }
 
 func (q equalityQuantizer) coarsen(key uint64, next equalityQuantizer) uint64 {
-	upper := equalityBucketUpper(q.bucketCount)
-	merged := upper - q.bucketCount
-	base := key + merged
-	if key < merged {
-		base = key * 2
-	}
-	for upper > equalityBucketUpper(next.bucketCount) {
-		base /= 2
-		upper /= 2
-	}
-	return reduceEqualityBaseBucket(base, upper, next.bucketCount)
+	return next.key(key)
 }
 
 func compileEqualityCodec[V comparable]() (equalityCodec[V], error) {
@@ -256,7 +252,7 @@ func compileEqualityPointerCodec(typeOf reflect.Type) (equalityPointerCodec, str
 }
 
 // stableStringEqualityHash deliberately avoids hash/maphash: its randomized
-// process-local seed changed lossy bucket membership and therefore the chosen
+// process-local seed changed lossy physical keys and therefore the chosen
 // memory-budget plan between otherwise identical Builds.
 func stableStringEqualityHash(value string) uint64 {
 	hash := fnvHashUint64(fnvHashByte(fnvOffset64, canonicalString), uint64(len(value)))

@@ -155,7 +155,7 @@ into a bounded, conservative representation. The exact representation is
 retained when it fits; otherwise results may include false positives but never
 omit an exact match. Built-in terminal representations also let heterogeneous
 `All` schemas use one aggregate limit. Ordered rules use comparator-defined
-boundary buckets, while equality rules compile a semantic hash codec during
+rounded boundaries, while equality rules compile a semantic hash codec during
 `Build`; a type that cannot receive a safe codec is rejected instead of
 silently becoming a complete candidate bitmap:
 
@@ -190,15 +190,14 @@ failed index or its diagnostics.
 Equality codecs cover built-in and named scalars, byte arrays such as UUIDs,
 recursive arrays, comparable structs, complex values, pointer and channel
 identity, and `time.Time`. Reflection is limited to codec compilation during
-`Build`; published indexes use a typed full-value hash and an immutable bucket
-count. Four bucket-count levels per power-of-two interval are reduced with
-multiply-high arithmetic, so lossy precision changes more smoothly while warm
-`Local.Search` remains allocation-free. Interfaces are rejected because their
+`Build`. Published equality indexes always use `uint64`: level 0 stores the
+complete hash, while each later level clears more low bits so equal rounded
+integers share one posting list. Interfaces are rejected because their
 dynamic values cannot be encoded safely without query-time dispatch.
 
 Lossy build planning is streaming. At fixed checkpoints, accounted exact state
-above a private 125% pressure target is irreversibly compiled into selective
-buckets; later values are inserted directly into those buckets. This prevents
+above a private 125% pressure target advances the selected integer-key or
+ordered-boundary level; later values use that same rounding. This prevents
 the builder from retaining the complete input as exact leaf state before
 compression. Low-cardinality exact leaves selected by the aggregate planner
 may remain exact, while pressured high-cardinality leaves release their exact
@@ -357,7 +356,7 @@ once. Its first matching insertion determines result order.
 `Inspect` can mark one rule and report the representation selected during
 `Build`. For a `Lossy` policy it exposes accounted subtree usage, the effective
 `MemoryLimit` after ancestor caps, selected exact/lossy mode, item and
-distinct-value counts, and bucket granularity when applicable. Optional
+distinct-value counts, and physical key granularity when applicable. Optional
 metrics return an availability flag.
 Call `Snapshot` once to capture one successful
 build generation and its observed runtime counters. Runtime counters are

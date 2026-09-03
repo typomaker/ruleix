@@ -158,10 +158,10 @@ representation statistics:
 
 - accounted representation memory and configured maximum memory;
 - indexed item and distinct-value counts;
-- selected bucket count as the current granularity;
+- selected physical key count as the current granularity;
 - estimated false-positive rate, when meaningful and available;
 - optimizer decisions and representation details;
-- bucket or prefix configuration;
+- physical key or prefix configuration;
 - monotonic runtime execution counters and result-cardinality histogram.
 
 Optional methods return `(value, available)`, distinguishing unavailable data
@@ -169,7 +169,7 @@ from a meaningful zero. Memory is measured in bytes under the deterministic
 accounting model used to enforce `MemoryLimit`; it is not Go heap usage.
 `ItemCount` includes wildcard and concrete postings after external-ID
 deduplication within each posting. `DistinctValueCount` excludes the wildcard.
-`Granularity` is the number of selected lossy buckets and is unavailable for
+`Granularity` is the number of selected lossy physical keys and is unavailable for
 an exact representation. The current strategies do not publish a false-
 positive estimate because they lack a meaningful workload-independent model.
 All methods on one `InspectorSnapshot` read its captured values.
@@ -178,22 +178,15 @@ Strategy names and fine-grained representation details may evolve as the
 planner changes. Decide which values are stable public contracts and which are
 diagnostic strings before exposing them.
 
-For exact equality rules, `Strategy` exposes the concrete build-time
-specialization selected from the number of distinct concrete values:
+For equality rules, `Strategy` exposes the common physical representation:
 
-| Distinct concrete values | `Mode()` | `Strategy()` |
-| ---: | --- | --- |
-| 1 | `exact` | `equality-unary` |
-| 2 | `exact` | `equality-binary` |
-| 3 | `exact` | `equality-ternary` |
-| 4 | `exact` | `equality-quaternary` |
-| 5 or more | `exact` | `equality` |
+| Policy | `Mode()` | `Strategy()` |
+| --- | --- | --- |
+| Exact | `exact` | `equality` |
+| Lossy | `lossy` | `equality` |
 
-`Mode` remains orthogonal to this choice and reports matching semantics
-(`exact` or `lossy`). The arity in `Strategy` describes the equality index
-shape, not the payload of every posting: an individual posting may still use a
-single internal ID, a compact ID slice, or a Roaring bitmap according to its
-cardinality.
+`Mode` reports the policy. An individual posting may still use a single
+internal ID, a compact ID slice, or a Roaring bitmap according to cardinality.
 
 ## Lossy integration
 

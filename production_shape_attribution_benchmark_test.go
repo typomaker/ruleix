@@ -204,9 +204,9 @@ func BenchmarkProductionShapeAttribution(b *testing.B) {
 // distribution at every budget selected by the production equality planner.
 // The timed search benchmark above remains the end-to-end acceptance gate.
 // Latest local shape (Apple M1 Max, Go 1.26.0, GOMAXPROCS=1, 38,098 entries,
-// 1x): 75% retained 534 buckets, max posting 29,137, weighted collision
-// 13,067 and 0.04693 observed query FP rate; 50% retained six buckets, max
-// posting 38,097, weighted collision 34,764 and 1.0 observed query FP rate.
+// 1x): 75% retained 642 physical keys, max posting 38,074, weighted collision
+// 23,616 and 0.09732 observed query FP rate; 50% retained 184 keys, max
+// posting 38,074, weighted collision 32,499 and 0.6652 observed query FP rate.
 func BenchmarkProductionEqualityPrecisionShape(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	queries := []productionBenchmarkConstraint{
@@ -229,10 +229,10 @@ func BenchmarkProductionEqualityPrecisionShape(b *testing.B) {
 		diagnostics := ruleix.EqualityDiagnostics(index)
 		candidates := productionAttributionCandidateAverage(index, queries)
 		b.Run(fmt.Sprintf("Budget%d", percent), func(b *testing.B) {
-			var buckets, items, maxPosting, maxMedianPosting, maxP95Posting uint64
+			var physicalKeys, items, maxPosting, maxMedianPosting, maxP95Posting uint64
 			var weighted float64
 			for _, diagnostic := range diagnostics {
-				buckets += diagnostic.Buckets
+				physicalKeys += diagnostic.PhysicalKeys
 				items += diagnostic.Items
 				maxPosting = max(maxPosting, diagnostic.MaxPosting)
 				maxMedianPosting = max(maxMedianPosting, diagnostic.MedianPosting)
@@ -240,7 +240,7 @@ func BenchmarkProductionEqualityPrecisionShape(b *testing.B) {
 				weighted += diagnostic.WeightedCollision * float64(diagnostic.Items)
 			}
 			b.ReportMetric(float64(accounted), "accounted-B/index")
-			b.ReportMetric(float64(buckets), "buckets")
+			b.ReportMetric(float64(physicalKeys), "physical-keys")
 			b.ReportMetric(candidates, "candidates/query")
 			b.ReportMetric(float64(len(diagnostics)), "lossy-leaves")
 			b.ReportMetric(float64(maxPosting), "max-posting")

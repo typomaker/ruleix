@@ -10,10 +10,10 @@ import (
 
 type streamingOrderedFixture struct{ value int }
 
-func testEqualityValues[V comparable](postings map[uint64]*roaring.Bitmap) equalityIndex[equalityPhysicalKey[V]] {
-	values := newEqualityIndex[equalityPhysicalKey[V]](len(postings))
+func testEqualityValues(postings map[uint64]*roaring.Bitmap) equalityIndex[uint64] {
+	values := newEqualityIndex[uint64](len(postings))
 	for key, bits := range postings {
-		values.addSet(bucketEqualityKey[V](key), &equalitySet{bits: bits})
+		values.addSet(key, &equalitySet{bits: bits})
 	}
 	return values
 }
@@ -40,27 +40,25 @@ func TestLossyOrderedStreamingRegridsExpandedRange(t *testing.T) {
 	}
 }
 
-func TestLossyEqualityStreamingRebucketsWithoutDroppingIDs(t *testing.T) {
+func TestLossyEqualityStreamingRoundsKeysWithoutDroppingIDs(t *testing.T) {
 	rule := &eqRule[streamingOrderedFixture, int]{
-		quantizer: newEqualityQuantizer(4),
-		values: testEqualityValues[int](map[uint64]*roaring.Bitmap{
-			0: roaring.BitmapOf(0), 1: roaring.BitmapOf(1),
-			2: roaring.BitmapOf(2), 3: roaring.BitmapOf(3),
+		quantizer: newEqualityQuantizer(15),
+		values: testEqualityValues(map[uint64]*roaring.Bitmap{
+			0: roaring.BitmapOf(0), 1 << 62: roaring.BitmapOf(1),
+			2 << 62: roaring.BitmapOf(2), 3 << 62: roaring.BitmapOf(3),
 		}),
 	}
-	rule.rebucket(3)
-	if rule.quantizer.bucketCount != 3 {
-		t.Fatalf("bucket count is %d, want 3", rule.quantizer.bucketCount)
-	}
+	rule.rebuildEqualityNext()
+	require.Equal(t, uint32(16), rule.quantizer.level)
 	seen := roaring.New()
 	for index := range rule.values.sets {
 		rule.values.sets[index].addTo(seen)
 	}
 	if seen.GetCardinality() != 4 {
-		t.Fatalf("rebucketing retained %d IDs, want 4", seen.GetCardinality())
+		t.Fatalf("rebuild retained %d IDs, want 4", seen.GetCardinality())
 	}
-	if len(rule.values.sets) != 3 {
-		t.Fatalf("rebucketing produced %d classes, want 3", len(rule.values.sets))
+	if len(rule.values.sets) != 2 {
+		t.Fatalf("rebuild produced %d keys, want 2", len(rule.values.sets))
 	}
 }
 
@@ -69,8 +67,8 @@ func TestLossyEqualityRepeatedRebuildKeepsEveryPosting(t *testing.T) {
 	require.NoError(t, err)
 	rule := &eqRule[codecFixtureConstraint[[16]byte], [16]byte]{
 		get:      func(v codecFixtureConstraint[[16]byte]) ([16]byte, bool) { return v.value, true },
-		wildcard: roaring.New(), codec: codec, quantizer: newEqualityQuantizer(65536),
-		values: newEqualityIndex[equalityPhysicalKey[[16]byte]](5000),
+		wildcard: roaring.New(), codec: codec, quantizer: newEqualityQuantizer(1),
+		values: newEqualityIndex[uint64](5000),
 	}
 	values := make([][16]byte, 5000)
 	for id := range values {
@@ -296,7 +294,7 @@ func TestLossyStreamingRechecksBudgetAndDowngradesRemainingExactLeaves(t *testin
 			lossyLeaves++
 		}
 	}
-	// Nested rebucketing releases more memory than the old overlapping grids,
+	// Nested rebuilding releases more memory than the old overlapping grids,
 	// so the final plan may preserve some exact siblings. More than one lossy
 	// leaf proves that a leaf which was exact after initial compilation was
 	// subsequently downgraded.
@@ -317,7 +315,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 	t.Run("equality", func(t *testing.T) {
 		rule := &eqRule[streamingOrderedFixture, int]{
 			get: streamingOrderedValue, wildcard: roaring.New(), quantizer: newEqualityQuantizer(8),
-			values: testEqualityValues[int](map[uint64]*roaring.Bitmap{
+			values: testEqualityValues(map[uint64]*roaring.Bitmap{
 				0: roaring.BitmapOf(0), 1: roaring.BitmapOf(1),
 				2: roaring.BitmapOf(2), 3: roaring.BitmapOf(3),
 			}),
@@ -325,7 +323,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		_, apply, ok := rule.prepareStreamingNext()
 		require.True(t, ok)
 		apply()
-		require.Less(t, rule.quantizer.bucketCount, uint64(8))
+		require.Equal(t, uint32(9), rule.quantizer.level)
 		_, ok = rule.nextStreamingUsage()
 		require.True(t, ok)
 		rule.fitStreamingNext()

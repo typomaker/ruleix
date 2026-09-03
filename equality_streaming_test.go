@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,9 +17,13 @@ type streamingEqualityFixture struct {
 func streamingEqualityValue(v streamingEqualityFixture) (string, bool) { return v.value, v.present }
 
 func buildExactStreamingEquality(order []int) *eqRule[streamingEqualityFixture, string] {
+	codec, err := compileEqualityCodec[string]()
+	if err != nil {
+		panic(err)
+	}
 	rule := &eqRule[streamingEqualityFixture, string]{
-		get: streamingEqualityValue, wildcard: roaring.New(),
-		values: newEqualityIndex[equalityPhysicalKey[string]](len(order)),
+		get: streamingEqualityValue, wildcard: roaring.New(), codec: codec,
+		values: newEqualityIndex[uint64](len(order)),
 	}
 	values := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta"}
 	for _, id := range order {
@@ -31,9 +36,18 @@ func buildExactStreamingEquality(order []int) *eqRule[streamingEqualityFixture, 
 
 func equalityGenerationShape(rule *eqRule[streamingEqualityFixture, string]) []uint64 {
 	keys := make([]uint64, 0, len(rule.values.sets))
-	rule.values.visit(func(key equalityPhysicalKey[string], _ *equalitySet) { keys = append(keys, key.bucket) })
+	rule.values.visit(func(key uint64, _ *equalitySet) { keys = append(keys, key) })
 	slices.Sort(keys)
 	return keys
+}
+
+func TestEqualityLevelZeroStoresFullIntegerHash(t *testing.T) {
+	rule := buildExactStreamingEquality([]int{0})
+	want := rule.codec.hash("alpha")
+
+	require.Equal(t, uint32(0), rule.quantizer.level)
+	require.NotNil(t, rule.values.get(want))
+	require.Equal(t, []uint64{want}, equalityGenerationShape(rule))
 }
 
 func TestEqualityStreamingFirstGenerationIsDeterministic(t *testing.T) {
@@ -63,28 +77,13 @@ func TestEqualityAdaptiveLeafPublishesOnlyPreparedGeneration(t *testing.T) {
 	require.IsType(t, &eqRule[streamingEqualityFixture, string]{}, adaptive.child)
 	require.IsType(t, exact, adaptive.child, "identity and quantized generations use one rule type")
 	lossy := adaptive.child.(*eqRule[streamingEqualityFixture, string])
-	lossy.values.visit(func(key equalityPhysicalKey[string], _ *equalitySet) {
-		require.True(t, key.bucketed)
-		require.Empty(t, key.exact, "a bucket generation must not retain the exact value")
-	})
+	require.Equal(t, uint32(1), lossy.quantizer.level)
 
 	unsupported := &eqRule[streamingEqualityFixture, any]{
-		wildcard: roaring.New(), values: newEqualityIndex[equalityPhysicalKey[any]](0),
+		wildcard: roaring.New(), values: newEqualityIndex[uint64](0), codecErr: assert.AnError,
 	}
 	_, _, ok = unsupported.prepareStreamingFirstGeneration()
 	require.False(t, ok)
-}
-
-func TestEqualityPhysicalKeyPayloadsAreMutuallyExclusive(t *testing.T) {
-	exact := exactEqualityKey("retained")
-	require.False(t, exact.bucketed)
-	require.Equal(t, "retained", exact.exact)
-	require.Zero(t, exact.bucket)
-
-	bucket := bucketEqualityKey[string](42)
-	require.True(t, bucket.bucketed)
-	require.Empty(t, bucket.exact)
-	require.Equal(t, uint64(42), bucket.bucket)
 }
 
 func TestEqualityStreamingLateValuesAndRepeatedDowngradesKeepExactMatches(t *testing.T) {

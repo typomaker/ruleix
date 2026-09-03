@@ -34,7 +34,7 @@ Production Lossy50 baseline `0598735` давал median 27 456 ns/op, 13 592 B/o
 Прямой обход `orderedIndex.matches` вместо callback сохранил layout и
 correctness. Первая серия дала median 45 540 ns/op, финальная при заметном
 machine drift — 46 149 ns/op и 322,7 ns/op Local; candidate count не изменился.
-Эксперимент с bucket-shaped блоками того же
+Эксперимент с common physical-key блоками того же
 `orderedIndex` и range aggregates по 128 блоков ухудшил median примерно до
 47 594 ns/op и также не изменил 150 candidates/query; экспериментальные поля
 удалены, unified implementation сохранена.
@@ -123,7 +123,7 @@ warm, 111 056 B adaptive и 74 256 B adversarial.
 
 Расследование показало, что межпроцессная вариативность вызвана не порядком
 обхода Go map, а `hash/maphash.MakeSeed()` в string codec. Один string получал
-разные lossy buckets и физический план в каждом процессе. Codec переведён на
+разные lossy physical keys и физический план в каждом процессе. Codec переведён на
 стабильный tagged FNV; обычные, именованные и вложенные строки используют один
 контракт. Build-time map inputs дополнительно упорядочены: equality candidates
 по `(hash, insertion offset)`, equality classes по physical source pair,
@@ -164,7 +164,7 @@ lossy branches, search types и проверки режима запрещены
    одинаковым matcher-ом, а не создавать отдельный lossy engine.
 
 Equality hash проверяется отдельно от ordered quantization. Для equality gate
-нужно сравнивать weighted bucket collisions, максимальный posting, estimated
+нужно сравнивать weighted physical key collisions, максимальный posting, estimated
 false-positive rate и candidates/query на реально выбранных precision levels.
 Смена стабильного hash или build-selected salt не считается исправлением без
 end-to-end выигрыша. Для ordered правил hash отсутствует: следующий quantizer
@@ -225,7 +225,7 @@ build/finalize, которая не копирует dense elements при вс�
 differential и streaming gates прошли.
 
 На production данных selector выбрал исходный нулевой salt. Диагностика 50%
-осталась без изменений: шесть buckets, max posting 38 097, weighted collision
+осталась без изменений: шесть physical keys, max posting 38 097, weighted collision
 34 764, 38 098 candidates/query и observed false-positive rate 1,0. Production
 All сохранил 1 722 candidates/query; mixed shared-key — 3,155. Следовательно,
 даже оптимизация перестановки по полной posting distribution не меняет реально
@@ -311,7 +311,7 @@ benchmark дополнительных замечаний не добавил.
 
 Добавлен test-only физический отчёт `BenchmarkProductionEqualityPrecisionShape`.
 Он не расширяет публичный API и для реально выбираемых production budget points
-показывает число buckets, распределение posting cardinality (median/p95/max по
+показывает число physical keys, распределение posting cardinality (median/p95/max по
 листьям), weighted collision cost, observed query false-positive rate и
 candidates/query. Воспроизведение:
 
@@ -325,14 +325,14 @@ GOMAXPROCS=1 go test -run '^$' \
 Результаты физической формы детерминированы сборкой; `ns/op` этого diagnostic
 benchmark не является search-метрикой и не используется как performance gate.
 
-| Budget | Accounted | Buckets | Candidates/query | Max leaf median/p95/max | Weighted collision | Observed query FP |
+| Budget | Accounted | Physical keys | Candidates/query | Max leaf median/p95/max | Weighted collision | Observed query FP |
 |---:|---:|---:|---:|---:|---:|---:|
 | 100% | 419 451 B | exact | 150 | exact | exact | 0 |
 | 75% | 284 665 B | 534 | 1 931 | 29 137 / 29 137 / 29 137 | 13 067 | 0,04693 |
 | 50% | 140 347 B | 6 | 38 098 | 38 097 / 38 097 / 38 097 | 34 764 | 1,000 |
 
 Три posting-квантили в таблице — отдельные maxima соответствующей метрики среди
-листьев; они показывают worst-leaf форму, а не общую CDF всех buckets.
+листьев; они показывают worst-leaf форму, а не общую CDF всех physical keys.
 
 Измерение исключает stable-hash/salt как самостоятельное исправление 50%-точки:
 planner оставляет всего шесть классов на весь equality-only `All`, а один
@@ -402,7 +402,7 @@ codec.
 
 Следующий эксперимент по roadmap — equality-only анализ реально выбранных
 ступеней: posting cardinality distribution, weighted collision cost,
-максимальный bucket, estimated false-positive rate и candidates/query. После
+максимальный physical key, estimated false-positive rate и candidates/query. После
 этого можно оценивать stable hash/salt и quality-aware score только по
 end-to-end `Index.Search` и `Local.Search`.
 

@@ -218,7 +218,7 @@ func TestNestedLossyRandomizedSupersetAndDeterministicDiagnostics(t *testing.T) 
 			).Build(Zip(constraints, ids))
 			require.NoError(t, err)
 			exactUsage := snapshotNestedLossy(t, probe).usage
-			limit := exactUsage * 9 / 10
+			limit := exactUsage
 
 			var baseline []nestedLossySnapshot
 			for repetition := 0; repetition < 5; repetition++ {

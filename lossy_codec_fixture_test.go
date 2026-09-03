@@ -91,17 +91,17 @@ func TestEqualityCodecUUIDCollisionDistribution(t *testing.T) {
 	require.NoError(t, err)
 	named, err := compileEqualityCodec[fixtureUUID]()
 	require.NoError(t, err)
-	ordinaryBuckets, namedBuckets := make(map[uint16]struct{}), make(map[uint16]struct{})
+	ordinaryPrefixes, namedPrefixes := make(map[uint16]struct{}), make(map[uint16]struct{})
 	for value := range uint64(10_000) {
 		var ordinaryValue [16]byte
 		binary.BigEndian.PutUint64(ordinaryValue[8:], value)
 		namedValue := fixtureUUID(ordinaryValue)
-		ordinaryBuckets[uint16(ordinary.hash(ordinaryValue)>>48)] = struct{}{}
-		namedBuckets[uint16(named.hash(namedValue)>>48)] = struct{}{}
+		ordinaryPrefixes[uint16(ordinary.hash(ordinaryValue)>>48)] = struct{}{}
+		namedPrefixes[uint16(named.hash(namedValue)>>48)] = struct{}{}
 	}
-	require.Greater(t, len(ordinaryBuckets), 8_000)
-	require.Greater(t, len(namedBuckets), 8_000)
-	delta := len(ordinaryBuckets) - len(namedBuckets)
+	require.Greater(t, len(ordinaryPrefixes), 8_000)
+	require.Greater(t, len(namedPrefixes), 8_000)
+	delta := len(ordinaryPrefixes) - len(namedPrefixes)
 	if delta < 0 {
 		delta = -delta
 	}
@@ -113,42 +113,26 @@ func TestEqualityCodecIntegerCollisionDistribution(t *testing.T) {
 	require.NoError(t, err)
 	named, err := compileEqualityCodec[fixtureNamedInt]()
 	require.NoError(t, err)
-	ordinaryBuckets, namedBuckets := make(map[uint16]struct{}), make(map[uint16]struct{})
+	ordinaryPrefixes, namedPrefixes := make(map[uint16]struct{}), make(map[uint16]struct{})
 	for value := range int64(10_000) {
-		ordinaryBuckets[uint16(ordinary.hash(value)>>48)] = struct{}{}
-		namedBuckets[uint16(named.hash(fixtureNamedInt(value))>>48)] = struct{}{}
+		ordinaryPrefixes[uint16(ordinary.hash(value)>>48)] = struct{}{}
+		namedPrefixes[uint16(named.hash(fixtureNamedInt(value))>>48)] = struct{}{}
 	}
-	require.Greater(t, len(ordinaryBuckets), 8_000)
-	require.Greater(t, len(namedBuckets), 8_000)
+	require.Greater(t, len(ordinaryPrefixes), 8_000)
+	require.Greater(t, len(namedPrefixes), 8_000)
 }
 
-func TestEqualityBucketCountLadder(t *testing.T) {
-	require.Equal(t, []uint64{65536, 57344, 49152, 40960, 32768}, equalityBucketCounts(16)[:5])
-	require.Equal(t, uint64(1), equalityBucketCounts(16)[len(equalityBucketCounts(16))-1])
-
-	// Nested reduction covers exactly [0, bucketCount) for the extreme hashes.
-	for _, bucketCount := range []uint64{1, 5, 40960, 57344, 65536} {
-		require.Zero(t, reduceEqualityHash(0, bucketCount))
-		require.Equal(t, bucketCount-1, reduceEqualityHash(math.MaxUint64, bucketCount))
-	}
-}
-
-func TestEqualityBucketLadderIsNested(t *testing.T) {
-	counts := equalityBucketCounts(8)
-	for i := 0; i < len(counts)-1; i++ {
-		current, next := counts[i], counts[i+1]
-		parents := make(map[uint64]uint64, current)
-		for hashBucket := uint64(0); hashBucket < 256; hashBucket++ {
-			hash := hashBucket << 56
-			currentKey := reduceEqualityHash(hash, current)
-			nextKey := reduceEqualityHash(hash, next)
-			if parent, ok := parents[currentKey]; ok {
-				require.Equal(t, parent, nextKey)
-			} else {
-				parents[currentKey] = nextKey
-			}
-			require.Equal(t, nextKey, coarsenEqualityBucket(currentKey, current, next))
+func TestEqualityIntegerKeyLevelsAreNested(t *testing.T) {
+	for hash := uint64(0); hash < 256; hash++ {
+		hash *= math.MaxUint64 / 255
+		current := newEqualityQuantizer(0).key(hash)
+		require.Equal(t, hash, current)
+		for level := uint32(0); level < equalityTerminalLevel; level++ {
+			next := newEqualityQuantizer(level + 1)
+			current = newEqualityQuantizer(level).coarsen(current, next)
+			require.Equal(t, next.key(hash), current)
 		}
+		require.Zero(t, current)
 	}
 }
 

@@ -5,7 +5,7 @@ import "sort"
 // EqualityDiagnostic is test-only physical-shape data for one compiled lossy
 // equality leaf. It deliberately lives outside the public library build.
 type EqualityDiagnostic struct {
-	Buckets           uint64
+	PhysicalKeys      uint64
 	Items             uint64
 	MinPosting        uint64
 	MedianPosting     uint64
@@ -28,7 +28,7 @@ func (r *eqRule[T, V]) equalityDiagnostic() EqualityDiagnostic {
 		squared += cardinality * cardinality
 	}
 	sort.Slice(postings, func(i, j int) bool { return postings[i] < postings[j] })
-	diagnostic := EqualityDiagnostic{Buckets: uint64(len(postings)), Items: items}
+	diagnostic := EqualityDiagnostic{PhysicalKeys: uint64(len(postings)), Items: items}
 	if len(postings) == 0 {
 		return diagnostic
 	}

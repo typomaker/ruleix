@@ -261,8 +261,9 @@ type eqRule[T any, V comparable] struct {
 	wildcardSource physicalSourceID
 	wildcardClass  uint32
 	codec          equalityCodec[V]
+	codecErr       error
 	quantizer      equalityQuantizer
-	values         equalityIndex[equalityPhysicalKey[V]]
+	values         equalityIndex[uint64]
 }
 
 func (r *eqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
@@ -272,11 +273,8 @@ func (r *eqRule[T, V]) refreshedStreamingDetails(details inspectionDetails) insp
 	return r.streamingEqualityDetails(details)
 }
 
-func (r *eqRule[T, V]) equalityKey(value V) equalityPhysicalKey[V] {
-	if r.quantizer.bucketCount == 0 {
-		return exactEqualityKey(value)
-	}
-	return bucketEqualityKey[V](r.quantizer.key(r.codec.hash(value)))
+func (r *eqRule[T, V]) equalityKey(value V) uint64 {
+	return r.quantizer.key(r.codec.hash(value))
 }
 
 func (*eqRule[T, V]) rule() {}
@@ -286,12 +284,12 @@ func (r *eqRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
 func (r *eqRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
 	return &eqRule[T, V]{
-		nodeID: id, get: r.get,
+		nodeID: id, get: r.get, codec: r.codec, codecErr: r.codecErr,
 		wildcard: roaring.New(),
-		values:   newEqualityIndex[equalityPhysicalKey[V]](capacityHint(hints.node(id).equalityValues)),
+		values:   newEqualityIndex[uint64](capacityHint(hints.node(id).equalityValues)),
 	}
 }
-func (*eqRule[T, V]) validate(T) error { return nil }
+func (r *eqRule[T, V]) validate(T) error { return r.codecErr }
 func (r *eqRule[T, V]) insert(v T, id uint32) {
 	value, ok := r.get(v)
 	if !ok {
@@ -366,9 +364,9 @@ func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 }
 
 func (r *eqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
-	key := optionalValue[equalityPhysicalKey[V]]{}
+	key := optionalValue[uint64]{}
 	if value.ok {
-		key = optionalValue[equalityPhysicalKey[V]]{value: r.equalityKey(value.value), ok: true}
+		key = optionalValue[uint64]{value: r.equalityKey(value.value), ok: true}
 	}
 	addEqualityMatches(r.wildcard, &r.values, key, dst)
 }
@@ -420,37 +418,6 @@ func (*eqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
 func (r *eqRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {
 		return newMatchAllRule[T](r.wildcard)
-	}
-	// The fixed-arity rules store semantic V keys and are therefore an exact-
-	// only physical specialization. Quantized generations keep the common rule.
-	if r.quantizer.bucketCount != 0 {
-		return r
-	}
-	switch len(r.values.sets) {
-	case 1:
-		return &unaryEqRule[T, V]{
-			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			key: r.values.keys[0].exact, set: r.values.sets[0],
-		}
-	case 2:
-		return &binaryEqRule[T, V]{
-			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			keys: [2]V{r.values.keys[0].exact, r.values.keys[1].exact}, sets: [2]equalitySet{r.values.sets[0], r.values.sets[1]},
-		}
-	case 3:
-		return &ternaryEqRule[T, V]{
-			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			keys: [3]V{r.values.keys[0].exact, r.values.keys[1].exact, r.values.keys[2].exact}, sets: [3]equalitySet{r.values.sets[0], r.values.sets[1], r.values.sets[2]},
-		}
-	case 4:
-		keys := [4]V{}
-		for key, offset := range r.values.offsets {
-			keys[offset] = key.exact
-		}
-		return &quaternaryEqRule[T, V]{
-			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard, keys: keys,
-			sets: [4]equalitySet{r.values.sets[0], r.values.sets[1], r.values.sets[2], r.values.sets[3]},
-		}
 	}
 	return r
 }

@@ -166,7 +166,7 @@ edge through the same fused `Between` matcher and cache path.
 `CompareBy` similarly owns one level for each stored operator (`EQ`, `LT`,
 `LTE`, `GT`, and `GTE`). Pressure advances one complete operator index at a
 time. Range operators use their outward lower/upper direction; equality maps
-both inserted and searched values to the same physical bucket. All five
+both inserted and searched values to the same physical physical key. All five
 operator indexes and both `Between` sides remain in the common `compareByRule`, `betweenRule`, and `orderedIndex` types. There are no quantized compound runtime
 or search wrappers; Exact/Lossy mode comes only from policy metadata. Search, aggregate blocks, routing, candidate filtering, and Local caching remain shared with Exact.
 
@@ -212,7 +212,7 @@ operation. There is no implicit default and values are bytes, not MiB units.
 `MemoryLimit` is a hard upper bound for accounted memory retained exclusively
 by the decorated rule's selected search representation after a successful
 `Build`.
-It includes its posting containers, value keys or buckets, lookup tables, and
+It includes its posting containers, value keys or physical keys, lookup tables, and
 strategy metadata. It excludes the builder's transient analysis state, the
 index's external-ID table, bitmap pool state, the rule's getter/comparator,
 and structural overhead belonging to an enclosing `All`.
@@ -292,16 +292,16 @@ rebuild leaves the previous immutable index and latest successful `Inspect`
 snapshot unchanged, matching the existing builder lifecycle.
 
 Every built-in equality and ordered leaf has a conservative terminal
-representation. Equality uses bucketed hashing for built-in and named scalars,
+representation. Equality uses rounded hashing for built-in and named scalars,
 fixed-byte arrays such as UUIDs, recursive arrays, comparable structs, complex
 values, pointer and channel identity, and `time.Time`. A type for which no safe
 allocation-free semantic codec can be compiled fails `Build` with a typed
 codec error instead of silently selecting a complete ID set. Ordered comparisons
 use numeric order-preserving keys where available and comparator-ordered
-buckets otherwise. `Between` uses two comparator-bucket indexes inside one
-fused rule. A stored lower bound is rounded toward the bucket minimum and a
-stored upper bound toward the bucket maximum, so an approximate interval only
-expands. `CompareBy` builds comparator buckets independently for `EQ`, `LT`,
+physical keys otherwise. `Between` uses two comparator-physical key indexes inside one
+fused rule. A stored lower bound is rounded toward the physical key minimum and a
+stored upper bound toward the physical key maximum, so an approximate interval only
+expands. `CompareBy` builds comparator physical keys independently for `EQ`, `LT`,
 `LTE`, `GT`, and `GTE`, then unions the operator ranges matching the query.
 Both terminal levels retain the exact-or-superset contract without the former
 complete-leaf universal fallback. Custom rule implementations cannot occur
@@ -391,7 +391,7 @@ index merely to discover that it exceeds the budget.
 
 Strategy selection depends on both operator semantics and value type. For
 example, equality over strings may use prefix, hash, or Bloom-like grouping,
-while numeric ranges may use ordered buckets and time ranges may use temporal
+while numeric ranges may use ordered physical keys and time ranges may use temporal
 segments. Equality and range rules for the same Go type need not share a
 representation.
 
@@ -415,7 +415,7 @@ a < b implies OrderedKey(a) < OrderedKey(b)
 ```
 
 Signed and unsigned integers, floating-point values, and `time.Time` could then
-share a bucket or shift-based range index. The design must explicitly cover
+share a physical key or shift-based range index. The design must explicitly cover
 integer widths and signs, floating-point negative zero, infinities and NaNs,
 and time normalization. Boundary and property tests must verify monotonicity.
 
@@ -432,7 +432,7 @@ Potential experiments include:
 | String equality | canonical prefix, grouped hash, or Bloom-like structure |
 | UUID equality | canonical prefix bits |
 | Integer equality | bit-prefix or grouped values |
-| Numeric range | monotonic-key buckets |
+| Numeric range | monotonic-key physical keys |
 | Time range | monotonic-key or temporal segments |
 
 These are experiments rather than commitments. Any selected representation
@@ -483,10 +483,10 @@ Diagnostics must not add work to the default search hot path.
 
 Grouped-hash equality reports a build-time collision estimate over concrete
 posting items. It is the fraction of ordered pairs belonging to different
-stored values that land in the same selected bucket; wildcard items are
+stored values that land in the same selected physical key; wildcard items are
 excluded because they are exact matches for every present query. The estimate
 describes the indexed distribution and does not require queries or runtime
-instrumentation. Ordered buckets do not expose one distribution-independent
+instrumentation. Ordered physical keys do not expose one distribution-independent
 rate because their false-positive boundary depends on the query value.
 
 ## Validation and rollout

@@ -71,8 +71,8 @@ func (p *bitmapPool) flushInspectorMetrics() {
 			dst.cacheAdmissions.Add(v.cacheAdmissions)
 			dst.cacheEvictions.Add(v.cacheEvictions)
 			dst.cacheExpansions.Add(v.cacheExpansions)
-			for bucket := range v.cardinality {
-				dst.cardinality[bucket].Add(v.cardinality[bucket])
+			for bin := range v.cardinality {
+				dst.cardinality[bin].Add(v.cardinality[bin])
 			}
 			entry.values = inspectorRuntimeValues{}
 		}

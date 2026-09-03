@@ -2,18 +2,19 @@
 
 ## 2026-09-03: release gate шага 12 остаётся открыт
 
-Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`), candidate `12c5b23` + `79be577`. `300ms x5`: production Exact Index 34,6 → 31,5 мкс,
-40 803 → 40 802 B/op, 28 allocs; Local 227,3 → 228,2 нс, 0 allocs. Equality-only
-production остался ~16,2 мкс/228 нс (20/0 allocs), но synthetic four-leaf Exact вырос 842 → 1 202 нс и Budget50 776 → 1 037 нс. CPU profile связал дельту с
-tagged-key lookup вместо release `map[string]`; allocations прежние. Уплотнение
-key 32 → 24 bytes не помогло и удалено; public-search gate открыт.
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`), candidate —
+рабочее дерево после удаления tagged equality key. `300ms x5`: equality-only
+production Index 15 579 → 15 430 нс, 22 657 → 22 656 B/op, 20 allocs; Local
+222,5 → 222,8 нс, 0 allocs. Two-leaf equality Index 19 035 → 18 748 нс,
+Local 42,89 → 43,89 нс; allocation classes 6/0 не изменились. Различия ниже
+performance gate, а прежняя крупная regression tagged-key lookup устранена.
 Attribution `200ms x3` также нашёл terminal-time false negative: 24 Lossy против 10 682 Exact; comparator boundaries дают 20 106 и superset. Full/race прошли.
 Сырые отчёты: `/tmp/ruleix-step12/`; команда release-серии —
 `go test -run '^$' -bench 'BenchmarkProductionShapeSearch|BenchmarkLossyAllSearchQuality|BenchmarkLossyAllSearchRuntime' -benchmem -benchtime=300ms -count=5 .`.
 ## 2026-09-02: lossy range aggregate checkpoint
 
 Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Baseline
-`328a45e`, candidate — один aggregate на 128 leaf buckets. Интерливинг по три
+`328a45e`, candidate — один aggregate на 128 leaf physical keys. Интерливинг по три
 запуска, `benchtime=300ms`, сохранил production shape: `Index.Search` median
 27 048 → 26 670 ns/op, warm `Local.Search` 244,7 → 245,5 ns/op, 80 candidates,
 15/0 allocations. Mixed Lossy50 сохранил 3,069 candidates/query и allocation
@@ -27,9 +28,8 @@ leaf union с теми же postings через aggregates: median 269 577 → 6
 GOMAXPROCS=1 go test -run '^$' -bench \
   'BenchmarkSharedKeyBaseline|BenchmarkProductionShapeLossySearch' \
   -benchmem -benchtime=300ms -count=3 .
-GOMAXPROCS=1 go test -run '^$' \
-  -bench '^BenchmarkLossyComparedBucketWideRange/' \
-  -benchmem -benchtime=500ms -count=5 .
+Второй запуск использовал существовавший в той ревизии focused benchmark
+широкого lossy ordered-диапазона (`500ms`, `count=5`).
 ```
 
 Full, race и lossy differential/boundary/streaming gates прошли; line-based
@@ -421,7 +421,7 @@ Profiles used the same benchmarks with `-cpuprofile`, `GOMAXPROCS=1`, and a
 longer timed region (`benchtime=12s` for Index and `15s` for Local). Index
 measured 33,341 ns/op Exact versus 41,488 ns/op Lossy. In the filtered profile,
 `validateCandidateBitmap` grew from 10.18% to 18.72% of samples and
-`matchesChildID` from 9.04% to 16.23%. The Lossy bucket superset therefore
+`matchesChildID` from 9.04% to 16.23%. The Lossy physical key superset therefore
 spends the additional CPU validating candidates against exact child
 predicates; this is the primary confirmed Index cause.
 
@@ -442,7 +442,7 @@ concurrent streaming-planner worktree changed its candidate shape, 1s x5 gave
 a 310.5 ns/op Local median, 0 B/op and 0 allocs/op, versus the preceding
 586.4 ns/op checkpoint: a 47.0% latency reduction. Index remained within its
 previous range (44,283 ns/op median, 38,909 B/op, 22 allocs/op). A direct A/B
-against a compact `{present, bucketID}` key gave 344.0 ns/op; recomputing the
+against a compact `{present, physical keyID}` key gave 344.0 ns/op; recomputing the
 codec hash on every lookup made that variant 10.8% slower than retaining and
 directly comparing the original value, so it was rejected. The query-key
 correction does not address the independently profiled uncached candidate-
@@ -475,7 +475,7 @@ GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLossySearch/' \
 | warm `Local.Search` | 1 386 ns/op | 0 | 0 |
 
 Это самостоятельный lossy checkpoint: бюджет меняет amplification и состав
-представлений. Детали профилей и отклонённой comparator-bucket композиции
+представлений. Детали профилей и отклонённой comparator-physical key композиции
 зафиксированы в `optimization-decisions.md`.
 
 ### Stable string equality checkpoint 2026-09-02

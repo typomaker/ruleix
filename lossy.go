@@ -349,7 +349,7 @@ func collectStreamingFitCandidates[T any](rule Rule[T], candidates *[]streamingF
 		if fitter, ok := any(rule).(streamingLimitFitter); ok &&
 			((details.GranularityAvailable && details.GranularityValue > 1) || streamingRuleCanFit(rule)) {
 			next, available := nextStreamingRuleUsage(rule)
-			if !available || next == details.MemoryUsageBytes {
+			if !available {
 				return details.MemoryUsageBytes
 			}
 			released := uint64(0)
@@ -366,7 +366,7 @@ func collectStreamingFitCandidates[T any](rule Rule[T], candidates *[]streamingF
 	}
 }
 
-// fitStreamingAggregate releases one build-time bucket level at a time until
+// fitStreamingAggregate advances one build-time precision level at a time until
 // the complete published subtree satisfies its aggregate retained-memory
 // limit. It avoids the old emergency path that collapsed every lossy child to
 // its minimum representation at once.

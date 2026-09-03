@@ -347,7 +347,7 @@ func BenchmarkProductionShapeSearch(b *testing.B) {
 //	GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLossySearch/' \
 //	  -benchmem -benchtime=1s -count=5 .
 //
-// Latest build-time rebucketing run (Apple M1 Max, Go 1.26.0, GOMAXPROCS=1,
+// Latest build-time key-rebuilding run (Apple M1 Max, Go 1.26.0, GOMAXPROCS=1,
 // 38,098 entries, 377,122-byte budget, 500ms x5): Index median 43,075 ns/op,
 // 38,909 B/op, 22 allocs/op; Local median 586.9 ns/op, 0 B/op and 0 allocs/op;
 // both rotating queries returned 139 candidates. The preceding streaming
@@ -590,7 +590,8 @@ func BenchmarkProductionShapeLocalClose(b *testing.B) {
 
 // BenchmarkProductionShapeEqualityOnlySearch last local run (Apple M1 Max):
 // go test -run '^$' -bench '^BenchmarkProductionShapeEqualityOnlySearch$' -benchmem -benchtime=500ms -count=5 .
-// Local median: 708.5 ns/op, 0 B/op, 0 allocs/op.
+// v0.8.2/current medians at 300ms x5: Index 15,579/15,430 ns/op; Local
+// 222.5/222.8 ns/op. Allocation classes remain 20/0.
 func BenchmarkProductionShapeEqualityOnlySearch(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](

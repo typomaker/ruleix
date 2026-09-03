@@ -57,7 +57,7 @@ Lossy50 `Index.Search` 27,456 → 46,344 мкс, warm Local 248,2 → 318,1 нс
 80 → 150 candidates и 15 → 16 allocations. В отличие от прежних
 экспериментов, unified implementation не удаляется и не отклоняется.
 
-Прямой range membership дал лишь небольшое улучшение, а bucket-shaped common
+Прямой range membership дал лишь небольшое улучшение, а common physical-key common
 blocks не изменили amplification и ухудшили latency. Профили локализовали
 работу в candidate membership и Roaring union; child-level inspection показал
 granularity 3 у selective activity `Between`. Дополнительно найден
@@ -66,9 +66,9 @@ streaming downgrade и проверки quality-aware allocation либо бол
 common ordered storage. Полный отчёт:
 [`unified-index-production-shape.md`](unified-index-production-shape.md).
 
-## 2026-09-02: один уровень aggregates принят для lossy range buckets
+## 2026-09-02: один уровень aggregates принят для lossy range postings
 
-В `lossyComparedBuckets` принят один accounted aggregate на каждую полную
+В прежнем lossy ordered-представлении принят один accounted aggregate на каждую полную
 группу из 128 leaf postings. Fan-out 32 отклонён: дополнительная память меняла
 global precision plan, увеличивала production candidates с 80 до 108 и
 замедляла оба search path. Fan-out 128 сохранил candidate quality, allocation
@@ -97,7 +97,7 @@ short-circuit после первого найденного ID, блоки 1/4/
 Лучший общий вариант оставался около 46,8 мкс (+79%), а bitmap-варианты либо
 увеличивали allocations с 14 до 22, либо переставали укладываться в hard
 retained limit. Причина является следствием несовместимых membership shapes:
-legacy fused buckets дают ранний выход по компактному posting, тогда как общий
+legacy fused physical keys дают ранний выход по компактному posting, тогда как общий
 range layout выбирает между широким aggregate lookup и несколькими posting
 lookups. Прототип удалён; шаг 5 roadmap остаётся запланированным до появления
 общего layout, который не ухудшает ни один search path.
@@ -110,7 +110,7 @@ production `Index.Search` получил медиану около 95,0 мкс �
 membership для всех ordered indexes ухудшил результат до 101–102 мкс.
 CPU profile снова показал `runContainer16.searchRange` первым hot spot с 24,7%
 samples. Следующий кандидат не должен основываться на этом layout: требуется
-общая bucket-shaped физическая структура, сохраняющая fused lossy membership,
+общая common physical-key физическая структура, сохраняющая fused lossy membership,
 а не ещё один вариант обхода агрегатов текущего `orderedIndex`.
 
 ## 2026-09-01: удалены крупные build/memory benchmark-матрицы
@@ -138,7 +138,7 @@ production shape на 10 000 записей и 365 поисковых сравн
 Принят build-only quantized wrapper над общим `orderedRule`/`orderedIndex`.
 Соседние posting-классы сливаются с outward boundary, а опубликованный search
 использует exact matcher, block aggregates, routing и Local cache. Legacy
-numeric/comparator bucket search types удалены. Focused benchmark улучшил
+numeric/comparator physical key search types удалены. Focused benchmark улучшил
 selective path на 12–15% при прежних allocations; correctness, streaming и
 race gates прошли. Between/CompareBy остаются отдельным шагом 5.
 
@@ -146,7 +146,7 @@ race gates прошли. Between/CompareBy остаются отдельным �
 
 **Принято:** quantized equality хранит transformed `uint64` keys в общем
 `equalityIndex`/`equalitySet`, объединяет коллизии тем же posting primitive и
-выполняет streaming rebucket через `rebuildPostingGeneration`. Отдельные
+выполняет streaming rebuild через `rebuildPostingGeneration`. Отдельные
 lossy posting map и опубликованный `lossyEqualityRule` удалены; Exact и Lossy
 делят bitmap preparation, physical-source metadata и Local cache primitive.
 
@@ -232,15 +232,15 @@ focused-сценариях разных кардинальностей, `go test
 | Total-cost source selection только для uncached Index | Focused mixed case: 3,919 → 2,439 µs, 20 612 → 12 393 B; production Index слегка улучшился, Local остался на прежнем пути. | Cost model полезен для uncached materialization, но исключён из чувствительного warm Local loop. |
 | Прямое ограничение concrete postings в shared-wildcard группе | Focused A/B: 2,977 → 2,465 µs (−17,2%), 5 272 → 2 600 B/op, 16 → 8 allocs. | Убирает реальный intermediate только в uncached path; Local и immutable postings не затронуты. |
 | Lossy exact-or-superset representations | Бюджет проверяется детерминированным accounting; fixture-матрица проверяет exact/minimum уровни и отсутствие false negatives. | Даёт ограничение retained memory с формальным контрактом `lossy result ⊇ exact result`. |
-| Build-compiled recursive equality codecs | `[16]byte` 51,88–53,33 ns/op, named UUID 59,75–61,80, recursive array 53,84–54,37; все 0 B/op и 0 allocs/op. Последовательные UUID занимают >8 000 из 10 000 high-16 buckets после avalanche. | Build-only reflection компилирует безопасные field/element loads; avalanche устраняет плохое распределение старших FNV-битов, не добавляя search allocations. |
-| Avalanche для scalar equality hash | Apple M1 Max, Go 1.26.0, `BenchmarkLossyCompiledScalarCodec`, 500ms x5: `Int64` 188,8–190,1 → 45,47–46,64 ns/op; named `int64` 189,7–190,9 → 45,37–46,47 ns/op; 0 B/op, 0 allocs/op. До исправления `int64(0..99999)` занимали только 8 из 256 и 86 из 4096 bucket-ов. | Raw FNV плохо распределяет последовательные scalar-значения по старшим битам, используемым multiply-high reduction. Финальный SplitMix-style avalanche принят для integer/float/complex/pointer-like codec paths; string уже использует `maphash`, byte/composite paths уже смешивались. |
-| Четыре equality bucket-count уровня на степенной интервал | Apple M1 Max, Go 1.26.0, 10K entries, `MemoryLimit(200000)`: `[16]byte` 55,65–56,94 ns/op, named UUID 55,82–56,40 ns/op; 0 B/op, 0 allocs/op. | Принято: multiply-high поддерживает произвольный immutable `bucketCount`; фиксированная лестница 8/8, 7/8, 6/8, 5/8 сохраняет простой детерминированный planner. Adaptive binary search не вводился: он не уменьшает число публикуемых кандидатов без изменения текущего aggregate selector. |
-| Fused comparator-bucket minima для `Between` и `CompareBy` | Полная 38 098-entry production-схема с 50% budget: Index median 70,030 ns/op, 40,222 B/op, 23 allocs/op; warm Local 1,386 ns/op, 0 B/op, 0 allocs/op. Boundary/operator differential tests не дали false negatives. | `Between` расширяет обе хранимые границы наружу; `CompareBy` хранит operator-specific ranges. Local cache устраняет повторные bucket unions и сохраняет allocation-free hot path. |
+| Build-compiled recursive equality codecs | `[16]byte` 51,88–53,33 ns/op, named UUID 59,75–61,80, recursive array 53,84–54,37; все 0 B/op и 0 allocs/op. Последовательные UUID занимают >8 000 из 10 000 high-16 physical keys после avalanche. | Build-only reflection компилирует безопасные field/element loads; avalanche устраняет плохое распределение старших FNV-битов, не добавляя search allocations. |
+| Avalanche для scalar equality hash | Apple M1 Max, Go 1.26.0, `BenchmarkLossyCompiledScalarCodec`, 500ms x5: `Int64` 188,8–190,1 → 45,47–46,64 ns/op; named `int64` 189,7–190,9 → 45,37–46,47 ns/op; 0 B/op, 0 allocs/op. До исправления `int64(0..99999)` занимали только 8 из 256 и 86 из 4096 physical key-ов. | Raw FNV плохо распределяет последовательные scalar-значения по старшим битам, используемым multiply-high reduction. Финальный SplitMix-style avalanche принят для integer/float/complex/pointer-like codec paths; string уже использует `maphash`, byte/composite paths уже смешивались. |
+| Четыре equality physical key-count уровня на степенной интервал | Apple M1 Max, Go 1.26.0, 10K entries, `MemoryLimit(200000)`: `[16]byte` 55,65–56,94 ns/op, named UUID 55,82–56,40 ns/op; 0 B/op, 0 allocs/op. | Принято: multiply-high поддерживает произвольный immutable `physical keyCount`; фиксированная лестница 8/8, 7/8, 6/8, 5/8 сохраняет простой детерминированный planner. Adaptive binary search не вводился: он не уменьшает число публикуемых кандидатов без изменения текущего aggregate selector. |
+| Fused comparator-physical key minima для `Between` и `CompareBy` | Полная 38 098-entry production-схема с 50% budget: Index median 70,030 ns/op, 40,222 B/op, 23 allocs/op; warm Local 1,386 ns/op, 0 B/op, 0 allocs/op. Boundary/operator differential tests не дали false negatives. | `Between` расширяет обе хранимые границы наружу; `CompareBy` хранит operator-specific ranges. Local cache устраняет повторные physical key unions и сохраняет allocation-free hot path. |
 | Селективное понижение lossy-листьев по максимальному освобождению памяти | В 16-child single-heavy equality при 50% сохраняет 15 exact-листьев; 5,859 candidates/query и 0,000486 observed false-positive rate. Полная 120-case матрица не нарушила лимит и не дала false negatives. | Реализует целевую exact-leaf retention; абсолютное качество принято, несмотря на более низкую candidate amplification у пропорционального baseline. |
-| Build-time streaming rebucketing при 125% soft target | Исправляющий production gate, Apple M1 Max, Go 1.26, `GOMAXPROCS=1`, 38,098 entries, 377,122 B, 500ms x5: `Index.Search` median 43,075 ns/op, 38,909 B/op, 22 allocs; warm Local median 586.9 ns/op, 0 B/op/allocs, 139 candidates. До исправления streaming давал 50,386 ns и 3,893 ns; exact-first checkpoint — 70,030 ns и 1,386 ns. | Поздний extreme пересчитывает numeric grid либо расширяет comparator boundaries; memory pressure сливает ступени по одной. Полное exact input не удерживается, search type не получает wrapper или runtime rebucketing. |
+| Build-time streaming rebuilding при 125% soft target | Исправляющий production gate, Apple M1 Max, Go 1.26, `GOMAXPROCS=1`, 38,098 entries, 377,122 B, 500ms x5: `Index.Search` median 43,075 ns/op, 38,909 B/op, 22 allocs; warm Local median 586.9 ns/op, 0 B/op/allocs, 139 candidates. До исправления streaming давал 50,386 ns и 3,893 ns; exact-first checkpoint — 70,030 ns и 1,386 ns. | Поздний extreme пересчитывает numeric grid либо расширяет comparator boundaries; memory pressure сливает ступени по одной. Полное exact input не удерживается, search type не получает wrapper или runtime rebuilding. |
 | Повторный streaming pressure selector | Apple M1 Max, Go 1.26.0, 10k equality entries, `benchtime=1x`: ранее не собиравшиеся Budget25 точки завершились за 402.8 ms / 271.0 MB / 6.84M allocs (4 leaves) и 1.736 s / 1.120 GB / 28.20M allocs (8 leaves). Production compact-search и exact-superset gates прошли. | Проверка остаётся активной каждые 4096 записей; exact и lossy сравниваются по освобождению следующего шага. Build-only adaptive holder удаляется до публикации, поэтому search path не меняется. |
 | Прямой prepared comparator в Lossy `CompareBy` | Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, production Local, `1s x10`: 261.2 → 253.0 ns/op (−3.1%), 0 B/op, 0 allocs/op, budget 377 122 bytes. | Убирает просмотр пяти operator slots из каждого warm query-key check; comparator уже сохранён при Build, поэтому новая память не требуется. |
-| Стабильный string equality hash и упорядоченные build map inputs | Три отдельных Lossy50-процесса дали одинаковые 220 790 accounted bytes и 3,155 candidates/query; `300ms x5`: Index median 70 788 ns/op, warm Local 64,04 ns/op, 0 Local allocations. | `maphash.MakeSeed()` был доказанной причиной межпроцессного изменения buckets. Tagged FNV и tie-break по insertion offset закрывают deterministic-build gate; оставшаяся production latency исследуется отдельно. |
+| Стабильный string equality hash и упорядоченные build map inputs | Три отдельных Lossy50-процесса дали одинаковые 220 790 accounted bytes и 3,155 candidates/query; `300ms x5`: Index median 70 788 ns/op, warm Local 64,04 ns/op, 0 Local allocations. | `maphash.MakeSeed()` был доказанной причиной межпроцессного изменения physical keys. Tagged FNV и tie-break по insertion offset закрывают deterministic-build gate; оставшаяся production latency исследуется отдельно. |
 
 Исходные измерения первых двух строк находятся также в
 [`BENCHMARK_OPTIMIZATIONS.md`](../BENCHMARK_OPTIMIZATIONS.md). Интегральное
@@ -255,7 +255,7 @@ Local caches независимо от возможной деградации l
 candidate quality или retained memory. Отдельный performance gate не
 выполнялся.
 
-Удалены `lossyComparedBuckets`, `lossyBetweenRule`, `lossyCompareByRule` и их
+Удалены прежнее lossy ordered-представление, `lossyBetweenRule`, `lossyCompareByRule` и их
 aggregate-тесты. Минимальный составной layout стал больше: differential `All`
 учитывает около 70 KiB вместо прежнего лимита 64 KiB, а production fixtures
 используют достижимые доли exact budget. Hard `MemoryLimit` не ослаблен:
@@ -268,7 +268,7 @@ streaming downgrade; полный и race test gates пройдены.
 
 | Эксперимент | Результат | Почему отклонён |
 | --- | --- | --- |
-| Уплотнить `equalityPhysicalKey` с отдельного bool-tag до `bucket+1` | Общий ключ уменьшился с 32 до 24 bytes для string, но focused Exact rotating ухудшился с прежних ~1,20 до медианы 1,23 мкс (разброс до 1,36 мкс); 32 B/op и 2 allocations не изменились. | CPU attribution указывает на стоимость hash полного tagged key, а не только его padding. Вариант удалён; отдельный exact map нарушил бы единый physical-index контракт и не рассматривался как допустимое исправление. |
+| Уплотнить tagged union из semantic value и округлённого hash | Общий ключ уменьшился с 32 до 24 bytes для string, но focused Exact rotating ухудшился с прежних ~1,20 до медианы 1,23 мкс (разброс до 1,36 мкс); 32 B/op и 2 allocations не изменились. | Сам tagged union оказался ошибочной моделью: equality теперь всегда адресуется `uint64` hash, а уровень влияет только на округление этого числа. |
 | Скомпилированная цепочка валидатора exact query key | L1 parent 228,0 → candidate 261,1 ns/op (+14,5%); 0/7 paired wins; профиль: 71,2% cumulative CPU в цепочке closures. | Go не встроил разнородные typed closures: косвенный вызов на каждом leaf заменил interface dispatch, но не создал fused machine code и оказался дороже. Кандидат удалён. |
 | Direct-ID cutover 16 вместо 8 | Cold Local 459,6 → 453,1 µs (−1,4%), churn 1 416 → 1 409 ns (−0,5%): ниже 10% gate. | Более широкий cutover почти не затронул production range-materialization bottleneck; порог возвращён к 8. |
 | Compiled warm-Local plan routing | End-to-end warm Local улучшился лишь на 0,34%; кандидат выиграл 4 из 7 пар, drift был больше эффекта. | Внутренний профиль улучшился, но пользовательский сценарий — нет; дополнительный routing удалён. |
@@ -283,10 +283,10 @@ streaming downgrade; полный и race test gates пройдены.
 | Unconditional ordered-source streaming | Не прошло матрицу кардинальностей: стоимость обхода широкого ordered source превышала материализацию/фильтрацию. | Представление выбирается по стоимости и кардинальности, а не принудительно. |
 | Bounded equality-intersection prototype | Production-варианты оказались существенно медленнее baseline. | Cheap cardinality lookup уже давал нужный порядок; дополнительная intersection стадия создавала лишнюю работу. |
 | Post-intersection candidate scan с отдельным широким порогом | Вариант с лимитом 256 ID был decisively worse. | Direct validation остаётся выгодной только для малого, измеренного диапазона. |
-| Marginal lossy score по collision rate / bucket resolution | В 16-child single-heavy equality при 50% понизил все 16 листьев и дал 5,609 candidates/query вместо 5,859 у released-bytes; при 25% осталось 625 candidates/query. Mixed 50% ухудшился с 1,516 до 10,92 candidates/query. | Эвристика не устранила проблемную amplification и потеряла главное свойство — сохранение малых exact-листьев; прототип удалён. |
-| `Between` как вложенный `All` двух comparator-bucket правил | На production 50% budget warm Local ухудшился с 1,908 мкс и 0 allocs у universal fallback до 11,004 мкс, 18 778 B/op и 6 allocs/op. Alloc-space профиль отнёс 85,1% к Roaring `bitmapContainer.clone` через `lossyComparedOrderedRule.search`/`Bitmap.Or`, ещё 13,0% — к clone на intersection. | Композиция потеряла fused `Between` execution/cache path и материализует широкие стороны; для более точного lossy `Between` нужно отдельное fused представление, прототип удалён. |
-| Universal-tail streaming downgrade при 120% soft target | На 10K/100K equality с четырьмя листьями и 65% budget дал 100% false positives; на 100K занял 2,32 с против 0,43 с exact-first. Ordered-проба при 50–65% не смогла вместить universal tails. | Отклонена именно universal-tail реализация. Её заменила operator-specific вставка в публикуемые buckets; результаты старого прототипа не относятся к принятому streaming path. |
-| Отдельный prepared comparator в `lossyBetweenRule` | После принятого `CompareBy` production Local остался в шуме: 252.4 → 252.35 ns/op, 0 B/op и 0 allocs/op. Поле добавляло 8 bytes на representation; временный accounting 48 → 56 bytes. | Оба bucket comparator уже подготовлены на Build. Дублирование указателя не ускорило hot path и ухудшало retained shape, поэтому прототип удалён. |
+| Marginal lossy score по collision rate / physical key resolution | В 16-child single-heavy equality при 50% понизил все 16 листьев и дал 5,609 candidates/query вместо 5,859 у released-bytes; при 25% осталось 625 candidates/query. Mixed 50% ухудшился с 1,516 до 10,92 candidates/query. | Эвристика не устранила проблемную amplification и потеряла главное свойство — сохранение малых exact-листьев; прототип удалён. |
+| `Between` как вложенный `All` двух comparator-physical key правил | На production 50% budget warm Local ухудшился с 1,908 мкс и 0 allocs у universal fallback до 11,004 мкс, 18 778 B/op и 6 allocs/op. Alloc-space профиль отнёс 85,1% к Roaring `bitmapContainer.clone` через `lossyComparedOrderedRule.search`/`Bitmap.Or`, ещё 13,0% — к clone на intersection. | Композиция потеряла fused `Between` execution/cache path и материализует широкие стороны; для более точного lossy `Between` нужно отдельное fused представление, прототип удалён. |
+| Universal-tail streaming downgrade при 120% soft target | На 10K/100K equality с четырьмя листьями и 65% budget дал 100% false positives; на 100K занял 2,32 с против 0,43 с exact-first. Ordered-проба при 50–65% не смогла вместить universal tails. | Отклонена именно universal-tail реализация. Её заменила operator-specific вставка в публикуемые physical keys; результаты старого прототипа не относятся к принятому streaming path. |
+| Отдельный prepared comparator в `lossyBetweenRule` | После принятого `CompareBy` production Local остался в шуме: 252.4 → 252.35 ns/op, 0 B/op и 0 allocs/op. Поле добавляло 8 bytes на representation; временный accounting 48 → 56 bytes. | Оба physical key comparator уже подготовлены на Build. Дублирование указателя не ускорило hot path и ухудшало retained shape, поэтому прототип удалён. |
 | Greedy quality loss на освобождённый байт для aggregate Lossy | Production улучшился: 1 722 → 1 210 candidates, Index 48 421 → 47 081 ns/op, Local 5 482 → 4 067 ns/op. Mixed shared-key регрессировал: 68 474 → 106 702 ns/op, 25 720 → 28 825 B/op, 20 → 23 allocs/op; planner использовал лишь 161 534 B вместо прежних 220 790 B. | Локальный ratio выбирает неудачную комбинацию дискретных ступеней и недоиспользует доступный budget. CPU profile подтвердил рост Roaring union/intersection. Прототип удалён; нужен глобальный frontier/knapsack с тремя workload gates. |
 | Статический Pareto frontier комбинаций leaf ladders | До performance gate production streaming fixture завершился ошибкой hard limit: минимальная финальная форма выросла до 319 453 B при cap 309 122 B. Принудительное огрубление всех оставшихся ladders результат не изменило. | Frontier выбирал snapshot первого pressure event и не учитывал рост posting payload на оставшемся потоке. Статический вариант и fallback удалены; следующий глобальный planner обязан учитывать future-growth reserve или безопасно перепланировать текущие postings. |
 

@@ -37,12 +37,12 @@ query-key matchers и sampling noise, а не вызвана дополните�
 
 Forced `Index.Search` является плохой практической конфигурацией, несмотря на
 точность и меньшую память. Его профиль отнёс 64.7% CPU к `Bitmap.Or`; 62.1%
-cumulative пришлось на `lossyComparedBuckets.addRange`, далее доминировали
+cumulative пришлось на прежний lossy ordered `addRange`, далее доминировали
 `union2by2` (32.6% flat), `bitmapContainer.iorArray` (14.7%) и
 `bitmapContainer.loadData` (6.6%). Finest ordered grids материализуют запрос как
-union большого числа мелких buckets, тогда как exact ordered index использует
+union большого числа мелких physical keys, тогда как exact ordered index использует
 свою range/block структуру. Обычный 50%-Lossy быстрее Exact на uncached path,
-поскольку более грубая сетка резко уменьшает число объединяемых buckets.
+поскольку более грубая сетка резко уменьшает число объединяемых physical keys.
 
 Контроль отвечает именно на вопрос об overhead: при одинаковой точности
 `Local.Search` lossy path почти совпадает с Exact, поэтому его заметная
@@ -131,7 +131,7 @@ Exact измерен как 242.1 ns/op, Lossy как 260.5 ns/op: Lossy мед�
 Профиль опровергает объяснение через размер bitmap или число Lossy candidates
 для этого прогретого workload. Оба режима попадают в
 `allRule.loadLocalQueryResult`, валидируют сохранённые query keys и возвращают
-готовые IDs; bucket lookup, пересечение и candidate validation на этом hot path
+готовые IDs; physical key lookup, пересечение и candidate validation на этом hot path
 не выполняются. Exact провёл 73.79% CPU samples cumulatively в
 `loadLocalQueryResult`, Lossy — 64.68%; основная работа обоих профилей состоит
 из последовательных `localQueryKeyMatches` всех детей production `All`.
@@ -139,9 +139,9 @@ Exact измерен как 242.1 ns/op, Lossy как 260.5 ns/op: Lossy мед�
 Подтверждённая область возникновения дельты — разный concrete code path
 проверки тех же логических ключей:
 
-- Exact использует специализированные `unaryEqRule`/`binaryEqRule` для части
-  equality-полей, тогда как сжатые поля используют общий
-  `lossyEqualityRule`.
+- На момент профиля Exact использовал отдельные fixed-arity equality rules, а
+  Lossy — общий rule. Эти специализации впоследствии удалены; текущий layout
+  обоих режимов — общий `eqRule`.
 - `compareByRule.localQueryKeyMatches` читает сохранённый `r.compare`
   напрямую. `lossyCompareByRule.localQueryKeyMatches` на каждом cache hit
   вызывает `firstComparator()` и просматривает operator slots до первого
@@ -155,7 +155,7 @@ Exact измерен как 242.1 ns/op, Lossy как 260.5 ns/op: Lossy мед�
   samples, а не отдельными microbenchmark measurements.
 
 Следовательно, предположение «на поиске отличается только способ сжатия ключей
-и размеры бакетов» верно для bitmap-представления, но не для текущего warm
+и размеры физических ключей» верно для bitmap-представления, но не для текущего warm
 query-result-cache path. Сам bitmap здесь уже обойдён, а polymorphic key
 validation реализован разными exact/lossy типами. Для устранения дельты нужно
 сначала измерить focused варианты: сохранить comparator непосредственно в
@@ -207,4 +207,4 @@ Prepared comparator для `lossyBetweenRule` не дал измеримого e
 последовательных промежуточных сериях, то есть разница меньше шума. Поле при
 этом увеличивало каждое представление на 8 bytes; accounting был временно
 изменён с 48 на 56 bytes. Эксперимент удалён, поэтому `Between` по-прежнему
-использует comparator уже подготовленных `from` и `until` buckets.
+использует comparator уже подготовленных `from` и `until` physical keys.

@@ -26,7 +26,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   custom structs, collation orders, descending orders, and late edge values no
   longer depend on a numeric/reflection codec or pairwise insertion coarsening.
 - Lossy string equality now uses a stable hash, so identical builds select the
-  same buckets and memory plan across processes; build-time map inputs are
+  same physical keys and memory plan across processes; build-time map inputs are
   ordered before they can define physical layout or dense class identifiers.
 - `Inspect.Strategy` now reports the shared physical family for exact and lossy
   equality, ordered, `Between`, and `CompareBy` indexes; `Mode` continues to
@@ -43,24 +43,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Lossy builds now compile a selective representation while consuming the
   one-pass input once accounted exact state exceeds a private 125% pressure
   target. Equality and ordered/composite leaves insert the remaining values
-  directly into their compiled buckets; the published search types gain no
+  directly into their compiled physical keys; the published search types gain no
   wrapper or extra hot-path operation. `MemoryLimit` remains the hard final
   retained-accounting limit.
 - Streaming Lossy pressure is now re-evaluated at every 4096-entry checkpoint,
   including after the first compilation. Exact and already-lossy leaves share
   the same largest-byte-release selector, preventing later exact growth from
   making an otherwise viable aggregate budget fail at finalization.
-- Streaming Lossy grids now expand and rebucket during `Build` instead of
+- Streaming Lossy grids now expand and rebuild during `Build` instead of
   collapsing an ordered leaf when a later value falls outside the prefix
-  range. Numeric grids conservatively remap old bucket intervals; arbitrary
-  comparators add edge boundaries and merge adjacent buckets. Equality and
+  range. Numeric grids conservatively remap old physical key intervals; arbitrary
+  comparators add edge boundaries and merge adjacent physical keys. Equality and
   aggregate memory pressure use the same gradual coarsening rule, so search
-  receives no rebucketing work.
+  receives no rebuilding work.
 
-- Lossy equality precision uses four nested bucket-count levels per
-  power-of-two interval. Each downgrade maps a current bucket to exactly one
-  coarser bucket without retaining the original hash, while keeping gradual
-  memory and collision changes and allocation-free warm search.
+- Equality now uses one `uint64` physical-key shape in Exact and Lossy: level 0
+  stores the full semantic hash, while levels 1–17 clear progressively more
+  low bits. Rebuild derives every coarser key from the current integer and no
+  longer retains a semantic value, tagged union, or separate fixed-arity rule.
 
 - Equality lossy indexes now compile allocation-free semantic codecs for named
   byte arrays/UUIDs, recursive arrays, comparable structs, complex values,
@@ -68,7 +68,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `Lossy` now supports every built-in equality and ordered leaf used by a
   heterogeneous `All`, including composite comparable equality keys and
   arbitrary ordered comparators. `Between` and `CompareBy` use selective fused
-  comparator-bucket representations; `Between` rounds stored bounds outward,
+  comparator-physical key representations; `Between` rounds stored bounds outward,
   preserving the no-false-negative contract under an aggregate memory limit.
 
 ## [0.8.2] - 2026-08-31
@@ -118,7 +118,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `Index` searches and ordinary Local contexts now execute the same plain tree
   whether or not a schema contains `Inspect`.
 - Lossy equality indexes use faster scalar and string hashing, reuse grouped
-  buckets during `All` planning, and cache admitted equality results in
+  physical keys during `All` planning, and cache admitted equality results in
   `Local` contexts.
 - `Local` skips lossy planning when an exact cached child already determines
   the result, reducing warm mixed exact/lossy search work.
@@ -135,7 +135,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - Lossy equality planning builds the finest hash-prefix representation once
-  and derives coarser levels by merging buckets, substantially reducing
+  and derives coarser levels by merging physical keys, substantially reducing
   memory-bounded build time and allocation traffic.
 - Uncached `All` execution filters existing candidates directly through
   standalone ordered rules instead of materializing their complete ranges.
@@ -157,7 +157,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the compiled strategy and build counts for one marked rule without changing
   its search representation.
   Lossy rules additionally report accounted memory, budget, item and distinct-
-  value counts, selected bucket granularity, and a distribution-aware
+  value counts, selected physical key granularity, and a distribution-aware
   collision-rate estimate for lossy grouped-hash equality.
   Inspected rules also expose monotonic search, materialization, candidate-
   check, `All` range-pruning, and empty-result counters plus a fixed result-
@@ -168,7 +168,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   monotonic across `Local` lifetimes for direct Prometheus counter export;
   Inspector no longer exposes live cache gauges.
 - `Lossy` and `MemoryLimit` add opt-in, memory-bounded grouped-hash equality and
-  ordered-bucket representations for supported scalar equality and ordered
+  ordered-physical key representations for supported scalar equality and ordered
   rules, including one aggregate budget around `All`. Approximate results may
   contain false positives but never omit an exact match.
 
@@ -210,8 +210,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   child representations are reserved first and unused share bytes are
   deterministically redistributed to improve other children.
 - Pooled lossy planning caches each leaf's next representation upgrade, and
-  equality compilation reuses canonical hashes across bucket granularities.
-- Pooled lossy equality planning prepares bucket representations once per leaf
+  equality compilation reuses canonical hashes across physical key granularities.
+- Pooled lossy equality planning prepares physical key representations once per leaf
   and reuses them across allocation passes without penalizing exact-fit builds.
 - Lossy `All` benchmarks now report planning cost, search latency, candidate
   amplification, and observed false-positive rate across memory budgets.

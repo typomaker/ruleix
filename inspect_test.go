@@ -156,20 +156,20 @@ func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
 	snapshot := country.Snapshot()
 	require.True(t, snapshot.Bound())
 	require.Equal(t, RuleModeExact, snapshot.Mode())
-	require.Equal(t, "equality-unary", snapshot.Strategy())
+	require.Equal(t, "equality", snapshot.Strategy())
 	require.Equal(t, uint64(3), snapshot.EntryCount())
 	require.Equal(t, uint64(3), snapshot.RuleCount())
 }
 
-func TestInspectReportsEqualitySpecializationStrategy(t *testing.T) {
+func TestInspectReportsCommonEqualityStrategy(t *testing.T) {
 	tests := []struct {
 		distinct int
 		strategy string
 	}{
-		{distinct: 1, strategy: "equality-unary"},
-		{distinct: 2, strategy: "equality-binary"},
-		{distinct: 3, strategy: "equality-ternary"},
-		{distinct: 4, strategy: "equality-quaternary"},
+		{distinct: 1, strategy: "equality"},
+		{distinct: 2, strategy: "equality"},
+		{distinct: 3, strategy: "equality"},
+		{distinct: 4, strategy: "equality"},
 		{distinct: 5, strategy: "equality"},
 	}
 
@@ -426,7 +426,7 @@ func TestInspectReportsExactSelectionWithinLossyBudget(t *testing.T) {
 	require.NoError(t, err)
 	snapshot := inspector.Snapshot()
 	require.Equal(t, RuleModeExact, snapshot.Mode())
-	require.Equal(t, "equality-binary", snapshot.Strategy())
+	require.Equal(t, "equality", snapshot.Strategy())
 	usage, ok := snapshot.MemoryUsage()
 	require.True(t, ok)
 	require.LessOrEqual(t, usage, uint64(1000))

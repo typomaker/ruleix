@@ -135,8 +135,8 @@ func (i *orderedIndex[V]) prepareRouting() {
 
 	routes := make([]int, used)
 	block := 0
-	for bucket := range routes {
-		lower := firstKey + uint64(bucket)*width
+	for slot := range routes {
+		lower := firstKey + uint64(slot)*width
 		for block < len(i.blocks)-1 {
 			last := i.blocks[block].items[len(i.blocks[block].items)-1]
 			key, supported := orderedRoutingKey(last.value)
@@ -145,7 +145,7 @@ func (i *orderedIndex[V]) prepareRouting() {
 			}
 			block++
 		}
-		routes[bucket] = block
+		routes[slot] = block
 	}
 	i.routing = orderedRouting{min: firstKey, width: width, blocks: routes}
 }
@@ -327,11 +327,11 @@ func (i *orderedIndex[V]) blockFor(value V) int {
 func (i *orderedIndex[V]) routedBlockFor(value V, key uint64) int {
 	block := 0
 	if key > i.routing.min {
-		bucket := (key - i.routing.min) / i.routing.width
-		if bucket >= uint64(len(i.routing.blocks)) {
+		slot := (key - i.routing.min) / i.routing.width
+		if slot >= uint64(len(i.routing.blocks)) {
 			block = len(i.blocks) - 1
 		} else {
-			block = i.routing.blocks[bucket]
+			block = i.routing.blocks[slot]
 		}
 	}
 	for block > 0 {

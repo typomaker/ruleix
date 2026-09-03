@@ -36,14 +36,14 @@ func TestBuildRemovesWildcardChildrenFromAll(t *testing.T) {
 		[]int{1, 2},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &binaryEqRule[constraint, int]{}, index.root)
+	require.IsType(t, &eqRule[constraint, int]{}, index.root)
 
 	var matches []int
 	index.Search(constraint{concrete: &two}, &matches)
 	require.Equal(t, []int{2}, matches)
 }
 
-func TestBuildSpecializesUnaryEquality(t *testing.T) {
+func TestBuildKeepsUnaryEqualityOnIntegerKeys(t *testing.T) {
 	type constraint struct{ value *bool }
 	falseValue, trueValue := false, true
 	index, err := New[constraint, int](Include(GetterFromPointer(func(value constraint) *bool { return value.value }))).Build(Zip(
@@ -51,7 +51,7 @@ func TestBuildSpecializesUnaryEquality(t *testing.T) {
 		[]int{1, 2, 3},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &unaryEqRule[constraint, bool]{}, index.root)
+	require.IsType(t, &eqRule[constraint, bool]{}, index.root)
 
 	for _, tt := range []struct {
 		query constraint
@@ -70,7 +70,7 @@ func TestBuildSpecializesUnaryEquality(t *testing.T) {
 	}
 }
 
-func TestBuildSpecializesBinaryEquality(t *testing.T) {
+func TestBuildKeepsBinaryEqualityOnIntegerKeys(t *testing.T) {
 	type constraint struct{ value *bool }
 	falseValue, trueValue := false, true
 	index, err := New[constraint, int](Include(GetterFromPointer(func(value constraint) *bool { return value.value }))).Build(Zip(
@@ -78,7 +78,7 @@ func TestBuildSpecializesBinaryEquality(t *testing.T) {
 		[]int{1, 2, 3},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &binaryEqRule[constraint, bool]{}, index.root)
+	require.IsType(t, &eqRule[constraint, bool]{}, index.root)
 
 	for _, tt := range []struct {
 		query constraint
@@ -94,7 +94,7 @@ func TestBuildSpecializesBinaryEquality(t *testing.T) {
 	}
 }
 
-func TestBuildSpecializesTernaryEquality(t *testing.T) {
+func TestBuildKeepsTernaryEqualityOnIntegerKeys(t *testing.T) {
 	type constraint struct{ value *int }
 	one, two, three, missing := 1, 2, 3, 4
 	index, err := New[constraint, int](Include(GetterFromPointer(func(value constraint) *int { return value.value }))).Build(Zip(
@@ -102,7 +102,7 @@ func TestBuildSpecializesTernaryEquality(t *testing.T) {
 		[]int{1, 2, 3, 4},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &ternaryEqRule[constraint, int]{}, index.root)
+	require.IsType(t, &eqRule[constraint, int]{}, index.root)
 
 	for _, tt := range []struct {
 		query constraint
@@ -123,7 +123,7 @@ func TestBuildSpecializesTernaryEquality(t *testing.T) {
 	}
 }
 
-func TestBuildSpecializesQuaternaryEquality(t *testing.T) {
+func TestBuildKeepsQuaternaryEqualityOnIntegerKeys(t *testing.T) {
 	type constraint struct{ value *int }
 	values := [5]int{1, 2, 3, 4, 5}
 	index, err := New[constraint, int](Include(GetterFromPointer(func(value constraint) *int { return value.value }))).Build(Zip(
@@ -131,7 +131,7 @@ func TestBuildSpecializesQuaternaryEquality(t *testing.T) {
 		[]int{1, 2, 3, 4, 5},
 	))
 	require.NoError(t, err)
-	require.IsType(t, &quaternaryEqRule[constraint, int]{}, index.root)
+	require.IsType(t, &eqRule[constraint, int]{}, index.root)
 
 	for i := range 4 {
 		var matches []int

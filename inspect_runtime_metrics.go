@@ -2,8 +2,8 @@ package ruleix
 
 import "sync/atomic"
 
-// Histogram groups observed values into stable, allocation-free buckets. Each
-// bucket includes its lower bound and excludes the next bucket's lower bound.
+// Histogram groups observed values into stable, allocation-free bins. Each
+// bin includes its lower bound and excludes the next bin's lower bound.
 type Histogram struct {
 	Zero, One, TwoToFour, FiveToSixteen, SeventeenTo256, Above256 uint64
 }

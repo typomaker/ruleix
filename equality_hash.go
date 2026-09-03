@@ -6,8 +6,6 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
-const lossyMaxBucketBits = 16
-
 func bitmapBytes(bits *roaring.Bitmap) uint64 {
 	if bits == nil {
 		return 0

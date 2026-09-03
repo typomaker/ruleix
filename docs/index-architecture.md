@@ -190,9 +190,9 @@ posting, фильтрация существующих кандидатов и �
 
 Готовый результат `All` адресуется collision-safe tuple исходных query-side
 значений. Lossy equality использует для этого тот же `optionalValue`, что и
-exact equality, хотя postings внутри индекса адресуются огрублённым bucket ID.
+exact equality, хотя postings внутри индекса адресуются округлённым physical key.
 Это позволяет повторному `Local.Search` вернуть сохранённые ID до
-восстановления плана; bucket ID намеренно не используется как cache key,
+восстановления плана; physical key намеренно не используется как cache key,
 поскольку повторное codec hashing оказалось дороже прямого сравнения значения.
 
 `Local.Close` очищает состояние запроса, возвращает внутренний пул индексу и
@@ -205,17 +205,16 @@ exact equality, хотя postings внутри индекса адресуютс
 
 Этот контракт описывает действующие общие posting-структуры. Equality больше
 не имеет `quantizedEqualityRule`: Exact и Lossy публикуют один `eqRule` и один
-`equalityIndex[equalityPhysicalKey[V]]`. Оставшиеся ordered `quantized*Rule`
+`equalityIndex[uint64]`. На level 0 ключ равен полному 64-битному hash
+семантического значения; каждый следующий уровень очищает дополнительные
+младшие биты. Оставшиеся ordered `quantized*Rule`
 пока являются только build/streaming wrappers и не задают отдельный search
 engine.
 
-`exact key` — полное build-скомпилированное представление значения, достаточное
-для сохранения семантики оператора без коллизий. Для equality два значения
-имеют один exact key тогда и только тогда, когда они равны по Go `==` с уже
-принятой канонизацией float (`-0 == +0`, все наблюдаемые NaN кодируются
-одинаково только там, где это согласовано с контрактом конкретного правила).
-Полный 64-битный hash equality является входом quantizer-а, но не exact key:
-коллизия hash не даёт права объединять значения в exact-режиме. Для ordered
+Для equality физический ключ всегда является числом. Level 0 использует полный
+64-битный hash с принятой канонизацией float (`-0 == +0`); уровни 1–17
+последовательно очищают младшие биты. Поэтому rebuild получает следующий ключ
+только из текущего числа и не сохраняет semantic value или отдельный tag. Для ordered
 скаляров exact key сохраняет порядок `Compare`; для произвольного `V` ту же
 роль играет значение вместе с build-скомпилированным comparator-ом.
 
@@ -244,28 +243,24 @@ bitmap-ы совпавших ключей и считает новое поко�
 полностью собранную пару `(generation, accounting)` и освобождает прежнюю map,
 либо при ошибке продолжает использовать прежнее поколение. Primitive является
 общей build-only границей equality и ordered layout-ов. Последующие шаги
-перевели equality rebucket и ordered comparator coarsening на эти primitives.
+перевели equality rebuild и ordered comparator coarsening на эти primitives.
 
 Для equality диапазоном класса служит вложенный интервал полного hash-space.
 
-Первый streaming-переход equality ленивый: exact leaf считает
-своё текущее retained-состояние напрямую и только после выбора pressure
-selector-ом строит одно независимое hash-prefix поколение того же `eqRule` и
-того же generic index. Tagged `equalityPhysicalKey[V]` содержит либо exact
-payload, либо bucket payload; bucket constructor всегда оставляет `V` нулевым,
-поэтому level 1+ не удерживает строки, указатели или другие данные exact key.
-Будущие bucket representations при этом не создаются и не удерживаются.
-Публикация заменяет поколение целиком; все поздние insert и все query lookup
-проходят через сохранённый transformer, а следующие переходы вычисляют parent
-key только из текущего bucket payload.
+Equality на каждом уровне использует один `equalityIndex[uint64]`. Codec
+преобразует semantic value в полный 64-битный hash; level 0 хранит этот hash
+без округления. Первый streaming-переход очищает младшие 48 бит, оставляя 16
+старших, а каждый следующий уровень очищает ещё один retained bit. Поэтому
+индекс никогда не удерживает исходное `V`, а rebuild вычисляет следующий ключ
+только из текущего integer key. Публикация заменяет поколение целиком; поздние
+insert и query проходят через тот же hash-and-round transformer.
 Сортировка полных hash перед сборкой делает физическую форму одинаковой для
 ordered и shuffled input. Дубликаты ID объединяются общим `equalitySet`, а
 wildcard остаётся общей posting-семантикой Exact и Lossy.
-Лестница сохраняет четыре уровня на каждый двукратный диапазон bucket count:
-на каждом промежуточном уровне очередная четверть базовых hash-ячеек сливается
-попарно. Поэтому размеры следуют `8/8 → 7/8 → 6/8 → 5/8 → 4/8`, а каждый
-текущий ключ однозначно преобразуется в один ключ следующего уровня без hash
-или исходного значения. Для
+Лестница имеет уровни 0–17: полный hash, 16 старших бит и последовательное
+удаление одного младшего retained bit до универсального нулевого ключа. Каждый
+текущий ключ однозначно преобразуется в следующий без повторного hash или
+исходного значения. Для
 ordered-ключей класс хранит замкнутую оболочку представимых exact keys.
 Огрубление объединяет соседние оболочки. Это позволяет безопасно повторять
 преобразование после удаления исходных значений. Numeric и comparator-backed
@@ -304,14 +299,14 @@ transient boundary и не меняет index. На следующем pressure 
 участвует в полном rebuild вместе со всеми ключами поколения.
 Последний `prepareSearch` строит обычные block aggregates, prefix sums и
 routing, поэтому finest lossy больше не выполняет линейный union legacy
-buckets. `Between` и `CompareBy` теперь используют те же `orderedRule` и
+physical keys. `Between` и `CompareBy` теперь используют те же `orderedRule` и
 `orderedIndex`. Уровни и streaming rebuild принадлежат общим `betweenRule` и
 `compareByRule`; отдельных lossy runtime/search types нет, а mode сообщает
 только policy metadata. Для сторон `Between` нижняя
 граница округляется вниз, верхняя вверх. `CompareBy` выбирает направление
 отдельно для каждого оператора; quantized `EQ` находит первый верхний boundary
 не ниже query и ограничивает lookup сохранённой оболочкой observed domain.
-Legacy `lossyComparedBuckets`, `lossyBetweenRule` и `lossyCompareByRule`
+Legacy специализированное lossy ordered-представление, `lossyBetweenRule` и `lossyCompareByRule`
 удалены. Повторное огрубление независимо клонирует текущее поколение postings,
 объединяет соседнюю пару и не требует исходных exact values.
 
@@ -365,8 +360,8 @@ baseline приведены в [`performance-history.md`](performance-history.md
 Equality unification step 9 завершил этот переход: единственный `eqRule`
 выполняет insert, search, cardinality, `matchesID`, planning lookup, Local cache,
 bitmap preparation/interning и equality-class assignment на всех уровнях.
-Его единственный `equalityIndex[equalityPhysicalKey[V]]` получает exact tagged
-key на level 0 и bucket tagged key после pressure. Коллизии transformed keys
+Его единственный `equalityIndex[uint64]` получает полный hash на level 0 и
+округлённый integer после pressure. Коллизии transformed keys
 объединяются `equalityIndex.addSet`, а streaming pressure публикует независимое
 поколение через общий checked `rebuildPostingGeneration`. Смена generic
 specialization и отдельный lossy equality runtime/search wrapper отсутствуют.
@@ -401,7 +396,7 @@ Aggregate-планирование начинает со всех exact-лист
 сравнивает только следующую доступную ступень каждого листа. Выбирается ступень,
 освобождающая больше всего accounted bytes; равенства разрешаются большим
 текущим размером листа и затем порядком схемы. Поэтому крупный UUID-лист может
-последовательно пройти несколько finer bucket-ступеней, пока остальные листья
+последовательно пройти несколько finer physical key-ступеней, пока остальные листья
 остаются exact; планировщик останавливается сразу после достижения лимита.
 
 Снапшот политики публикует через `MemoryLimit` фактически доступный лимит после
@@ -420,14 +415,14 @@ usage и schema order, и выполняет по одному шагу до в�
 adaptive holder лишь до первого выбранного downgrade; перед публикацией holder
 удаляется, поэтому search path не получает дополнительный узел. Последующие
 equality, ordered, `Between` и `CompareBy`
-значения вставляются непосредственно в скомпилированные buckets; universal
+значения вставляются непосредственно в скомпилированные physical keys; universal
 tail и дополнительная search-обёртка не используются. Exact-листья, которые
 aggregate planner решил сохранить, продолжают собираться как exact до тех пор,
 пока следующий checkpoint не выберет их по максимальному выигрышу. Выход
 numeric-значения за prefix range
 пересчитывает сетку и переносит старые postings во все пересекающиеся новые
 интервалы. Comparator-сетки добавляют крайний boundary и объединяют соседнюю
-пару; при memory pressure equality, numeric и comparator buckets огрубляются
+пару; при memory pressure equality, numeric и comparator physical keys огрубляются
 ступенчато. Эти операции выполняются только в `Build`. Финальный hard gate
 отдельно продолжает те же полные переходы и разрешает terminal generation лишь
 когда более точные уровни не помещаются; если сумма terminal usage выше лимита,
@@ -440,18 +435,17 @@ numeric-значения за prefix range
 не зависит от размеров выбранных представлений и не добавляет обход дерева на
 каждую входную запись.
 
-Equality использует hash buckets для встроенных скаляров и составных comparable
+Equality использует hash physical keys для встроенных скаляров и составных comparable
 значений. Во время `Build` один рефлексивный разбор статического типа компилирует
 полный hash для именованных скаляров, fixed-byte массивов/UUID, рекурсивных
 массивов и структур. Структуры читаются только по смещениям семантических полей,
 без padding; pointer и channel следуют Go identity, включая поле location у
 `time.Time`. String codec использует стабильный tagged FNV без process-local
 seed; map-backed build inputs сортируются до создания физического порядка.
-Готовый leaf хранит типизированную функцию codec и неизменяемое число buckets.
-Полный 64-битный hash сводится к произвольному числу buckets
-через multiply-high; четыре уровня на каждый степенной интервал дают более
-плавное соотношение retained memory и collision candidates. В search path нет
-reflection. Интерфейсы остаются типизированной
+Готовый leaf хранит типизированную функцию codec и один текущий уровень.
+Level 0 использует полный 64-битный hash; level 1 сохраняет старшие 16 бит, а
+каждый следующий уровень очищает ещё один младший retained bit до нуля. В
+search path нет reflection. Интерфейсы остаются типизированной
 ошибкой `Build`: их динамический тип нельзя безопасно кодировать без runtime
 диспетчеризации. Ordered-правила используют общий `orderedIndex` для чисел и
 произвольного `V`. `Between` хранит две outward-rounded ordered стороны;

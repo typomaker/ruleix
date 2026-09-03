@@ -7,7 +7,7 @@ import (
 
 // canonicalScalar appends a stable, architecture-independent encoding for the
 // scalar types supported by the first lossy-index experiments. The type tag is
-// part of the encoding so different concrete types cannot share a bucket.
+// part of the encoding so different concrete types cannot share a physical key.
 func canonicalScalar(dst []byte, value any) ([]byte, bool) {
 	switch value := value.(type) {
 	case bool:
