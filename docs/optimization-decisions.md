@@ -6,6 +6,37 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-03: профиль оставшихся lossy Build allocations
+
+После allocation-free selector на `2f12a7f` повторён focused profile:
+`go test -run '^$' -bench
+'^BenchmarkLossyAllOrderedPlanning/Children2/Budget75$' -benchmem
+-benchtime=1x -count=1 -memprofile=/tmp/ruleix-lossy-current-rate1.mem
+-memprofilerate=1 .`. Apple M1 Max, Go 1.26.0: измеряемый Build сохранил
+30 735 712 B/op и 789 089 allocs/op; замедление до 1,765 s вызвано полным
+allocation sampling. Профиль включает untimed benchmark setup, поэтому его
+доли используются для локализации, а не как сумма B/op измеряемого Build.
+
+Следующие источники локализованы в порядке практической ценности. Копирование
+всего `next.blocks` при каждом atomic merge занимает 11,99 MB в профиле, а
+весь `rebuildSelectedOrderedBoundary` — 14,52 MB flat. Это лучший следующий
+кандидат на build-scoped reuse. Текущий speculative contract возвращает только
+`apply func()`; при следующей вставке отвергнутый candidate теряется без
+`discard`, поэтому безопасный пул сначала требует явного lifecycle
+`apply/discard`. После применения старый block slice можно очистить и вернуть
+тому же типизированному leaf-local scratch; опубликованные bitmap payload туда
+попадать не должны.
+
+По количеству объектов лидирует `orderedBlockBuildAccounting`: 317 594
+allocations и 4,96 MB из-за повторного interface/reflect accounting значения.
+Отдельный низкорисковый эксперимент — скомпилированный typed value sizer либо
+кэш размера build-only item, с обязательной проверкой retained accounting.
+Roaring `roaringArray.clone` создаёт ещё 248 365 объектов и 10,73 MB; публичного
+Clone-into API с caller-owned container storage нет, поэтому pooling только
+`*roaring.Bitmap` не устранит этот payload. `bitmapInterner` (3,83 MB) и
+initial insertion относятся к другим фазам Build и не являются первой целью
+rebuild pool.
+
 ## 2026-09-03: allocation-free выбор lossy ordered merge принят
 
 Проверена возможность переиспользовать временные данные между поколениями
