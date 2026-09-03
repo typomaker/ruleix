@@ -69,8 +69,8 @@ func hashScalar(value any) (uint64, bool) {
 	}
 }
 
-func comparableValueBytes(value any) uint64 {
-	switch value := value.(type) {
+func comparableValueBytes[V any](value V) uint64 {
+	switch value := any(value).(type) {
 	case bool:
 		return 2
 	case string:

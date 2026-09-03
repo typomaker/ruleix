@@ -27,13 +27,24 @@ func (r *orderedRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
 	if r.index.buildStatistics().uniqueValues <= 1 {
 		return 0, nil, false
 	}
-	next := rebuildOrderedBoundaries(&r.index, r.dir)
+	selected, _ := bestOrderedMerge(&r.index, r.dir)
+	next := rebuildSelectedOrderedBoundaryInto(
+		&r.index, r.dir, selected, r.takeRebuildBlocks(),
+	)
 	details := (&orderedRule[T, V]{index: next, wildcard: r.wildcard}).
 		refreshedStreamingDetails(inspectionDetails{})
 	return details.MemoryUsageBytes, func() {
+		previous := r.index.blocks
 		r.index = next
+		r.rebuildBlocks = recycleOrderedBlocks(previous)
 		r.markBuildQuantized()
 	}, true
+}
+
+func (r *orderedRule[T, V]) takeRebuildBlocks() []orderedBlock[V] {
+	blocks := r.rebuildBlocks
+	r.rebuildBlocks = nil
+	return blocks
 }
 
 func (r *orderedRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {

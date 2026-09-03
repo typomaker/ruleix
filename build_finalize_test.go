@@ -75,3 +75,13 @@ func TestBuildHelpersDefaultToExactWithoutTemporaryState(t *testing.T) {
 	rule.indexes[OperatorEQ] = &index
 	require.Same(t, index.exact(7), rule.equalityBits(7))
 }
+
+func TestOrderedFinalizeBuildReleasesRebuildScratch(t *testing.T) {
+	rule := &orderedRule[int, int]{
+		build:         &orderedRuleBuildState{},
+		rebuildBlocks: make([]orderedBlock[int], 0, 4),
+	}
+	rule.finalizeBuild()
+	require.Nil(t, rule.build)
+	require.Nil(t, rule.rebuildBlocks)
+}

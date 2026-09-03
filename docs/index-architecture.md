@@ -299,7 +299,8 @@ build-операцией: он создаёт новое поколение, о�
 
 Build-only `orderedRuleBuildState` отмечает квантованное поколение для корректной вставки оставшегося streaming input и
 удаляется до подготовки опубликованного дерева. Поздний внешний ключ остаётся новым крайним, внутренний присоединяется к
-ближайшей наружной границе. Следующий pressure rebuild заново выбирает лучшую соседнюю пару; boundary-массив не хранится.
+ближайшей наружной границе. Standalone ordered rule повторно использует очищенный build-only backing array прежнего
+поколения; `finalizeBuild` удаляет его до публикации, а следующий pressure rebuild заново выбирает соседнюю пару.
 Последний `prepareSearch` строит обычные block aggregates, prefix sums и
 routing, поэтому finest lossy больше не выполняет линейный union legacy
 physical keys. `Between` и `CompareBy` теперь используют те же `orderedRule` и

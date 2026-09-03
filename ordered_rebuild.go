@@ -80,9 +80,21 @@ func rebuildOrderedBoundaries[V any](index *orderedIndex[V], dir direction) orde
 func rebuildSelectedOrderedBoundary[V any](
 	index *orderedIndex[V], dir direction, selected orderedMergeCandidate,
 ) orderedIndex[V] {
+	return rebuildSelectedOrderedBoundaryInto(index, dir, selected, nil)
+}
+
+func rebuildSelectedOrderedBoundaryInto[V any](
+	index *orderedIndex[V], dir direction, selected orderedMergeCandidate, blocks []orderedBlock[V],
+) orderedIndex[V] {
 	currentAccounting := orderedQuantizedBuildAccounting(index)
 	next := *index
-	next.blocks = append([]orderedBlock[V](nil), index.blocks...)
+	if cap(blocks) < len(index.blocks) {
+		blocks = make([]orderedBlock[V], len(index.blocks))
+	} else {
+		blocks = blocks[:len(index.blocks)]
+	}
+	copy(blocks, index.blocks)
+	next.blocks = blocks
 	next.blockPrefix = nil
 	next.rangeBlocks = nil
 	next.routing = orderedRouting{}
@@ -148,6 +160,11 @@ func rebuildSelectedOrderedBoundary[V any](
 	)
 	next.accountingValid = true
 	return next
+}
+
+func recycleOrderedBlocks[V any](blocks []orderedBlock[V]) []orderedBlock[V] {
+	clear(blocks)
+	return blocks[:0]
 }
 
 func orderedItemPosition[V any](index *orderedIndex[V], position int) (int, int) {

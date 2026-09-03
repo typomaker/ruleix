@@ -134,6 +134,26 @@ func TestBestOrderedMergeDoesNotAllocateAndCrossesBlocks(t *testing.T) {
 	}))
 }
 
+func TestOrderedRebuildReusesAndClearsBlockBuffer(t *testing.T) {
+	index := newOrderedIndex(cmp.Compare[int])
+	for value := range orderedBlockSize * 3 {
+		index.insert(value, uint32(value))
+	}
+	selected, ok := bestOrderedMerge(&index, greaterThan)
+	require.True(t, ok)
+	scratch := make([]orderedBlock[int], 0, len(index.blocks))
+	backing := &scratch[:cap(scratch)][0]
+
+	next := rebuildSelectedOrderedBoundaryInto(&index, greaterThan, selected, scratch)
+	require.Same(t, backing, &next.blocks[0])
+	recycled := recycleOrderedBlocks(next.blocks)
+	require.Empty(t, recycled)
+	require.Equal(t, cap(scratch), cap(recycled))
+	for _, block := range recycled[:cap(recycled)] {
+		require.Empty(t, block)
+	}
+}
+
 func TestComparatorBoundaryLookupCoversBlocksAndOpenEdges(t *testing.T) {
 	empty := newOrderedIndex(cmp.Compare[int])
 	require.Equal(t, 7, roundedOrderedBoundary(&empty, 7, true))

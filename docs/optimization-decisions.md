@@ -6,6 +6,32 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-03: typed accounting и ordered block reuse приняты
+
+Два верхних управляемых источника профиля `e03fbc7` устранены без изменения
+физического search layout. `comparableValueBytes` стал generic: scalar
+accounting специализируется компилятором и больше не отправляет каждое значение
+в heap через caller-side `any`. Standalone ordered leaf переиспользует backing
+array предыдущего опубликованного build-поколения для следующего
+`next.blocks`; перед возвратом build-only буфер очищается и при финализации
+удаляется из правила. Roaring bitmap и их containers не переиспользуются.
+
+Apple M1 Max, Go 1.26.0, 10 000 entries, `benchtime=1x`. Относительно
+`e03fbc7` Children2/Budget75 снизился с 30 735 712 B/op и 789 089 allocs/op до
+медиан 13 892 160 B/op (−54,8%) и 248 655 allocs/op (−68,5%); время 659,6 →
+651,1 ms. Children4/Budget75 снизился с 80 029 336 B/op и 1 993 897 allocs/op
+до 34 156 480 B/op (−57,3%) и 658 420 allocs/op (−67,0%); одиночный контроль
+2,433 → 2,293 s. Exact-profile с `memprofilerate=1` подтвердил исчезновение
+ordered accounting из allocation top и снижение flat allocation
+`next.blocks` с 11,99 до 2,26 MB; оставшийся top принадлежит Roaring clones и
+container mutations.
+
+Production-shaped search (`GOMAXPROCS=1`, `1s x5`) сохранил 1 122/358
+candidates, 24/0 allocations и 70 672–70 673/0 B/op для Index/Local. Медианы
+32,17 мкс и 1,583 мкс сопоставимы с контрольными `e03fbc7` 31,95 мкс и 1,574
+мкс. Full, race, vet, diff-check, scratch ownership/finalization и changed-code
+coverage gates прошли.
+
 ## 2026-09-03: профиль оставшихся lossy Build allocations
 
 После allocation-free selector на `2f12a7f` повторён focused profile:

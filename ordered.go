@@ -76,14 +76,15 @@ const (
 )
 
 type orderedRule[T any, V any] struct {
-	nodeID    nodeID
-	get       Getter[T, V]
-	compare   Compare[V]
-	dir       direction
-	inclusive bool
-	wildcard  *roaring.Bitmap
-	index     orderedIndex[V]
-	build     *orderedRuleBuildState
+	nodeID        nodeID
+	get           Getter[T, V]
+	compare       Compare[V]
+	dir           direction
+	inclusive     bool
+	wildcard      *roaring.Bitmap
+	index         orderedIndex[V]
+	build         *orderedRuleBuildState
+	rebuildBlocks []orderedBlock[V]
 }
 
 // orderedRuleBuildState contains precision-controller state needed only while
@@ -120,7 +121,7 @@ func orderedIndexLossyAccounting[V any](index *orderedIndex[V], wildcard *roarin
 		for _, item := range block.items {
 			items += item.bits.GetCardinality()
 			distinct++
-			memory += comparableValueBytes(any(item.value)) + 8 + bitmapBytes(item.bits)
+			memory += comparableValueBytes(item.value) + 8 + bitmapBytes(item.bits)
 		}
 	}
 	for _, block := range index.rangeBlocks {
@@ -166,7 +167,7 @@ func orderedBlockBuildAccounting[V any](block orderedBlock[V]) orderedBuildAccou
 		accounting.memory += bitmapBytes(block.bits) + 8
 	}
 	for _, item := range block.items {
-		accounting.memory += comparableValueBytes(any(item.value)) + 8 + bitmapBytes(item.bits)
+		accounting.memory += comparableValueBytes(item.value) + 8 + bitmapBytes(item.bits)
 		accounting.items += item.bits.GetCardinality()
 	}
 	return accounting
@@ -238,7 +239,10 @@ func (r *orderedRule[T, V]) insert(v T, id uint32) {
 	r.index.insertOrdered(value, id, r.dir, r.build != nil && r.build.quantized)
 }
 
-func (r *orderedRule[T, V]) finalizeBuild() { r.build = nil }
+func (r *orderedRule[T, V]) finalizeBuild() {
+	r.build = nil
+	r.rebuildBlocks = nil
+}
 
 func (r *orderedRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	return r.estimateCardinality(v)
