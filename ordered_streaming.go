@@ -32,16 +32,18 @@ func (r *orderedRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
 		refreshedStreamingDetails(inspectionDetails{})
 	return details.MemoryUsageBytes, func() {
 		r.index = next
+		r.markBuildQuantized()
 	}, true
 }
 
 func (r *orderedRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
-	if r.index.merged || r.index.buildStatistics().uniqueValues <= 1 {
+	if r.build != nil && r.build.quantized || r.index.buildStatistics().uniqueValues <= 1 {
 		return 0, nil, false
 	}
 	candidate := &orderedRule[T, V]{
 		nodeID: r.nodeID, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
 		wildcard: r.wildcard, index: newOrderedIndex(r.compare),
+		build: &orderedRuleBuildState{quantized: true},
 	}
 	candidate.index = rebuildOrderedBoundaries(&r.index, r.dir)
 	details := candidate.refreshedStreamingDetails(inspectionDetails{})

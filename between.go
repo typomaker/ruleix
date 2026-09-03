@@ -41,10 +41,15 @@ type betweenLocalQueryKey[V any] struct {
 func (r *betweenRule[T, V]) runtimeNodeID() nodeID    { return r.nodeID }
 func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
 func (r *betweenRule[T, V]) inspectionMode() RuleMode {
-	if r.from.index.merged || r.until.index.merged {
+	if r.from.build != nil && r.from.build.quantized || r.until.build != nil && r.until.build.quantized {
 		return RuleModeLossy
 	}
 	return RuleModeExact
+}
+
+func (r *betweenRule[T, V]) finalizeBuild() {
+	r.from.finalizeBuild()
+	r.until.finalizeBuild()
 }
 func (r *betweenRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
 	return r.quantizedStreamingDetails(details)

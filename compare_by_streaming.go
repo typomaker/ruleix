@@ -41,6 +41,10 @@ func (r *compareByRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T]
 
 func cloneCompareByRule[T any, V any](r *compareByRule[T, V]) *compareByRule[T, V] {
 	clone := *r
+	if r.build != nil {
+		state := *r.build
+		clone.build = &state
+	}
 	for operator, index := range r.indexes {
 		if index != nil {
 			copy := index.cloneBuild()
@@ -106,5 +110,9 @@ func (r *compareByRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
 	}
 	return usage, func() {
 		r.indexes[selected] = &next
+		r.markBuildQuantized(operator)
+		if operator == OperatorEQ {
+			r.equalityLookup = quantizedOrderedEquality[V]
+		}
 	}, true
 }

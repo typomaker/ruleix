@@ -77,13 +77,15 @@ Rule-схема + поток (constraint, external ID)
 5. `Inspect` отделяется от обычного hot path. Для выборочно наблюдаемых
    `Local` сохраняется observed-вариант дерева, обычные поиски используют
    вариант без runtime-инструментации.
-6. `Exclude` извлекаются из положительного дерева в отдельный список. Это
+6. Build-only precision-controller state удаляется после переноса `Inspect.Mode` и `Granularity` в immutable snapshot;
+   `CompareBy(EQ)` получает готовую exact либо quantized lookup-операцию без runtime-проверки режима.
+7. `Exclude` извлекаются из положительного дерева в отдельный список. Это
    позволяет сначала выбрать кандидатов, а затем удалить запрещённые ID, не
    материализуя универсальный положительный posting каждого `Exclude`.
-7. Эквивалентные неизменяемые bitmap интернируются. Для `All` компилируются
+8. Эквивалентные неизменяемые bitmap интернируются. Для `All` компилируются
    физические алиасы и классы повторяющихся equality-результатов, чтобы не
    выполнять одинаковую работу несколько раз.
-8. Ordered-структуры и остальные узлы подготавливаются к поиску; Roaring
+9. Ordered-структуры и остальные узлы подготавливаются к поиску; Roaring
    bitmap переводятся в copy-on-write режим до публикации индекса.
 
 Новая статистика и snapshots инспекторов публикуются только после полностью
@@ -295,19 +297,17 @@ build-операцией: он создаёт новое поколение, о�
 верхним, поэтому обычный Exact matcher консервативно читает его без query-time
 округления. Numeric, time и arbitrary comparator используют один алгоритм.
 
-`orderedIndex.merged` описывает свойство текущих postings, а не уровень или
-режим. Оно нужно только для корректной вставки оставшейся части streaming input
-в уже объединённый диапазон и для lookup `CompareBy(EQ)`. Поздний внешний ключ
-остаётся новым крайним ключом; поздний внутренний ключ присоединяется к
-ближайшей наружной границе. Следующий pressure rebuild заново выбирает лучшую
-соседнюю пару. Отдельный boundary-массив не хранится.
+Build-only `orderedRuleBuildState` отмечает квантованное поколение для корректной вставки оставшегося streaming input и
+удаляется до подготовки опубликованного дерева. Поздний внешний ключ остаётся новым крайним, внутренний присоединяется к
+ближайшей наружной границе. Следующий pressure rebuild заново выбирает лучшую соседнюю пару; boundary-массив не хранится.
 Последний `prepareSearch` строит обычные block aggregates, prefix sums и
 routing, поэтому finest lossy больше не выполняет линейный union legacy
 physical keys. `Between` и `CompareBy` теперь используют те же `orderedRule` и
 `orderedIndex`. Streaming rebuild общих `betweenRule` и `compareByRule`
 выбирает одну сторону/оператор и объединяет соседей соответствующего индекса;
-отдельных lossy runtime/search types нет. `CompareBy(EQ)` на merged index
-находит первый верхний physical key не ниже query.
+отдельных lossy runtime/search types нет. Для `CompareBy(EQ)` build выбирает функцию без захвата: exact lookup ищет равный
+physical key, quantized lookup — первый верхний key не ниже query. Опубликованный rule вызывает выбранную операцию и не
+хранит признак exact/lossy.
 Legacy специализированное lossy ordered-представление, `lossyBetweenRule` и `lossyCompareByRule`
 удалены. Повторное огрубление независимо клонирует текущее поколение postings,
 объединяет соседнюю пару и не требует исходных exact values.
@@ -318,7 +318,9 @@ Legacy специализированное lossy ordered-представлен
 iteration.
 
 Build lifecycle разделяет mutable и immutable состояния. Streaming pressure и все downgrade выполняются до `optimizeRule`, bitmap interning и
-`prepareRuleSearch`. Только финальный `prepareSearch` строит `orderedIndex`
+`prepareRuleSearch`. После захвата inspection metadata отдельный финализатор
+обнуляет build-only state во всех опубликованных ordered/Between/CompareBy
+узлах. Сам `orderedIndex` не содержит mode/quantized flag. Только финальный `prepareSearch` строит `orderedIndex`
 routing, block prefixes и, где требуется оператором, range blocks; входной
 iterator для этого не перечитывается. После публикации Index эти структуры
 больше не перестраиваются, а build-only adaptive wrappers уже удалены.

@@ -29,13 +29,32 @@ func CompareBy[T any, V any](
 }
 
 type compareByRule[T any, V any] struct {
-	nodeID   nodeID
-	value    Getter[T, V]
-	operator Getter[T, Operator]
-	compare  Compare[V]
-	wildcard *roaring.Bitmap
-	indexes  [5]*orderedIndex[V]
-	hints    [5]orderedBuildStatistics
+	nodeID         nodeID
+	value          Getter[T, V]
+	operator       Getter[T, Operator]
+	compare        Compare[V]
+	wildcard       *roaring.Bitmap
+	indexes        [5]*orderedIndex[V]
+	hints          [5]orderedBuildStatistics
+	build          *compareByBuildState
+	equalityLookup orderedEqualityLookup[V]
+}
+
+type compareByBuildState struct{ quantized [5]bool }
+type orderedEqualityLookup[V any] func(*orderedIndex[V], V) *roaring.Bitmap
+
+func exactOrderedEquality[V any](index *orderedIndex[V], value V) *roaring.Bitmap {
+	return index.exact(value)
+}
+func quantizedOrderedEquality[V any](index *orderedIndex[V], value V) *roaring.Bitmap {
+	return index.ceiling(value)
+}
+
+func (r *compareByRule[T, V]) markBuildQuantized(operator Operator) {
+	if r.build == nil {
+		r.build = &compareByBuildState{}
+	}
+	r.build.quantized[operator] = true
 }
 
 type compareByLocalQueryKey[V any] struct {
@@ -46,9 +65,11 @@ type compareByLocalQueryKey[V any] struct {
 func (r *compareByRule[T, V]) runtimeNodeID() nodeID    { return r.nodeID }
 func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
 func (r *compareByRule[T, V]) inspectionMode() RuleMode {
-	for _, index := range r.indexes {
-		if index != nil && index.merged {
-			return RuleModeLossy
+	if r.build != nil {
+		for operator, index := range r.indexes {
+			if index != nil && r.build.quantized[operator] {
+				return RuleModeLossy
+			}
 		}
 	}
 	return RuleModeExact
@@ -87,12 +108,14 @@ func (r *compareByRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
 func (r *compareByRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
 	return &compareByRule[T, V]{
-		nodeID:   id,
-		value:    r.value,
-		operator: r.operator,
-		compare:  r.compare,
-		wildcard: roaring.New(),
-		hints:    hints.node(id).compareBy,
+		nodeID:         id,
+		value:          r.value,
+		operator:       r.operator,
+		compare:        r.compare,
+		wildcard:       roaring.New(),
+		hints:          hints.node(id).compareBy,
+		build:          &compareByBuildState{},
+		equalityLookup: exactOrderedEquality[V],
 	}
 }
 func (r *compareByRule[T, V]) validate(v T) error {
@@ -121,7 +144,7 @@ func (r *compareByRule[T, V]) insert(v T, id uint32) {
 		index = &created
 		r.indexes[operator] = index
 	}
-	index.insertOrdered(value, id, compareByDirection(operator))
+	index.insertOrdered(value, id, compareByDirection(operator), r.build != nil && r.build.quantized[operator])
 }
 
 func (r *compareByRule[T, V]) equalityBits(value V) *roaring.Bitmap {
@@ -129,11 +152,14 @@ func (r *compareByRule[T, V]) equalityBits(value V) *roaring.Bitmap {
 	if index == nil {
 		return nil
 	}
-	if index.merged {
-		return index.ceiling(value)
+	lookup := r.equalityLookup
+	if lookup == nil {
+		lookup = exactOrderedEquality[V]
 	}
-	return index.exact(value)
+	return lookup(index, value)
 }
+
+func (r *compareByRule[T, V]) finalizeBuild() { r.build = nil }
 func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 	value, ok := r.value(v)
 	visit(r.wildcard)

@@ -79,8 +79,6 @@ func rebuildOrderedBoundaries[V any](index *orderedIndex[V], dir direction) orde
 	next.blockPrefix = nil
 	next.rangeBlocks = nil
 	next.routing = orderedRouting{}
-	next.merged = true
-
 	leftBlock, leftPosition := orderedItemPosition(index, selected.position)
 	rightBlock, rightPosition := orderedItemPosition(index, selected.position+1)
 	left := index.blocks[leftBlock].items[leftPosition]

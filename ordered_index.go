@@ -18,7 +18,6 @@ type orderedIndex[V any] struct {
 	rangeBlocks        []orderedRangeBlock
 	firstBlockCapacity int
 	routing            orderedRouting
-	merged             bool
 	buildAccounting    orderedBuildAccounting
 	accountingValid    bool
 }
@@ -268,8 +267,8 @@ func (i *orderedIndex[V]) detachSharedBlockAggregates() {
 	}
 }
 
-func (i *orderedIndex[V]) insertOrdered(value V, id uint32, dir direction) {
-	if i.merged {
+func (i *orderedIndex[V]) insertOrdered(value V, id uint32, dir direction, quantized bool) {
+	if quantized {
 		value = roundedOrderedBoundary(i, value, dir == lessThan)
 	}
 	i.insert(value, id)
@@ -305,7 +304,6 @@ func (i *orderedIndex[V]) insertPosting(value V, bits *roaring.Bitmap) {
 
 func (i *orderedIndex[V]) cloneBuild() orderedIndex[V] {
 	clone := newOrderedIndex(i.compare)
-	clone.merged = i.merged
 	for _, block := range i.blocks {
 		for _, item := range block.items {
 			clone.insertPosting(item.value, item.bits.Clone())

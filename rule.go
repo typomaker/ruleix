@@ -221,6 +221,9 @@ func removeExclusionRules[T any](rule Rule[T], universe *roaring.Bitmap) Rule[T]
 }
 
 func prepareRuleSearch[T any](rule Rule[T]) {
+	if finalizer, ok := any(rule).(buildFinalizer); ok {
+		finalizer.finalizeBuild()
+	}
 	if observed, ok := rule.(*inspectedRuntimeRule[T]); ok {
 		prepareRuleSearch(observed.child)
 		return

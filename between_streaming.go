@@ -16,7 +16,7 @@ func (r *betweenRule[T, V]) quantizedStreamingDetails(details inspectionDetails)
 }
 
 func (r *betweenRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
-	if r.from.index.merged || r.until.index.merged {
+	if r.from.build != nil && r.from.build.quantized || r.until.build != nil && r.until.build.quantized {
 		return 0, nil, false
 	}
 	clone := cloneBetweenRule(r)
@@ -32,6 +32,7 @@ func cloneBetweenRule[T any, V any](r *betweenRule[T, V]) *betweenRule[T, V] {
 	clone := *r
 	from, until := *r.from, *r.until
 	from.index, until.index = r.from.index.cloneBuild(), r.until.index.cloneBuild()
+	from.build, until.build = cloneOrderedRuleBuildState(r.from.build), cloneOrderedRuleBuildState(r.until.build)
 	clone.from, clone.until = &from, &until
 	return &clone
 }
@@ -75,6 +76,7 @@ func (r *betweenRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
 	var replacement *orderedRule[T, V]
 	clone := *selected
 	clone.index = rebuildOrderedBoundaries(&selected.index, selected.dir)
+	clone.build = &orderedRuleBuildState{quantized: true}
 	replacement = &clone
 	usage = clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
 	other := r.until

@@ -83,6 +83,18 @@ type orderedRule[T any, V any] struct {
 	inclusive bool
 	wildcard  *roaring.Bitmap
 	index     orderedIndex[V]
+	build     *orderedRuleBuildState
+}
+
+// orderedRuleBuildState contains precision-controller state needed only while
+// Build is still accepting values. It is removed before the rule is published.
+type orderedRuleBuildState struct{ quantized bool }
+
+func (r *orderedRule[T, V]) markBuildQuantized() {
+	if r.build == nil {
+		r.build = &orderedRuleBuildState{}
+	}
+	r.build.quantized = true
 }
 
 type orderedLocalQueryKey[V any] struct {
@@ -176,7 +188,7 @@ func (r *orderedRule[T, V]) inspectionStrategy() string {
 	return "ordered"
 }
 func (r *orderedRule[T, V]) inspectionMode() RuleMode {
-	if r.index.merged {
+	if r.build != nil && r.build.quantized {
 		return RuleModeLossy
 	}
 	return RuleModeExact
@@ -186,7 +198,7 @@ func (r *orderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails)
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = memory, true
 	details.Items, details.ItemsAvailable = items, true
 	details.DistinctValues, details.DistinctValuesAvailable = distinct, true
-	if r.index.merged {
+	if r.build != nil && r.build.quantized {
 		details.GranularityValue, details.GranularityAvailable = distinct, true
 	}
 	return details
@@ -213,7 +225,7 @@ func (r *orderedRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistic
 func (r *orderedRule[T, V]) newStateWithID(id nodeID, hint orderedBuildStatistics) *orderedRule[T, V] {
 	return &orderedRule[T, V]{
 		nodeID: id, get: r.get, compare: r.compare, dir: r.dir, inclusive: r.inclusive,
-		wildcard: roaring.New(), index: newOrderedIndexWithHint(r.compare, hint),
+		wildcard: roaring.New(), index: newOrderedIndexWithHint(r.compare, hint), build: &orderedRuleBuildState{},
 	}
 }
 func (*orderedRule[T, V]) validate(T) error { return nil }
@@ -223,8 +235,10 @@ func (r *orderedRule[T, V]) insert(v T, id uint32) {
 		r.wildcard.Add(id)
 		return
 	}
-	r.index.insertOrdered(value, id, r.dir)
+	r.index.insertOrdered(value, id, r.dir, r.build != nil && r.build.quantized)
 }
+
+func (r *orderedRule[T, V]) finalizeBuild() { r.build = nil }
 
 func (r *orderedRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	return r.estimateCardinality(v)

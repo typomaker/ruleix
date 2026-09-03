@@ -1,24 +1,24 @@
 # История производительности
 
+## 2026-09-03: финализация ordered precision state
+
+Build-only состояние квантования удалено из `orderedIndex`; `CompareBy(EQ)` получает lookup во время Build, а inspection metadata копируется до очистки.
+
+Apple M1 Max, Go 1.26.0; `go test -run '^$' -bench '^BenchmarkTemporaryCompareByEQRuntime/' -benchmem -benchtime=500ms -count=10 .`;
+baseline `49f0827`, candidate — этот commit, 128 EQ-записей, lossy limit 1024 bytes. Median exact 68,3/68,6 ns/op, lossy 97,3/97,3 ns/op; 0 B/op, 0 allocs/op. Более широкий benchmark сохранил allocation classes; full и race прошли.
+
 ## 2026-09-03: release gate шага 12 остаётся открыт
 
-Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`). Equality-only
-`300ms x5`: Index 15 579 → 15 430 нс, Local 222,5 → 222,8; two-leaf 19 035 →
-18 748 и 42,89 → 43,89 нс; allocations прежние. Ordered rewrite против `48e309d`,
-`500ms x5`: production Lossy Index 124 941 → 124 719 нс, Local 11 996 → 11 972,
-shape прежний. Atomic pair/least-release против `f10fca5`, `300ms x3`: mixed
-Build 25,0 → 798,6 мс и 12,57 → 118,34 MB/op, но candidates 3,414 → 2,121,
-Index 134,6 → 40,6 мкс, Local 61,6 → 60,8 нс. Production candidates 3 802 →
-358, Index 126,7 → 32,3 мкс, Local 12,1 → 1,59 мкс. Search allocations не
-регрессировали; Build trade-off принят по явному приоритету владельца.
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`). Equality-only `300ms x5`: Index 15 579 → 15 430 нс,
+Local 222,5 → 222,8; two-leaf 19 035 → 18 748 и 42,89 → 43,89 нс; allocations прежние. Ordered rewrite против `48e309d`,
+`500ms x5`: Lossy Index 124 941 → 124 719 нс, Local 11 996 → 11 972. Atomic pair/least-release против `f10fca5`, `300ms x3`:
+Build 25,0 → 798,6 мс и 12,57 → 118,34 MB/op; production candidates 3 802 → 358, Index 126,7 → 32,3 мкс, Local 12,1 → 1,59 мкс. Search allocations прежние; Build trade-off принят владельцем.
 ## 2026-09-02: lossy range aggregate checkpoint
 
-Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Baseline
-`328a45e`, candidate — один aggregate на 128 leaf physical keys. Интерливинг по три
-запуска, `benchtime=300ms`, сохранил production shape: `Index.Search` median
-27 048 → 26 670 ns/op, warm `Local.Search` 244,7 → 245,5 ns/op, 80 candidates,
-15/0 allocations. Mixed Lossy50 сохранил 3,069 candidates/query и allocation
-classes; `Index.Search` median 47 604 → 46 766 ns/op. Exact не менялся и в
+Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Baseline `328a45e`, candidate — один aggregate на 128 leaf
+physical keys. Интерливинг по три запуска, `benchtime=300ms`: `Index.Search` 27 048 → 26 670 ns/op, warm `Local.Search`
+244,7 → 245,5 ns/op, 80 candidates, 15/0 allocations. Mixed Lossy50 сохранил 3,069 candidates/query и allocation classes;
+`Index.Search` median 47 604 → 46 766 ns/op. Exact не менялся и в
 candidate серии дал 50 096 ns/op и 59,47 ns/op для Index/warm Local.
 Focused 1 024-leaf диапазон, `benchtime=500ms`, `count=5`, сравнил прежний
 leaf union с теми же postings через aggregates: median 269 577 → 60 737 ns/op,
