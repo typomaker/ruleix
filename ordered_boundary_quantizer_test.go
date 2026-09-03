@@ -70,7 +70,7 @@ func TestComparatorBoundaryLevelsHaveNoFalseNegatives(t *testing.T) {
 			}
 			_, first, ok := exact.prepareStreamingFirstGeneration()
 			require.True(t, ok)
-			lossy := first.(*quantizedOrderedRule[boundaryFixture, boundaryFixture])
+			lossy := first.(*orderedRule[boundaryFixture, boundaryFixture])
 			lossy.fitStreamingNext()
 			for offset, value := range late {
 				id := uint32(len(stored) + offset)

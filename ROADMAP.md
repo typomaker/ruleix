@@ -390,7 +390,12 @@ Exact, identity-Lossy и lossy equality проходят одну реализа
 
 ### 10. Сделать level 0 явной identity-функцией
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-03`
+
+Результат: standalone ordered Exact и Lossy объединены в одном `orderedRule`
+с обязательным identity-level transformer; отдельный `quantizedOrderedRule` и
+lossy state в `orderedIndex` удалены, mode перенесён в policy metadata, а
+identity/type, full, race и diff-coverage gates пройдены без benchmarks.
 
 - Заменить семантику `nil quantizer означает Exact` единым обязательным key
   transformer для equality и ordered families.

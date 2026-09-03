@@ -13,7 +13,9 @@ func wrapStreamingLossyLeaves[T any](rule Rule[T]) Rule[T] {
 	case *inspectRule[T]:
 		return &inspectRule[T]{dst: typed.dst, child: wrapStreamingLossyLeaves(typed.child)}
 	case *inspectionDetailsRule[T]:
-		return &inspectionDetailsRule[T]{child: wrapStreamingLossyLeaves(typed.child), details: typed.details}
+		return &inspectionDetailsRule[T]{
+			child: wrapStreamingLossyLeaves(typed.child), details: typed.details, mode: typed.mode,
+		}
 	default:
 		if inspectionModeOf(rule) == RuleModeLossy {
 			if _, ok := any(rule).(streamingLossyAccumulator); ok {
@@ -76,7 +78,7 @@ func refreshStreamingLossyDetails[T any](rule Rule[T]) (Rule[T], inspectionDetai
 				}
 			}
 		}
-		return &inspectionDetailsRule[T]{child: child, details: details}, details, nil
+		return &inspectionDetailsRule[T]{child: child, details: details, mode: lossyPolicyMode(child)}, details, nil
 	case *streamingAdaptiveLeaf[T]:
 		return typed, typed.refreshedStreamingDetails(inspectionDetails{}), nil
 	default:
@@ -96,7 +98,7 @@ func unwrapStreamingAdaptiveLeaves[T any](rule Rule[T]) Rule[T] {
 		return &inspectRule[T]{dst: typed.dst, child: unwrapStreamingAdaptiveLeaves(typed.child)}
 	case *inspectionDetailsRule[T]:
 		return &inspectionDetailsRule[T]{
-			child: unwrapStreamingAdaptiveLeaves(typed.child), details: typed.details,
+			child: unwrapStreamingAdaptiveLeaves(typed.child), details: typed.details, mode: typed.mode,
 		}
 	case *streamingAdaptiveLeaf[T]:
 		return unwrapStreamingAdaptiveLeaves(typed.child)

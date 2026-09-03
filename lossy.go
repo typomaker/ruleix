@@ -199,14 +199,12 @@ func (r *streamingAdaptiveLeaf[T]) nextStreamingUsage() (uint64, bool) {
 		return r.nextUsage, r.nextUsageOK
 	}
 	r.nextUsagePrepared = true
-	if factory, ok := r.child.(streamingFirstGenerationFactory[T]); ok && inspectionModeOf(r.child) == RuleModeExact {
+	if factory, ok := r.child.(streamingFirstGenerationFactory[T]); ok {
 		usage, next, available := factory.prepareStreamingFirstGeneration()
-		if !available {
-			r.nextUsageOK = false
-			return 0, false
+		if available {
+			r.nextUsage, r.nextUsageOK, r.nextApply = usage, true, func() { r.child = next }
+			return usage, true
 		}
-		r.nextUsage, r.nextUsageOK, r.nextApply = usage, true, func() { r.child = next }
-		return usage, true
 	}
 	if preparer, ok := streamingRuleNextPreparer(r.child); ok {
 		r.nextUsage, r.nextApply, r.nextUsageOK = preparer.prepareStreamingNext()
@@ -218,16 +216,12 @@ func (r *streamingAdaptiveLeaf[T]) nextStreamingUsage() (uint64, bool) {
 
 func (r *streamingAdaptiveLeaf[T]) fitStreamingLimit(limit uint64) {
 	r.nextUsagePrepared, r.nextApply = false, nil
-	if _, first := r.child.(streamingFirstGenerationFactory[T]); first && inspectionModeOf(r.child) == RuleModeExact {
-		for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit {
-			if _, ok := r.nextStreamingUsage(); !ok {
-				return
-			}
-			r.fitStreamingNext()
+	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit {
+		if _, ok := r.nextStreamingUsage(); !ok {
+			return
 		}
-		return
+		r.fitStreamingNext()
 	}
-	fitStreamingRule(r.child, limit)
 }
 
 func (r *streamingAdaptiveLeaf[T]) fitStreamingNext() {
@@ -238,14 +232,6 @@ func (r *streamingAdaptiveLeaf[T]) fitStreamingNext() {
 		return
 	}
 	r.nextUsagePrepared = false
-	if _, first := r.child.(streamingFirstGenerationFactory[T]); first && inspectionModeOf(r.child) == RuleModeExact {
-		if _, ok := r.nextStreamingUsage(); ok && r.nextApply != nil {
-			apply := r.nextApply
-			r.nextUsagePrepared, r.nextApply = false, nil
-			apply()
-		}
-		return
-	}
 	fitStreamingRuleNext(r.child)
 }
 

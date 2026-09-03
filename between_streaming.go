@@ -57,8 +57,11 @@ func (r *quantizedBetweenRule[T, V]) selectStreamingSide() *orderedRule[T, V] {
 }
 
 func orderedStreamingAvailable[T any, V any](side *orderedRule[T, V]) bool {
-	return side.index.buildStatistics().uniqueValues > 1 &&
-		(side.quantizer == nil || side.level < side.quantizer.terminalLevel())
+	if side.index.buildStatistics().uniqueValues <= 1 {
+		return false
+	}
+	return side.level == 0 || side.transform.kind != orderedFixedTransformer ||
+		side.level < side.transform.fixed.terminalLevel()
 }
 
 func (r *quantizedBetweenRule[T, V]) fitStreamingLimit(limit uint64) {
@@ -86,18 +89,17 @@ func (r *quantizedBetweenRule[T, V]) prepareStreamingNext() (uint64, func(), boo
 	}
 	var usage uint64
 	var replacement *orderedRule[T, V]
-	if selected.quantizer == nil && selected.boundaries == nil {
+	if selected.level == 0 {
 		nextUsage, next, ok := selected.prepareStreamingFirstGeneration()
 		if !ok {
 			return 0, nil, false
 		}
-		replacement = next.(*quantizedOrderedRule[T, V]).orderedRule
+		replacement = next.(*orderedRule[T, V])
 		usage = nextUsage
 	} else {
 		clone := *selected
 		clone.index = selected.index.cloneBuild()
-		wrapped := &quantizedOrderedRule[T, V]{&clone}
-		_, apply, ok := wrapped.prepareStreamingNext()
+		_, apply, ok := clone.prepareStreamingNext()
 		if !ok {
 			return 0, nil, false
 		}

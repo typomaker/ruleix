@@ -76,16 +76,15 @@ const (
 )
 
 type orderedRule[T any, V any] struct {
-	nodeID     nodeID
-	get        Getter[T, V]
-	compare    Compare[V]
-	dir        direction
-	inclusive  bool
-	wildcard   *roaring.Bitmap
-	index      orderedIndex[V]
-	quantizer  *orderedQuantizer[V]
-	boundaries *orderedBoundaryQuantizer[V]
-	level      uint32
+	nodeID    nodeID
+	get       Getter[T, V]
+	compare   Compare[V]
+	dir       direction
+	inclusive bool
+	wildcard  *roaring.Bitmap
+	index     orderedIndex[V]
+	transform orderedKeyTransformer[V]
+	level     uint32
 }
 
 type orderedLocalQueryKey[V any] struct {
@@ -93,11 +92,8 @@ type orderedLocalQueryKey[V any] struct {
 	ok    bool
 }
 
-// quantizedOrderedRule is a build-lifecycle wrapper only. Its promoted search,
-// matcher and Local-cache methods are the common orderedRule implementation.
-type quantizedOrderedRule[T any, V any] struct{ *orderedRule[T, V] }
-
-func (r *orderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+func (r *orderedRule[T, V]) runtimeNodeID() nodeID         { return r.nodeID }
+func (r *orderedRule[T, V]) currentPrecisionLevel() uint32 { return r.level }
 
 func orderedIndexLossyAccounting[V any](index *orderedIndex[V], wildcard *roaring.Bitmap) (
 	memory, items, distinct uint64,
@@ -141,9 +137,6 @@ func (r *orderedRule[T, V]) inspectionStrategy() string {
 	return "ordered"
 }
 func (r *orderedRule[T, V]) inspectionMode() RuleMode {
-	if r.level > 0 || r.quantizer != nil || r.boundaries != nil {
-		return RuleModeLossy
-	}
 	return RuleModeExact
 }
 func (r *orderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
@@ -162,7 +155,7 @@ func (r *orderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails)
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = memory, true
 	details.Items, details.ItemsAvailable = items, true
 	details.DistinctValues, details.DistinctValuesAvailable = distinct, true
-	if r.inspectionMode() == RuleModeLossy {
+	if r.level > 0 {
 		details.GranularityValue, details.GranularityAvailable = distinct, true
 	}
 	return details

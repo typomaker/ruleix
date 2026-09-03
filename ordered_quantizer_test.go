@@ -44,6 +44,32 @@ func TestOrderedQuantizerLevelsAreNestedAndOutward(t *testing.T) {
 	})
 }
 
+func TestOrderedTransformerLevelZeroIsIdentityForEveryKind(t *testing.T) {
+	index := newOrderedIndex(cmp.Compare[int])
+	index.insert(10, 1)
+	fixed, ok := compileOrderedQuantizer[int]()
+	require.True(t, ok)
+	for _, transformer := range []orderedKeyTransformer[int]{
+		{},
+		{kind: orderedFixedTransformer, fixed: fixed},
+		{kind: orderedBoundaryTransformer},
+	} {
+		for _, upward := range []bool{false, true} {
+			require.Equal(t, 11, transformer.key(&index, 11, 0, upward))
+		}
+	}
+}
+
+func TestOrderedFirstGenerationKeepsCommonRuleType(t *testing.T) {
+	rule := newOrderedRule(func(value int) (int, bool) { return value, true }, cmp.Compare[int], greaterThan, false)
+	state := rule.newState(&nodeIDAllocator{}, &buildStatistics{}).(*orderedRule[int, int])
+	state.insert(1, 1)
+	state.insert(2, 2)
+	_, next, ok := state.prepareStreamingFirstGeneration()
+	require.True(t, ok)
+	require.IsType(t, state, next)
+}
+
 func TestOrderedQuantizerSupportsNumericKinds(t *testing.T) {
 	check := func(ok bool) { require.True(t, ok) }
 	_, ok := compileOrderedQuantizer[int]()
@@ -97,7 +123,7 @@ func TestQuantizedOrderedRepeatedRebuildAndLateValuesHaveNoFalseNegatives(t *tes
 			}
 			_, first, ok := exact.prepareStreamingFirstGeneration()
 			require.True(t, ok)
-			lossy := first.(*quantizedOrderedRule[fixture, int8])
+			lossy := first.(*orderedRule[fixture, int8])
 			for range 4 {
 				lossy.fitStreamingNext()
 			}
@@ -129,9 +155,8 @@ func TestNumericQuantizerFallsBackToBoundariesForDescendingComparator(t *testing
 	}
 	_, first, ok := rule.prepareStreamingFirstGeneration()
 	require.True(t, ok)
-	lossy := first.(*quantizedOrderedRule[fixture, int])
-	require.Nil(t, lossy.quantizer)
-	require.NotNil(t, lossy.boundaries)
+	lossy := first.(*orderedRule[fixture, int])
+	require.Equal(t, orderedBoundaryTransformer, lossy.transform.kind)
 	require.Equal(t, 2, lossy.index.buildStatistics().uniqueValues)
 }
 
@@ -157,7 +182,7 @@ func TestQuantizedTimeStrictBoundariesHaveNoFalseNegatives(t *testing.T) {
 		}
 		_, first, ok := exact.prepareStreamingFirstGeneration()
 		require.True(t, ok)
-		lossy := first.(*quantizedOrderedRule[fixture, time.Time])
+		lossy := first.(*orderedRule[fixture, time.Time])
 		for range 5 {
 			lossy.fitStreamingNext()
 		}

@@ -1,8 +1,7 @@
 package ruleix
 
-// orderedBoundaryQuantizer marks the comparator-backed quantization mode. Its
-// boundaries are the keys of the common orderedIndex itself, so it neither
-// duplicates values nor introduces separately accounted search metadata.
+// orderedBoundaryQuantizer remains build state for the compound CompareBy
+// representation. Standalone orderedRule uses orderedKeyTransformer instead.
 type orderedBoundaryQuantizer[V any] struct{}
 
 func roundedOrderedBoundary[V any](index *orderedIndex[V], value V, upward bool) V {

@@ -45,7 +45,10 @@ The number of distinct physical keys cannot increase. Insert, rebuild, and
 search use the same level definition; input order cannot change the resulting
 key classes.
 
-The quantizer and its stored level are the only mode-specific state. Posting
+The mandatory key transformer and its stored level are the only precision
+state. Level zero is an explicit identity transform for Exact and for the
+initial Lossy generation. The Lossy policy metadata, rather than the physical
+rule or its level, supplies `Inspect.Mode`. Posting
 containers, indexes, matcher logic, range execution, routing, aggregates, and
 Local caches are the Exact implementations and receive only physical keys.
 They neither inspect the mode nor select precision. In particular, Lossy must
@@ -66,6 +69,14 @@ no more precise available generation can satisfy the hard limit. It cannot be
 produced by local pairwise merges or used as an early fallback. If the sum of
 terminal retained generations exceeds the applicable hard limit, `Build`
 fails without publishing the candidate generation.
+
+The explicit identity-transformer gate was verified on 2026-09-03 with
+`go test ./...`, `go test -race ./...`, and
+`go test ./... -coverprofile=/tmp/ruleix-step10.cover`. Changed production
+lines reached 86/90 statements (95.6% diff coverage). The gate also checks all
+standalone ordered transformer kinds at level zero and confirms that the first
+Lossy generation retains the common `orderedRule` type. No benchmarks or
+profiles were run.
 
 Contract gate verified on 2026-09-02 with `go test ./...` and focused coverage
 from `go test ./... -coverprofile=/tmp/ruleix-step1.cover`: every executable

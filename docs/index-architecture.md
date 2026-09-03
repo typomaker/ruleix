@@ -282,10 +282,14 @@ build insertion, search lookup и преобразовании текущего 
 ступень streaming downgrade; policy interface в эти пути не попадает.
 
 Standalone `Greater*`/`Less*` exact и lossy representations публикуют один
-`orderedRule` с одним `orderedIndex`. Build-only `quantizedOrderedRule`
-управляет streaming precision, но search, cardinality/matchesID, candidate
-filtering и Local cache у него являются promoted-методами общего rule. Старые
-`lossyOrderedRule` и `lossyComparedOrderedRule` удалены.
+`orderedRule` с одним `orderedIndex`. Обязательный mode-neutral
+`orderedKeyTransformer` формально возвращает исходный ключ на level 0 для
+любого типа и role; pressure controller меняет только его level и выбранную
+вложенную трансформацию. Insert и query используют один `key` с outward-role,
+а search, cardinality/matchesID, range walk, candidate filtering и Local cache
+всегда остаются методами общего rule. `orderedIndex` получает только готовые
+physical keys и не содержит level, quantizer или policy state. Старые
+`quantizedOrderedRule`, `lossyOrderedRule` и `lossyComparedOrderedRule` удалены.
 
 Quantized класс хранит один outward-rounded boundary и объединённый posting.
 Для `Greater*` сохраняется нижняя граница класса, для `Less*` — верхняя;
@@ -311,7 +315,8 @@ Legacy `lossyComparedBuckets`, `lossyBetweenRule` и `lossyCompareByRule`
 
 `Inspect.Strategy` называет общее физическое семейство (`equality`, `ordered`,
 `between`, `compare-by`), а не lossy-вариант layout. Exact/lossy различаются
-через `Inspect.Mode`; `Granularity` сообщает число выбранных quantized key
+через policy metadata в `Inspect.Mode`, а не через level или transformer
+физического rule; `Granularity` сообщает число выбранных quantized key
 classes. Финальная production-shape проверка обнаружила незавершённые latency,
 candidate-quality и deterministic-build gates; реализация сохраняется до
 исправления по отчёту

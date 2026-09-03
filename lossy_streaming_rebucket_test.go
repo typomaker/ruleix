@@ -340,7 +340,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		common.index.insertPosting(3, roaring.BitmapOf(3))
 		_, first, ok := common.prepareStreamingFirstGeneration()
 		require.True(t, ok)
-		rule := first.(*quantizedOrderedRule[streamingOrderedFixture, int])
+		rule := first.(*orderedRule[streamingOrderedFixture, int])
 		_, apply, ok := rule.prepareStreamingNext()
 		require.True(t, ok)
 		apply()
@@ -352,7 +352,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		require.Equal(t, 1, rule.index.buildStatistics().uniqueValues)
 		_, _, ok = rule.prepareStreamingNext()
 		require.False(t, ok)
-		require.Same(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
+		require.IsType(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
 	})
 	t.Run("between", func(t *testing.T) {
 		rule := &quantizedBetweenRule[streamingOrderedFixture, int]{&betweenRule[streamingOrderedFixture, int]{
@@ -370,9 +370,8 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		require.True(t, ok)
 		rule.fitStreamingNext()
 		rule.from = orderedSide(greaterThan)
-		wrappedFrom := &quantizedOrderedRule[streamingOrderedFixture, int]{rule.from}
-		wrappedFrom.fitStreamingNext()
-		wrappedFrom.fitStreamingNext()
+		rule.from.fitStreamingNext()
+		rule.from.fitStreamingNext()
 		rule.until = orderedSide(lessThan)
 		rule.fitStreamingNext()
 		require.Equal(t, 3, rule.until.index.buildStatistics().uniqueValues)

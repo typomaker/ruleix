@@ -9,13 +9,38 @@ import (
 type inspectionDetailsRule[T any] struct {
 	child          Rule[T]
 	details        inspectionDetails
+	mode           RuleMode
 	canonicalAlias bool
+}
+
+// lossyPolicyMode derives diagnostic metadata while the build tree still owns
+// the precision controller. Runtime rule/index code never consults this mode.
+func lossyPolicyMode[T any](rule Rule[T]) RuleMode {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		for _, child := range typed.children {
+			if lossyPolicyMode(child) == RuleModeLossy {
+				return RuleModeLossy
+			}
+		}
+		return RuleModeExact
+	case *inspectRule[T]:
+		return lossyPolicyMode(typed.child)
+	case *inspectionDetailsRule[T]:
+		return lossyPolicyMode(typed.child)
+	case *streamingAdaptiveLeaf[T]:
+		return lossyPolicyMode(typed.child)
+	}
+	if precision, ok := any(rule).(interface{ currentPrecisionLevel() uint32 }); ok && precision.currentPrecisionLevel() > 0 {
+		return RuleModeLossy
+	}
+	return inspectionModeOf(rule)
 }
 
 func (*inspectionDetailsRule[T]) rule() {}
 func (r *inspectionDetailsRule[T]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	child, reused := canonicalRuleStateReuse(r.child, ids, hints)
-	return &inspectionDetailsRule[T]{child: child, details: r.details, canonicalAlias: reused}
+	return &inspectionDetailsRule[T]{child: child, details: r.details, mode: r.mode, canonicalAlias: reused}
 }
 func (r *inspectionDetailsRule[T]) validate(v T) error { return r.child.validate(v) }
 func (r *inspectionDetailsRule[T]) insert(v T, id uint32) {
@@ -36,10 +61,15 @@ func (r *inspectionDetailsRule[T]) collectBuildStatistics(s []nodeBuildStatistic
 	r.child.collectBuildStatistics(s)
 }
 func (r *inspectionDetailsRule[T]) optimize(total uint64) Rule[T] {
-	return &inspectionDetailsRule[T]{child: optimizeRule(r.child, total), details: r.details}
+	return &inspectionDetailsRule[T]{child: optimizeRule(r.child, total), details: r.details, mode: r.mode}
 }
-func (r *inspectionDetailsRule[T]) inspectionStrategy() string           { return inspectionStrategyOf(r.child) }
-func (r *inspectionDetailsRule[T]) inspectionMode() RuleMode             { return inspectionModeOf(r.child) }
+func (r *inspectionDetailsRule[T]) inspectionStrategy() string { return inspectionStrategyOf(r.child) }
+func (r *inspectionDetailsRule[T]) inspectionMode() RuleMode {
+	if r.mode != "" {
+		return r.mode
+	}
+	return inspectionModeOf(r.child)
+}
 func (r *inspectionDetailsRule[T]) inspectionDetails() inspectionDetails { return r.details }
 func (r *inspectionDetailsRule[T]) estimateCachedCardinality(v T, p *bitmapPool) (uint64, bool) {
 	estimator, ok := r.child.(cachedCardinalityEstimator[T])
@@ -107,7 +137,7 @@ func compileStreamingLossyTree[T any](rule Rule[T], identity bool, path string) 
 			details.MemoryLimitBytes, details.MemoryLimitAvailable = typed.limit, true
 			child = clampLossyDiagnosticLimits(child, typed.limit)
 		}
-		return &inspectionDetailsRule[T]{child: child, details: details}, nil
+		return &inspectionDetailsRule[T]{child: child, details: details, mode: lossyPolicyMode(child)}, nil
 	case *allRule[T]:
 		children := make([]Rule[T], len(typed.children))
 		for i, child := range typed.children {
@@ -124,7 +154,9 @@ func compileStreamingLossyTree[T any](rule Rule[T], identity bool, path string) 
 			return nil, err
 		}
 		details := refreshedStreamingRuleDetails(child, inspectionDetailsOf(child))
-		return &inspectRule[T]{dst: typed.dst, child: &inspectionDetailsRule[T]{child: child, details: details}}, nil
+		return &inspectRule[T]{dst: typed.dst, child: &inspectionDetailsRule[T]{
+			child: child, details: details, mode: lossyPolicyMode(child),
+		}}, nil
 	default:
 		provider, accounted := any(rule).(streamingDetailsProvider)
 		if _, ok := any(rule).(streamingFirstGenerationFactory[T]); !ok || !accounted {
@@ -136,7 +168,7 @@ func compileStreamingLossyTree[T any](rule Rule[T], identity bool, path string) 
 			}
 		}
 		details := provider.refreshedStreamingDetails(inspectionDetails{})
-		return &inspectionDetailsRule[T]{child: &streamingAdaptiveLeaf[T]{child: rule}, details: details}, nil
+		return &inspectionDetailsRule[T]{child: &streamingAdaptiveLeaf[T]{child: rule}, details: details, mode: RuleModeExact}, nil
 	}
 }
 
@@ -156,7 +188,7 @@ func clampLossyDiagnosticLimits[T any](rule Rule[T], limit uint64) Rule[T] {
 			limit = min(details.MemoryLimitBytes, limit)
 		}
 		details.MemoryLimitBytes, details.MemoryLimitAvailable = limit, true
-		return &inspectionDetailsRule[T]{child: clampLossyDiagnosticLimits(typed.child, limit), details: details}
+		return &inspectionDetailsRule[T]{child: clampLossyDiagnosticLimits(typed.child, limit), details: details, mode: typed.mode}
 	default:
 		return rule
 	}
