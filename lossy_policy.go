@@ -29,7 +29,10 @@ func lossyPolicyMode[T any](rule Rule[T]) RuleMode {
 	case *inspectionDetailsRule[T]:
 		return lossyPolicyMode(typed.child)
 	case *streamingAdaptiveLeaf[T]:
-		return lossyPolicyMode(typed.child)
+		if typed.approximate {
+			return RuleModeLossy
+		}
+		return RuleModeExact
 	}
 	return inspectionModeOf(rule)
 }

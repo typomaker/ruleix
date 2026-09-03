@@ -36,6 +36,17 @@ func buildExactStreamingEquality(order []int) *eqRule[streamingEqualityFixture, 
 	return rule
 }
 
+func TestEqualityModeBelongsToBuildPolicy(t *testing.T) {
+	rule := buildExactStreamingEquality([]int{0, 1, 2})
+	_, ruleSelectsMode := any(rule).(inspectionModer)
+	require.False(t, ruleSelectsMode)
+
+	adaptive := &streamingAdaptiveLeaf[streamingEqualityFixture]{child: rule}
+	require.Equal(t, RuleModeExact, lossyPolicyMode[streamingEqualityFixture](adaptive))
+	adaptive.fitStreamingNext()
+	require.Equal(t, RuleModeLossy, lossyPolicyMode[streamingEqualityFixture](adaptive))
+}
+
 func equalityGenerationShape(rule *eqRule[streamingEqualityFixture, string, uint64]) []uint64 {
 	keys := make([]uint64, 0, len(rule.values.sets))
 	rule.values.visit(func(key uint64, _ *equalitySet) { keys = append(keys, key) })

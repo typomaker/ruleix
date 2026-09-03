@@ -211,6 +211,12 @@ comparable-значение; после первого downgrade `K=uint64`, а 
 пока являются только build/streaming wrappers и не задают отдельный search
 engine.
 
+`eqRule` не определяет диагностический Exact/Lossy режим из physical key type
+или уровня quantizer-а. Режим фиксирует build-политика: streaming-контроллер
+помечает лист Lossy только после выполненного downgrade, а при публикации эта
+метаинформация переносится в `inspectionDetailsRule`. Поэтому runtime equality
+rule отвечает только за единый physical/search path.
+
 Для equality level 0 использует `V` напрямую и не вызывает semantic codec.
 Первый переход хеширует каждый distinct `V` и создаёт новое поколение с
 `uint64`; уровни 1–17 последовательно очищают младшие биты. Поэтому после
