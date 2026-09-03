@@ -224,6 +224,25 @@ go test -run '^$' \
 go tool pprof -top -cum /tmp/ruleix-streaming-step8.cpu
 ```
 
+## 2026-09-03: frozen equality lookup отклонён
+
+На Apple M1 Max, Go 1.26.0 проверен общий lifecycle
+`equalityIndex`: inline → mutable map → frozen open-addressed table. Стратегия
+выбиралась физическим типом `uint64`, сохранялась при rebuild и не добавляла
+знания exact/lossy в `eqRule`. После публикации build map освобождалась.
+
+Budget25 `IndexRotating` улучшился с 902,9 до 867,8 ns/op; CPU profile заменил
+примерно 560 ms `mapaccess2_fast64` на 310 ms frozen lookup. Retained memory
+10K/4 equality index снизилась с 1 197 014 до 920 029 bytes при Budget25 и с
+1 912 714 до 1 641 888 bytes при Budget50. Search allocations не изменились.
+
+Кандидат отклонён: дополнительная ветка подняла compiler inline cost общего
+generic `equalityIndex.get` до 122 при budget 80. Exact map microbenchmark
+ухудшился с 6,11–6,41 до 6,63–6,82 ns/op; исходная inline-форма — с
+2,79 до 3,34 ns/op до sentinel-перекомпоновки. Отдельный helper и физическая
+специализация `uint64` не позволили сохранить оба exact fast path. Прототип и
+временные benchmarks удалены.
+
 ## Шаблон следующего релиза
 
 ```markdown
