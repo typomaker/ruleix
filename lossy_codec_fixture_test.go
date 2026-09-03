@@ -75,6 +75,24 @@ func TestLossyCodecUnsupportedCompositeErrors(t *testing.T) {
 	testUnsupportedCodecFixture(t, "interface-field", fixtureInterfaceStruct{})
 }
 
+func TestExactEqualityDoesNotRequireLossyCodec(t *testing.T) {
+	constraints := []codecFixtureConstraint[fixtureInterfaceStruct]{
+		{value: fixtureInterfaceStruct{value: "alpha"}, present: true},
+		{value: fixtureInterfaceStruct{value: "beta"}, present: true},
+	}
+	get := func(value codecFixtureConstraint[fixtureInterfaceStruct]) (fixtureInterfaceStruct, bool) {
+		return value.value, value.present
+	}
+	index, err := New[codecFixtureConstraint[fixtureInterfaceStruct], int](Include(get)).Build(
+		Zip(constraints, []int{1, 2}),
+	)
+	require.NoError(t, err)
+
+	var matches []int
+	index.Search(constraints[0], &matches)
+	require.Equal(t, []int{1}, matches)
+}
+
 func TestEqualityCodecUUIDHashesEveryByte(t *testing.T) {
 	codec, err := compileEqualityCodec[fixtureUUID]()
 	require.NoError(t, err)

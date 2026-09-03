@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/RoaringBitmap/roaring/v2"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -103,7 +102,8 @@ func TestEqualityAdaptiveLeafPublishesOnlyPreparedGeneration(t *testing.T) {
 	require.Equal(t, uint32(1), lossy.quantizer.level)
 
 	unsupported := &eqRule[streamingEqualityFixture, any, any]{
-		wildcard: roaring.New(), values: newEqualityIndex[any](0), codecErr: assert.AnError,
+		wildcard: roaring.New(), values: newEqualityIndex[any](0),
+		firstGeneration: prepareExactEqualityFirstGeneration[streamingEqualityFixture, any],
 	}
 	_, _, ok = unsupported.prepareStreamingFirstGeneration()
 	require.False(t, ok)

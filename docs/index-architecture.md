@@ -217,6 +217,11 @@ engine.
 метаинформация переносится в `inspectionDetailsRule`. Поэтому runtime equality
 rule отвечает только за единый physical/search path.
 
+Exact `Include` не компилирует lossy codec и принимает любой `comparable` тип,
+который может хранить `equalityIndex[V]`. Codec компилируется лениво только при
+подготовке первого lossy-поколения; неподдерживаемый semantic type поэтому
+отклоняет `Lossy(...).Build`, но не ограничивает Exact API.
+
 Для equality level 0 использует `V` напрямую и не вызывает semantic codec.
 Первый переход хеширует каждый distinct `V` и создаёт новое поколение с
 `uint64`; уровни 1–17 последовательно очищают младшие биты. Поэтому после

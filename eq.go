@@ -261,7 +261,6 @@ type eqRule[T any, V comparable, K comparable] struct {
 	wildcardSource  physicalSourceID
 	wildcardClass   uint32
 	codec           equalityCodec[V]
-	codecErr        error
 	quantizer       equalityQuantizer
 	encode          func(V, equalityQuantizer) K
 	coarsen         func(K, equalityQuantizer) K
@@ -288,13 +287,13 @@ func (r *eqRule[T, V, K]) canonicalDescriptor() canonicalRuleDescriptor {
 func (r *eqRule[T, V, K]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
 	return &eqRule[T, V, K]{
-		nodeID: id, get: r.get, codec: r.codec, codecErr: r.codecErr,
+		nodeID: id, get: r.get, codec: r.codec,
 		encode: r.encode, coarsen: r.coarsen, less: r.less, firstGeneration: r.firstGeneration,
 		wildcard: roaring.New(),
 		values:   newEqualityIndex[K](capacityHint(hints.node(id).equalityValues)),
 	}
 }
-func (r *eqRule[T, V, K]) validate(T) error { return r.codecErr }
+func (*eqRule[T, V, K]) validate(T) error { return nil }
 func (r *eqRule[T, V, K]) insert(v T, id uint32) {
 	value, ok := r.get(v)
 	if !ok {

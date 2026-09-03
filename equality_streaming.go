@@ -53,11 +53,14 @@ func (r *eqRule[T, V, K]) prepareStreamingFirstGeneration() (uint64, Rule[T], bo
 func prepareExactEqualityFirstGeneration[T any, V comparable](
 	r *eqRule[T, V, V],
 ) (uint64, Rule[T], bool) {
-	if r.quantizer.level != 0 || r.codecErr != nil || r.codec.hash == nil {
+	if r.quantizer.level != 0 {
+		return 0, nil, false
+	}
+	codec, err := compileEqualityCodec[V]()
+	if err != nil {
 		return 0, nil, false
 	}
 	quantizer := newEqualityQuantizer(1)
-	codec := r.codec
 	candidate := &eqRule[T, V, uint64]{
 		nodeID: r.nodeID, get: r.get, wildcard: r.wildcard, codec: codec,
 		quantizer: quantizer,
