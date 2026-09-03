@@ -97,9 +97,9 @@ Rule-схема + поток (constraint, external ID)
 Внутренний эксперимент ID chunking может во время специальных benchmark-build
 передавать положительному дереву номер непрерывного чанка вместо точного ID.
 Rules по-прежнему видят обычный `uint32`; `Index` хранит shift и разворачивает
-чанки только при `Search`/`Visit`. Публичный Build использует shift 0, поэтому
-его физическая модель и поведение не изменены. Эксперимент не допускает
-`Exclude`, пока negative postings не отделены до remap точных ID.
+чанки только при `Search`/`Visit`. Chunked `All` отключает exact-ID shortcuts и
+использует полные bitmap operands. Публичный Build использует shift 0, а
+эксперимент не допускает `Exclude` до отделения negative postings.
 
 ### Equality (`Include`)
 

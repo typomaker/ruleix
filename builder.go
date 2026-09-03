@@ -275,6 +275,12 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	}
 	prepareRuleSearch(ix.observedRoot)
 	prepareRuleSearch(ix.root)
+	if ix.idChunkShift != 0 {
+		disableChunkUnsafeExecution(ix.observedRoot)
+		if ix.root != ix.observedRoot {
+			disableChunkUnsafeExecution(ix.root)
+		}
+	}
 	ix.nodes = int(ids.next)
 	for _, inspection := range inspections {
 		for _, id := range inspection.nodes {
@@ -292,6 +298,25 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		}})
 	}
 	return ix, statistics, nil
+}
+
+// Chunk postings preserve bitmap semantics, but per-ID operations assume that
+// an operand names one exact rule. Force chunked All execution through complete
+// bitmap operands so Index and Local retain the same conservative result.
+func disableChunkUnsafeExecution[T any](rule Rule[T]) {
+	switch typed := rule.(type) {
+	case *allRule[T]:
+		typed.directIDComplete = false
+		for i := range typed.execution {
+			typed.execution[i].directID = nil
+			typed.execution[i].filter = nil
+		}
+		for _, child := range typed.children {
+			disableChunkUnsafeExecution(child)
+		}
+	case *inspectedRuntimeRule[T]:
+		disableChunkUnsafeExecution(typed.child)
+	}
 }
 
 // Zip pairs equally sized constraint and ID slices into a sequence accepted by

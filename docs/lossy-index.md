@@ -446,40 +446,10 @@ rate because their false-positive boundary depends on the query value.
 
 ## Эксперимент с чанками внутренних ID
 
-На этапе Build можно передавать положительному rule-дереву не плотный
-`internalID`, а `internalID >> shift`. Сами rules, postings, planner и bitmap
-операции при этом не знают о новом пространстве: только финальная выдача
-разворачивает найденный chunk в соответствующий непрерывный диапазон
-`Index.values`. Прототип пока доступен лишь через внутренний `buildOptions`, не
-меняет публичный `Lossy` API и явно отклоняет деревья с `Exclude`.
-
-Измерение 2026-09-03 выполнено на Apple M1 Max командой
-`go test -run '^$' -bench '^BenchmarkExperimentalIDChunking$' -benchmem
--benchtime=500ms -count=3 .` для 100 000 уникальных ID и двух equality-полей.
-Key quantization была отключена identity-lossy контролем, поэтому серия
-изолирует только ID chunking.
-
-| Shift | IDs/chunk | Accounted posting bytes | IDs/result | Search |
-| ---: | ---: | ---: | ---: | ---: |
-| 0 | 1 | 401 632 | 190 | 9.0–9.8 us |
-| 1 | 2 | 340 512 | 760 | 5.7 us |
-| 2 | 4 | 340 512 | 3 036 | 7.8 us |
-| 3 | 8 | 340 512 | 12 152 | 13.1 us |
-| 4 | 16 | 340 512 | 48 592 | 27.4 us |
-
-На этой форме данных первый уровень сохранил около 15% accounted posting
-memory и ускорил поиск, но увеличил кандидатов в четыре раза. Дальнейшее
-укрупнение не сохранило память: доминировать начали equality keys и metadata,
-тогда как candidate amplification продолжил расти. Это пока локальный
-результат, а не решение о включении механизма: следующий gate — production
-shape с реальной повторяемостью ID между postings и сопоставимый `shift=0`
-search check относительно предыдущей ревизии. Первый такой check сравнил
-рабочее дерево с baseline `d62908c9bea7` командами `go test -run '^$' -bench
-'^(BenchmarkEq|BenchmarkAll)$' -benchmem -benchtime=300ms -count=3 .`.
-Измеренные диапазоны не показали регрессии: например HighCardinality Hit был
-297.2–298.9 против 298.9–301.3 ns/op, All/Flat 4.36–4.54 против 4.60–4.63
-us/op; allocations совпали во всех формах. Это короткий локальный screening,
-а не release-grade performance checkpoint.
+Внутренний прототип, synthetic и production-shape измерения, профили и
+выявленное ограничение exact-ID shortcuts описаны в
+[`lossy-id-chunk-experiment.md`](lossy-id-chunk-experiment.md). Механизм не
+является публичной частью `Lossy` и пока остаётся исследованием.
 
 ## Validation and rollout
 

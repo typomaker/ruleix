@@ -2,12 +2,31 @@ package ruleix
 
 import (
 	"fmt"
+	"iter"
 	"math"
 	"testing"
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/require"
 )
+
+// BuildIDChunkExperiment exposes the internal control to external-package
+// production fixtures without making it part of the library API.
+func BuildIDChunkExperiment[C any, ID comparable](
+	schema Rule[C],
+	entries iter.Seq2[C, ID],
+	shift uint8,
+) (*Index[C, ID], uint64, error) {
+	index, _, err := buildIndexPhysicalAliases(
+		Lossy(schema, MemoryLimit(math.MaxUint64)), entries, false, nil,
+		buildOptions{compilePhysicalAliases: true, enableStreaming: true, identityLossy: true, idChunkShift: shift},
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	retained, _ := currentLossyUsage(index.root)
+	return index, retained, nil
+}
 
 type idChunkFixture struct {
 	left  int
@@ -93,6 +112,17 @@ func TestExperimentalIDChunkingValidationAndWideDecode(t *testing.T) {
 	require.Len(t, result, len(values))
 	require.Equal(t, 0, result[0])
 	require.Equal(t, len(values)-1, result[len(result)-1])
+
+	var inspector Inspector
+	constraints := []idChunkFixture{{left: 1, right: 1}, {left: 1, right: 2}}
+	observed, _, observedErr := buildIndexPhysicalAliases(
+		Inspect(&inspector, idChunkSchema()), Zip(constraints, []int{1, 2}), false, nil,
+		buildOptions{compilePhysicalAliases: true, enableStreaming: true, identityLossy: true, idChunkShift: 1},
+	)
+	require.NoError(t, observedErr)
+	var observedMatches []int
+	require.True(t, observed.Search(idChunkFixture{left: 1, right: 1}, &observedMatches))
+	require.Equal(t, []int{1, 2}, observedMatches)
 }
 
 // BenchmarkExperimentalIDChunking isolates ID-space coarsening from key
