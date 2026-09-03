@@ -268,6 +268,7 @@ streaming downgrade; полный и race test gates пройдены.
 
 | Эксперимент | Результат | Почему отклонён |
 | --- | --- | --- |
+| Уплотнить `equalityPhysicalKey` с отдельного bool-tag до `bucket+1` | Общий ключ уменьшился с 32 до 24 bytes для string, но focused Exact rotating ухудшился с прежних ~1,20 до медианы 1,23 мкс (разброс до 1,36 мкс); 32 B/op и 2 allocations не изменились. | CPU attribution указывает на стоимость hash полного tagged key, а не только его padding. Вариант удалён; отдельный exact map нарушил бы единый physical-index контракт и не рассматривался как допустимое исправление. |
 | Скомпилированная цепочка валидатора exact query key | L1 parent 228,0 → candidate 261,1 ns/op (+14,5%); 0/7 paired wins; профиль: 71,2% cumulative CPU в цепочке closures. | Go не встроил разнородные typed closures: косвенный вызов на каждом leaf заменил interface dispatch, но не создал fused machine code и оказался дороже. Кандидат удалён. |
 | Direct-ID cutover 16 вместо 8 | Cold Local 459,6 → 453,1 µs (−1,4%), churn 1 416 → 1 409 ns (−0,5%): ниже 10% gate. | Более широкий cutover почти не затронул production range-materialization bottleneck; порог возвращён к 8. |
 | Compiled warm-Local plan routing | End-to-end warm Local улучшился лишь на 0,34%; кандидат выиграл 4 из 7 пар, drift был больше эффекта. | Внутренний профиль улучшился, но пользовательский сценарий — нет; дополнительный routing удалён. |

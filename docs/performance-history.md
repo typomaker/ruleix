@@ -1,12 +1,15 @@
 # История производительности
 
-## 2026-09-02: незавершённый production gate общей реализации
+## 2026-09-03: release gate шага 12 остаётся открыт
 
-Unified `6855a8a` против `0598735`: production Lossy50 median вырос
-27 456 → 46 344 ns/op для Index и 248,2 → 318,1 ns/op для warm Local;
-candidates 80 → 150, allocations 15 → 16. Реализация сохранена, причины,
-профили, пройденные gates и пути исправления записаны в
-[`unified-index-production-shape.md`](unified-index-production-shape.md).
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`), candidate `12c5b23` + `79be577`. `300ms x5`: production Exact Index 34,6 → 31,5 мкс,
+40 803 → 40 802 B/op, 28 allocs; Local 227,3 → 228,2 нс, 0 allocs. Equality-only
+production остался ~16,2 мкс/228 нс (20/0 allocs), но synthetic four-leaf Exact вырос 842 → 1 202 нс и Budget50 776 → 1 037 нс. CPU profile связал дельту с
+tagged-key lookup вместо release `map[string]`; allocations прежние. Уплотнение
+key 32 → 24 bytes не помогло и удалено; public-search gate открыт.
+Attribution `200ms x3` также нашёл terminal-time false negative: 24 Lossy против 10 682 Exact; comparator boundaries дают 20 106 и superset. Full/race прошли.
+Сырые отчёты: `/tmp/ruleix-step12/`; команда release-серии —
+`go test -run '^$' -bench 'BenchmarkProductionShapeSearch|BenchmarkLossyAllSearchQuality|BenchmarkLossyAllSearchRuntime' -benchmem -benchtime=300ms -count=5 .`.
 ## 2026-09-02: lossy range aggregate checkpoint
 
 Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Baseline
@@ -16,7 +19,6 @@ candidates 80 → 150, allocations 15 → 16. Реализация сохран�
 15/0 allocations. Mixed Lossy50 сохранил 3,069 candidates/query и allocation
 classes; `Index.Search` median 47 604 → 46 766 ns/op. Exact не менялся и в
 candidate серии дал 50 096 ns/op и 59,47 ns/op для Index/warm Local.
-
 Focused 1 024-leaf диапазон, `benchtime=500ms`, `count=5`, сравнил прежний
 leaf union с теми же postings через aggregates: median 269 577 → 60 737 ns/op,
 6 160 → 3 856 B/op, 11 → 10 allocs/op. Команды:

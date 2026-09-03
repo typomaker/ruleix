@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Lossy ordered `time.Time` now uses nested comparator boundaries instead of
+  Unix-second terminal sentinels, preventing false negatives when extreme
+  pressure reaches the widest level.
 - Lossy build no longer contains the legacy representation planner, static
   ladders, capacity-based pairwise ordered merges, or universal-tail wrapper.
   Policies now publish one current generation and derive only its next nested
