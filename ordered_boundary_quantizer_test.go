@@ -117,6 +117,40 @@ func TestComparatorBoundaryLookupCoversBlocksAndOpenEdges(t *testing.T) {
 	require.Equal(t, 300, roundedOrderedBoundary(&index, 300, true))
 }
 
+func TestComparatorLateExtremeJoinsTheNextWholeGeneration(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		dir      direction
+		late     int
+		upward   bool
+		expected int
+	}{
+		{name: "lower", dir: greaterThan, late: -10, expected: -10},
+		{name: "upper", dir: lessThan, late: 10, upward: true, expected: 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			exact := newOrderedIndex(cmp.Compare[int])
+			for id, value := range []int{0, 2, 4, 6} {
+				exact.insert(value, uint32(id))
+			}
+			current := rebuildOrderedBoundaries(&exact, tc.dir)
+			require.Equal(t, tc.late, roundedOrderedBoundary(&current, tc.late, tc.upward))
+			current.insert(tc.late, 99)
+			require.NotNil(t, current.exact(tc.late), "the open edge must be a physical boundary")
+
+			next := rebuildOrderedBoundaries(&current, tc.dir)
+			require.Equal(t, tc.expected, roundedOrderedBoundary(&next, tc.late, tc.upward))
+			preserved := false
+			for _, block := range next.blocks {
+				for _, item := range block.items {
+					preserved = preserved || item.bits.Contains(99)
+				}
+			}
+			require.True(t, preserved, "the next rebuild must preserve the late ID")
+		})
+	}
+}
+
 func TestComparatorBoundaryFirstGenerationNeedsTwoKeys(t *testing.T) {
 	rule := &orderedRule[int, boundaryFixture]{
 		compare: compareBoundaryFixture, wildcard: roaring.New(), index: newOrderedIndex(compareBoundaryFixture),

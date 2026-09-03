@@ -334,10 +334,10 @@ func TestLossyEqualityLocalQueryKeyIsCollisionSafe(t *testing.T) {
 }
 
 func TestLossyCompareByLocalQueryKeyUsesPreparedComparator(t *testing.T) {
-	rule := &quantizedCompareByRule[lossyScalarConstraint[int], int]{&compareByRule[lossyScalarConstraint[int], int]{
+	rule := &compareByRule[lossyScalarConstraint[int], int]{
 		value:   func(v lossyScalarConstraint[int]) (int, bool) { return v.value, v.present },
 		compare: cmp.Compare[int],
-	}}
+	}
 	var provider localQueryKeyProvider[lossyScalarConstraint[int]] = rule
 	query := lossyScalarConstraint[int]{value: 7, present: true}
 	key, retained := provider.localQueryKey(query)

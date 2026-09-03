@@ -2,24 +2,9 @@ package ruleix
 
 import "github.com/RoaringBitmap/roaring/v2"
 
-func (*quantizedCompareByRule[T, V]) streamingLossyAccumulator()                            {}
-func (r *quantizedCompareByRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
-func (*quantizedCompareByRule[T, V]) validate(T) error                                      { return nil }
-func (r *quantizedCompareByRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
-	descriptor := r.compareByRule.canonicalDescriptor()
-	descriptor.schema = r
-	return descriptor
-}
+func (*compareByRule[T, V]) streamingLossyAccumulator() {}
 
-func (*quantizedCompareByRule[T, V]) inspectionMode() RuleMode { return RuleModeLossy }
-func (r *quantizedCompareByRule[T, V]) optimize(total uint64) Rule[T] {
-	if r.wildcard.GetCardinality() == total {
-		return newMatchAllRule[T](r.wildcard)
-	}
-	return r
-}
-
-func (r *quantizedCompareByRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+func (r *compareByRule[T, V]) quantizedStreamingDetails(details inspectionDetails) inspectionDetails {
 	usage := uint64(24) + bitmapBytes(r.wildcard)
 	items := r.wildcard.GetCardinality()
 	var granularity uint64
@@ -40,13 +25,12 @@ func (r *quantizedCompareByRule[T, V]) refreshedStreamingDetails(details inspect
 
 func (r *compareByRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
 	clone := cloneCompareByRule(r)
-	candidate := &quantizedCompareByRule[T, V]{clone}
-	usage, apply, ok := candidate.prepareStreamingNext()
+	usage, apply, ok := clone.prepareStreamingNext()
 	if !ok {
 		return 0, nil, false
 	}
 	apply()
-	return usage, candidate, true
+	return usage, clone, true
 }
 
 func cloneCompareByRule[T any, V any](r *compareByRule[T, V]) *compareByRule[T, V] {
@@ -60,7 +44,7 @@ func cloneCompareByRule[T any, V any](r *compareByRule[T, V]) *compareByRule[T, 
 	return &clone
 }
 
-func (r *quantizedCompareByRule[T, V]) selectedStreamingIndex() int {
+func (r *compareByRule[T, V]) selectedStreamingIndex() int {
 	selected := -1
 	for operator, index := range r.indexes {
 		if index == nil || index.buildStatistics().uniqueValues <= 1 ||
@@ -74,7 +58,7 @@ func (r *quantizedCompareByRule[T, V]) selectedStreamingIndex() int {
 	return selected
 }
 
-func (r *quantizedCompareByRule[T, V]) fitStreamingLimit(limit uint64) {
+func (r *compareByRule[T, V]) fitStreamingLimit(limit uint64) {
 	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit {
 		if _, apply, ok := r.prepareStreamingNext(); ok {
 			apply()
@@ -83,17 +67,17 @@ func (r *quantizedCompareByRule[T, V]) fitStreamingLimit(limit uint64) {
 		}
 	}
 }
-func (r *quantizedCompareByRule[T, V]) fitStreamingNext() {
+func (r *compareByRule[T, V]) fitStreamingNext() {
 	if _, apply, ok := r.prepareStreamingNext(); ok {
 		apply()
 	}
 }
-func (r *quantizedCompareByRule[T, V]) nextStreamingUsage() (uint64, bool) {
+func (r *compareByRule[T, V]) nextStreamingUsage() (uint64, bool) {
 	usage, _, ok := r.prepareStreamingNext()
 	return usage, ok
 }
 
-func (r *quantizedCompareByRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
+func (r *compareByRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
 	selected := r.selectedStreamingIndex()
 	if selected < 0 {
 		return 0, nil, false
@@ -121,10 +105,10 @@ func (r *quantizedCompareByRule[T, V]) prepareStreamingNext() (uint64, func(), b
 			}
 		}
 	}
-	clone := cloneCompareByRule(r.compareByRule)
+	clone := cloneCompareByRule(r)
 	clone.indexes[selected] = &next
 	clone.quantizers[selected], clone.boundaries[selected], clone.levels[selected] = quantizer, boundaries, nextLevel
-	usage := (&quantizedCompareByRule[T, V]{clone}).refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
+	usage := clone.quantizedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
 	return usage, func() {
 		r.indexes[selected] = &next
 		r.quantizers[selected], r.boundaries[selected], r.levels[selected] = quantizer, boundaries, nextLevel

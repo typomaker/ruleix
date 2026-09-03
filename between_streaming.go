@@ -1,21 +1,8 @@
 package ruleix
 
-func (*quantizedBetweenRule[T, V]) streamingLossyAccumulator()                            {}
-func (r *quantizedBetweenRule[T, V]) newState(*nodeIDAllocator, *buildStatistics) Rule[T] { return r }
-func (*quantizedBetweenRule[T, V]) validate(T) error                                      { return nil }
-func (r *quantizedBetweenRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
-	descriptor := r.betweenRule.canonicalDescriptor()
-	descriptor.schema = r
-	return descriptor
-}
-func (*quantizedBetweenRule[T, V]) inspectionMode() RuleMode { return RuleModeLossy }
-func (r *quantizedBetweenRule[T, V]) optimize(total uint64) Rule[T] {
-	if r.from.wildcard.GetCardinality() == total && r.until.wildcard.GetCardinality() == total {
-		return newMatchAllRule[T](r.from.wildcard)
-	}
-	return r
-}
-func (r *quantizedBetweenRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+func (*betweenRule[T, V]) streamingLossyAccumulator() {}
+
+func (r *betweenRule[T, V]) quantizedStreamingDetails(details inspectionDetails) inspectionDetails {
 	fromMemory, fromItems, _ := quantizedOrderedAccounting(&r.from.index, r.from.wildcard)
 	untilMemory, untilItems, _ := quantizedOrderedAccounting(&r.until.index, r.until.wildcard)
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = fromMemory+untilMemory, true
@@ -27,13 +14,12 @@ func (r *quantizedBetweenRule[T, V]) refreshedStreamingDetails(details inspectio
 
 func (r *betweenRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
 	clone := cloneBetweenRule(r)
-	candidate := &quantizedBetweenRule[T, V]{clone}
-	usage, apply, ok := candidate.prepareStreamingNext()
+	usage, apply, ok := clone.prepareStreamingNext()
 	if !ok {
 		return 0, nil, false
 	}
 	apply()
-	return usage, candidate, true
+	return usage, clone, true
 }
 
 func cloneBetweenRule[T any, V any](r *betweenRule[T, V]) *betweenRule[T, V] {
@@ -44,7 +30,7 @@ func cloneBetweenRule[T any, V any](r *betweenRule[T, V]) *betweenRule[T, V] {
 	return &clone
 }
 
-func (r *quantizedBetweenRule[T, V]) selectStreamingSide() *orderedRule[T, V] {
+func (r *betweenRule[T, V]) selectStreamingSide() *orderedRule[T, V] {
 	fromAvailable := orderedStreamingAvailable(r.from)
 	untilAvailable := orderedStreamingAvailable(r.until)
 	if fromAvailable && (!untilAvailable || r.from.index.buildStatistics().uniqueValues >= r.until.index.buildStatistics().uniqueValues) {
@@ -64,7 +50,7 @@ func orderedStreamingAvailable[T any, V any](side *orderedRule[T, V]) bool {
 		side.level < side.transform.fixed.terminalLevel()
 }
 
-func (r *quantizedBetweenRule[T, V]) fitStreamingLimit(limit uint64) {
+func (r *betweenRule[T, V]) fitStreamingLimit(limit uint64) {
 	for r.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes > limit {
 		if _, apply, ok := r.prepareStreamingNext(); ok {
 			apply()
@@ -73,16 +59,16 @@ func (r *quantizedBetweenRule[T, V]) fitStreamingLimit(limit uint64) {
 		}
 	}
 }
-func (r *quantizedBetweenRule[T, V]) fitStreamingNext() {
+func (r *betweenRule[T, V]) fitStreamingNext() {
 	if _, apply, ok := r.prepareStreamingNext(); ok {
 		apply()
 	}
 }
-func (r *quantizedBetweenRule[T, V]) nextStreamingUsage() (uint64, bool) {
+func (r *betweenRule[T, V]) nextStreamingUsage() (uint64, bool) {
 	usage, _, ok := r.prepareStreamingNext()
 	return usage, ok
 }
-func (r *quantizedBetweenRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
+func (r *betweenRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
 	selected := r.selectStreamingSide()
 	if selected == nil {
 		return 0, nil, false

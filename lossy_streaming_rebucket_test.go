@@ -355,10 +355,10 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		require.IsType(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
 	})
 	t.Run("between", func(t *testing.T) {
-		rule := &quantizedBetweenRule[streamingOrderedFixture, int]{&betweenRule[streamingOrderedFixture, int]{
+		rule := &betweenRule[streamingOrderedFixture, int]{
 			from: orderedSide(greaterThan), until: orderedSide(lessThan), compare: cmp.Compare[int],
-		}}
-		require.Same(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
+		}
+		require.IsType(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
 		require.Equal(t, canonicalBetween, rule.canonicalDescriptor().representation)
 		require.IsType(t, &matchAllRule[streamingOrderedFixture]{}, rule.optimize(0))
 		_, apply, ok := rule.prepareStreamingNext()
@@ -386,8 +386,8 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 			eqMinimum: 1, eqMaximum: 3,
 		}
 		common.indexes[0] = &orderedSide(lessThan).index
-		rule := &quantizedCompareByRule[streamingOrderedFixture, int]{common}
-		require.Same(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
+		rule := common
+		require.IsType(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
 		require.Equal(t, canonicalCompareBy, rule.canonicalDescriptor().representation)
 		require.IsType(t, &matchAllRule[streamingOrderedFixture]{}, rule.optimize(0))
 		_, apply, ok := rule.prepareStreamingNext()

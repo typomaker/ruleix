@@ -299,13 +299,15 @@ strict/inclusive семантика matcher не меняется. Numeric/time 
 `orderedIndex`: новый уровень группирует соседние ключи и выбирает наружный
 край. Отдельный boundary-массив не хранится и reflection/getter codec не
 определяют порядок. Поздний внешний extreme остаётся новым крайним ключом до
-следующего полного rebuild, а не запускает pairwise coarsening при insert.
+следующего полного rebuild, а immutable search использует такой ключ лишь как
+transient boundary и не меняет index. На следующем pressure checkpoint extreme
+участвует в полном rebuild вместе со всеми ключами поколения.
 Последний `prepareSearch` строит обычные block aggregates, prefix sums и
 routing, поэтому finest lossy больше не выполняет линейный union legacy
 buckets. `Between` и `CompareBy` теперь используют те же `orderedRule` и
-`orderedIndex`: build-only wrappers `quantizedBetweenRule` и
-`quantizedCompareByRule` управляют precision и streaming coarsening, а search,
-matcher и Local cache остаются exact-реализацией. Для сторон `Between` нижняя
+`orderedIndex`. Уровни и streaming rebuild принадлежат общим `betweenRule` и
+`compareByRule`; отдельных lossy runtime/search types нет, а mode сообщает
+только policy metadata. Для сторон `Between` нижняя
 граница округляется вниз, верхняя вверх. `CompareBy` выбирает направление
 отдельно для каждого оператора; quantized `EQ` находит первый верхний boundary
 не ниже query и ограничивает lookup сохранённой оболочкой observed domain.
@@ -313,21 +315,12 @@ Legacy `lossyComparedBuckets`, `lossyBetweenRule` и `lossyCompareByRule`
 удалены. Повторное огрубление независимо клонирует текущее поколение postings,
 объединяет соседнюю пару и не требует исходных exact values.
 
-`Inspect.Strategy` называет общее физическое семейство (`equality`, `ordered`,
-`between`, `compare-by`), а не lossy-вариант layout. Exact/lossy различаются
-через policy metadata в `Inspect.Mode`, а не через level или transformer
-физического rule; `Granularity` сообщает число выбранных quantized key
-classes. Финальная production-shape проверка обнаружила незавершённые latency,
-candidate-quality и deterministic-build gates; реализация сохраняется до
-исправления по отчёту
-[`unified-index-production-shape.md`](unified-index-production-shape.md).
-Ordered gate дополнительно зафиксировал детерминированный порядок equality
-posting rebuild: planner и повторное streaming coarsening сортируют `uint64`
-keys перед merge и публикацией, чтобы соседний aggregate pressure не зависел
-от randomized Go map iteration.
+`Inspect.Strategy` называет общее физическое семейство (`equality`, `ordered`, `between`, `compare-by`), а не lossy-вариант layout. Exact/lossy различаются
+через policy metadata в `Inspect.Mode`, а не через level или transformer физического rule; `Granularity` сообщает число выбранных quantized key classes. Equality posting rebuild сортирует `uint64` keys перед merge и
+публикацией, поэтому aggregate pressure не зависит от randomized Go map
+iteration.
 
-Build lifecycle разделяет mutable и immutable состояния. Streaming pressure и
-все downgrade выполняются до `optimizeRule`, bitmap interning и
+Build lifecycle разделяет mutable и immutable состояния. Streaming pressure и все downgrade выполняются до `optimizeRule`, bitmap interning и
 `prepareRuleSearch`. Только финальный `prepareSearch` строит `orderedIndex`
 routing, block prefixes и, где требуется оператором, range blocks; входной
 iterator для этого не перечитывается. После публикации Index эти структуры

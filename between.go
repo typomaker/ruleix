@@ -39,16 +39,23 @@ type betweenLocalQueryKey[V any] struct {
 }
 
 func (r *betweenRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+func (r *betweenRule[T, V]) currentPrecisionLevel() uint32 {
+	if r.from.level > r.until.level {
+		return r.from.level
+	}
+	return r.until.level
+}
 
 func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
 func (r *betweenRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	if r.from.level > 0 || r.until.level > 0 {
+		return r.quantizedStreamingDetails(details)
+	}
 	fromMemory, fromItems, fromDistinct, _ := orderedIndexLossyAccounting(&r.from.index, r.from.wildcard)
 	untilMemory, untilItems, untilDistinct, _ := orderedIndexLossyAccounting(&r.until.index, r.until.wildcard)
 	return representationDetails(fromMemory+untilMemory, fromItems+untilItems,
 		fromDistinct+untilDistinct, 0, false)
 }
-
-type quantizedBetweenRule[T any, V any] struct{ *betweenRule[T, V] }
 
 func (*betweenRule[T, V]) rule() {}
 func (r *betweenRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {

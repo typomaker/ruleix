@@ -49,9 +49,23 @@ type compareByLocalQueryKey[V any] struct {
 }
 
 func (r *compareByRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
+func (r *compareByRule[T, V]) currentPrecisionLevel() uint32 {
+	var current uint32
+	for _, level := range r.levels {
+		if level > current {
+			current = level
+		}
+	}
+	return current
+}
 
 func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
 func (r *compareByRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	for _, level := range r.levels {
+		if level > 0 {
+			return r.quantizedStreamingDetails(details)
+		}
+	}
 	memory := uint64(24) + bitmapBytes(r.wildcard)
 	items := r.wildcard.GetCardinality()
 	var distinct uint64
@@ -63,8 +77,6 @@ func (r *compareByRule[T, V]) refreshedStreamingDetails(details inspectionDetail
 	}
 	return representationDetails(memory, items, distinct, 0, false)
 }
-
-type quantizedCompareByRule[T any, V any] struct{ *compareByRule[T, V] }
 
 func compareByDirection(operator Operator) direction {
 	if operator == OperatorGT || operator == OperatorGTE {

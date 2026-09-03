@@ -149,21 +149,14 @@ level `N+1` is a boundary from level `N`, and the parent is computable without
 an exact value. The ordered postings, block aggregates, routing, matcher and
 Local cache remain the Exact implementations.
 
-Two selective-compaction follow-ups remain explicit experiments: compact only
-new keys until their depth catches the older generation, or choose the adjacent
-pair with the largest measured retained-byte release. Either alternative must
-first define deterministic mixed-depth semantics and preserve the exact-result
-superset before it can replace the current full-generation rebuild.
-Additionally, test a quality floor that rejects merges whose bitmap exceeds a
-limit such as the square root of the leaf's concrete unique-ID count. This is
-an experimental candidate-quality guard, not a fixed formula or API contract.
-
 Boundary lookup searches the physical index directly. No parallel boundary
 array is retained or omitted from memory accounting. A value inside the known
 range maps to the nearest outward boundary. A late value beyond either open
 edge remains its own new extreme key, because mapping it inward could create a
 false negative; the next pressure transition includes that key in the normal
-whole-generation rebuild. Late insertion never invokes pairwise coarsening.
+whole-generation rebuild. Immutable search uses the same transient edge key
+without inserting it. Late insertion changes neither the level nor the rest of
+the generation; the next parent is computed only from current physical keys.
 
 ### Compound ordered levels
 
@@ -178,11 +171,10 @@ edge through the same fused `Between` matcher and cache path.
 `LTE`, `GT`, and `GTE`). Pressure advances one complete operator index at a
 time. Range operators use their outward lower/upper direction; equality maps
 both inserted and searched values to the same physical bucket. All five
-indexes remain the common `orderedIndex`, and search, aggregate blocks,
-routing, candidate filtering, and Local caching remain shared with Exact.
+operator indexes and both `Between` sides remain in the common `compareByRule`, `betweenRule`, and `orderedIndex` types. There are no quantized compound runtime
+or search wrappers; Exact/Lossy mode comes only from policy metadata. Search, aggregate blocks, routing, candidate filtering, and Local caching remain shared with Exact.
 
-No compatibility planner remains. `Between` and `CompareBy` enter the same
-single-current-generation streaming state as standalone leaves and derive
+No compatibility planner remains. `Between` and `CompareBy` enter the same single-current-generation streaming state as standalone leaves and derive
 only the next complete side/operator generation when pressure requests it.
 Late inserts are transformed immediately at the selected per-side or
 per-operator level. Missing values, duplicates, strict/inclusive operators,
@@ -503,6 +495,5 @@ rate because their false-positive boundary depends on the query value.
 
 ## Validation and rollout
 
-Correctness gates compare exact and lossy results on generated and adversarial
-data; performance gates measure retained memory, candidate quality, latency and
-allocations. The active requirements and sequencing live in `ROADMAP.md`.
+Correctness gates compare exact and lossy results on generated and adversarial data; performance gates measure retained memory, candidate quality, latency and allocations. The active requirements and sequencing live in `ROADMAP.md`.
+Step 11 verification on 2026-09-03 used `go test ./...`, `go test -race ./...`, `go test ./... -count=5`, and `go test ./... -coverprofile=/tmp/ruleix-step11.cover`; all passed, repository coverage was 90.8%, and the changed production functions reported by `go tool cover -func` were fully covered except the existing `prepareStreamingNext`/limit branches (still above the 90% changed-code gate). No benchmarks or profiles were run.

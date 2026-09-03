@@ -428,7 +428,12 @@ production search code нет ветвления по Exact/Lossy. Benchmarks н
 
 ### 11. Закрыть семантику arbitrary comparator и финальный functional gate
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-03`
+
+Результат: late comparator extremes получили явную open-edge семантику и
+входят в следующий полный rebuild; `Between` и `CompareBy` лишились отдельных
+lossy runtime/search types, а full, race, differential, deterministic,
+hard-accounting и >90% changed-code coverage gates прошли без benchmarks.
 
 - Реализовать однозначную функцию текущего boundary level для arbitrary
   comparator. Внутри наблюдаемого диапазона она выбирает ближайшую retained
