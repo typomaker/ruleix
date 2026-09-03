@@ -39,10 +39,15 @@ func (r *streamingAdaptiveLeaf[T]) inspectionMode() RuleMode {
 	if r.approximate {
 		return RuleModeLossy
 	}
-	return inspectionModeOf(r.child)
+	return RuleModeExact
 }
 func (r *streamingAdaptiveLeaf[T]) inspectionStrategy() string { return inspectionStrategyOf(r.child) }
 func (r *streamingAdaptiveLeaf[T]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
-	return refreshedStreamingRuleDetails(r.child, details)
+	details = refreshedStreamingRuleDetails(r.child, details)
+	if r.approximate && details.DistinctValuesAvailable {
+		details.GranularityValue = details.DistinctValues
+		details.GranularityAvailable = true
+	}
+	return details
 }
 func (r *streamingAdaptiveLeaf[T]) canFitStreaming() bool { _, ok := r.nextStreamingUsage(); return ok }

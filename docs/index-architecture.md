@@ -301,6 +301,12 @@ Build-only `orderedRuleBuildState` отмечает квантованное п�
 удаляется до подготовки опубликованного дерева. Поздний внешний ключ остаётся новым крайним, внутренний присоединяется к
 ближайшей наружной границе. Standalone ordered rule повторно использует очищенный build-only backing array прежнего
 поколения; `finalizeBuild` удаляет его до публикации, а следующий pressure rebuild заново выбирает соседнюю пару.
+Флаг поколения не является режимом правила: `orderedRule`, `compareByRule` и
+`betweenRule` не реализуют `inspectionMode` и не выводят Exact/Lossy из своего
+build-state. Первый lossy-переход, последующие rebuild и diagnostic
+mode/granularity выбирает только внешний Build-policy wrapper
+`streamingAdaptiveLeaf`; опубликованное дерево сохраняет зафиксированную им
+inspection metadata.
 Последний `prepareSearch` строит обычные block aggregates, prefix sums и
 routing, поэтому finest lossy больше не выполняет линейный union legacy
 physical keys. `Between` и `CompareBy` теперь используют те же `orderedRule` и

@@ -199,13 +199,15 @@ func (r *streamingAdaptiveLeaf[T]) nextStreamingUsage() (uint64, bool) {
 		return r.nextUsage, r.nextUsageOK
 	}
 	r.nextUsagePrepared = true
-	if factory, ok := r.child.(streamingFirstGenerationFactory[T]); ok {
-		usage, next, available := factory.prepareStreamingFirstGeneration()
-		if available {
-			r.nextUsage, r.nextUsageOK, r.nextApply = usage, true, func() {
-				r.child, r.approximate = next, true
+	if !r.approximate {
+		if factory, ok := r.child.(streamingFirstGenerationFactory[T]); ok {
+			usage, next, available := factory.prepareStreamingFirstGeneration()
+			if available {
+				r.nextUsage, r.nextUsageOK, r.nextApply = usage, true, func() {
+					r.child, r.approximate = next, true
+				}
+				return usage, true
 			}
-			return usage, true
 		}
 	}
 	if preparer, ok := streamingRuleNextPreparer(r.child); ok {

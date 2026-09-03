@@ -188,20 +188,11 @@ func subtractOrderedBuildAccounting(left, right orderedBuildAccounting) orderedB
 func (r *orderedRule[T, V]) inspectionStrategy() string {
 	return "ordered"
 }
-func (r *orderedRule[T, V]) inspectionMode() RuleMode {
-	if r.build != nil && r.build.quantized {
-		return RuleModeLossy
-	}
-	return RuleModeExact
-}
 func (r *orderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
 	memory, items, distinct := quantizedOrderedAccounting(&r.index, r.wildcard)
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = memory, true
 	details.Items, details.ItemsAvailable = items, true
 	details.DistinctValues, details.DistinctValuesAvailable = distinct, true
-	if r.build != nil && r.build.quantized {
-		details.GranularityValue, details.GranularityAvailable = distinct, true
-	}
 	return details
 }
 

@@ -9,16 +9,10 @@ func (r *betweenRule[T, V]) quantizedStreamingDetails(details inspectionDetails)
 	details.Items, details.ItemsAvailable = fromItems+untilItems, true
 	distinct := uint64(r.from.index.buildStatistics().uniqueValues + r.until.index.buildStatistics().uniqueValues)
 	details.DistinctValues, details.DistinctValuesAvailable = distinct, true
-	if r.inspectionMode() == RuleModeLossy {
-		details.GranularityValue, details.GranularityAvailable = distinct, true
-	}
 	return details
 }
 
 func (r *betweenRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
-	if r.from.build != nil && r.from.build.quantized || r.until.build != nil && r.until.build.quantized {
-		return 0, nil, false
-	}
 	clone := cloneBetweenRule(r)
 	usage, apply, ok := clone.prepareStreamingNext()
 	if !ok {

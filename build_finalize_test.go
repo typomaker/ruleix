@@ -76,6 +76,37 @@ func TestBuildHelpersDefaultToExactWithoutTemporaryState(t *testing.T) {
 	require.Same(t, index.exact(7), rule.equalityBits(7))
 }
 
+func TestOrderedFamiliesDoNotExposeBuildMode(t *testing.T) {
+	index := newOrderedIndex(cmp.Compare[int])
+	index.insert(7, 1)
+	ordered := &orderedRule[int, int]{
+		compare: cmp.Compare[int], wildcard: roaring.New(), index: index,
+		build: &orderedRuleBuildState{quantized: true},
+	}
+	_, orderedSelectsMode := any(ordered).(inspectionModer)
+	require.False(t, orderedSelectsMode)
+
+	comparison := &compareByRule[int, int]{build: &compareByBuildState{}}
+	comparison.build.quantized[OperatorEQ] = true
+	_, comparisonSelectsMode := any(comparison).(inspectionModer)
+	require.False(t, comparisonSelectsMode)
+
+	between := &betweenRule[int, int]{from: ordered, until: ordered}
+	_, betweenSelectsMode := any(between).(inspectionModer)
+	require.False(t, betweenSelectsMode)
+
+	policy := &streamingAdaptiveLeaf[int]{child: ordered, approximate: true}
+	require.Equal(t, RuleModeLossy, policy.inspectionMode())
+	details := policy.refreshedStreamingDetails(inspectionDetails{})
+	require.True(t, details.GranularityAvailable)
+	require.Equal(t, details.DistinctValues, details.GranularityValue)
+
+	wrapped := wrapStreamingLossyLeaves[int](ordered)
+	wrappedPolicy, ok := wrapped.(*streamingAdaptiveLeaf[int])
+	require.True(t, ok)
+	require.True(t, wrappedPolicy.approximate)
+}
+
 func TestOrderedFinalizeBuildReleasesRebuildScratch(t *testing.T) {
 	rule := &orderedRule[int, int]{
 		build:         &orderedRuleBuildState{},

@@ -17,10 +17,8 @@ func wrapStreamingLossyLeaves[T any](rule Rule[T]) Rule[T] {
 			child: wrapStreamingLossyLeaves(typed.child), details: typed.details, mode: typed.mode,
 		}
 	default:
-		if inspectionModeOf(rule) == RuleModeLossy {
-			if _, ok := any(rule).(streamingLossyAccumulator); ok {
-				return &streamingAdaptiveLeaf[T]{child: rule}
-			}
+		if _, ok := any(rule).(streamingLossyAccumulator); ok {
+			return &streamingAdaptiveLeaf[T]{child: rule, approximate: true}
 		}
 		return rule
 	}

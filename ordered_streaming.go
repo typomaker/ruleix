@@ -48,7 +48,7 @@ func (r *orderedRule[T, V]) takeRebuildBlocks() []orderedBlock[V] {
 }
 
 func (r *orderedRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
-	if r.build != nil && r.build.quantized || r.index.buildStatistics().uniqueValues <= 1 {
+	if r.index.buildStatistics().uniqueValues <= 1 {
 		return 0, nil, false
 	}
 	candidate := &orderedRule[T, V]{

@@ -20,16 +20,10 @@ func (r *compareByRule[T, V]) quantizedStreamingDetails(details inspectionDetail
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = usage, true
 	details.Items, details.ItemsAvailable = items, true
 	details.DistinctValues, details.DistinctValuesAvailable = granularity, true
-	if r.inspectionMode() == RuleModeLossy {
-		details.GranularityValue, details.GranularityAvailable = granularity, true
-	}
 	return details
 }
 
 func (r *compareByRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
-	if r.inspectionMode() == RuleModeLossy {
-		return 0, nil, false
-	}
 	clone := cloneCompareByRule(r)
 	usage, apply, ok := clone.prepareStreamingNext()
 	if !ok {

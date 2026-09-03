@@ -64,16 +64,6 @@ type compareByLocalQueryKey[V any] struct {
 
 func (r *compareByRule[T, V]) runtimeNodeID() nodeID    { return r.nodeID }
 func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
-func (r *compareByRule[T, V]) inspectionMode() RuleMode {
-	if r.build != nil {
-		for operator, index := range r.indexes {
-			if index != nil && r.build.quantized[operator] {
-				return RuleModeLossy
-			}
-		}
-	}
-	return RuleModeExact
-}
 func (r *compareByRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
 	return r.quantizedStreamingDetails(details)
 }
