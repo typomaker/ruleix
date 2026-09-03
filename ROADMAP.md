@@ -462,13 +462,25 @@ search types отсутствуют и diff coverage изменённого prod
 
 Статус: `в работе`
 
-- После завершения шагов 1–11 снять сопоставимые Exact, identity-lossy и Lossy
-  серии для equality, standalone ordered, `Between`, `CompareBy`, production
-  `All`, mixed shared-key, range-heavy и adversarial workloads.
-- Измерить `Index.Search`, warm `Local.Search`, Build time, allocations,
-  accounted retained memory, candidates/query и observed false-positive rate.
-- Воспроизвести baseline/candidate interleaved runs и снять CPU/allocation
-  profiles для каждого обнаруженного search regression.
+Выполнено в рамках шага:
+
+- В `1508c7c` Exact и Lossy переведены на `equalityIndex[uint64]`: level 0 хранит
+  полный hash, уровни 1–17 очищают младшие биты; tagged key, исходное `V` в
+  physical index и fixed-arity equality rules удалены.
+- Equality search сопоставлен с `v0.8.2` на Apple M1 Max, Go 1.26.0,
+  `300ms x5`: equality-only Index 15 579 → 15 430 ns/op, Local 222,5 → 222,8;
+  two-leaf Index 19 035 → 18 748, Local 42,89 → 43,89; allocations прежние.
+- Production equality: 75% retained — 642 keys, 3 843 candidates/query, FP 0,09732; 50% — 184 keys, 25 392 candidates/query, FP 0,6652.
+- Прошли full tests `-count=5`, race, vet и coverage 91,4%; новые paths покрыты на 92,3–100%.
+
+Осталось выполнить:
+
+- Снять сопоставимые с `v0.8.2` Exact, identity-lossy и Lossy серии для equality,
+  ordered, `Between`, `CompareBy`, production `All`, mixed/range/adversarial.
+- Для каждого workload измерить search/build time, allocations, retained memory,
+  key count, max posting, candidates/query и observed false-positive rate.
+- Воспроизвести interleaved runs и снять profiles для каждой regression;
+  equality проверить и на распределениях с collision amplification.
 - Только на этом шаге выполнять performance-оптимизации; каждая оптимизация
   должна сохранять streaming-контракт и заново проходить correctness/memory
   gates шага 11.
