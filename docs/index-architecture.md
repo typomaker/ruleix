@@ -203,8 +203,11 @@ exact equality, хотя postings внутри индекса адресуютс
 
 ### Целевой контракт ключей общей exact/lossy-архитектуры
 
-Этот контракт описывает действующие общие posting-структуры; `quantized*Rule`
-остаются только build/streaming wrappers и не задают отдельный search engine.
+Этот контракт описывает действующие общие posting-структуры. Equality больше
+не имеет `quantizedEqualityRule`: Exact и Lossy публикуют один `eqRule` и один
+`equalityIndex[equalityPhysicalKey[V]]`. Оставшиеся ordered `quantized*Rule`
+пока являются только build/streaming wrappers и не задают отдельный search
+engine.
 
 `exact key` — полное build-скомпилированное представление значения, достаточное
 для сохранения семантики оператора без коллизий. Для equality два значения
@@ -245,12 +248,16 @@ bitmap-ы совпавших ключей и считает новое поко�
 
 Для equality диапазоном класса служит вложенный интервал полного hash-space.
 
-Первый streaming-переход equality теперь также ленивый: exact leaf считает
+Первый streaming-переход equality ленивый: exact leaf считает
 своё текущее retained-состояние напрямую и только после выбора pressure
-selector-ом строит одно независимое hash-prefix поколение. Будущие bucket
-representations при этом не создаются и не удерживаются. Публикация заменяет
-exact child целиком; все поздние insert сразу проходят через сохранённый
-quantizer, а следующие переходы вычисляют parent key только из текущего key.
+selector-ом строит одно независимое hash-prefix поколение того же `eqRule` и
+того же generic index. Tagged `equalityPhysicalKey[V]` содержит либо exact
+payload, либо bucket payload; bucket constructor всегда оставляет `V` нулевым,
+поэтому level 1+ не удерживает строки, указатели или другие данные exact key.
+Будущие bucket representations при этом не создаются и не удерживаются.
+Публикация заменяет поколение целиком; все поздние insert и все query lookup
+проходят через сохранённый transformer, а следующие переходы вычисляют parent
+key только из текущего bucket payload.
 Сортировка полных hash перед сборкой делает физическую форму одинаковой для
 ordered и shuffled input. Дубликаты ID объединяются общим `equalitySet`, а
 wildcard остаётся общей posting-семантикой Exact и Lossy.
@@ -357,17 +364,20 @@ Strict-оператор остаётся strict после преобразов�
 обычный Lossy после streaming downgrade. Команды проверки и сопоставимый
 baseline приведены в [`performance-history.md`](performance-history.md).
 
-Equality migration step 3 заменил отдельную map-backed lossy posting structure
-тем же generic `equalityIndex[K]` и `equalitySet`, которые использует Exact.
-Exact передаёт исходный `V` как ключ, а quantized representation компилирует
-`V -> hash -> uint64 class`; после этого lookup, posting merge, bitmap
-preparation, physical-source classes и Local value cache используют общие
-primitives. Коллизии transformed keys объединяются `equalityIndex.addSet`, а
-streaming pressure публикует независимое поколение через общий checked
-`rebuildPostingGeneration`. Новые streaming buckets немедленно переходят в
-bitmap-backed `equalitySet`, чтобы каждый concrete posting получил physical
-source до immutable finalization. Отдельный опубликованный тип
-`lossyEqualityRule` больше не существует.
+Equality unification step 9 завершил этот переход: единственный `eqRule`
+выполняет insert, search, cardinality, `matchesID`, planning lookup, Local cache,
+bitmap preparation/interning и equality-class assignment на всех уровнях.
+Его единственный `equalityIndex[equalityPhysicalKey[V]]` получает exact tagged
+key на level 0 и bucket tagged key после pressure. Коллизии transformed keys
+объединяются `equalityIndex.addSet`, а streaming pressure публикует независимое
+поколение через общий checked `rebuildPostingGeneration`. Смена generic
+specialization и отдельный lossy equality runtime/search wrapper отсутствуют.
+
+Функциональный gate шага 9 проверен 2026-09-03 командами `go test ./...`,
+`go test -race ./...` и `go test -count=1 -coverprofile=... ./...`; все suites
+прошли, repository coverage составил 90.8%, а coverage изменённых executable
+production statements — 96.8% (91/94). Benchmarks и profiles на этом шаге не
+запускались.
 
 `Lossy(rule, MemoryLimit(n))` компилируется во время `Build`. Если точное
 представление укладывается в детерминированно учитываемый бюджет, оно

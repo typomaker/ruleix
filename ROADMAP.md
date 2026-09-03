@@ -358,7 +358,13 @@ Gate: все функциональные и memory gates проходят, prod
 
 ### 9. Унифицировать equality rule и search execution
 
-Статус: `запланирован`
+Статус: `завершён — 2026-09-03`
+
+Результат: Exact и Lossy equality объединены в одном `eqRule` и одном
+`equalityIndex[equalityPhysicalKey[V]]`; tagged exact/bucket payload не
+удерживает исходный `V` после level 1, а общие search, planning, cache,
+inspection и bitmap paths прошли full, race и 96.8% diff-coverage gates без
+benchmarks.
 
 - Удалить `quantizedEqualityRule` как самостоятельный production rule и
   перенести преобразование ключа в общий `eqRule`.

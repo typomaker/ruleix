@@ -240,7 +240,7 @@ func TestLossyAllReusesPlanningBucket(t *testing.T) {
 	children := make([]Rule[lossyConstraint], 2)
 	for i := range children {
 		i := i
-		children[i] = &quantizedEqualityRule[lossyConstraint, string]{
+		children[i] = &eqRule[lossyConstraint, string]{
 			get: func(v lossyConstraint) (string, bool) {
 				getterCalls[i]++
 				return v.name, v.present
@@ -248,7 +248,7 @@ func TestLossyAllReusesPlanningBucket(t *testing.T) {
 			wildcard:  roaring.New(),
 			codec:     codec,
 			quantizer: newEqualityQuantizer(65536),
-			values:    testEqualityValues(map[uint64]*roaring.Bitmap{reduceEqualityHash(hash, 65536): roaring.BitmapOf(7)}),
+			values:    testEqualityValues[string](map[uint64]*roaring.Bitmap{reduceEqualityHash(hash, 65536): roaring.BitmapOf(7)}),
 		}
 	}
 
@@ -268,7 +268,7 @@ func TestLossyAllLocalPlanReusesPlanningBucket(t *testing.T) {
 	children := make([]Rule[lossyConstraint], 2)
 	for i := range children {
 		i := i
-		children[i] = &quantizedEqualityRule[lossyConstraint, string]{
+		children[i] = &eqRule[lossyConstraint, string]{
 			get: func(v lossyConstraint) (string, bool) {
 				getterCalls[i]++
 				return v.name, v.present
@@ -276,7 +276,7 @@ func TestLossyAllLocalPlanReusesPlanningBucket(t *testing.T) {
 			wildcard:  roaring.New(),
 			codec:     codec,
 			quantizer: newEqualityQuantizer(65536),
-			values:    testEqualityValues(map[uint64]*roaring.Bitmap{reduceEqualityHash(hash, 65536): roaring.BitmapOf(7)}),
+			values:    testEqualityValues[string](map[uint64]*roaring.Bitmap{reduceEqualityHash(hash, 65536): roaring.BitmapOf(7)}),
 		}
 	}
 
@@ -295,13 +295,13 @@ func TestLossyEqualityLocalCachesRepeatedValue(t *testing.T) {
 	codec, err := compileEqualityCodec[string]()
 	require.NoError(t, err)
 	hash := codec.hash(value)
-	rule := &quantizedEqualityRule[lossyConstraint, string]{
+	rule := &eqRule[lossyConstraint, string]{
 		nodeID:    0,
 		get:       func(v lossyConstraint) (string, bool) { return v.name, v.present },
 		wildcard:  roaring.New(),
 		codec:     codec,
 		quantizer: newEqualityQuantizer(256),
-		values:    testEqualityValues(map[uint64]*roaring.Bitmap{reduceEqualityHash(hash, 256): roaring.BitmapOf(7)}),
+		values:    testEqualityValues[string](map[uint64]*roaring.Bitmap{reduceEqualityHash(hash, 256): roaring.BitmapOf(7)}),
 	}
 	pool := newLocalBitmapPool(1)
 	query := lossyConstraint{name: value, present: true}
@@ -319,7 +319,7 @@ func TestLossyEqualityLocalCachesRepeatedValue(t *testing.T) {
 }
 
 func TestLossyEqualityLocalQueryKeyIsCollisionSafe(t *testing.T) {
-	rule := &quantizedEqualityRule[lossyConstraint, string]{
+	rule := &eqRule[lossyConstraint, string]{
 		get: func(v lossyConstraint) (string, bool) { return v.name, v.present },
 	}
 	var provider localQueryKeyProvider[lossyConstraint] = rule
@@ -386,12 +386,12 @@ func BenchmarkLossyAllSelectivePlanning(b *testing.B) {
 	hash := codec.hash(query.name)
 	broad := roaring.New()
 	broad.AddRange(0, entries)
-	selective := &quantizedEqualityRule[lossyConstraint, string]{
+	selective := &eqRule[lossyConstraint, string]{
 		get:       func(v lossyConstraint) (string, bool) { return v.name, v.present },
 		wildcard:  roaring.New(),
 		codec:     codec,
 		quantizer: newEqualityQuantizer(65536),
-		values:    testEqualityValues(map[uint64]*roaring.Bitmap{reduceEqualityHash(hash, 65536): roaring.BitmapOf(7)}),
+		values:    testEqualityValues[string](map[uint64]*roaring.Bitmap{reduceEqualityHash(hash, 65536): roaring.BitmapOf(7)}),
 	}
 	children := make([]Rule[lossyConstraint], 0, 8)
 	for range 7 {

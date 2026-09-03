@@ -260,14 +260,23 @@ type eqRule[T any, V comparable] struct {
 	wildcard       *roaring.Bitmap
 	wildcardSource physicalSourceID
 	wildcardClass  uint32
-	values         equalityIndex[V]
+	codec          equalityCodec[V]
+	quantizer      equalityQuantizer
+	values         equalityIndex[equalityPhysicalKey[V]]
 }
 
 func (r *eqRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func (*eqRule[T, V]) inspectionStrategy() string { return "equality" }
 func (r *eqRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
-	return r.streamingExactDetails(details)
+	return r.streamingEqualityDetails(details)
+}
+
+func (r *eqRule[T, V]) equalityKey(value V) equalityPhysicalKey[V] {
+	if r.quantizer.bucketCount == 0 {
+		return exactEqualityKey(value)
+	}
+	return bucketEqualityKey[V](r.quantizer.key(r.codec.hash(value)))
 }
 
 func (*eqRule[T, V]) rule() {}
@@ -278,7 +287,8 @@ func (r *eqRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Ru
 	id := ids.allocate()
 	return &eqRule[T, V]{
 		nodeID: id, get: r.get,
-		wildcard: roaring.New(), values: newEqualityIndex[V](capacityHint(hints.node(id).equalityValues)),
+		wildcard: roaring.New(),
+		values:   newEqualityIndex[equalityPhysicalKey[V]](capacityHint(hints.node(id).equalityValues)),
 	}
 }
 func (*eqRule[T, V]) validate(T) error { return nil }
@@ -288,7 +298,7 @@ func (r *eqRule[T, V]) insert(v T, id uint32) {
 		r.wildcard.Add(id)
 		return
 	}
-	r.values.add(value, id)
+	r.values.add(r.equalityKey(value), id)
 }
 func (r *eqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 	return r.estimateCardinality(v)
@@ -296,7 +306,7 @@ func (r *eqRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
 func (r *eqRule[T, V]) estimateCardinality(v T) uint64 {
 	n := r.wildcard.GetCardinality()
 	if value, ok := r.get(v); ok {
-		if set := r.values.get(value); set != nil {
+		if set := r.values.get(r.equalityKey(value)); set != nil {
 			n += set.cardinality()
 		}
 	}
@@ -318,7 +328,7 @@ func (r *eqRule[T, V]) isCardinalityZero(v T) bool {
 		return false
 	}
 	value, ok := r.get(v)
-	return !ok || r.values.get(value) == nil
+	return !ok || r.values.get(r.equalityKey(value)) == nil
 }
 func (r *eqRule[T, V]) matchesID(v T, id uint32) bool {
 	if r.wildcard.Contains(id) {
@@ -328,7 +338,7 @@ func (r *eqRule[T, V]) matchesID(v T, id uint32) bool {
 	if !ok {
 		return false
 	}
-	set := r.values.get(value)
+	set := r.values.get(r.equalityKey(value))
 	return set != nil && set.contains(id)
 }
 func (*eqRule[T, V]) directIDWork() uint64 { return allEqualityDirectIDWork }
@@ -356,7 +366,11 @@ func (r *eqRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 }
 
 func (r *eqRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
-	addEqualityMatches(r.wildcard, &r.values, value, dst)
+	key := optionalValue[equalityPhysicalKey[V]]{}
+	if value.ok {
+		key = optionalValue[equalityPhysicalKey[V]]{value: r.equalityKey(value.value), ok: true}
+	}
+	addEqualityMatches(r.wildcard, &r.values, key, dst)
 }
 func (r *eqRule[T, V]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
 func (r *eqRule[T, V]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
@@ -372,7 +386,7 @@ func (r *eqRule[T, V]) lookupEqualityResultComponents(v T) (*roaring.Bitmap, *ro
 	if !ok {
 		return r.wildcard, nil, true
 	}
-	set := r.values.get(value)
+	set := r.values.get(r.equalityKey(value))
 	posting, deduplicable := equalitySetBitmap(set)
 	return r.wildcard, posting, set == nil || deduplicable
 }
@@ -381,7 +395,7 @@ func (r *eqRule[T, V]) lookupEqualityClass(v T) uint32 {
 	if !ok {
 		return r.wildcardClass
 	}
-	if set := r.values.get(value); set != nil {
+	if set := r.values.get(r.equalityKey(value)); set != nil {
 		return set.class
 	}
 	return r.wildcardClass
@@ -389,7 +403,7 @@ func (r *eqRule[T, V]) lookupEqualityClass(v T) uint32 {
 func (r *eqRule[T, V]) addConcreteMatches(v T, dst *roaring.Bitmap) {
 	value, ok := r.get(v)
 	if ok {
-		if set := r.values.get(value); set != nil {
+		if set := r.values.get(r.equalityKey(value)); set != nil {
 			set.addTo(dst)
 		}
 	}
@@ -400,33 +414,38 @@ func (r *eqRule[T, V]) intersectConcreteMatches(v T, dst *roaring.Bitmap, pool *
 		dst.Clear()
 		return
 	}
-	intersectEqualitySet(r.values.get(value), dst, pool)
+	intersectEqualitySet(r.values.get(r.equalityKey(value)), dst, pool)
 }
 func (*eqRule[T, V]) exclude(T, *roaring.Bitmap, *bitmapPool) {}
 func (r *eqRule[T, V]) optimize(total uint64) Rule[T] {
 	if r.wildcard.GetCardinality() == total {
 		return newMatchAllRule[T](r.wildcard)
 	}
+	// The fixed-arity rules store semantic V keys and are therefore an exact-
+	// only physical specialization. Quantized generations keep the common rule.
+	if r.quantizer.bucketCount != 0 {
+		return r
+	}
 	switch len(r.values.sets) {
 	case 1:
 		return &unaryEqRule[T, V]{
 			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			key: r.values.keys[0], set: r.values.sets[0],
+			key: r.values.keys[0].exact, set: r.values.sets[0],
 		}
 	case 2:
 		return &binaryEqRule[T, V]{
 			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			keys: [2]V{r.values.keys[0], r.values.keys[1]}, sets: [2]equalitySet{r.values.sets[0], r.values.sets[1]},
+			keys: [2]V{r.values.keys[0].exact, r.values.keys[1].exact}, sets: [2]equalitySet{r.values.sets[0], r.values.sets[1]},
 		}
 	case 3:
 		return &ternaryEqRule[T, V]{
 			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard,
-			keys: r.values.keys, sets: [3]equalitySet{r.values.sets[0], r.values.sets[1], r.values.sets[2]},
+			keys: [3]V{r.values.keys[0].exact, r.values.keys[1].exact, r.values.keys[2].exact}, sets: [3]equalitySet{r.values.sets[0], r.values.sets[1], r.values.sets[2]},
 		}
 	case 4:
 		keys := [4]V{}
 		for key, offset := range r.values.offsets {
-			keys[offset] = key
+			keys[offset] = key.exact
 		}
 		return &quaternaryEqRule[T, V]{
 			nodeID: r.nodeID, get: r.get, wildcard: r.wildcard, keys: keys,

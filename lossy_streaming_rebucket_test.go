@@ -10,10 +10,10 @@ import (
 
 type streamingOrderedFixture struct{ value int }
 
-func testEqualityValues(postings map[uint64]*roaring.Bitmap) equalityIndex[uint64] {
-	values := newEqualityIndex[uint64](len(postings))
+func testEqualityValues[V comparable](postings map[uint64]*roaring.Bitmap) equalityIndex[equalityPhysicalKey[V]] {
+	values := newEqualityIndex[equalityPhysicalKey[V]](len(postings))
 	for key, bits := range postings {
-		values.addSet(key, &equalitySet{bits: bits})
+		values.addSet(bucketEqualityKey[V](key), &equalitySet{bits: bits})
 	}
 	return values
 }
@@ -41,9 +41,9 @@ func TestLossyOrderedStreamingRegridsExpandedRange(t *testing.T) {
 }
 
 func TestLossyEqualityStreamingRebucketsWithoutDroppingIDs(t *testing.T) {
-	rule := &quantizedEqualityRule[streamingOrderedFixture, int]{
+	rule := &eqRule[streamingOrderedFixture, int]{
 		quantizer: newEqualityQuantizer(4),
-		values: testEqualityValues(map[uint64]*roaring.Bitmap{
+		values: testEqualityValues[int](map[uint64]*roaring.Bitmap{
 			0: roaring.BitmapOf(0), 1: roaring.BitmapOf(1),
 			2: roaring.BitmapOf(2), 3: roaring.BitmapOf(3),
 		}),
@@ -67,10 +67,10 @@ func TestLossyEqualityStreamingRebucketsWithoutDroppingIDs(t *testing.T) {
 func TestLossyEqualityRepeatedRebuildKeepsEveryPosting(t *testing.T) {
 	codec, err := compileEqualityCodec[[16]byte]()
 	require.NoError(t, err)
-	rule := &quantizedEqualityRule[codecFixtureConstraint[[16]byte], [16]byte]{
+	rule := &eqRule[codecFixtureConstraint[[16]byte], [16]byte]{
 		get:      func(v codecFixtureConstraint[[16]byte]) ([16]byte, bool) { return v.value, true },
 		wildcard: roaring.New(), codec: codec, quantizer: newEqualityQuantizer(65536),
-		values: newEqualityIndex[uint64](5000),
+		values: newEqualityIndex[equalityPhysicalKey[[16]byte]](5000),
 	}
 	values := make([][16]byte, 5000)
 	for id := range values {
@@ -315,9 +315,9 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		return side
 	}
 	t.Run("equality", func(t *testing.T) {
-		rule := &quantizedEqualityRule[streamingOrderedFixture, int]{
+		rule := &eqRule[streamingOrderedFixture, int]{
 			get: streamingOrderedValue, wildcard: roaring.New(), quantizer: newEqualityQuantizer(8),
-			values: testEqualityValues(map[uint64]*roaring.Bitmap{
+			values: testEqualityValues[int](map[uint64]*roaring.Bitmap{
 				0: roaring.BitmapOf(0), 1: roaring.BitmapOf(1),
 				2: roaring.BitmapOf(2), 3: roaring.BitmapOf(3),
 			}),

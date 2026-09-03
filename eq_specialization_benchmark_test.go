@@ -25,7 +25,7 @@ func buildEqualitySpecializationRule(values int) *eqRule[equalitySpecializationC
 	rule := &eqRule[equalitySpecializationConstraint, int]{
 		get:      func(value equalitySpecializationConstraint) (int, bool) { return value.value, true },
 		wildcard: roaring.New(),
-		values:   newEqualityIndex[int](values),
+		values:   newEqualityIndex[equalityPhysicalKey[int]](values),
 	}
 	for id := range equalitySpecializationEntries {
 		rule.insert(equalitySpecializationConstraint{value: id % values}, uint32(id))
@@ -34,7 +34,7 @@ func buildEqualitySpecializationRule(values int) *eqRule[equalitySpecializationC
 }
 
 func useLegacyThreeValueMap(rule *eqRule[equalitySpecializationConstraint, int]) {
-	rule.values.offsets = make(map[int]uint32, 3)
+	rule.values.offsets = make(map[equalityPhysicalKey[int]]uint32, 3)
 	for i := range 3 {
 		rule.values.offsets[rule.values.keys[i]] = uint32(i)
 	}
