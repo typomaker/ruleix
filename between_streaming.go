@@ -7,12 +7,18 @@ func (r *betweenRule[T, V]) quantizedStreamingDetails(details inspectionDetails)
 	untilMemory, untilItems, _ := quantizedOrderedAccounting(&r.until.index, r.until.wildcard)
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = fromMemory+untilMemory, true
 	details.Items, details.ItemsAvailable = fromItems+untilItems, true
-	details.GranularityValue = uint64(r.from.index.buildStatistics().uniqueValues + r.until.index.buildStatistics().uniqueValues)
-	details.GranularityAvailable = true
+	distinct := uint64(r.from.index.buildStatistics().uniqueValues + r.until.index.buildStatistics().uniqueValues)
+	details.DistinctValues, details.DistinctValuesAvailable = distinct, true
+	if r.inspectionMode() == RuleModeLossy {
+		details.GranularityValue, details.GranularityAvailable = distinct, true
+	}
 	return details
 }
 
 func (r *betweenRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
+	if r.from.index.merged || r.until.index.merged {
+		return 0, nil, false
+	}
 	clone := cloneBetweenRule(r)
 	usage, apply, ok := clone.prepareStreamingNext()
 	if !ok {
@@ -43,11 +49,7 @@ func (r *betweenRule[T, V]) selectStreamingSide() *orderedRule[T, V] {
 }
 
 func orderedStreamingAvailable[T any, V any](side *orderedRule[T, V]) bool {
-	if side.index.buildStatistics().uniqueValues <= 1 {
-		return false
-	}
-	return side.level == 0 || side.transform.kind != orderedFixedTransformer ||
-		side.level < side.transform.fixed.terminalLevel()
+	return side.index.buildStatistics().uniqueValues > 1
 }
 
 func (r *betweenRule[T, V]) fitStreamingLimit(limit uint64) {
@@ -75,24 +77,15 @@ func (r *betweenRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
 	}
 	var usage uint64
 	var replacement *orderedRule[T, V]
-	if selected.level == 0 {
-		nextUsage, next, ok := selected.prepareStreamingFirstGeneration()
-		if !ok {
-			return 0, nil, false
-		}
-		replacement = next.(*orderedRule[T, V])
-		usage = nextUsage
-	} else {
-		clone := *selected
-		clone.index = selected.index.cloneBuild()
-		_, apply, ok := clone.prepareStreamingNext()
-		if !ok {
-			return 0, nil, false
-		}
-		apply()
-		replacement = &clone
-		usage = clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
+	clone := *selected
+	clone.index = selected.index.cloneBuild()
+	_, apply, ok := clone.prepareStreamingNext()
+	if !ok {
+		return 0, nil, false
 	}
+	apply()
+	replacement = &clone
+	usage = clone.refreshedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
 	other := r.until
 	if selected == r.until {
 		other = r.from

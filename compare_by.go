@@ -29,18 +29,13 @@ func CompareBy[T any, V any](
 }
 
 type compareByRule[T any, V any] struct {
-	nodeID               nodeID
-	value                Getter[T, V]
-	operator             Getter[T, Operator]
-	compare              Compare[V]
-	wildcard             *roaring.Bitmap
-	indexes              [5]*orderedIndex[V]
-	hints                [5]orderedBuildStatistics
-	quantizers           [5]*orderedQuantizer[V]
-	boundaries           [5]*orderedBoundaryQuantizer[V]
-	levels               [5]uint32
-	eqMinimum, eqMaximum V
-	eqHasRange           bool
+	nodeID   nodeID
+	value    Getter[T, V]
+	operator Getter[T, Operator]
+	compare  Compare[V]
+	wildcard *roaring.Bitmap
+	indexes  [5]*orderedIndex[V]
+	hints    [5]orderedBuildStatistics
 }
 
 type compareByLocalQueryKey[V any] struct {
@@ -48,34 +43,18 @@ type compareByLocalQueryKey[V any] struct {
 	hasValue bool
 }
 
-func (r *compareByRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
-func (r *compareByRule[T, V]) currentPrecisionLevel() uint32 {
-	var current uint32
-	for _, level := range r.levels {
-		if level > current {
-			current = level
-		}
-	}
-	return current
-}
-
+func (r *compareByRule[T, V]) runtimeNodeID() nodeID    { return r.nodeID }
 func (*compareByRule[T, V]) inspectionStrategy() string { return "compare-by" }
-func (r *compareByRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
-	for _, level := range r.levels {
-		if level > 0 {
-			return r.quantizedStreamingDetails(details)
+func (r *compareByRule[T, V]) inspectionMode() RuleMode {
+	for _, index := range r.indexes {
+		if index != nil && index.merged {
+			return RuleModeLossy
 		}
 	}
-	memory := uint64(24) + bitmapBytes(r.wildcard)
-	items := r.wildcard.GetCardinality()
-	var distinct uint64
-	for _, index := range r.indexes {
-		indexMemory, indexItems, indexDistinct, _ := orderedIndexLossyAccounting(index, roaring.New())
-		memory += indexMemory
-		items += indexItems
-		distinct += indexDistinct
-	}
-	return representationDetails(memory, items, distinct, 0, false)
+	return RuleModeExact
+}
+func (r *compareByRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
+	return r.quantizedStreamingDetails(details)
 }
 
 func compareByDirection(operator Operator) direction {
@@ -83,10 +62,6 @@ func compareByDirection(operator Operator) direction {
 		return greaterThan
 	}
 	return lessThan
-}
-
-func compareByStorageUpward(operator Operator) bool {
-	return operator == OperatorLT || operator == OperatorLTE
 }
 
 func (*compareByRule[T, V]) rule() {}
@@ -140,48 +115,13 @@ func (r *compareByRule[T, V]) insert(v T, id uint32) {
 		return
 	}
 	operator, _ := r.operator(v)
-	if operator == OperatorEQ {
-		if !r.eqHasRange {
-			r.eqMinimum, r.eqMaximum, r.eqHasRange = value, value, true
-		} else {
-			if r.compare(value, r.eqMinimum) < 0 {
-				r.eqMinimum = value
-			}
-			if r.compare(value, r.eqMaximum) > 0 {
-				r.eqMaximum = value
-			}
-		}
-	}
 	index := r.indexes[operator]
 	if index == nil {
 		created := newOrderedIndexWithHint(r.compare, r.hints[operator])
 		index = &created
 		r.indexes[operator] = index
 	}
-	index.insert(r.storageValue(operator, value), id)
-}
-
-func (r *compareByRule[T, V]) storageValue(operator Operator, value V) V {
-	if quantizer := r.quantizers[operator]; quantizer != nil {
-		return quantizer.rounded(value, r.levels[operator], compareByStorageUpward(operator))
-	}
-	if r.boundaries[operator] != nil {
-		return roundedOrderedBoundary(r.indexes[operator], value, compareByStorageUpward(operator))
-	}
-	return value
-}
-
-func (r *compareByRule[T, V]) searchValue(operator Operator, value V) V {
-	if operator == OperatorEQ {
-		return r.storageValue(operator, value)
-	}
-	if quantizer := r.quantizers[operator]; quantizer != nil {
-		return quantizer.rounded(value, r.levels[operator], compareByDirection(operator) == greaterThan)
-	}
-	if r.boundaries[operator] != nil {
-		return roundedOrderedBoundary(r.indexes[operator], value, compareByDirection(operator) == greaterThan)
-	}
-	return value
+	index.insertOrdered(value, id, compareByDirection(operator))
 }
 
 func (r *compareByRule[T, V]) equalityBits(value V) *roaring.Bitmap {
@@ -189,13 +129,10 @@ func (r *compareByRule[T, V]) equalityBits(value V) *roaring.Bitmap {
 	if index == nil {
 		return nil
 	}
-	if r.levels[OperatorEQ] == 0 {
-		return index.exact(value)
+	if index.merged {
+		return index.ceiling(value)
 	}
-	if !r.eqHasRange || r.compare(value, r.eqMinimum) < 0 || r.compare(value, r.eqMaximum) > 0 {
-		return nil
-	}
-	return index.exact(r.searchValue(OperatorEQ, value))
+	return index.exact(value)
 }
 func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 	value, ok := r.value(v)
@@ -210,17 +147,17 @@ func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 	}
 	// query < stored / query <= stored
 	if index := r.indexes[OperatorLT]; index != nil {
-		index.walk(r.searchValue(OperatorLT, value), true, false, visit)
+		index.walk(value, true, false, visit)
 	}
 	if index := r.indexes[OperatorLTE]; index != nil {
-		index.walk(r.searchValue(OperatorLTE, value), true, true, visit)
+		index.walk(value, true, true, visit)
 	}
 	// query > stored / query >= stored
 	if index := r.indexes[OperatorGT]; index != nil {
-		index.walk(r.searchValue(OperatorGT, value), false, false, visit)
+		index.walk(value, false, false, visit)
 	}
 	if index := r.indexes[OperatorGTE]; index != nil {
-		index.walk(r.searchValue(OperatorGTE, value), false, true, visit)
+		index.walk(value, false, true, visit)
 	}
 }
 func (r *compareByRule[T, V]) appendMatchingBitmaps(v T, dst []*roaring.Bitmap) []*roaring.Bitmap {
@@ -235,16 +172,16 @@ func (r *compareByRule[T, V]) appendMatchingBitmaps(v T, dst []*roaring.Bitmap) 
 		}
 	}
 	if index := r.indexes[OperatorLT]; index != nil {
-		index.walk(r.searchValue(OperatorLT, value), true, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+		index.walk(value, true, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
 	}
 	if index := r.indexes[OperatorLTE]; index != nil {
-		index.walk(r.searchValue(OperatorLTE, value), true, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+		index.walk(value, true, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
 	}
 	if index := r.indexes[OperatorGT]; index != nil {
-		index.walk(r.searchValue(OperatorGT, value), false, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+		index.walk(value, false, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
 	}
 	if index := r.indexes[OperatorGTE]; index != nil {
-		index.walk(r.searchValue(OperatorGTE, value), false, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+		index.walk(value, false, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
 	}
 	return dst
 }
@@ -263,16 +200,16 @@ func (r *compareByRule[T, V]) estimateCardinality(v T) uint64 {
 		}
 	}
 	if index := r.indexes[OperatorLT]; index != nil {
-		n += index.estimateCardinality(r.searchValue(OperatorLT, value), true, false)
+		n += index.estimateCardinality(value, true, false)
 	}
 	if index := r.indexes[OperatorLTE]; index != nil {
-		n += index.estimateCardinality(r.searchValue(OperatorLTE, value), true, true)
+		n += index.estimateCardinality(value, true, true)
 	}
 	if index := r.indexes[OperatorGT]; index != nil {
-		n += index.estimateCardinality(r.searchValue(OperatorGT, value), false, false)
+		n += index.estimateCardinality(value, false, false)
 	}
 	if index := r.indexes[OperatorGTE]; index != nil {
-		n += index.estimateCardinality(r.searchValue(OperatorGTE, value), false, true)
+		n += index.estimateCardinality(value, false, true)
 	}
 	return n
 }

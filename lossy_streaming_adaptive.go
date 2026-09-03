@@ -13,6 +13,7 @@ type streamingAdaptiveLeaf[T any] struct {
 	nextUsage                      uint64
 	nextUsagePrepared, nextUsageOK bool
 	nextApply                      func()
+	approximate                    bool
 }
 
 func (*streamingAdaptiveLeaf[T]) rule()                                                 {}
@@ -34,7 +35,12 @@ func (r *streamingAdaptiveLeaf[T]) exclude(v T, dst *roaring.Bitmap, p *bitmapPo
 func (r *streamingAdaptiveLeaf[T]) collectBuildStatistics(s []nodeBuildStatistics) {
 	r.child.collectBuildStatistics(s)
 }
-func (r *streamingAdaptiveLeaf[T]) inspectionMode() RuleMode   { return inspectionModeOf(r.child) }
+func (r *streamingAdaptiveLeaf[T]) inspectionMode() RuleMode {
+	if r.approximate {
+		return RuleModeLossy
+	}
+	return inspectionModeOf(r.child)
+}
 func (r *streamingAdaptiveLeaf[T]) inspectionStrategy() string { return inspectionStrategyOf(r.child) }
 func (r *streamingAdaptiveLeaf[T]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
 	return refreshedStreamingRuleDetails(r.child, details)

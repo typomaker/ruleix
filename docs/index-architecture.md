@@ -276,42 +276,34 @@ Equality уже следует этой форме: полный hash вычис
 build insertion, search lookup и преобразовании текущего ключа на следующую
 ступень streaming downgrade; policy interface в эти пути не попадает.
 
-Standalone `Greater*`/`Less*` exact и lossy representations публикуют один
-`orderedRule` с одним `orderedIndex`. Обязательный mode-neutral
-`orderedKeyTransformer` формально возвращает исходный ключ на level 0 для
-любого типа и role; pressure controller меняет только его level и выбранную
-вложенную трансформацию. Insert и query используют один `key` с outward-role,
-а search, cardinality/matchesID, range walk, candidate filtering и Local cache
-всегда остаются методами общего rule. `orderedIndex` получает только готовые
-physical keys и не содержит level, quantizer или policy state. Старые
-`quantizedOrderedRule`, `lossyOrderedRule` и `lossyComparedOrderedRule` удалены.
+Standalone `Greater*`/`Less*` Exact и Lossy публикуют один `orderedRule` с одним
+`orderedIndex`. В rule нет level, quantizer или key transformer: insert и query
+передают исходный `V` в общие search, cardinality, `matchesID`, range walk,
+candidate filtering и Local cache. Lossy-controller отличается единственной
+build-операцией: он создаёт новое поколение, попарно объединяя соседние текущие
+ключи. Для `Greater*` posting пары хранится под нижним ключом, для `Less*` — под
+верхним, поэтому обычный Exact matcher консервативно читает его без query-time
+округления. Numeric, time и arbitrary comparator используют один алгоритм.
 
-Quantized класс хранит один outward-rounded boundary и объединённый posting.
-Для `Greater*` сохраняется нижняя граница класса, для `Less*` — верхняя;
-strict/inclusive семантика matcher не меняется. Numeric уровни используют
-фиксированную монотонную сетку; `time.Time` и произвольный total-order comparator
-используют вложенные boundaries непосредственно из текущих ключей общего
-`orderedIndex`: новый уровень группирует соседние ключи и выбирает наружный
-край. Отдельный boundary-массив не хранится и reflection/getter codec не
-определяют порядок. Поздний внешний extreme остаётся новым крайним ключом до
-следующего полного rebuild, а immutable search использует такой ключ лишь как
-transient boundary и не меняет index. На следующем pressure checkpoint extreme
-участвует в полном rebuild вместе со всеми ключами поколения.
+`orderedIndex.merged` описывает свойство текущих postings, а не уровень или
+режим. Оно нужно только для корректной вставки оставшейся части streaming input
+в уже объединённый диапазон и для lookup `CompareBy(EQ)`. Поздний внешний ключ
+остаётся новым крайним ключом; поздний внутренний ключ присоединяется к
+ближайшей наружной границе. Следующий pressure rebuild снова обрабатывает все
+текущие соседние ключи. Отдельный boundary-массив не хранится.
 Последний `prepareSearch` строит обычные block aggregates, prefix sums и
 routing, поэтому finest lossy больше не выполняет линейный union legacy
 physical keys. `Between` и `CompareBy` теперь используют те же `orderedRule` и
-`orderedIndex`. Уровни и streaming rebuild принадлежат общим `betweenRule` и
-`compareByRule`; отдельных lossy runtime/search types нет, а mode сообщает
-только policy metadata. Для сторон `Between` нижняя
-граница округляется вниз, верхняя вверх. `CompareBy` выбирает направление
-отдельно для каждого оператора; quantized `EQ` находит первый верхний boundary
-не ниже query и ограничивает lookup сохранённой оболочкой observed domain.
+`orderedIndex`. Streaming rebuild общих `betweenRule` и `compareByRule`
+выбирает одну сторону/оператор и объединяет соседей соответствующего индекса;
+отдельных lossy runtime/search types нет. `CompareBy(EQ)` на merged index
+находит первый верхний physical key не ниже query.
 Legacy специализированное lossy ordered-представление, `lossyBetweenRule` и `lossyCompareByRule`
 удалены. Повторное огрубление независимо клонирует текущее поколение postings,
 объединяет соседнюю пару и не требует исходных exact values.
 
 `Inspect.Strategy` называет общее физическое семейство (`equality`, `ordered`, `between`, `compare-by`), а не lossy-вариант layout. Exact/lossy различаются
-через policy metadata в `Inspect.Mode`, а не через level или transformer физического rule; `Granularity` сообщает число выбранных quantized key classes. Equality posting rebuild сортирует `uint64` keys перед merge и
+через policy metadata в `Inspect.Mode`; `Granularity` сообщает число текущих physical keys. Equality posting rebuild сортирует `uint64` keys перед merge и
 публикацией, поэтому aggregate pressure не зависит от randomized Go map
 iteration.
 
@@ -476,7 +468,7 @@ search path нет reflection. Интерфейсы остаются типиз�
 | `all.go`, `execution_capabilities.go`, `execution_cost.go` | Планирование и выполнение конъюнкции. |
 | `bitmap_pool.go`, `bitmap_intern.go` | Scratch-пулы, Local-кэши, интернирование и equality-классы. |
 | `lossy.go`, `lossy_policy.go`, `*_streaming.go` | Потоковый pressure selector, policy limits и полные переходы единственного текущего lossy-поколения. |
-| `canonical_value.go`, `ordered_quantizer.go`, `ordered_boundary_quantizer.go` | Канонизация equality и вложенные outward-преобразования ordered keys. |
+| `canonical_value.go`, `ordered_rebuild.go` | Канонизация equality и объединение соседних ordered keys. |
 | `inspect.go` | Build snapshots и выборочная runtime-телеметрия. |
 
 ## Инварианты корректности

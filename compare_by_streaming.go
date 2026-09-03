@@ -19,11 +19,17 @@ func (r *compareByRule[T, V]) quantizedStreamingDetails(details inspectionDetail
 	}
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = usage, true
 	details.Items, details.ItemsAvailable = items, true
-	details.GranularityValue, details.GranularityAvailable = granularity, true
+	details.DistinctValues, details.DistinctValuesAvailable = granularity, true
+	if r.inspectionMode() == RuleModeLossy {
+		details.GranularityValue, details.GranularityAvailable = granularity, true
+	}
 	return details
 }
 
 func (r *compareByRule[T, V]) prepareStreamingFirstGeneration() (uint64, Rule[T], bool) {
+	if r.inspectionMode() == RuleModeLossy {
+		return 0, nil, false
+	}
 	clone := cloneCompareByRule(r)
 	usage, apply, ok := clone.prepareStreamingNext()
 	if !ok {
@@ -47,8 +53,7 @@ func cloneCompareByRule[T any, V any](r *compareByRule[T, V]) *compareByRule[T, 
 func (r *compareByRule[T, V]) selectedStreamingIndex() int {
 	selected := -1
 	for operator, index := range r.indexes {
-		if index == nil || index.buildStatistics().uniqueValues <= 1 ||
-			r.quantizers[operator] != nil && r.levels[operator] >= r.quantizers[operator].terminalLevel() {
+		if index == nil || index.buildStatistics().uniqueValues <= 1 {
 			continue
 		}
 		if selected < 0 || index.buildStatistics().uniqueValues > r.indexes[selected].buildStatistics().uniqueValues {
@@ -85,46 +90,11 @@ func (r *compareByRule[T, V]) prepareStreamingNext() (uint64, func(), bool) {
 	operator := Operator(selected)
 	current := r.indexes[selected]
 	next := newOrderedIndex(r.compare)
-	nextLevel := r.levels[selected] + 1
-	quantizer, boundaries := r.quantizers[selected], r.boundaries[selected]
-	if quantizer == nil && boundaries == nil {
-		compiled, ok := compileOrderedQuantizer[V]()
-		if ok && orderedIndexAgreesWithQuantizer(current, compiled) {
-			quantizer = &compiled
-		} else {
-			boundaries = &orderedBoundaryQuantizer[V]{}
-		}
-	}
-	if boundaries != nil {
-		next = rebuildOrderedBoundaries(current, compareByDirection(operator))
-	} else {
-		for _, block := range current.blocks {
-			for _, item := range block.items {
-				key := quantizer.rounded(item.value, nextLevel, compareByStorageUpward(operator))
-				next.insertPosting(key, item.bits)
-			}
-		}
-	}
+	next = rebuildOrderedBoundaries(current, compareByDirection(operator))
 	clone := cloneCompareByRule(r)
 	clone.indexes[selected] = &next
-	clone.quantizers[selected], clone.boundaries[selected], clone.levels[selected] = quantizer, boundaries, nextLevel
 	usage := clone.quantizedStreamingDetails(inspectionDetails{}).MemoryUsageBytes
 	return usage, func() {
 		r.indexes[selected] = &next
-		r.quantizers[selected], r.boundaries[selected], r.levels[selected] = quantizer, boundaries, nextLevel
 	}, true
-}
-
-func orderedIndexAgreesWithQuantizer[V any](index *orderedIndex[V], quantizer orderedQuantizer[V]) bool {
-	var previous V
-	havePrevious := false
-	for _, block := range index.blocks {
-		for _, item := range block.items {
-			if havePrevious && (index.compare(previous, item.value) >= 0 || quantizer.encode(previous) > quantizer.encode(item.value)) {
-				return false
-			}
-			previous, havePrevious = item.value, true
-		}
-	}
-	return true
 }

@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Ordered Exact and Lossy now have the same rule and index state without a
+  level, quantizer, or key transformer. Lossy pressure only rebuilds one
+  generation by merging adjacent keys under an outward representative;
+  ordinary Exact insert and search algorithms consume the resulting index.
 - Lossy ordered `time.Time` now uses nested comparator boundaries instead of
   Unix-second terminal sentinels, preventing false negatives when extreme
   pressure reaches the widest level.
@@ -19,12 +23,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   generation.
 - Lossy equality planning now handles singleton/small postings through the
   common search materialization path instead of mistaking them for an empty
-  bitmap. Floating-point ordered rules use comparator boundary levels, keeping
+  bitmap. Floating-point ordered rules merge adjacent comparator keys, keeping
   NaN conservative under the supplied order.
 - Lossy standalone ordered rules with arbitrary stable total-order comparators
-  now use nested outward boundary levels in the shared Exact ordered index;
-  custom structs, collation orders, descending orders, and late edge values no
-  longer depend on a numeric/reflection codec or pairwise insertion coarsening.
+  now merge adjacent keys in the shared Exact ordered index; custom structs,
+  collation orders, descending orders, and late edge values no longer depend
+  on a numeric/reflection codec.
 - Lossy string equality now uses a stable hash, so identical builds select the
   same physical keys and memory plan across processes; build-time map inputs are
   ordered before they can define physical layout or dense class identifiers.
@@ -50,11 +54,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   including after the first compilation. Exact and already-lossy leaves share
   the same largest-byte-release selector, preventing later exact growth from
   making an otherwise viable aggregate budget fail at finalization.
-- Streaming Lossy grids now expand and rebuild during `Build` instead of
-  collapsing an ordered leaf when a later value falls outside the prefix
-  range. Numeric grids conservatively remap old physical key intervals; arbitrary
-  comparators add edge boundaries and merge adjacent physical keys. Equality and
-  aggregate memory pressure use the same gradual coarsening rule, so search
+- Streaming Lossy ordered indexes now expand and rebuild during `Build` instead
+  of collapsing a leaf when a later value falls outside the prefix range. Every
+  comparator merges adjacent physical keys under the same outward rule. Equality
+  and aggregate memory pressure use the same gradual coarsening rule, so search
   receives no rebuilding work.
 
 - Equality now uses one `uint64` physical-key shape in Exact and Lossy: level 0

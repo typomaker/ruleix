@@ -344,8 +344,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		apply()
 		require.Less(t, rule.index.buildStatistics().uniqueValues, 3)
 		_, ok = rule.nextStreamingUsage()
-		require.True(t, ok)
-		rule.fitStreamingNext()
+		require.False(t, ok)
 		rule.fitStreamingLimit(0)
 		require.Equal(t, 1, rule.index.buildStatistics().uniqueValues)
 		_, _, ok = rule.prepareStreamingNext()
@@ -372,7 +371,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 		rule.from.fitStreamingNext()
 		rule.until = orderedSide(lessThan)
 		rule.fitStreamingNext()
-		require.Equal(t, 3, rule.until.index.buildStatistics().uniqueValues)
+		require.Equal(t, 2, rule.until.index.buildStatistics().uniqueValues)
 		rule.fitStreamingLimit(0)
 		require.Equal(t, 2, rule.from.index.buildStatistics().uniqueValues+
 			rule.until.index.buildStatistics().uniqueValues)
@@ -380,8 +379,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 	})
 	t.Run("compare by", func(t *testing.T) {
 		common := &compareByRule[streamingOrderedFixture, int]{
-			value: streamingOrderedValue, compare: cmp.Compare[int], wildcard: roaring.New(), eqHasRange: true,
-			eqMinimum: 1, eqMaximum: 3,
+			value: streamingOrderedValue, compare: cmp.Compare[int], wildcard: roaring.New(),
 		}
 		common.indexes[0] = &orderedSide(lessThan).index
 		rule := common

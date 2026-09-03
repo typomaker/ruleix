@@ -2,15 +2,15 @@
 
 ## 2026-09-03: release gate шага 12 остаётся открыт
 
-Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`), candidate —
-рабочее дерево после удаления tagged equality key. `300ms x5`: equality-only
-production Index 15 579 → 15 430 нс, 22 657 → 22 656 B/op, 20 allocs; Local
-222,5 → 222,8 нс, 0 allocs. Two-leaf equality Index 19 035 → 18 748 нс,
-Local 42,89 → 43,89 нс; allocation classes 6/0 не изменились. Различия ниже
-performance gate, а прежняя крупная regression tagged-key lookup устранена.
-Attribution `200ms x3` также нашёл terminal-time false negative: 24 Lossy против 10 682 Exact; comparator boundaries дают 20 106 и superset. Full/race прошли.
-Сырые отчёты: `/tmp/ruleix-step12/`; команда release-серии —
-`go test -run '^$' -bench 'BenchmarkProductionShapeSearch|BenchmarkLossyAllSearchQuality|BenchmarkLossyAllSearchRuntime' -benchmem -benchtime=300ms -count=5 .`.
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`).
+Equality-only `300ms x5`: Index 15 579 → 15 430 нс, Local 222,5 → 222,8;
+two-leaf 19 035 → 18 748 и 42,89 → 43,89 нс; allocations не изменились.
+Ordered adjacent-key rewrite сравнен с parent `48e309d`, `500ms x5`: production
+Lossy Index 124 941 → 124 719 нс, Local 11 996 → 11 972 нс; candidates и
+allocations не изменились, accounted budget снизился 322 152 → 317 916 bytes.
+Exact против `v0.8.2`, `300ms x3`: Index 33 945 → 30 473 нс, Local 225,7 → 225,2 нс; allocations прежние.
+Ранее attribution `200ms x3` нашёл terminal-time false negative; исправление
+comparator boundaries и текущий adjacent-key rewrite сохраняют superset.
 ## 2026-09-02: lossy range aggregate checkpoint
 
 Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`. Baseline

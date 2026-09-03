@@ -196,8 +196,9 @@ integers share one posting list. Interfaces are rejected because their
 dynamic values cannot be encoded safely without query-time dispatch.
 
 Lossy build planning is streaming. At fixed checkpoints, accounted exact state
-above a private 125% pressure target advances the selected integer-key or
-ordered-boundary level; later values use that same rounding. This prevents
+above a private 125% pressure target advances an equality integer level or
+rebuilds an ordered index by merging adjacent keys. Later ordered values join
+the nearest outward current key or remain a new open-edge key. This prevents
 the builder from retaining the complete input as exact leaf state before
 compression. Low-cardinality exact leaves selected by the aggregate planner
 may remain exact, while pressured high-cardinality leaves release their exact

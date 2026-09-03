@@ -45,14 +45,10 @@ The number of distinct physical keys cannot increase. Insert, rebuild, and
 search use the same level definition; input order cannot change the resulting
 key classes.
 
-The mandatory key transformer and its stored level are the only precision
-state. Level zero is an explicit identity transform for Exact and for the
-initial Lossy generation. The Lossy policy metadata, rather than the physical
-rule or its level, supplies `Inspect.Mode`. Posting
-containers, indexes, matcher logic, range execution, routing, aggregates, and
-Local caches are the Exact implementations and receive only physical keys.
-They neither inspect the mode nor select precision. In particular, Lossy must
-not introduce a parallel posting layout or search node at any level.
+Equality stores its integer precision level. Ordered precision has no level:
+the current set of ordered keys is the complete state. Posting containers,
+indexes, matcher logic, range execution, routing, aggregates, and Local caches
+are the Exact implementations. Lossy introduces no parallel search node.
 
 At each fixed checkpoint, accounted usage is compared with the saturating soft
 target `MemoryLimit + MemoryLimit/4`. While usage exceeds that target, the
@@ -103,72 +99,29 @@ The step 2 gate was verified on 2026-09-02 with focused state/rebuild tests and
 the full test suite. Diff coverage for changed executable production lines was
 measured above 90%. No benchmark was run and no layout decision was made.
 
-### Numeric and time ordered levels
+### Ordered adjacent-key rebuild
 
-Standalone ordered rules over built-in numeric values use a fixed domain-wide
-monotonic key grid. `time.Time` uses comparator-backed nested boundaries:
-mapping its full domain through Unix seconds cannot represent terminal outward
-sentinels without overflowing `time.Time`'s internal epoch. This keeps late
-instants and terminal pressure superset-safe. A future logical minute/hour/day
-grid must preserve nesting and define timezone semantics before adoption.
+Every ordered type—numeric, `time.Time`, or an arbitrary stable total-order
+comparator—uses the same `orderedIndex[V]`. There is no numeric grid, quantizer,
+transformer, or precision counter. A pressure transition walks the current
+keys in comparator order and merges adjacent pairs. `Greater*` stores each
+merged posting under the lower key; `Less*` stores it under the upper key.
+Consequently the ordinary Exact range walk over the raw query remains a
+conservative superset for strict and inclusive operators.
 
-Stored lower bounds round downward and stored upper bounds round upward. Query
-keys use the opposite outward edge; this preserves strict as well as inclusive
-boundary behavior while the shared ordered index continues to execute the
-range lookup. Every next level clears one more key bit and rebuilds the complete
-current generation. Consequently an incremental transition produces the same
-boundary as direct quantization from the exact value, and no exact keys or
-future grids are retained.
+The index records only whether its current postings have been merged. This is
+a structural property, not a Lossy mode or generation number. While streaming
+Build continues, an internal late value joins the nearest outward current key;
+a value beyond an open edge remains a new extreme. Before an insertion splits
+a block, a shared aggregate/posting bitmap is detached so the structural
+change cannot clear IDs retained from an earlier generation.
 
-The numeric codec is enabled only when the supplied comparator agrees with the
-natural monotonic encoding of the collected values. Time and other total orders
-use the comparator-backed boundary levels described below. The step 4 gate
-covers integer extremes, negative and positive time boundaries, strict and inclusive operators, late values outside the
-initial range, repeated rebuilds, full tests, and changed-line coverage. No
-benchmark or performance conclusion is part of this step. Verification on
-2026-09-02 used `go test ./... -coverprofile=/tmp/ruleix-step4.cover` and
-reported 96.2% executable changed-line coverage (175/182), followed by
-`git diff --check`.
-
-### Comparator-backed boundary levels
-
-An ordered rule whose value type has no proven scalar codec, or whose supplied
-comparator disagrees with that codec, uses boundaries taken from the keys in
-the current shared `orderedIndex`. The comparator must define one stable,
-transitive total order across every Build and Search value. Ruleix does not try
-to recover an order from reflection, a getter, or the equality codec.
-
-Each transition groups adjacent current keys in comparator order. A stored
-lower bound uses the first key of its group and a stored upper bound uses the
-last; search values use the opposite nearest boundary. Thus every boundary in
-level `N+1` is a boundary from level `N`, and the parent is computable without
-an exact value. The ordered postings, block aggregates, routing, matcher and
-Local cache remain the Exact implementations.
-
-Boundary lookup searches the physical index directly. No parallel boundary
-array is retained or omitted from memory accounting. A value inside the known
-range maps to the nearest outward boundary. A late value beyond either open
-edge remains its own new extreme key, because mapping it inward could create a
-false negative; the next pressure transition includes that key in the normal
-whole-generation rebuild. Immutable search uses the same transient edge key
-without inserting it. Late insertion changes neither the level nor the rest of
-the generation; the next parent is computed only from current physical keys.
-
-### Compound ordered levels
-
-`Between` owns two independent ordered generations: the lower (`from`) side
-and the upper (`until`) side. A pressure transition selects exactly one side,
-rebuilds that complete side through the shared ordered quantizer, and leaves
-the other side and its level unchanged. Stored lower bounds round down and
-stored upper bounds round up; query bounds use the corresponding opposite
-edge through the same fused `Between` matcher and cache path.
-
-`CompareBy` similarly owns one level for each stored operator (`EQ`, `LT`,
-`LTE`, `GT`, and `GTE`). Pressure advances one complete operator index at a
-time. Range operators use their outward lower/upper direction; equality maps
-both inserted and searched values to the same physical physical key. All five
-operator indexes and both `Between` sides remain in the common `compareByRule`, `betweenRule`, and `orderedIndex` types. There are no quantized compound runtime
-or search wrappers; Exact/Lossy mode comes only from policy metadata. Search, aggregate blocks, routing, candidate filtering, and Local caching remain shared with Exact.
+`Between` owns two ordinary ordered indexes and pressure rebuilds one complete
+side at a time. `CompareBy` owns one ordinary index for each operator and
+rebuilds one operator at a time. Range operators use the same raw-query walk;
+`EQ` uses exact lookup before any merge and ceiling lookup afterward. There are
+no per-side levels, quantizer arrays, boundary arrays, observed-domain fields,
+or quantized runtime/search wrappers.
 
 No compatibility planner remains. `Between` and `CompareBy` enter the same single-current-generation streaming state as standalone leaves and derive
 only the next complete side/operator generation when pressure requests it.
@@ -314,8 +267,8 @@ removed: there are no leaf ladders, prebuilt future candidates, capacity-driven
 pairwise merges, universal-tail wrappers, or separate universal rule type.
 Initial policy materialization publishes accounted exact leaves inside the
 same adaptive wrapper used by later checkpoints. The hard-limit pass advances
-the live generation with the deterministic release selector; a terminal
-one-key generation is reached only by those ordinary nested transitions.
+the live generation with the deterministic release selector; ordered leaves
+reach one key only by repeatedly merging adjacent keys.
 
 `Inspect.Strategy` is always the common physical family. Exact leaves expose
 no granularity; lossy leaves report the number of currently published rounded
@@ -323,8 +276,8 @@ keys, and `DistinctValueCount` for ordered lossy leaves describes that same
 published generation. Memory details and nested effective limits are refreshed
 after final fitting. Equality planning refuses to borrow a singleton/small
 posting as a bitmap, preventing the empty-candidate false negative exposed by
-the aggregate regression fixture. Floating-point ordered rules use comparator
-boundary levels so NaN follows the supplied stable total order.
+the aggregate regression fixture. Floating-point ordered rules merge adjacent
+comparator keys, so NaN follows the supplied stable total order.
 
 Verification on 2026-09-03 used `go test ./... -count=1`, `go test -race
 ./... -count=1`, targeted differential/streaming/determinism tests, and `git

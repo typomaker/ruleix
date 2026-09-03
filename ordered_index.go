@@ -18,6 +18,7 @@ type orderedIndex[V any] struct {
 	rangeBlocks        []orderedRangeBlock
 	firstBlockCapacity int
 	routing            orderedRouting
+	merged             bool
 }
 
 // orderedRouting maps an observed-domain monotonic key directly to the
@@ -242,10 +243,26 @@ func (i *orderedIndex[V]) insert(value V, id uint32) {
 		}
 	}
 	item := &orderedItem[V]{value: value, bits: roaring.New()}
+	i.detachSharedBlockAggregates()
 	i.insertItem(item)
 	item.bits.Add(id)
 	block := i.blockFor(value)
 	i.blocks[block].bits.Add(id)
+}
+
+func (i *orderedIndex[V]) detachSharedBlockAggregates() {
+	for block := range i.blocks {
+		if len(i.blocks[block].items) == 1 && i.blocks[block].bits == i.blocks[block].items[0].bits {
+			i.blocks[block].bits = i.blocks[block].bits.Clone()
+		}
+	}
+}
+
+func (i *orderedIndex[V]) insertOrdered(value V, id uint32, dir direction) {
+	if i.merged {
+		value = roundedOrderedBoundary(i, value, dir == lessThan)
+	}
+	i.insert(value, id)
 }
 
 // insertPosting is build-only: it installs an already merged posting under an
@@ -270,17 +287,14 @@ func (i *orderedIndex[V]) insertPosting(value V, bits *roaring.Bitmap) {
 			return
 		}
 	}
-	for block := range i.blocks {
-		if len(i.blocks[block].items) == 1 && i.blocks[block].bits == i.blocks[block].items[0].bits {
-			i.blocks[block].bits = i.blocks[block].bits.Clone()
-		}
-	}
+	i.detachSharedBlockAggregates()
 	i.insertItem(&orderedItem[V]{value: value, bits: bits})
 	i.blocks[i.blockFor(value)].bits.Or(bits)
 }
 
 func (i *orderedIndex[V]) cloneBuild() orderedIndex[V] {
 	clone := newOrderedIndex(i.compare)
+	clone.merged = i.merged
 	for _, block := range i.blocks {
 		for _, item := range block.items {
 			clone.insertPosting(item.value, item.bits.Clone())

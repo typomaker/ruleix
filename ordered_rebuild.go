@@ -1,9 +1,5 @@
 package ruleix
 
-// orderedBoundaryQuantizer remains build state for the compound CompareBy
-// representation. Standalone orderedRule uses orderedKeyTransformer instead.
-type orderedBoundaryQuantizer[V any] struct{}
-
 func roundedOrderedBoundary[V any](index *orderedIndex[V], value V, upward bool) V {
 	if len(index.blocks) == 0 {
 		return value
@@ -46,6 +42,7 @@ func rebuildOrderedBoundaries[V any](index *orderedIndex[V], dir direction) orde
 		items = append(items, block.items...)
 	}
 	next := newOrderedIndex(index.compare)
+	next.merged = true
 	for first := 0; first < len(items); first += 2 {
 		last := min(first+2, len(items))
 		boundary := items[first].value

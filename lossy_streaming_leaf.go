@@ -97,8 +97,12 @@ func unwrapStreamingAdaptiveLeaves[T any](rule Rule[T]) Rule[T] {
 	case *inspectRule[T]:
 		return &inspectRule[T]{dst: typed.dst, child: unwrapStreamingAdaptiveLeaves(typed.child)}
 	case *inspectionDetailsRule[T]:
+		mode := typed.mode
+		if lossyPolicyMode(typed.child) == RuleModeLossy {
+			mode = RuleModeLossy
+		}
 		return &inspectionDetailsRule[T]{
-			child: unwrapStreamingAdaptiveLeaves(typed.child), details: typed.details, mode: typed.mode,
+			child: unwrapStreamingAdaptiveLeaves(typed.child), details: typed.details, mode: mode,
 		}
 	case *streamingAdaptiveLeaf[T]:
 		return unwrapStreamingAdaptiveLeaves(typed.child)

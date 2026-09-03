@@ -31,9 +31,6 @@ func lossyPolicyMode[T any](rule Rule[T]) RuleMode {
 	case *streamingAdaptiveLeaf[T]:
 		return lossyPolicyMode(typed.child)
 	}
-	if precision, ok := any(rule).(interface{ currentPrecisionLevel() uint32 }); ok && precision.currentPrecisionLevel() > 0 {
-		return RuleModeLossy
-	}
 	return inspectionModeOf(rule)
 }
 

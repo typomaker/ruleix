@@ -95,10 +95,10 @@ func TestComparatorBoundaryRoundingSupportsDescendingStrings(t *testing.T) {
 	for id, value := range []string{"Alpha", "bravo", "CHARLIE", "delta"} {
 		index.insert(value, uint32(id))
 	}
-	level := rebuildOrderedBoundaries(&index, greaterThan)
-	require.Equal(t, 2, level.buildStatistics().uniqueValues)
-	require.Equal(t, "bravo", roundedOrderedBoundary(&level, "beta", false))
-	require.Equal(t, "aardvark", roundedOrderedBoundary(&level, "aardvark", true))
+	next := rebuildOrderedBoundaries(&index, greaterThan)
+	require.Equal(t, 2, next.buildStatistics().uniqueValues)
+	require.Equal(t, "bravo", roundedOrderedBoundary(&next, "beta", false))
+	require.Equal(t, "aardvark", roundedOrderedBoundary(&next, "aardvark", true))
 }
 
 func TestComparatorBoundaryLookupCoversBlocksAndOpenEdges(t *testing.T) {
@@ -156,8 +156,42 @@ func TestComparatorBoundaryFirstGenerationNeedsTwoKeys(t *testing.T) {
 		compare: compareBoundaryFixture, wildcard: roaring.New(), index: newOrderedIndex(compareBoundaryFixture),
 	}
 	rule.index.insert(boundaryFixture{"one", 1}, 1)
-	_, _, ok := rule.prepareBoundaryFirstGeneration()
+	_, _, ok := rule.prepareStreamingFirstGeneration()
 	require.False(t, ok)
+}
+
+func TestOrderedNeighborRebuildKeepsLowEdgeMatches(t *testing.T) {
+	constraints, _ := lossyDifferentialData()
+	rule := &orderedRule[lossyDifferentialConstraint, int]{
+		get: func(value lossyDifferentialConstraint) (int, bool) { return value.value, value.valuePresent }, compare: cmp.Compare[int],
+		dir: lessThan, wildcard: roaring.New(), index: newOrderedIndex(cmp.Compare[int]),
+	}
+	adaptive := &streamingAdaptiveLeaf[lossyDifferentialConstraint]{child: rule}
+	for id := range 4096 {
+		adaptive.insert(constraints[id], uint32(id))
+	}
+	fitStreamingAggregate[lossyDifferentialConstraint](adaptive, lossyBuildTarget(16<<10))
+	for id := 4096; id < 5632; id++ {
+		adaptive.insert(constraints[id], uint32(id))
+	}
+	fitStreamingAggregateHard[lossyDifferentialConstraint](adaptive, 16<<10)
+	rule = adaptive.child.(*orderedRule[lossyDifferentialConstraint, int])
+	rule.prepareSearch()
+	rule.internBitmaps(newBitmapInterner())
+	require.True(t, rule.matchesID(lossyDifferentialConstraint{value: -13001, valuePresent: true}, 1))
+}
+
+func TestStreamingOrderedNeighborRebuildKeepsLowEdgeMatches(t *testing.T) {
+	constraints, ids := lossyDifferentialData()
+	get := func(value lossyDifferentialConstraint) (int, bool) { return value.value, value.valuePresent }
+	index, _, err := buildIndexPhysicalAliases(
+		Lossy(Less(get, cmp.Compare[int]), MemoryLimit(16<<10)), Zip(constraints, ids),
+		false, nil, buildOptions{compilePhysicalAliases: true, enableStreaming: true},
+	)
+	require.NoError(t, err)
+	var matches []int
+	index.Search(lossyDifferentialConstraint{value: -13001, valuePresent: true}, &matches)
+	require.Contains(t, matches, 1)
 }
 
 func TestComparatorBoundaryStreamingBuildRespectsHardLimit(t *testing.T) {

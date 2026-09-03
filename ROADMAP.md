@@ -464,7 +464,8 @@ search types отсутствуют и diff coverage изменённого prod
 
 Выполнено в рамках шага:
 
-- В `1508c7c` Exact и Lossy переведены на `equalityIndex[uint64]`: level 0 хранит
+- В `1508c7c` equality переведён на `equalityIndex[uint64]`; ordered лишён
+  level/quantizer/transformer и переведён на merge соседних ключей. Equality level 0 хранит
   полный hash, уровни 1–17 очищают младшие биты; tagged key, исходное `V` в
   physical index и fixed-arity equality rules удалены.
 - Equality search сопоставлен с `v0.8.2` на Apple M1 Max, Go 1.26.0,
@@ -479,8 +480,7 @@ search types отсутствуют и diff coverage изменённого prod
   ordered, `Between`, `CompareBy`, production `All`, mixed/range/adversarial.
 - Для каждого workload измерить search/build time, allocations, retained memory,
   key count, max posting, candidates/query и observed false-positive rate.
-- Воспроизвести interleaved runs и снять profiles для каждой regression;
-  equality проверить и на распределениях с collision amplification.
+- Воспроизвести interleaved runs и profiles; equality проверить на collision amplification.
 - Только на этом шаге выполнять performance-оптимизации; каждая оптимизация
   должна сохранять streaming-контракт и заново проходить correctness/memory
   gates шага 11.

@@ -83,8 +83,6 @@ type orderedRule[T any, V any] struct {
 	inclusive bool
 	wildcard  *roaring.Bitmap
 	index     orderedIndex[V]
-	transform orderedKeyTransformer[V]
-	level     uint32
 }
 
 type orderedLocalQueryKey[V any] struct {
@@ -92,8 +90,7 @@ type orderedLocalQueryKey[V any] struct {
 	ok    bool
 }
 
-func (r *orderedRule[T, V]) runtimeNodeID() nodeID         { return r.nodeID }
-func (r *orderedRule[T, V]) currentPrecisionLevel() uint32 { return r.level }
+func (r *orderedRule[T, V]) runtimeNodeID() nodeID { return r.nodeID }
 
 func orderedIndexLossyAccounting[V any](index *orderedIndex[V], wildcard *roaring.Bitmap) (
 	memory, items, distinct uint64,
@@ -137,6 +134,9 @@ func (r *orderedRule[T, V]) inspectionStrategy() string {
 	return "ordered"
 }
 func (r *orderedRule[T, V]) inspectionMode() RuleMode {
+	if r.index.merged {
+		return RuleModeLossy
+	}
 	return RuleModeExact
 }
 func (r *orderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails) inspectionDetails {
@@ -155,7 +155,7 @@ func (r *orderedRule[T, V]) refreshedStreamingDetails(details inspectionDetails)
 	details.MemoryUsageBytes, details.MemoryUsageAvailable = memory, true
 	details.Items, details.ItemsAvailable = items, true
 	details.DistinctValues, details.DistinctValuesAvailable = distinct, true
-	if r.level > 0 {
+	if r.index.merged {
 		details.GranularityValue, details.GranularityAvailable = distinct, true
 	}
 	return details
@@ -192,7 +192,7 @@ func (r *orderedRule[T, V]) insert(v T, id uint32) {
 		r.wildcard.Add(id)
 		return
 	}
-	r.index.insert(r.storageValue(value), id)
+	r.index.insertOrdered(value, id, r.dir)
 }
 
 func (r *orderedRule[T, V]) cardinality(v T, _ *bitmapPool) uint64 {
@@ -204,7 +204,7 @@ func (r *orderedRule[T, V]) estimateCardinality(v T) uint64 {
 	if !ok {
 		return n
 	}
-	return n + r.index.estimateCardinality(r.searchValue(value), r.dir == lessThan, r.inclusive)
+	return n + r.index.estimateCardinality(value, r.dir == lessThan, r.inclusive)
 }
 func (r *orderedRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
 	if pool.local == nil {
@@ -281,13 +281,13 @@ func (r *orderedRule[T, V]) matchesID(v T, id uint32) bool {
 		return true
 	}
 	value, ok := r.get(v)
-	return ok && r.index.matches(r.searchValue(value), r.dir == lessThan, r.inclusive, id)
+	return ok && r.index.matches(value, r.dir == lessThan, r.inclusive, id)
 }
 
 func (r *orderedRule[T, V]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {
 	dst.Or(r.wildcard)
 	if value.ok {
-		r.index.walk(r.searchValue(value.value), r.dir == lessThan, r.inclusive, dst.Or)
+		r.index.walk(value.value, r.dir == lessThan, r.inclusive, dst.Or)
 	}
 }
 func (r *orderedRule[T, V]) appendMatchingBitmaps(value optionalValue[V], dst []*roaring.Bitmap) []*roaring.Bitmap {
@@ -295,7 +295,7 @@ func (r *orderedRule[T, V]) appendMatchingBitmaps(value optionalValue[V], dst []
 		dst = append(dst, r.wildcard)
 	}
 	if value.ok {
-		r.index.walk(r.searchValue(value.value), r.dir == lessThan, r.inclusive, func(bits *roaring.Bitmap) {
+		r.index.walk(value.value, r.dir == lessThan, r.inclusive, func(bits *roaring.Bitmap) {
 			dst = append(dst, bits)
 		})
 	}

@@ -10,41 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOrderedQuantizerLevelsAreNestedAndOutward(t *testing.T) {
-	t.Run("integers", func(t *testing.T) {
-		q, ok := compileOrderedQuantizer[int8]()
-		require.True(t, ok)
-		for value := int8(math.MinInt8); value < math.MaxInt8; value++ {
-			lower, upper := value, value
-			for level := uint32(1); level <= q.terminalLevel(); level++ {
-				nextLower := q.rounded(lower, level, false)
-				nextUpper := q.rounded(upper, level, true)
-				require.LessOrEqual(t, nextLower, value)
-				require.GreaterOrEqual(t, nextUpper, value)
-				require.Equal(t, q.rounded(value, level, false), nextLower)
-				require.Equal(t, q.rounded(value, level, true), nextUpper)
-				lower, upper = nextLower, nextUpper
-			}
-		}
-	})
-}
-
-func TestOrderedTransformerLevelZeroIsIdentityForEveryKind(t *testing.T) {
-	index := newOrderedIndex(cmp.Compare[int])
-	index.insert(10, 1)
-	fixed, ok := compileOrderedQuantizer[int]()
-	require.True(t, ok)
-	for _, transformer := range []orderedKeyTransformer[int]{
-		{},
-		{kind: orderedFixedTransformer, fixed: fixed},
-		{kind: orderedBoundaryTransformer},
-	} {
-		for _, upward := range []bool{false, true} {
-			require.Equal(t, 11, transformer.key(&index, 11, 0, upward))
-		}
-	}
-}
-
 func TestOrderedFirstGenerationKeepsCommonRuleType(t *testing.T) {
 	rule := newOrderedRule(func(value int) (int, bool) { return value, true }, cmp.Compare[int], greaterThan, false)
 	state := rule.newState(&nodeIDAllocator{}, &buildStatistics{}).(*orderedRule[int, int])
@@ -53,40 +18,6 @@ func TestOrderedFirstGenerationKeepsCommonRuleType(t *testing.T) {
 	_, next, ok := state.prepareStreamingFirstGeneration()
 	require.True(t, ok)
 	require.IsType(t, state, next)
-}
-
-func TestOrderedQuantizerSupportsNumericKinds(t *testing.T) {
-	check := func(ok bool) { require.True(t, ok) }
-	_, ok := compileOrderedQuantizer[int]()
-	check(ok)
-	_, ok = compileOrderedQuantizer[int16]()
-	check(ok)
-	_, ok = compileOrderedQuantizer[int32]()
-	check(ok)
-	_, ok = compileOrderedQuantizer[int64]()
-	check(ok)
-	_, ok = compileOrderedQuantizer[uint]()
-	check(ok)
-	q8, ok := compileOrderedQuantizer[uint8]()
-	check(ok)
-	require.Equal(t, uint8(2), q8.rounded(1, 1, true))
-	require.Equal(t, uint8(math.MaxUint8), q8.rounded(math.MaxUint8, 1, true))
-	_, ok = compileOrderedQuantizer[uint16]()
-	check(ok)
-	_, ok = compileOrderedQuantizer[uint32]()
-	check(ok)
-	_, ok = compileOrderedQuantizer[uint64]()
-	check(ok)
-	_, ok = compileOrderedQuantizer[uintptr]()
-	check(ok)
-	_, ok = compileOrderedQuantizer[float32]()
-	require.False(t, ok)
-	_, ok = compileOrderedQuantizer[float64]()
-	require.False(t, ok)
-	_, ok = compileOrderedQuantizer[time.Time]()
-	require.False(t, ok)
-	_, ok = compileOrderedQuantizer[string]()
-	require.False(t, ok)
 }
 
 func TestQuantizedOrderedRepeatedRebuildAndLateValuesHaveNoFalseNegatives(t *testing.T) {
@@ -130,7 +61,7 @@ func TestQuantizedOrderedRepeatedRebuildAndLateValuesHaveNoFalseNegatives(t *tes
 	}
 }
 
-func TestNumericQuantizerFallsBackToBoundariesForDescendingComparator(t *testing.T) {
+func TestOrderedNeighborRebuildSupportsDescendingComparator(t *testing.T) {
 	type fixture struct{ value int }
 	rule := &orderedRule[fixture, int]{
 		get:      func(v fixture) (int, bool) { return v.value, true },
@@ -143,7 +74,6 @@ func TestNumericQuantizerFallsBackToBoundariesForDescendingComparator(t *testing
 	_, first, ok := rule.prepareStreamingFirstGeneration()
 	require.True(t, ok)
 	lossy := first.(*orderedRule[fixture, int])
-	require.Equal(t, orderedBoundaryTransformer, lossy.transform.kind)
 	require.Equal(t, 2, lossy.index.buildStatistics().uniqueValues)
 }
 
