@@ -6,6 +6,34 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-03: Local equality key и wide-result reuse отклонены
+
+На HEAD `092db48` проверены два способа убрать повторный physical equality
+lookup из `Lossy` Budget50 `LocalRepeated`. Первый лениво сохранял в каждом
+hashed equality node пару `(semantic value, physical uint64 key)`. Пять
+интерливированных запусков с `GOMAXPROCS=1`, `500ms` дали медианы
+`394,5 -> 403,8 ns/op` для repeated (+2,4%) и `891,6 -> 928,6 ns/op` для
+rotating (+4,2%); allocation classes остались `0/0` и `32 B/2 allocs`.
+Нормализованный 10-секундный CPU diff подтвердил, что исчезнувшая часть
+`stableStringEqualityHash` меньше новой цены `lookupLocalPlanningBitmap`,
+type assertion, semantic-value comparison и cache dispatch. Allocation profile
+с `memprofilerate=1` показал 48-byte wrapper allocation на hashed leaf, то есть
+192 bytes для четырёх equality children одного `Local`. Вариант удалён.
+
+Второй вариант разрешал существующему четырёхслотовому `localAllResult`
+возвращать сохранённый финальный bitmap и для результатов шире 256 ID, проходя
+query-key/epoch validation и перечисляя bitmap без повторных planning lookup и
+intersection. Он не добавлял retained поля или allocations. Интерливированные
+Budget50 серии остались нейтральными: repeated `390,0 -> 386,8 ns/op` в первой
+серии, но `388,5 -> 389,1 ns/op` в расширенной; rotating сохранил прежние
+`32 B/op, 2 allocs/op` и находился в шуме. Budget100/25 также не показали
+устойчивого выигрыша или новой allocation class. Нормализованный 10-секундный
+CPU diff показал, что экономия planning/intersection компенсируется проверкой
+query keys и перечислением сохранённого wide bitmap. Вариант удалён как
+нейтральный: он не устраняет измеренную release-to-HEAD регрессию и усложняет
+особый wide-result путь. Следующее направление — сократить общий
+`eqRule/equalityIndex` physical lookup без per-Local retained state.
+
 ## 2026-09-03: typed accounting и ordered block reuse приняты
 
 Два верхних управляемых источника профиля `e03fbc7` устранены без изменения

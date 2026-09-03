@@ -4,6 +4,34 @@
 [`performance-history.md`](performance-history.md) и хранит подробные серии,
 не относящиеся к текущему release summary.
 
+## 2026-09-03: Budget50 Local cache experiments
+
+Среда: Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`; baseline
+`092db48`. Focused benchmark:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkLossyAllSearchRuntime$/^Budget50$/^(LocalRepeated|LocalRotating)$' \
+  -benchmem -benchtime=500ms -count=1 .
+```
+
+Baseline и каждый candidate запускались пятью интерливированными парами.
+Per-node `(value, physicalKey)` cache получил repeated `394,5 -> 403,8 ns/op`
+и rotating `891,6 -> 928,6 ns/op`. Search allocations не изменились; sampled
+allocation profile показал 48 bytes на wrapper каждого hashed equality leaf.
+CPU profiles использовали `-benchtime=10s -cpuprofile`; cache candidate дал
+`403,5 ns/op` против `393,3 ns/op` baseline и перенёс CPU из hash path в
+local-cache validation/dispatch.
+
+Переиспользование уже существующего wide `localAllResult.bits` не меняло
+структуры или retained accounting. Первая серия дала repeated
+`390,0 -> 386,8 ns/op`, однако расширенная трёхпарная матрица Budget100/50/25
+дала Budget50 `388,5 -> 389,1 ns/op`; остальные Local repeated/rotating случаи
+также остались в шуме при прежних allocation classes. Длинный candidate
+получил `388,7 ns/op`; differential profile не показал устойчивой общей CPU
+экономии. Оба прототипа удалены. Подробный вывод и причина решения находятся в
+[`optimization-decisions.md`](optimization-decisions.md).
+
 ## 2026-09-02: baseline шага 5 Between/CompareBy
 
 Перед повторной унификацией `Between` и `CompareBy` снят baseline на `0598735`:
