@@ -3,7 +3,6 @@ package ruleix
 import (
 	"math"
 	"reflect"
-	"time"
 	"unsafe"
 )
 
@@ -14,31 +13,10 @@ type orderedQuantizer[V any] struct {
 	encode func(V) uint64
 	decode func(uint64) V
 	bits   uint32
-	time   bool
 }
 
 func compileOrderedQuantizer[V any]() (orderedQuantizer[V], bool) {
 	typeOf := reflect.TypeOf((*V)(nil)).Elem()
-	if typeOf == reflect.TypeOf(time.Time{}) {
-		// TODO: Consider logical time levels (for example minute, hour, and
-		// day) instead of only binary second widths. A lower boundary can use
-		// time.Truncate(granularity); an upper boundary needs the corresponding
-		// ceiling (truncate, then add one granularity unit when it changed the
-		// value). Any such sequence must still keep adjacent levels nested and
-		// define whether calendar boundaries use UTC or the value's location.
-		return orderedQuantizer[V]{
-			encode: func(value V) uint64 {
-				instant := any(value).(time.Time)
-				return signedOrderedKey(instant.Unix(), 64)
-			},
-			decode: func(key uint64) V {
-				instant := time.Unix(int64(key^(uint64(1)<<63)), 0).UTC()
-				return any(instant).(V)
-			},
-			bits: 64, time: true,
-		}, true
-	}
-
 	kind := typeOf.Kind()
 	switch kind {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -101,9 +79,6 @@ func unsignedQuantizerCodec[V any, S unsignedOrderedScalar](width uint32) (func(
 }
 
 func (q orderedQuantizer[V]) terminalLevel() uint32 {
-	if q.time {
-		return q.bits + 1 // level one first removes sub-second precision.
-	}
 	return q.bits
 }
 
@@ -112,17 +87,7 @@ func (q orderedQuantizer[V]) rounded(value V, level uint32, upward bool) V {
 		return value
 	}
 	key := q.encode(value)
-	shift := level
-	if q.time {
-		// Unix seconds use floor semantics. Move a fractional upper boundary to
-		// the following second before applying the coarser second grid.
-		if upward && any(value).(time.Time).Nanosecond() != 0 && key != math.MaxUint64 {
-			key++
-		}
-		shift--
-	} else {
-		shift += 64 - q.bits
-	}
+	shift := level + 64 - q.bits
 	key = roundOrderedKey(key, shift, upward)
 	return q.decode(key)
 }

@@ -293,9 +293,9 @@ physical keys и не содержит level, quantizer или policy state. С�
 
 Quantized класс хранит один outward-rounded boundary и объединённый posting.
 Для `Greater*` сохраняется нижняя граница класса, для `Less*` — верхняя;
-strict/inclusive семантика matcher не меняется. Numeric/time уровни используют
-фиксированную монотонную сетку. Произвольный стабильный total-order comparator
-использует вложенные boundaries непосредственно из текущих ключей общего
+strict/inclusive семантика matcher не меняется. Numeric уровни используют
+фиксированную монотонную сетку; `time.Time` и произвольный total-order comparator
+используют вложенные boundaries непосредственно из текущих ключей общего
 `orderedIndex`: новый уровень группирует соседние ключи и выбирает наружный
 край. Отдельный boundary-массив не хранится и reflection/getter codec не
 определяют порядок. Поздний внешний extreme остаётся новым крайним ключом до

@@ -27,21 +27,6 @@ func TestOrderedQuantizerLevelsAreNestedAndOutward(t *testing.T) {
 			}
 		}
 	})
-	t.Run("time", func(t *testing.T) {
-		q, ok := compileOrderedQuantizer[time.Time]()
-		require.True(t, ok)
-		value := time.Unix(-17, 987654321).UTC()
-		lower := q.rounded(value, 1, false)
-		upper := q.rounded(value, 1, true)
-		require.False(t, lower.After(value))
-		require.False(t, upper.Before(value))
-		for level := uint32(2); level <= 12; level++ {
-			lower = q.rounded(lower, level, false)
-			upper = q.rounded(upper, level, true)
-			require.Equal(t, q.rounded(value, level, false), lower)
-			require.Equal(t, q.rounded(value, level, true), upper)
-		}
-	})
 }
 
 func TestOrderedTransformerLevelZeroIsIdentityForEveryKind(t *testing.T) {
@@ -97,6 +82,8 @@ func TestOrderedQuantizerSupportsNumericKinds(t *testing.T) {
 	_, ok = compileOrderedQuantizer[float32]()
 	require.False(t, ok)
 	_, ok = compileOrderedQuantizer[float64]()
+	require.False(t, ok)
+	_, ok = compileOrderedQuantizer[time.Time]()
 	require.False(t, ok)
 	_, ok = compileOrderedQuantizer[string]()
 	require.False(t, ok)

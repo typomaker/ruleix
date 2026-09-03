@@ -465,7 +465,7 @@ search types отсутствуют и diff coverage изменённого prod
 
 ### 12. Выполнить benchmarks, profiles и только затем оптимизацию
 
-Статус: `запланирован`
+Статус: `в работе`
 
 - После завершения шагов 1–11 снять сопоставимые Exact, identity-lossy и Lossy
   серии для equality, standalone ordered, `Between`, `CompareBy`, production

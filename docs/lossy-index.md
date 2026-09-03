@@ -105,15 +105,12 @@ measured above 90%. No benchmark was run and no layout decision was made.
 
 ### Numeric and time ordered levels
 
-Standalone ordered rules over built-in and named numeric values now use a
-fixed domain-wide monotonic key grid. `time.Time` uses its Unix-second order,
-with the first lossy level expanding fractional seconds outward. The grid
-origin and widths do not depend on observed minima or maxima, so values arriving
-after a pressure transition cannot change the meaning of an existing level.
-The implementation records a follow-up consideration for logical time levels
-such as minutes, hours, and days: left boundaries could use `time.Truncate`,
-while right boundaries require a ceiling operation. Such levels must retain
-the nesting invariant and define their timezone semantics before adoption.
+Standalone ordered rules over built-in numeric values use a fixed domain-wide
+monotonic key grid. `time.Time` uses comparator-backed nested boundaries:
+mapping its full domain through Unix seconds cannot represent terminal outward
+sentinels without overflowing `time.Time`'s internal epoch. This keeps late
+instants and terminal pressure superset-safe. A future logical minute/hour/day
+grid must preserve nesting and define timezone semantics before adoption.
 
 Stored lower bounds round downward and stored upper bounds round upward. Query
 keys use the opposite outward edge; this preserves strict as well as inclusive
@@ -124,10 +121,9 @@ boundary as direct quantization from the exact value, and no exact keys or
 future grids are retained.
 
 The numeric codec is enabled only when the supplied comparator agrees with the
-natural monotonic encoding of the collected values. Other total orders use the
-comparator-backed boundary levels described below. The step 4 gate covers
-integer extremes, negative and positive
-time boundaries, strict and inclusive operators, late values outside the
+natural monotonic encoding of the collected values. Time and other total orders
+use the comparator-backed boundary levels described below. The step 4 gate
+covers integer extremes, negative and positive time boundaries, strict and inclusive operators, late values outside the
 initial range, repeated rebuilds, full tests, and changed-line coverage. No
 benchmark or performance conclusion is part of this step. Verification on
 2026-09-02 used `go test ./... -coverprofile=/tmp/ruleix-step4.cover` and
