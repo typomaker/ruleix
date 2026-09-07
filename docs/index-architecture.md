@@ -94,13 +94,6 @@ Rule-схема + поток (constraint, external ID)
 крупных множеств — `roaring.Bitmap`, но equality-индекс экономит память на
 малых множествах.
 
-Внутренний эксперимент ID chunking может во время специальных benchmark-build
-передавать положительному дереву номер непрерывного чанка вместо точного ID.
-Rules по-прежнему видят обычный `uint32`; `Index` хранит shift и разворачивает
-чанки только при `Search`/`Visit`. Chunked `All` отключает exact-ID shortcuts и
-использует полные bitmap operands. Публичный Build использует shift 0, а
-эксперимент не допускает `Exclude` до отделения negative postings.
-
 ### Equality (`Include`)
 
 Индекс хранит отдельный wildcard posting и отображение конкретного значения в

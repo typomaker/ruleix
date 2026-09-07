@@ -6,6 +6,10 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-07: ID chunking rejected and removed
+
+The internal ID-chunk experiment was rejected: its global contiguous groups saved at most 15.8% posting memory on the production shape while amplifying candidates up to 9.9x and slowing search up to 3.4x. Performance bisect later identified its introduction in `1dee1c1` as the first cause of a separate 36.3% warm exact Local regression: the shift-zero path replaced direct ID lookup with `appendChunkValues`, whose slice append added `memmove` on every cached ID. The experiment, controls, tests, and benchmarks were removed rather than retaining a branch in public search. Full causal and removal evidence: [`benchmark-v0.8.2-vs-head-2026-09-07.md`](benchmark-v0.8.2-vs-head-2026-09-07.md).
+
 ## 2026-09-07: strict equality antonym components accepted
 
 Build compiles complement equality classes as one mode-agnostic component. A 3x3
@@ -29,8 +33,8 @@ compressed состояний общего executor-а.
 `1 636 → 1 125 ns/op` (−31,2%), неизменные 358 candidates/query, 0 B/op и
 0 allocs/op. Десятисекундные CPU profiles подтвердили смену пути: baseline
 тратил 65,1% cumulative samples в Roaring iteration и 20,0% в восстановлении
-плана; кандидат тратил 65,2% в `appendChunkValues`/`memmove` и 14,5% в
-collision-safe query-key validation. Ускорение устраняет повторное planning и
+плана; кандидат тогда тратил 65,2% в удалённых позднее `appendChunkValues`/`memmove`
+и 14,5% в collision-safe query-key validation. Ускорение устраняет повторное planning и
 bitmap enumeration, но не маскирует сохранённую candidate amplification.
 
 Retained benchmark (`20x x5`) дал `93 403 → 96 477 B/Local` (+3,3%) из-за

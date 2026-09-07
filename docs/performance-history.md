@@ -1,15 +1,20 @@
 # История производительности
 
+## 2026-09-07: `v0.8.2` versus current `HEAD`
+
+Initial interleaved runs found `Index.Search` 9.58% faster but warm and parallel `Local` 38.07% and 36.22% slower. Bisect identified the unused ID-chunk experiment in `1dee1c1`; removing it restored Local to release parity while preserving an 11.27% Index improvement. Build latency and retained Local memory remain neutral; retained index is +0.17%. Full protocol: [`benchmark-v0.8.2-vs-head-2026-09-07.md`](benchmark-v0.8.2-vs-head-2026-09-07.md).
+
 ## 2026-09-07: strict equality antonym components
 
-The 1x1 optimization gave Exact Index `4,113 -> 423 ns/op`; one 3x3 component reduced
-Index `4,125 -> 2,239 ns/op`. Ordered 4x4 intersections improved an early-empty
-case `10,074 -> 8,244 ns/op`; general, equal-cardinality, and retained gates were neutral.
-Full protocol: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
+The 1x1 optimization gave Exact Index `4,113 -> 423 ns/op`; one 3x3 component
+gave `4,125 -> 2,239 ns/op`, `19 -> 5` allocations, and retained Local
+`4,560 -> 3,680 B`. Ordered 4x4 intersections improved an early-empty case
+`10,074 -> 8,244 ns/op`; other gates were neutral. Full protocol:
+[`strict-equality-antonyms.md`](strict-equality-antonyms.md).
 
 ## 2026-09-07: общий 512-ID Local cache
 
-На `ab24d5a` production Lossy Local улучшен `1 636 → 1 125 ns/op` при 358 candidates, 0 B/op и 0 allocs; retained Local вырос `93 403 → 96 477 B`. Interleaved A/B, CPU/allocation profiles и synthetic gates записаны в [`lossy-local-improvement-2026-09-07.md`](lossy-local-improvement-2026-09-07.md).
+На `ab24d5a` production Lossy Local улучшен `1 636 → 1 125 ns/op` при 358 candidates, 0 B/op и 0 allocs; retained Local вырос `93 403 → 96 477 B`. Interleaved A/B, CPU/allocation profiles и synthetic gates: [`lossy-local-improvement-2026-09-07.md`](lossy-local-improvement-2026-09-07.md).
 
 ## 2026-09-03: финализация ordered precision state
 
@@ -17,8 +22,7 @@ Build-only состояние квантования удалено из `ordere
 
 ## 2026-09-03: release gate шага 12 остаётся открыт
 
-Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`). Equality-only `300ms x5`: Index 15 579 → 15 430 нс,
-Local 222,5 → 222,8; two-leaf 19 035 → 18 748 и 42,89 → 43,89 нс; allocations прежние. Ordered rewrite против `48e309d`,
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`; baseline `v0.8.2` (`7f32ddc`). Equality-only `300ms x5`: Index 15 579 → 15 430 нс, Local 222,5 → 222,8; two-leaf 19 035 → 18 748 и 42,89 → 43,89 нс; allocations прежние. Ordered rewrite против `48e309d`,
 `500ms x5`: Lossy Index 124 941 → 124 719 нс, Local 11 996 → 11 972. Atomic pair/least-release против `f10fca5`, `300ms x3`:
 Build 25,0 → 798,6 мс и 12,57 → 118,34 MB/op; production candidates 3 802 → 358, Index 126,7 → 32,3 мкс, Local 12,1 → 1,59 мкс. Search allocations прежние; Build trade-off принят владельцем.
 ## 2026-09-02: lossy range aggregate checkpoint

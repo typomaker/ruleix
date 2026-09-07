@@ -81,9 +81,6 @@ func StrictEqualityAntonymPairsForTest[C any, ID comparable](
 	index *Index[C, ID],
 ) []StrictEqualityAntonymPair {
 	total := uint64(len(index.values))
-	if index.idChunkShift != 0 && total != 0 {
-		total = (total-1)/(uint64(1)<<index.idChunkShift) + 1
-	}
 	var pairs []StrictEqualityAntonymPair
 	var walk func(Rule[C])
 	walk = func(rule Rule[C]) {

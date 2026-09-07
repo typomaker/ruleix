@@ -450,13 +450,6 @@ describes the indexed distribution and does not require queries or runtime
 instrumentation. Ordered physical keys do not expose one distribution-independent
 rate because their false-positive boundary depends on the query value.
 
-## Эксперимент с чанками внутренних ID
-
-Внутренний прототип, synthetic и production-shape измерения, профили и
-выявленное ограничение exact-ID shortcuts описаны в
-[`lossy-id-chunk-experiment.md`](lossy-id-chunk-experiment.md). Механизм не
-является публичной частью `Lossy` и пока остаётся исследованием.
-
 ## Validation and rollout
 
 Validation compares exact and lossy results on generated and adversarial data
@@ -468,8 +461,3 @@ Step 11 verification on 2026-09-03 used `go test ./...`, `go test -race ./...`, 
 The comparable level-0 equality change was verified on 2026-09-03 with
 `go test -race ./...` and `go test -count=1 -coverprofile=/tmp/ruleix-eq-comparable.cover ./...`.
 All suites passed; repository coverage was 91.1% and changed production statements reached 101/105 (96.2% diff coverage).
-
-ID-chunk prototype verification on 2026-09-03 used `go test ./...`, `go test
--race ./...`, `git diff --check`, and `go test ./...
--coverprofile=/tmp/ruleix-idchunk.cover`. All passed; package statement
-coverage was 91.1% (89.6% including example packages).
