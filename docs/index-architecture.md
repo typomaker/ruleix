@@ -1,9 +1,5 @@
 # Архитектура индекса Ruleix
 
-Документ описывает текущую реализацию индекса в репозитории. Это не целевой
-дизайн и не публичный API-контракт: при изменении реализации документ следует
-обновлять вместе с кодом.
-
 Ruleix использует RoaringBitmap/roaring v2.26.0 и Go 1.24 или новее. Compound
 range filtering пока не полагается на новый fused API: публичный `AndAny`
 по-прежнему выполняет COW writable intersection и не устраняет container
@@ -82,7 +78,10 @@ Rule-схема + поток (constraint, external ID)
 8. Эквивалентные неизменяемые bitmap интернируются. Для `All` компилируются
    физические алиасы и классы повторяющихся equality-результатов, чтобы не
    выполнять одинаковую работу несколько раз.
-9. Ordered-структуры и остальные узлы подготавливаются к поиску; Roaring
+9. Строгие wildcard-дополнения equality-потомков `All` сворачиваются в один
+   concrete-posting operand; доказательство и ограничения описаны в
+   [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
+10. Ordered-структуры и остальные узлы подготавливаются к поиску; Roaring
    bitmap переводятся в copy-on-write режим до публикации индекса.
 
 Новая статистика и snapshots инспекторов публикуются только после полностью
@@ -481,7 +480,7 @@ search path нет reflection. Интерфейсы остаются типиз�
 | `eq.go`, `not.go` | Equality и exclusion indexes. |
 | `ordered.go`, `ordered_index.go` | Ordered-операторы, блоковый индекс и маршрутизация. |
 | `between.go`, `compare_by.go` | Составные ordered-представления. |
-| `all.go`, `execution_capabilities.go`, `execution_cost.go` | Планирование и выполнение конъюнкции. |
+| `all.go`, `all_planning.go`, `all_execution.go` | Ядро, планирование/cache и выполнение конъюнкции. |
 | `bitmap_pool.go`, `bitmap_intern.go` | Scratch-пулы, Local-кэши, интернирование и equality-классы. |
 | `lossy.go`, `lossy_policy.go`, `*_streaming.go` | Pressure selector, policy limits и переходы lossy-поколения. |
 | `canonical_value.go`, `ordered_rebuild.go` | Канонизация equality и объединение соседних ordered keys. |

@@ -93,6 +93,13 @@ type localQueryKeyProvider[T any] interface {
 	localQueryKeyMatches(T, any) bool
 }
 
+// localQueryKeyProviderGroup lets a compiled operand preserve the component
+// keys used by a parent result cache. It is representation-independent: the
+// operand changes execution shape without hiding its exact query identity.
+type localQueryKeyProviderGroup[T any] interface {
+	localQueryKeyProviders() []localQueryKeyProvider[T]
+}
+
 // planningBitmapProvider exposes an immutable posting list found while All is
 // ranking its children. The bitmap remains owned by the rule and may only be
 // read by the search path.
@@ -138,6 +145,9 @@ type candidateFilter[T any] interface {
 // arise naturally from bitmap interning.
 type sharedWildcardEquality[T any] interface {
 	sharedWildcard() *roaring.Bitmap
+	equalityUniverseCardinality() uint64
+	concreteMatchCardinality(T) uint64
+	matchesConcreteID(T, uint32) bool
 	addConcreteMatches(T, *roaring.Bitmap)
 	intersectConcreteMatches(T, *roaring.Bitmap, *bitmapPool)
 }

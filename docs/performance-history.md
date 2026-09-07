@@ -1,5 +1,12 @@
 # История производительности
 
+## 2026-09-07: строгие equality-антонимы
+
+На strict-complement fixture Exact Index `4 113 → 423 ns/op`, rotating Local
+`4 395 → 565.5 ns/op`; identity дал сопоставимый выигрыш, stable Local остался
+около 70 ns без allocations. Production fixture содержит 0 пар и сохранил
+search/build классы. Полный протокол: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
+
 ## 2026-09-07: общий 512-ID Local cache
 
 На `ab24d5a` production Lossy Local улучшен `1 636 → 1 125 ns/op` при 358 candidates, 0 B/op и 0 allocs; retained Local вырос `93 403 → 96 477 B`. Interleaved A/B, CPU/allocation profiles и synthetic gates записаны в [`lossy-local-improvement-2026-09-07.md`](lossy-local-improvement-2026-09-07.md).
@@ -488,14 +495,6 @@ warm Local 64,04 ns/op, 0 B/op, 0 allocs/op. Exact/identity: 51 328/51 846
 ns/op Index и 61,15/60,81 ns/op Local. Production `500ms x5`: median 47 770
 ns/op Index и 5 482 ns/op Local; performance gate шага 6 остаётся открыт.
 
-Для `v0.1.0`–`v0.4.1`, `v0.5.0`→`v0.6.0`, `v0.7.0`→`v0.7.1` и
-`v0.8.0`→`v0.8.1` в репозитории нет полного сопоставимого release-to-release
-набора по нынешней production-shaped методике. Changelog описывает изменения,
-но не заменяет измерение; поэтому численные строки для этих переходов не
-восстанавливаются задним числом из несопоставимых focused-бенчмарков.
-
 ## Дополнительные checkpoint-измерения
 
-Подробные checkpoint-замеры streaming и equality вынесены в
-[`performance-checkpoints.md`](performance-checkpoints.md), чтобы основной
-канонический журнал оставался компактным.
+Остальные замеры вынесены в [`performance-checkpoints.md`](performance-checkpoints.md).

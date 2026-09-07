@@ -2,6 +2,14 @@ package ruleix
 
 import "sort"
 
+// StrictEqualityAntonymPair is a test-only Build-shape observation. Child
+// indexes are local to one All node and name a pair whose wildcard bitmaps are
+// exact complements over that node's internal-ID universe.
+type StrictEqualityAntonymPair struct {
+	FirstChild  int
+	SecondChild int
+}
+
 // EqualityDiagnostic is test-only physical-shape data for one compiled lossy
 // equality leaf. It deliberately lives outside the public library build.
 type EqualityDiagnostic struct {
@@ -64,4 +72,56 @@ func EqualityDiagnostics[C any, ID comparable](index *Index[C, ID]) []EqualityDi
 	}
 	walk(index.root, inspectionDetails{})
 	return diagnostics
+}
+
+// StrictEqualityAntonymPairsForTest reports strict sibling pairs without
+// adding a production API. XOR cardinality is computed from cardinalities and
+// intersection cardinality, so the diagnostic allocates no temporary bitmap.
+func StrictEqualityAntonymPairsForTest[C any, ID comparable](
+	index *Index[C, ID],
+) []StrictEqualityAntonymPair {
+	total := uint64(len(index.values))
+	if index.idChunkShift != 0 && total != 0 {
+		total = (total-1)/(uint64(1)<<index.idChunkShift) + 1
+	}
+	var pairs []StrictEqualityAntonymPair
+	var walk func(Rule[C])
+	walk = func(rule Rule[C]) {
+		if _, ok := rule.(*strictEqualityAntonymRule[C]); ok {
+			pairs = append(pairs, StrictEqualityAntonymPair{})
+			return
+		}
+		if observed, ok := rule.(*inspectedRuntimeRule[C]); ok {
+			walk(observed.child)
+			return
+		}
+		all, ok := rule.(*allRule[C])
+		if !ok {
+			return
+		}
+		for _, child := range all.children {
+			walk(child)
+		}
+		for first := 0; first < len(all.children); first++ {
+			left, leftOK := sharedWildcardOf(all.children[first])
+			if !leftOK {
+				continue
+			}
+			leftBits := left.sharedWildcard()
+			for second := first + 1; second < len(all.children); second++ {
+				right, rightOK := sharedWildcardOf(all.children[second])
+				if !rightOK {
+					continue
+				}
+				rightBits := right.sharedWildcard()
+				xorCardinality := leftBits.GetCardinality() + rightBits.GetCardinality() -
+					2*leftBits.AndCardinality(rightBits)
+				if xorCardinality == total {
+					pairs = append(pairs, StrictEqualityAntonymPair{first, second})
+				}
+			}
+		}
+	}
+	walk(index.root)
+	return pairs
 }

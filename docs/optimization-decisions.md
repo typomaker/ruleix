@@ -6,6 +6,16 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-07: приняты строгие equality-антонимы
+
+Wildcard bitmap двух equality-потомков `All`, являющиеся строгими
+дополнениями, теперь сокращаются на Build; Search объединяет только concrete
+postings. Алгоритм общий для Exact/Lossy и не читает режим. На representative
+fixture Index ускорился примерно в 9.5 раза, rotating Local — в 7.8 раза,
+stable Local и production без пар не регрессировали. Retained Local снизился
+`13 326 → 3 022 B`; production allocation class сохранён. Доказательство,
+полные команды, A/B и profiles: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
+
 ## 2026-09-07: compact Local ID threshold увеличен до 512
 
 Общий порог готового результата увеличен с 256 до 512 IDs; существующий общий
@@ -23,14 +33,9 @@ compressed состояний общего executor-а.
 collision-safe query-key validation. Ускорение устраняет повторное planning и
 bitmap enumeration, но не маскирует сохранённую candidate amplification.
 
-Новый retained benchmark с двумя прогретыми запросами (`20x x5`) показал
-медианы `93 403 → 96 477 B/Local` (+3 074 bytes, +3,3%). Это соответствует
-двум дополнительным compact ID slices; `memprofilerate=1` сохранил общий
-allocation profile, разница полного alloc space составила около 0,04 MiB на
-20 Local. Synthetic Budget100/50/25 repeated и rotating в трёх
-интерливированных 300ms парах сохранили latency и allocation classes. Решение
-принято как второй путь после отклонённых candidate-planner эвристик; поиск
-более селективного общего representation algorithm остаётся отдельной задачей.
+Retained benchmark (`20x x5`) дал `93 403 → 96 477 B/Local` (+3,3%) из-за
+двух compact ID slices; synthetic Budget100/50/25 gates не регрессировали.
+Решение принято как второй путь после отклонённых planner-эвристик.
 
 ## 2026-09-03: mode-agnostic equality lookup micro-optimizations отклонены
 
@@ -486,14 +491,9 @@ streaming downgrade; полный и race test gates пройдены.
 
 Новая запись должна содержать:
 
-1. дату, коммит и точное описание parent/candidate;
-2. CPU, ОС, Go version, benchmark pattern, `benchtime` и `count`;
-3. медианы времени, B/op и allocs/op, а для кэшей — retained memory;
-4. focused benchmark и end-to-end production/scale gate;
-5. проверку корректности и race detector для изменений executor;
-6. однозначный итог: принято, принято с порогом или удалено;
-7. причину, связывающую измеренный эффект с механизмом, а не только с
-   корреляцией.
+Указывайте parent/candidate, среду и команды; latency, allocations и retention;
+focused и production gates; correctness/race; однозначное решение и связь
+эффекта с измеренным механизмом.
 
 Неуспешный эксперимент не следует удалять из истории: он предотвращает
 повторение уже проверенной идеи и фиксирует условия, при которых вывод может

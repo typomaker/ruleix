@@ -40,7 +40,6 @@ func productionAllPhysicalStats(index any) map[string]int {
 	stats := make(map[string]int)
 	for _, name := range []string{
 		"children", "execution", "planningProviders", "sharedWildcardGroups",
-		"duplicateBitmapIDs", "duplicateEqualityProviders",
 	} {
 		field := root.FieldByName(name)
 		if field.IsValid() && (field.Kind() == reflect.Slice || field.Kind() == reflect.Map) {

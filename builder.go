@@ -81,6 +81,7 @@ func buildIndex[C any, ID comparable](
 ) (*Index[C, ID], buildStatistics, error) {
 	return buildIndexPhysicalAliases(schema, entries, collectStatistics, hints, buildOptions{
 		compilePhysicalAliases: true,
+		compileStrictAntonyms:  true,
 		// Lossy policies must bound their build state while consuming the one-pass
 		// iterator. Compiled leaves accept later values directly, so this does not
 		// add a wrapper or another operation to the published search path.
@@ -93,6 +94,7 @@ func buildIndex[C any, ID comparable](
 // without expanding the public build contract.
 type buildOptions struct {
 	compilePhysicalAliases bool
+	compileStrictAntonyms  bool
 	enableStreaming        bool
 	// identityLossy selects the exact-key head of every Lossy representation
 	// ladder after normal policy analysis. It is a test/benchmark control, not
@@ -262,6 +264,9 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	internRuleWith(interner, ix.observedRoot)
 	if options.compilePhysicalAliases {
 		compileAllEqualityClasses(ix.observedRoot)
+	}
+	if options.compileStrictAntonyms {
+		ix.root = compileStrictEqualityAntonyms(ix.root)
 	}
 	for _, exclusion := range ix.observedExclusions {
 		if rule, ok := exclusion.(bitmapInternable); ok {

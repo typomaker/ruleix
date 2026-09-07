@@ -248,7 +248,7 @@ func TestAllStoresIDsOnlyForDuplicateEqualityBitmaps(t *testing.T) {
 	require.Nil(t, root.sharedWildcardGroups)
 	// Neither the wildcard sets nor the small unique postings are shared, so no
 	// duplicate IDs or retained per-posting metadata are created.
-	require.Nil(t, root.duplicateBitmapIDs)
+	require.Nil(t, root.duplicateEquality)
 }
 
 func TestAllChecksInternedEqualityPostingOnce(t *testing.T) {
@@ -268,7 +268,7 @@ func TestAllChecksInternedEqualityPostingOnce(t *testing.T) {
 	require.NoError(t, err)
 	root := index.root.(*allRule[constraint])
 	require.Equal(t, uint32(2), root.equalityClassCount) // empty wildcard and concrete posting
-	require.Nil(t, root.duplicateBitmapIDs)
+	require.Nil(t, root.duplicateEquality)
 
 	ranked := []rankedBitmap{{childIdx: 0}, {childIdx: 1}}
 	var checked [1]uint64

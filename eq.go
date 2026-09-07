@@ -375,6 +375,32 @@ func (r *eqRule[T, V, K]) addMatches(value optionalValue[V], dst *roaring.Bitmap
 	addEqualityMatches(r.wildcard, &r.values, key, dst)
 }
 func (r *eqRule[T, V, K]) sharedWildcard() *roaring.Bitmap { return r.wildcard }
+func (r *eqRule[T, V, K]) equalityUniverseCardinality() uint64 {
+	total := r.wildcard.GetCardinality()
+	for i := range r.values.sets {
+		total += r.values.sets[i].cardinality()
+	}
+	return total
+}
+func (r *eqRule[T, V, K]) concreteMatchCardinality(value T) uint64 {
+	concrete, ok := r.get(value)
+	if !ok {
+		return 0
+	}
+	set := r.values.get(r.equalityKey(concrete))
+	if set == nil {
+		return 0
+	}
+	return set.cardinality()
+}
+func (r *eqRule[T, V, K]) matchesConcreteID(value T, id uint32) bool {
+	concrete, ok := r.get(value)
+	if !ok {
+		return false
+	}
+	set := r.values.get(r.equalityKey(concrete))
+	return set != nil && set.contains(id)
+}
 func (r *eqRule[T, V, K]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
 	visit(r.wildcard)
 	for i := range r.values.sets {

@@ -128,7 +128,7 @@ func TestIdentityABNestedAllAccountsLinearEqualityDedup(t *testing.T) {
 		query.values[child] = 1
 	}
 	root := harness.index.root.(*allRule[identityABConstraint])
-	require.NotNil(t, root.duplicateBitmapIDs)
+	require.NotNil(t, root.duplicateEquality)
 	bits := harness.index.pool.get()
 	root.search(query, bits, harness.index.pool)
 	require.Equal(t, uint64(256), bits.GetCardinality())
@@ -144,8 +144,7 @@ func TestIntegratedIdentityCompilesDenseEqualityClassOrdinals(t *testing.T) {
 			root := harness.index.root.(*allRule[identityABConstraint])
 			require.True(t, root.compiledEqualityClasses)
 			require.Equal(t, uint32(17), root.equalityClassCount)
-			require.Nil(t, root.duplicateBitmapIDs)
-			require.Nil(t, root.duplicateEqualityProviders)
+			require.Nil(t, root.duplicateEquality)
 
 			classes := make(map[uint32]struct{}, root.equalityClassCount)
 			for _, child := range root.children {
@@ -183,7 +182,7 @@ func TestIntegratedIdentityCompilesMoreThan64EqualityClasses(t *testing.T) {
 	root := harness.index.root.(*allRule[constraint])
 	require.Equal(t, uint32(66), root.equalityClassCount) // 65 postings plus the wildcard-only result.
 	require.Greater(t, root.equalityClassCount, uint32(64))
-	require.Nil(t, root.duplicateBitmapIDs)
+	require.Nil(t, root.duplicateEquality)
 
 	bits := harness.index.pool.get()
 	root.search(constraint{left: 64, right: 64}, bits, harness.index.pool)
