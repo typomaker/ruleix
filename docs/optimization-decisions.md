@@ -6,15 +6,15 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
-## 2026-09-07: приняты строгие equality-антонимы
+## 2026-09-07: strict equality antonym components accepted
 
-Wildcard bitmap двух equality-потомков `All`, являющиеся строгими
-дополнениями, теперь сокращаются на Build; Search объединяет только concrete
-postings. Алгоритм общий для Exact/Lossy и не читает режим. На representative
-fixture Index ускорился примерно в 9.5 раза, rotating Local — в 7.8 раза,
-stable Local и production без пар не регрессировали. Retained Local снизился
-`13 326 → 3 022 B`; production allocation class сохранён. Доказательство,
-полные команды, A/B и profiles: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
+Build groups equal wildcard bitmaps into equivalence classes and compiles two
+complement classes as one component. This generalizes the accepted 1x1 pair
+without Exact/Lossy branches. On a 3x3 fixture, one component versus three
+pairs reduced Index median `4,125 -> 2,239 ns/op` and `19 -> 5` allocations;
+Local improved `2,758 -> 2,467 ns/op`; retained Local fell `4,560 -> 3,680 B`. Production has
+no components and preserved search and retained-memory classes. Proof,
+commands, A/B, and profiles: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
 
 ## 2026-09-07: compact Local ID threshold увеличен до 512
 

@@ -169,3 +169,156 @@ func BenchmarkStrictEqualityAntonymSearch(b *testing.B) {
 		}
 	}
 }
+
+func buildAntonymGraphBenchmarkIndex(b *testing.B, component bool) *Index[antonymGraphConstraint, int] {
+	b.Helper()
+	constraints := make([]antonymGraphConstraint, 4096)
+	ids := make([]int, len(constraints))
+	for id := range constraints {
+		ids[id] = id
+		from, until := 0, 3
+		if id < len(constraints)/2 {
+			from, until = 3, 6
+		}
+		for field := from; field < until; field++ {
+			constraints[id].values[field] = antonymPointer(id % 128)
+		}
+	}
+	index, _, err := buildIndexPhysicalAliases(
+		antonymGraphSchema(6), Zip(constraints, ids), false, nil,
+		buildOptions{compilePhysicalAliases: true, compileStrictAntonyms: component, enableStreaming: true},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if !component {
+		index.root = compileStrictEqualityAntonymPairsForBenchmark(index.root)
+		prepareRuleSearch(index.root)
+	}
+	return index
+}
+
+func compileStrictEqualityAntonymPairsForBenchmark[T any](rule Rule[T]) Rule[T] {
+	all := rule.(*allRule[T])
+	consumed := make([]bool, len(all.children))
+	var children []Rule[T]
+	for first, child := range all.children {
+		if consumed[first] {
+			continue
+		}
+		left := strictEqualityOperandOf(child)
+		for second := first + 1; second < len(all.children); second++ {
+			right := strictEqualityOperandOf(all.children[second])
+			if consumed[second] || right == nil || !strictWildcardComplements(left, right) {
+				continue
+			}
+			leftClass := strictEqualityAntonymClass[T]{first: first, members: []int{first}, operands: []strictEqualityOperand[T]{left}}
+			rightClass := strictEqualityAntonymClass[T]{first: second, members: []int{second}, operands: []strictEqualityOperand[T]{right}}
+			children = append(children, newStrictEqualityAntonymRule(all.children, leftClass, rightClass))
+			consumed[first], consumed[second] = true, true
+			break
+		}
+		if !consumed[first] {
+			children = append(children, child)
+		}
+	}
+	all.children = children
+	all.execution = nil
+	all.queryKeyProviders = nil
+	all.planningProviders = nil
+	all.sharedWildcardGroups = nil
+	all.duplicateEquality = nil
+	all.planningPrepared = false
+	return all
+}
+
+// BenchmarkStrictEqualityAntonymGraph compares the f0b0d68 one-partner shape
+// with whole 3x3 complement components. On an M1 Max with Go 1.26.0,
+// GOMAXPROCS=1, 1s x5, Index medians were 4,125/2,239 ns and 19/5 allocs;
+// rotating Local 2,758/2,467 ns and 23/11 allocs; stable Local 143.5/143.2 ns
+// and 0/0 allocs. Full command and retained results are in the design document.
+func BenchmarkStrictEqualityAntonymGraph(b *testing.B) {
+	for _, component := range []bool{false, true} {
+		variant := "Pairs"
+		if component {
+			variant = "Component"
+		}
+		for _, path := range []string{"Index", "LocalRotating", "LocalStable"} {
+			b.Run(variant+"/"+path, func(b *testing.B) {
+				index := buildAntonymGraphBenchmarkIndex(b, component)
+				local := index.Local()
+				b.Cleanup(local.Close)
+				queries := make([]antonymGraphConstraint, 8)
+				for query := range queries {
+					for field := range 6 {
+						queries[query].values[field] = antonymPointer(query)
+					}
+				}
+				var matches []int
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := range b.N {
+					matches = matches[:0]
+					query := queries[i%len(queries)]
+					if path == "LocalStable" {
+						query = queries[0]
+					}
+					if path == "Index" {
+						index.Search(query, &matches)
+					} else {
+						local.Search(query, &matches)
+					}
+				}
+				b.StopTimer()
+				operands := 3.0
+				if component {
+					operands = 1
+				}
+				b.ReportMetric(operands, "compiled-operands/op")
+			})
+		}
+	}
+}
+
+// BenchmarkStrictEqualityAntonymGraphRetainedMemory compares warmed Local
+// state for three pair operands and one equivalent 3x3 component.
+func BenchmarkStrictEqualityAntonymGraphRetainedMemory(b *testing.B) {
+	for _, component := range []bool{false, true} {
+		variant := "Pairs"
+		if component {
+			variant = "Component"
+		}
+		b.Run(variant, func(b *testing.B) {
+			index := buildAntonymGraphBenchmarkIndex(b, component)
+			locals := make([]*Local[antonymGraphConstraint, int], b.N)
+			query := antonymGraphConstraint{}
+			for field := range 6 {
+				query.values[field] = antonymPointer(1)
+			}
+			var matches []int
+			runtime.GC()
+			runtime.GC()
+			before := antonymHeapAlloc()
+			for i := range b.N {
+				local := index.Local()
+				for range 6 {
+					matches = matches[:0]
+					local.Search(query, &matches)
+				}
+				locals[i] = local
+			}
+			runtime.GC()
+			runtime.GC()
+			after := antonymHeapAlloc()
+			runtime.KeepAlive(index)
+			runtime.KeepAlive(locals)
+			runtime.KeepAlive(matches)
+			if after > before {
+				b.ReportMetric(float64(after-before)/float64(b.N), "retained-B/local")
+			}
+			for _, local := range locals {
+				local.Close()
+			}
+		})
+	}
+}

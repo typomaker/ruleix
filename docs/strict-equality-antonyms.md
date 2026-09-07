@@ -1,88 +1,89 @@
-# Строгие equality-антонимы
+# Strict equality antonyms
 
-## Принятый алгоритм
+## Build-time model
 
-После оптимизации дерева и интернирования bitmap `Build` рассматривает пары
-equality-потомков одного `All`. Пара компилируется только если wildcard bitmap
-являются строгими дополнениями во внутренней ID-вселенной:
+After bitmap interning, `Build` groups equality children of each `All` by the
+identity of their wildcard bitmap. Two groups form an antonym component only
+when their wildcard sets are exact complements in the internal ID universe:
 
 ```text
 cardinality(WA XOR WB) == cardinality(universe)
 ```
 
-Это условие означает, что каждый ID конкретен ровно в одном из двух правил.
-Так как concrete posting всегда лежит вне wildcard собственного правила,
-для любого запроса выполняется:
+Because every concrete posting is outside its own wildcard, a component with
+left concrete postings `L1..Ln` and right concrete postings `R1..Rm` has the
+exact query result:
 
 ```text
-(WA union PA) intersect (WB union PB) == PA union PB
+(L1 intersect ... intersect Ln) union (R1 intersect ... intersect Rm)
 ```
 
-Поэтому два runtime-операнда заменяются одним immutable operand, который
-объединяет только concrete postings. Это не эвристический short-circuit:
-wildcard части алгебраически сокращены на Build, а candidate count и результат
-не меняются. Алгоритм работает через общие physical equality capabilities и
-не читает `RuleMode`; identity и сжатый Lossy являются теми же состояниями
-общего алгоритма.
+The complement relation therefore produces paired equivalence classes, not an
+arbitrary runtime graph: members with the same wildcard form a class, and two
+complement classes form one complete bipartite component. `Build` replaces all
+of its original operands with one immutable component at the earliest original
+position. Overlap, a gap, unequal universes, or a missing complement leaves the
+tree unchanged. The compiler first performs an allocation-free existence scan,
+so trees without components do not allocate class metadata.
 
-Если у правила несколько дополнений, candidates сортируются по сумме
-serialized wildcard bytes и жадно выбирается не более одного партнёра.
-Одинаковый вес сохраняет порядок потомков. Пустые, пересекающиеся и имеющие
-gap wildcard обрабатываются тем же строгим доказательством; при отсутствии
-доказательства дерево остаётся прежним.
+The implementation uses physical equality capabilities only. It never reads
+`RuleMode`; Exact, identity-compressed, and compressed Lossy are states of the
+same algorithm. The original query-key providers remain attached to the
+component, preserving collision-safe `Local` cache validation.
 
-Result-cache родительского `All` продолжает хранить collision-safe ключи
-исходных equality-компонентов. Список двух provider-ссылок создаётся один раз
-на Build только у реально скомпилированной пары; Search не строит metadata,
-не вычисляет XOR и не делает связанных с антонимами allocations. Редкие данные legacy duplicate-equality объединены в
-ленивый sidecar, поэтому размер обычного `All` и production retained layout
-не растут. Файлы `all.go`, `all_planning.go` и `all_execution.go` разделяют
-ядро, планирование/cache и выполнение; каждый остаётся меньше 500 строк.
+## Search execution
 
-## Проверка и измерения
+For each side, cardinality is estimated as the smallest concrete posting. The
+executor starts with that posting and checks the remaining operands in the
+side. Small physical equality sets are scanned directly; larger sets use a
+pooled bitmap intersection. The two side results are united. A 1x1 component
+keeps the former direct union fast path, so the accepted pair case does not pay
+for the generalized representation.
 
-Baseline: `be3df36`; candidate: рабочее дерево перед итоговым commit. Среда:
-Apple M1 Max, macOS arm64, Go 1.26.0, `GOMAXPROCS=1`.
+No search computes wildcard XORs, complements, graph metadata, or mode-specific
+branches. Stable repeated `Local` queries hit the component cache with zero
+allocations. The cache captures every component query key and includes the key
+slice and retained key values in the same child-cache budget as its bitmap.
 
-Representative fixture содержит 4 096 правил, разделённых между двумя
-строгими дополнениями. Команда поиска:
+## Measurements
+
+Baseline: pair implementation `f0b0d68`; candidate: the working tree before
+the component commit. Environment: Apple M1 Max, macOS arm64, Go 1.26.0,
+`GOMAXPROCS=1`. The fixture contains 4,096 rules and a 3x3 complement
+component. The benchmark compares three 1x1 pairs with one full component:
 
 ```sh
 GOMAXPROCS=1 go test -run '^$' \
-  -bench '^BenchmarkStrictEqualityAntonymSearch/' \
+  -bench '^BenchmarkStrictEqualityAntonymGraph/' \
   -benchmem -benchtime=1s -count=5
 ```
 
-Медианы Exact: Index `4 113 → 423 ns/op`, rotating Local
-`4 395 → 565.5 ns/op`, stable Local `68.63 → 68.41 ns/op`.
-Identity-compressed: Index `4 181 → 436.5 ns/op`, rotating Local
-`4 237 → 570.5 ns/op`; отдельный interleaved stable gate после layout fix дал
-`70.64 → 69.83 ns/op` для Exact и `70.67 → 69.88 ns/op` для identity.
-Index allocations изменились `14 385 B/5 → 80 B/4`, rotating Local
-`14 385 B/5 → 120 B/6`. Прогретый retained Local (`20x x5`) уменьшился
-`13 326 → 3 022 B/local`.
+Medians were:
 
-Focused Build (`20x x5`) дал медиану `531 238 → 522 800 ns/op`; цена
-доказательства — `553 002 → 553 138 B/op` и `1 241 → 1 246 allocs/op`.
-Production Build, где пар нет, после lazy-layout fix сохранил allocation class:
-около `38.5 ms`, `5 754 889 B/op`, `30 330 allocs/op`.
-Production retained gates также совпали: `96 363 B/Local`, а Index — медиана
-`1 323 163 B` в обеих ревизиях.
+| Path | Three pairs | One component |
+| --- | ---: | ---: |
+| `Index` | 4,125 ns, 608 B, 19 allocs | 2,239 ns, 144 B, 5 allocs |
+| rotating `Local` | 2,758 ns, 616 B, 23 allocs | 2,467 ns, 240 B, 11 allocs |
+| stable `Local` | 143.5 ns, 0 B, 0 allocs | 143.2 ns, 0 B, 0 allocs |
+| retained `Local` (`20x`, five runs) | 4,560 B | 3,680 B |
 
-Production fixture на 38 098 entries содержит ноль строгих пар в Exact,
-identity-compressed и Lossy50. Семь интерливированных A/B запусков по 1s дали
-Exact Index/Local `27.11 us/308.2 ns → 26.85 us/304.0 ns`; Lossy Local
-`1 088 → 1 085 ns`, 358 candidates и 0 B/0 allocs. Lossy Index сохранил
-38 098 candidates и 25 allocs; медиана парных изменений +0.15% с выбросами
-обоих знаков, то есть устойчивой регрессии нет.
+Eight-second CPU profiles showed the pair baseline dominated by repeated
+candidate validation, binary search, Roaring add, and intersection work. The
+component moves the remaining work to direct equality membership checks and
+removes repeated pair materialization. Allocation profiles with
+`-memprofilerate=1` confirmed the removal of most Roaring clone/container work.
 
-CPU profiles (`-benchtime=10s`) локализовали baseline в Roaring clone,
-intersection и add; compiled operand устраняет intersection двух wildcard
-результатов. Allocation profiles с `-memprofilerate=1` уменьшили alloc-space
-примерно с 5.35 GiB до 64 MiB; baseline 57.2% приходилось на container clone и
-42.7% на add, в candidate этих массовых clone нет.
+The production fixture contains no strict component in Exact,
+identity-compressed, or Lossy50. Interleaved search A/B against `f0b0d68`
+preserved result counts and allocation classes. A longer nine-pair, two-second
+Lossy Index check gave medians `32,844 -> 32,802 ns/op`, 1,122 candidates,
+70,673 B, and 24 allocations. Exact Index and Local and Lossy Local were
+neutral; stable paths remained zero-allocation. Production retained gates
+(`20x`, five runs) were unchanged: median about 96,449 B per Lossy Local and
+1,322,950 B per Index in both revisions.
 
-Корректность покрыта deterministic differential Exact/identity-Lossy,
-unknown и missing query keys, overlap/gap, пустым wildcard и MatchAll,
-несколькими партнёрами и interned bitmap. Финальные gates: `go test ./...`,
-`go test -race ./...`, diff coverage не ниже 90% и `git diff --check`.
+Correctness coverage includes 1x1 and asymmetric components, deterministic
+3x3 differential checks for Exact and identity-compressed state, independent
+components, unknown and missing keys, overlap/gap, empty wildcard, and
+`MatchAll`. Final gates are `go test ./...`, `go test -race ./...`, at least
+90% changed-production-line coverage, and `git diff --check`.

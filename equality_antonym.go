@@ -1,15 +1,13 @@
 package ruleix
 
 import (
-	"sort"
-
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
-type strictEqualityAntonymCandidate[T any] struct {
-	first, second int
-	savedBytes    uint64
-	left, right   strictEqualityOperand[T]
+type strictEqualityAntonymClass[T any] struct {
+	first    int
+	members  []int
+	operands []strictEqualityOperand[T]
 }
 
 type strictEqualityOperand[T any] interface {
@@ -29,31 +27,39 @@ func compileStrictEqualityAntonyms[T any](rule Rule[T]) Rule[T] {
 	for i, child := range all.children {
 		all.children[i] = compileStrictEqualityAntonyms(child)
 	}
-	candidates := strictEqualityAntonymCandidates(all.children)
-	if len(candidates) == 0 {
+	if !hasStrictEqualityAntonyms(all.children) {
 		return all
 	}
-	partners := make([]int, len(all.children))
-	pairs := make(map[int]*strictEqualityAntonymRule[T])
-	for _, candidate := range candidates {
-		if partners[candidate.first] != 0 || partners[candidate.second] != 0 {
+	classes := strictEqualityAntonymClasses(all.children)
+	consumed := make([]bool, len(all.children))
+	components := make(map[int]*strictEqualityAntonymRule[T])
+	for first := 0; first < len(classes); first++ {
+		if consumed[classes[first].first] {
 			continue
 		}
-		partners[candidate.first] = candidate.second + 1
-		partners[candidate.second] = candidate.first + 1
-		pair := &strictEqualityAntonymRule[T]{
-			leftRule: all.children[candidate.first], rightRule: all.children[candidate.second],
-			left: candidate.left, right: candidate.right, nodeID: candidate.left.runtimeNodeID(),
+		for second := first + 1; second < len(classes); second++ {
+			if consumed[classes[second].first] ||
+				!strictWildcardComplements(classes[first].operands[0], classes[second].operands[0]) {
+				continue
+			}
+			left, right := classes[first], classes[second]
+			component := newStrictEqualityAntonymRule(all.children, left, right)
+			emit := min(left.first, right.first)
+			components[emit] = component
+			for _, index := range append(append([]int(nil), left.members...), right.members...) {
+				consumed[index] = true
+			}
+			break
 		}
-		pair.queryKeyProvider = [2]localQueryKeyProvider[T]{pair.left, pair.right}
-		pairs[candidate.first] = pair
 	}
-	children := make([]Rule[T], 0, len(all.children)-len(pairs))
+	if len(components) == 0 {
+		return all
+	}
+	children := make([]Rule[T], 0, len(all.children))
 	for index, child := range all.children {
-		partner := partners[index] - 1
-		if pair := pairs[index]; pair != nil {
-			children = append(children, pair)
-		} else if partner < 0 || partner > index {
+		if component := components[index]; component != nil {
+			children = append(children, component)
+		} else if !consumed[index] {
 			children = append(children, child)
 		}
 	}
@@ -61,8 +67,7 @@ func compileStrictEqualityAntonyms[T any](rule Rule[T]) Rule[T] {
 	return all
 }
 
-func strictEqualityAntonymCandidates[T any](children []Rule[T]) []strictEqualityAntonymCandidate[T] {
-	var candidates []strictEqualityAntonymCandidate[T]
+func hasStrictEqualityAntonyms[T any](children []Rule[T]) bool {
 	for first := 0; first < len(children); first++ {
 		left := strictEqualityOperandOf(children[first])
 		if left == nil {
@@ -70,20 +75,52 @@ func strictEqualityAntonymCandidates[T any](children []Rule[T]) []strictEquality
 		}
 		for second := first + 1; second < len(children); second++ {
 			right := strictEqualityOperandOf(children[second])
-			if right == nil || !strictWildcardComplements(left, right) {
-				continue
+			if right != nil && strictWildcardComplements(left, right) {
+				return true
 			}
-			candidates = append(candidates, strictEqualityAntonymCandidate[T]{
-				first: first, second: second, left: left, right: right,
-				savedBytes: left.sharedWildcard().GetSerializedSizeInBytes() +
-					right.sharedWildcard().GetSerializedSizeInBytes(),
-			})
 		}
 	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		return candidates[i].savedBytes > candidates[j].savedBytes
-	})
-	return candidates
+	return false
+}
+
+func strictEqualityAntonymClasses[T any](children []Rule[T]) []strictEqualityAntonymClass[T] {
+	byWildcard := make(map[*roaring.Bitmap]int)
+	var classes []strictEqualityAntonymClass[T]
+	for index, child := range children {
+		operand := strictEqualityOperandOf(child)
+		if operand == nil {
+			continue
+		}
+		wildcard := operand.sharedWildcard()
+		classIndex, found := byWildcard[wildcard]
+		if !found {
+			classIndex = len(classes)
+			byWildcard[wildcard] = classIndex
+			classes = append(classes, strictEqualityAntonymClass[T]{first: index})
+		}
+		classes[classIndex].members = append(classes[classIndex].members, index)
+		classes[classIndex].operands = append(classes[classIndex].operands, operand)
+	}
+	return classes
+}
+
+func newStrictEqualityAntonymRule[T any](
+	children []Rule[T], left, right strictEqualityAntonymClass[T],
+) *strictEqualityAntonymRule[T] {
+	rule := &strictEqualityAntonymRule[T]{
+		left: left.operands, right: right.operands,
+		nodeID: left.operands[0].runtimeNodeID(),
+	}
+	if len(rule.left) == 1 && len(rule.right) == 1 {
+		rule.leftOne, rule.rightOne = rule.left[0], rule.right[0]
+	}
+	for _, index := range append(append([]int(nil), left.members...), right.members...) {
+		rule.rules = append(rule.rules, children[index])
+	}
+	for _, operand := range append(append([]strictEqualityOperand[T](nil), rule.left...), rule.right...) {
+		rule.queryKeyProviders = append(rule.queryKeyProviders, operand)
+	}
+	return rule
 }
 
 func strictEqualityOperandOf[T any](rule Rule[T]) strictEqualityOperand[T] {
@@ -103,16 +140,15 @@ func strictWildcardComplements[T any](left, right sharedWildcardEquality[T]) boo
 }
 
 type strictEqualityAntonymRule[T any] struct {
-	leftRule, rightRule Rule[T]
-	left, right         strictEqualityOperand[T]
-	queryKeyProvider    [2]localQueryKeyProvider[T]
-	nodeID              nodeID
+	rules             []Rule[T]
+	left, right       []strictEqualityOperand[T]
+	leftOne, rightOne strictEqualityOperand[T]
+	queryKeyProviders []localQueryKeyProvider[T]
+	nodeID            nodeID
 }
 
-type strictEqualityAntonymQueryKey struct{ left, right any }
-
 func (r *strictEqualityAntonymRule[T]) localQueryKeyProviders() []localQueryKeyProvider[T] {
-	return r.queryKeyProvider[:]
+	return r.queryKeyProviders
 }
 
 func (*strictEqualityAntonymRule[T]) rule()                                                 {}
@@ -122,15 +158,19 @@ func (*strictEqualityAntonymRule[T]) insert(T, uint32)                          
 func (*strictEqualityAntonymRule[T]) exclude(T, *roaring.Bitmap, *bitmapPool)               {}
 func (*strictEqualityAntonymRule[T]) collectBuildStatistics([]nodeBuildStatistics)          {}
 func (r *strictEqualityAntonymRule[T]) prepareSearch() {
-	prepareRuleSearch(r.leftRule)
-	prepareRuleSearch(r.rightRule)
+	for _, rule := range r.rules {
+		prepareRuleSearch(rule)
+	}
 }
 
 func (r *strictEqualityAntonymRule[T]) cardinality(value T, _ *bitmapPool) uint64 {
 	return r.estimateCardinality(value)
 }
 func (r *strictEqualityAntonymRule[T]) estimateCardinality(value T) uint64 {
-	return r.left.concreteMatchCardinality(value) + r.right.concreteMatchCardinality(value)
+	if r.leftOne != nil {
+		return r.leftOne.concreteMatchCardinality(value) + r.rightOne.concreteMatchCardinality(value)
+	}
+	return strictEqualitySideCardinality(r.left, value) + strictEqualitySideCardinality(r.right, value)
 }
 func (r *strictEqualityAntonymRule[T]) estimateCheapCardinality(value T) uint64 {
 	return r.estimateCardinality(value)
@@ -143,7 +183,7 @@ func (r *strictEqualityAntonymRule[T]) isCardinalityZero(value T) bool {
 }
 func (r *strictEqualityAntonymRule[T]) search(value T, dst *roaring.Bitmap, pool *bitmapPool) {
 	if pool.local == nil {
-		r.addMatches(value, dst)
+		r.addMatches(value, dst, pool)
 		return
 	}
 	cache := r.cache(pool)
@@ -152,22 +192,160 @@ func (r *strictEqualityAntonymRule[T]) search(value T, dst *roaring.Bitmap, pool
 		return
 	}
 	if !cache.admit(r, value) {
-		r.addMatches(value, dst)
+		r.addMatches(value, dst, pool)
 		return
 	}
 	bits := cache.replace(r, value, pool)
-	r.addMatches(value, bits)
+	r.addMatches(value, bits, pool)
 	dst.Or(bits)
 	cache.commit(bits, pool)
 }
 func (r *strictEqualityAntonymRule[T]) matchesID(value T, id uint32) bool {
-	return r.left.matchesConcreteID(value, id) || r.right.matchesConcreteID(value, id)
+	if r.leftOne != nil {
+		return r.leftOne.matchesConcreteID(value, id) || r.rightOne.matchesConcreteID(value, id)
+	}
+	return strictEqualitySideMatches(r.left, value, id) || strictEqualitySideMatches(r.right, value, id)
 }
-func (*strictEqualityAntonymRule[T]) directIDWork() uint64 { return 2 * allEqualityDirectIDWork }
+func (r *strictEqualityAntonymRule[T]) directIDWork() uint64 {
+	if r.leftOne != nil {
+		return 2 * allEqualityDirectIDWork
+	}
+	return uint64(len(r.left)+len(r.right)) * allEqualityDirectIDWork
+}
 
-func (r *strictEqualityAntonymRule[T]) addMatches(value T, dst *roaring.Bitmap) {
-	r.left.addConcreteMatches(value, dst)
-	r.right.addConcreteMatches(value, dst)
+func (r *strictEqualityAntonymRule[T]) addMatches(value T, dst *roaring.Bitmap, pool *bitmapPool) {
+	if r.leftOne != nil {
+		r.leftOne.addConcreteMatches(value, dst)
+		r.rightOne.addConcreteMatches(value, dst)
+		return
+	}
+	r.addSideMatches(r.left, value, dst, pool)
+	r.addSideMatches(r.right, value, dst, pool)
+}
+
+func (r *strictEqualityAntonymRule[T]) addSideMatches(
+	side []strictEqualityOperand[T], value T, dst *roaring.Bitmap, pool *bitmapPool,
+) {
+	if len(side) == 1 {
+		side[0].addConcreteMatches(value, dst)
+		return
+	}
+	if candidateIndex, candidateCardinality := strictEqualitySideCandidate(side, value); candidateIndex >= 0 {
+		if candidateCardinality == 0 {
+			return
+		}
+		if candidateCardinality <= allCheapDirectIDScanLimit {
+			candidates := side[candidateIndex].concreteMatchSet(value)
+			if strictEqualitySetAllMatches(candidates, side, candidateIndex, value) {
+				candidates.addTo(dst)
+				return
+			}
+			strictEqualityFilterSet(candidates, side, candidateIndex, value, dst)
+			return
+		}
+	}
+	bits := pool.get()
+	side[0].addConcreteMatches(value, bits)
+	for _, operand := range side[1:] {
+		operand.intersectConcreteMatches(value, bits, pool)
+		if bits.IsEmpty() {
+			break
+		}
+	}
+	dst.Or(bits)
+	pool.put(bits)
+}
+
+func strictEqualitySetAllMatches[T any](
+	set *equalitySet, side []strictEqualityOperand[T], candidateIndex int, value T,
+) bool {
+	matched := func(id uint32) bool {
+		for index, operand := range side {
+			if index != candidateIndex && !operand.matchesConcreteID(value, id) {
+				return false
+			}
+		}
+		return true
+	}
+	if set.bits != nil {
+		iterator := set.bits.Iterator()
+		for iterator.HasNext() {
+			if !matched(iterator.Next()) {
+				return false
+			}
+		}
+		return true
+	}
+	if set.small != nil {
+		for _, id := range set.small {
+			if !matched(id) {
+				return false
+			}
+		}
+		return true
+	}
+	return matched(set.single)
+}
+
+func strictEqualityFilterSet[T any](
+	set *equalitySet, side []strictEqualityOperand[T], candidateIndex int, value T, dst *roaring.Bitmap,
+) {
+	add := func(id uint32) bool {
+		if strictEqualitySideMatchesExcept(side, candidateIndex, value, id) {
+			dst.Add(id)
+		}
+		return true
+	}
+	if set.bits != nil {
+		set.bits.Iterate(add)
+		return
+	}
+	if set.small != nil {
+		for _, id := range set.small {
+			add(id)
+		}
+		return
+	}
+	add(set.single)
+}
+
+func strictEqualitySideMatchesExcept[T any](
+	side []strictEqualityOperand[T], skipped int, value T, id uint32,
+) bool {
+	for index, operand := range side {
+		if index != skipped && !operand.matchesConcreteID(value, id) {
+			return false
+		}
+	}
+	return true
+}
+
+func strictEqualitySideCandidate[T any](side []strictEqualityOperand[T], value T) (int, uint64) {
+	candidateIndex, cardinality := -1, ^uint64(0)
+	for index, operand := range side {
+		operandCardinality := operand.concreteMatchCardinality(value)
+		if operandCardinality < cardinality {
+			cardinality, candidateIndex = operandCardinality, index
+		}
+	}
+	return candidateIndex, cardinality
+}
+
+func strictEqualitySideCardinality[T any](side []strictEqualityOperand[T], value T) uint64 {
+	cardinality := ^uint64(0)
+	for _, operand := range side {
+		cardinality = min(cardinality, operand.concreteMatchCardinality(value))
+	}
+	return cardinality
+}
+
+func strictEqualitySideMatches[T any](side []strictEqualityOperand[T], value T, id uint32) bool {
+	for _, operand := range side {
+		if !operand.matchesConcreteID(value, id) {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *strictEqualityAntonymRule[T]) cache(pool *bitmapPool) *strictEqualityAntonymCache[T] {
@@ -194,33 +372,49 @@ func (r *strictEqualityAntonymRule[T]) lookupCachedBitmap(
 }
 
 func (r *strictEqualityAntonymRule[T]) lookupPlanningBitmap(value T) (*roaring.Bitmap, bool) {
-	_, left, leftDirect := r.left.lookupEqualityResultComponents(value)
-	_, right, rightDirect := r.right.lookupEqualityResultComponents(value)
-	if !leftDirect || !rightDirect || left != nil && right != nil {
+	if r.leftOne != nil {
+		_, left, leftDirect := r.leftOne.lookupEqualityResultComponents(value)
+		_, right, rightDirect := r.rightOne.lookupEqualityResultComponents(value)
+		if !leftDirect || !rightDirect || left != nil && right != nil {
+			return nil, false
+		}
+		if left != nil {
+			return left, true
+		}
+		if right != nil {
+			return right, true
+		}
 		return nil, false
 	}
-	if left != nil {
+	left, leftEmpty, leftDirect := strictEqualitySidePlanningBitmap(r.left, value)
+	right, rightEmpty, rightDirect := strictEqualitySidePlanningBitmap(r.right, value)
+	if !leftDirect || !rightDirect {
+		return nil, false
+	}
+	if rightEmpty && left != nil {
 		return left, true
 	}
-	if right != nil {
+	if leftEmpty && right != nil {
 		return right, true
 	}
 	return nil, false
 }
 
-func (r *strictEqualityAntonymRule[T]) localQueryKey(value T) (any, uint64) {
-	_, leftBytes := r.left.localQueryKey(value)
-	_, rightBytes := r.right.localQueryKey(value)
-	return r.queryKey(value), leftBytes + rightBytes + 16
-}
-func (r *strictEqualityAntonymRule[T]) localQueryKeyMatches(value T, key any) bool {
-	stored, ok := key.(strictEqualityAntonymQueryKey)
-	return ok && r.left.localQueryKeyMatches(value, stored.left) &&
-		r.right.localQueryKeyMatches(value, stored.right)
-}
-
-func (r *strictEqualityAntonymRule[T]) queryKey(value T) strictEqualityAntonymQueryKey {
-	left, _ := r.left.localQueryKey(value)
-	right, _ := r.right.localQueryKey(value)
-	return strictEqualityAntonymQueryKey{left: left, right: right}
+func strictEqualitySidePlanningBitmap[T any](
+	side []strictEqualityOperand[T], value T,
+) (bits *roaring.Bitmap, empty, direct bool) {
+	for _, operand := range side {
+		_, posting, postingDirect := operand.lookupEqualityResultComponents(value)
+		if !postingDirect {
+			return nil, false, false
+		}
+		if posting == nil {
+			return nil, true, true
+		}
+		bits = posting
+	}
+	if len(side) != 1 {
+		bits = nil
+	}
+	return bits, false, true
 }

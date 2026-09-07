@@ -148,6 +148,7 @@ type sharedWildcardEquality[T any] interface {
 	equalityUniverseCardinality() uint64
 	concreteMatchCardinality(T) uint64
 	matchesConcreteID(T, uint32) bool
+	concreteMatchSet(T) *equalitySet
 	addConcreteMatches(T, *roaring.Bitmap)
 	intersectConcreteMatches(T, *roaring.Bitmap, *bitmapPool)
 }

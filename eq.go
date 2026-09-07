@@ -401,6 +401,13 @@ func (r *eqRule[T, V, K]) matchesConcreteID(value T, id uint32) bool {
 	set := r.values.get(r.equalityKey(concrete))
 	return set != nil && set.contains(id)
 }
+func (r *eqRule[T, V, K]) concreteMatchSet(value T) *equalitySet {
+	concrete, ok := r.get(value)
+	if !ok {
+		return nil
+	}
+	return r.values.get(r.equalityKey(concrete))
+}
 func (r *eqRule[T, V, K]) visitEqualityResultBitmaps(visit func(*roaring.Bitmap)) {
 	visit(r.wildcard)
 	for i := range r.values.sets {

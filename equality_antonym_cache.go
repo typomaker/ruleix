@@ -3,14 +3,14 @@ package ruleix
 import "github.com/RoaringBitmap/roaring/v2"
 
 type strictEqualityAntonymCacheEntry struct {
-	left, right any
+	keys        []any
 	bits        *roaring.Bitmap
 	bytes       uint64
 	initialized bool
 }
 
 type strictEqualityAntonymSeen struct {
-	left, right any
+	keys        []any
 	initialized bool
 }
 
@@ -39,8 +39,7 @@ func (c *strictEqualityAntonymCache[T]) peek(
 ) (*roaring.Bitmap, bool) {
 	for index := range c.entries {
 		entry := &c.entries[index]
-		if entry.initialized && rule.left.localQueryKeyMatches(value, entry.left) &&
-			rule.right.localQueryKeyMatches(value, entry.right) {
+		if entry.initialized && rule.queryKeysMatch(value, entry.keys) {
 			c.next = uint8(1 - index)
 			return entry.bits, true
 		}
@@ -51,16 +50,14 @@ func (c *strictEqualityAntonymCache[T]) peek(
 func (c *strictEqualityAntonymCache[T]) admit(rule *strictEqualityAntonymRule[T], value T) bool {
 	for index := range c.seen {
 		entry := &c.seen[index]
-		if entry.initialized && rule.left.localQueryKeyMatches(value, entry.left) &&
-			rule.right.localQueryKeyMatches(value, entry.right) {
+		if entry.initialized && rule.queryKeysMatch(value, entry.keys) {
 			*entry = strictEqualityAntonymSeen{}
 			c.observers.admission()
 			return true
 		}
 	}
-	left, _ := rule.left.localQueryKey(value)
-	right, _ := rule.right.localQueryKey(value)
-	c.seen[c.seenNext] = strictEqualityAntonymSeen{left: left, right: right, initialized: true}
+	keys, _ := rule.captureQueryKeys(value, c.seen[c.seenNext].keys)
+	c.seen[c.seenNext] = strictEqualityAntonymSeen{keys: keys, initialized: true}
 	c.seenNext = 1 - c.seenNext
 	return false
 }
@@ -80,10 +77,9 @@ func (c *strictEqualityAntonymCache[T]) replace(
 		entry.bits.Clear()
 	}
 	pool.childCacheBytes -= entry.bytes
-	left, _ := rule.left.localQueryKey(value)
-	right, _ := rule.right.localQueryKey(value)
+	keys, keyBytes := rule.captureQueryKeys(value, entry.keys)
 	*entry = strictEqualityAntonymCacheEntry{
-		left: left, right: right, bits: entry.bits, initialized: true,
+		keys: keys, bits: entry.bits, bytes: keyBytes, initialized: true,
 	}
 	entry.bits.SetCopyOnWrite(true)
 	return entry.bits
@@ -95,7 +91,7 @@ func (c *strictEqualityAntonymCache[T]) commit(bits *roaring.Bitmap, pool *bitma
 		if entry.bits != bits {
 			continue
 		}
-		bytes := bits.GetSizeInBytes()
+		bytes := saturatingAdd(entry.bytes, bits.GetSizeInBytes())
 		if bytes > uint64(maxLocalChildCacheBytes)-min(pool.childCacheBytes, uint64(maxLocalChildCacheBytes)) {
 			*entry = strictEqualityAntonymCacheEntry{}
 			pool.put(bits)
@@ -105,6 +101,33 @@ func (c *strictEqualityAntonymCache[T]) commit(bits *roaring.Bitmap, pool *bitma
 		pool.childCacheBytes += bytes
 		return
 	}
+}
+
+func (r *strictEqualityAntonymRule[T]) queryKeysMatch(value T, keys []any) bool {
+	if len(keys) != len(r.queryKeyProviders) {
+		return false
+	}
+	for index, provider := range r.queryKeyProviders {
+		if !provider.localQueryKeyMatches(value, keys[index]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *strictEqualityAntonymRule[T]) captureQueryKeys(value T, reuse []any) ([]any, uint64) {
+	if cap(reuse) < len(r.queryKeyProviders) {
+		reuse = make([]any, len(r.queryKeyProviders))
+	} else {
+		reuse = reuse[:len(r.queryKeyProviders)]
+	}
+	bytes := uint64(cap(reuse)) * 16
+	for index, provider := range r.queryKeyProviders {
+		key, retained := provider.localQueryKey(value)
+		reuse[index] = key
+		bytes = saturatingAdd(bytes, retained)
+	}
+	return reuse, bytes
 }
 
 func (c *strictEqualityAntonymCache[T]) reset(pool *bitmapPool) {
