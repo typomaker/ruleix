@@ -41,6 +41,9 @@ updated only when a new canonical entry point is required.
   the repository-wide aggregate. Add or update tests before completing the task
   when the changed-code coverage is below this threshold.
 - Do not include unrelated user changes in the commit.
+- Write all repository text in English. This includes documentation, source
+  code comments, user-facing and diagnostic messages, test descriptions,
+  reports, commit messages, and other textual artifacts.
 - Repository files must not exceed 500 lines. New files must comply immediately;
   an existing oversized file must be brought within the limit as part of any
   task that changes it. Move logically related content into focused modules or
