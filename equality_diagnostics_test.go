@@ -2,16 +2,6 @@ package ruleix
 
 import "sort"
 
-// EqualityHashForTest exposes the compiled semantic hash to external
-// black-box benchmarks without adding a production API.
-func EqualityHashForTest[V comparable](value V) uint64 {
-	codec, err := compileEqualityCodec[V]()
-	if err != nil {
-		panic(err)
-	}
-	return codec.hash(value)
-}
-
 // EqualityDiagnostic is test-only physical-shape data for one compiled lossy
 // equality leaf. It deliberately lives outside the public library build.
 type EqualityDiagnostic struct {
