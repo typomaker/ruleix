@@ -20,13 +20,14 @@ be explained by the matching engine alone.
   the same Roaring library as Ruleix and applies specialized residual checks.
 - `RuleixIndex` and `RuleixLocal` use only Ruleix's public `Search` APIs. A
   distinct `Local` is created for each parallel worker.
+- `OPA` v1.13.2 evaluates a prepared Rego query over the same 38,098 rows in an
+  in-memory store and returns every matching ID. Conversion, store loading, and
+  compilation are outside child timers.
 
-OPA, GoRules/ZEN, and Grule are not in the direct table. None is already a
-dependency, and adding one without an independently verified collect-all rule
-model would risk comparing boolean/first-hit evaluation with Ruleix's set of
-all matching IDs. They should be added only with the same 38,098 rows, all-ID
-output, compilation outside timing, and the shared correctness test. Casbin is
-also excluded because this range-heavy schema is not a natural policy model.
+GoRules/ZEN and Grule are not in the direct table. Adding either without an
+independently verified collect-all model would risk comparing boolean/first-hit
+evaluation with Ruleix's set of all matching IDs. Casbin is also excluded
+because this range-heavy schema is not a natural policy model.
 
 `TestProductionBenchmarkImplementationsProduceSameResults` compares sorted ID
 sets for all 2,048 queries in Independent and Correlated modes, each with Hot
@@ -40,6 +41,7 @@ repeats one query 100 times.
 
 ```sh
 go test ./... -run '^TestProductionBenchmarkImplementationsProduceSameResults$'
+RULEIX_OPA_FULL_CORRECTNESS=1 go test -run '^TestProductionOPAProducesSameResults$' -timeout=1h .
 go test -run '^$' -bench='^BenchmarkRequest/' -benchmem -count=10 . > /tmp/request.txt
 benchstat /tmp/request.txt
 go test -run '^$' -bench='^BenchmarkRequestParallel/' -benchmem -count=5 -cpu=1,2,4,8 .
@@ -92,6 +94,7 @@ not production telemetry.
 | HandwrittenBitmap | 8,005 | 80.05 | 22,400 | 200 | 5.60 |
 | RuleixIndex | 4,453 | 44.53 | 4,279,684 | 2,855 | 3.12 |
 | RuleixLocal | 6,986 | 69.86 | 5,129,527 | 1,924 | 4.89 |
+| OPA | not run | not run | not run | not run | not run |
 
 The final column is only the theoretical CPU-time requirement:
 `700 × seconds/request`. It is not capacity planning and excludes scheduling,
@@ -119,6 +122,13 @@ Parallel smoke series on the same host (`200ms × 3`, medians, 100 lookups) gave
 Values are requests/s. The short window is suitable for a checked-in local
 checkpoint, not a deployment sizing decision; use the documented `count=5`
 workflow and the saturation runner for a decision-quality rerun.
+
+OPA's initial prepared-query check (`Correlated/LargeWorkingSet`, one lookup,
+`1x × 3`) had a 485 ms median, 252 MB/op, and 4.53 million allocations/op. This
+is a collect-all result rather than a boolean decision, but the single-op window
+is only an order-of-magnitude checkpoint. Full request and parallel variants
+are available under `BenchmarkRequest/OPA` and `BenchmarkRequestParallel/OPA`;
+they do not shrink the dataset or reduce work to make OPA appear faster.
 
 Short benchmark windows, synthetic deterministic distributions, shared-host
 noise, and absent application work limit external validity. Percentiles require

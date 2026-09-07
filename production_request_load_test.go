@@ -41,6 +41,12 @@ func TestProductionRequestLoad(t *testing.T) {
 	for _, name := range strings.Split(requested, ",") {
 		allowed[name] = true
 	}
+	if allowed["OPA"] {
+		constraints, ids := productionBenchmarkData()
+		queries := productionRequestQueries("Correlated", false)
+		opa := newProductionOPAMatcher(t, constraints, ids, queries)
+		factories = append(factories, productionMatcherFactory{"OPA", func() productionRequestMatcher { return opa }})
+	}
 	output := productionEnv("RULEIX_LOAD_OUTPUT", "/tmp/production-request-load.csv")
 	file, err := os.Create(output)
 	if err != nil {

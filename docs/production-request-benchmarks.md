@@ -35,8 +35,10 @@ the handwritten bitmap baseline, 209 for optimized linear, and 153 for natural
 linear. This comparison is synthetic and must not be merged with the observed
 production p99.9 number.
 
-OPA, GoRules/ZEN, Grule, and Casbin remain outside direct comparison until an
-adapter proves the same collect-all-ID semantics without reducing the schema or
-work per lookup. Engine compilation, session setup, and policy parsing must be
-outside timing. A reference-only result must be labeled when the engine's
-session semantics cannot support a direct comparison.
+OPA v1.13.2 now participates through a prepared Rego collect-all query over the
+shared in-memory dataset; conversion, store construction, and compilation are
+outside timing. Its first one-lookup checkpoint measured roughly 485 ms and
+252 MB/op, so long OPA series remain explicit opt-in runs rather than shrinking
+the workload. GoRules/ZEN, Grule, and Casbin remain excluded until an adapter
+proves identical all-ID semantics. A reference-only result must be labeled when
+an engine's session semantics cannot support a direct comparison.
