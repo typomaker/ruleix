@@ -216,12 +216,11 @@ func equalityAntonymCandidates(
 // candidate quality at the current equality-only 75% retained checkpoint.
 // Apple M1 Max, Go 1.26.0, GOMAXPROCS=1, 38,098 entries, 1x: 8/16-byte
 // nodes used 230,554/232,276 bytes and returned the Exact-equivalent 150
-// candidates/query; 20/24-byte nodes used 233,524/233,402 bytes and returned
-// 747/1,485. Wildcards are accounted separately and never enter tree nodes.
+// candidates/query; 24-byte nodes used 233,402 bytes and returned 1,485.
 func BenchmarkProductionEqualityAntonymTree(b *testing.B) {
 	constraints, _ := productionBenchmarkData()
 	queries := []productionBenchmarkConstraint{productionBenchmarkQuery(100), productionBenchmarkQuery(101)}
-	for _, overhead := range []uint64{8, 16, 20, 24} {
+	for _, overhead := range []uint64{8, 16, 24} {
 		trees := productionEqualityAntonymTrees(constraints)
 		used := buildEqualityAntonymForest(trees, 234076, overhead)
 		candidates := equalityAntonymCandidates(trees, queries)
