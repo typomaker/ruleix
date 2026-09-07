@@ -287,3 +287,34 @@ search. Команда:
 go test -run '^$' -bench '^BenchmarkLossyCompiledCompositeCodec$' \
   -benchmem -benchtime=300ms -count=3 .
 ```
+
+## Production Lossy checkpoint 2026-08-31
+
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, 38,098 constraints. The full
+production schema, including `[16]byte`, `[2]string`, `Between[time.Time]`,
+and `CompareBy[[3]int]`, was built under a single 377,122-byte budget (50% of
+exact accounting). Command:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLossySearch/' \
+  -benchmem -benchtime=1s -count=5 .
+```
+
+| Path | Median | B/op | allocs/op |
+| --- | ---: | ---: | ---: |
+| `Index.Search` | 70,030 ns/op | 40,222 | 23 |
+| warm `Local.Search` | 1,386 ns/op | 0 | 0 |
+
+This is a standalone Lossy checkpoint: the budget changes amplification and
+the representation mix. Profile details and the rejected comparator physical-
+key composition are recorded in `optimization-decisions.md`.
+
+## Stable string equality checkpoint 2026-09-02
+
+Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`. Three separate shared-key Lossy50
+processes reported the same 220,790 accounted bytes and 3,155 candidates per
+query. At `300ms x5`, Lossy50 medians were 70,788 ns/op, 25,720 B/op, and 20
+allocs/op for Index and 64.04 ns/op, 0 B/op, and 0 allocs/op for warm Local.
+Exact/identity measured 51,328/51,846 ns/op for Index and 61.15/60.81 ns/op for
+Local. The production `500ms x5` medians were 47,770 ns/op for Index and 5,482
+ns/op for Local; the step 6 performance gate remained open.

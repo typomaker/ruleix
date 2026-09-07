@@ -1,5 +1,17 @@
 # История производительности
 
+## 2026-09-07: `v0.8.2` versus `v0.8.3`
+
+Seven interleaved one-second pairs measured `Index.Search` 10.59% faster,
+warm `Local.Search` 0.97% slower, parallel Local 1.98% slower, and Build 1.59%
+slower. A 15-second profile reproduced the warm Local delta but not the
+parallel delta. Search allocation classes are unchanged; retained index is
+0.17% larger and retained warm/adaptive/adversarial Local memory is
+0.22–0.32% smaller. The warm Local regression remains under investigation
+because profiles and two focused commit boundaries did not conclusively
+localize it. Full protocol:
+[`benchmark-v0.8.2-v0.8.3-2026-09-07.md`](benchmark-v0.8.2-v0.8.3-2026-09-07.md).
+
 ## 2026-09-07: aggressive Local cache policy
 
 Removing Local byte caps and the 512-ID cutoff changed 513 matches from 1,355 to 305 ns/op and a 250,000-match query from 798 to 132 us/op with 0 B/op instead of 124,921 B/op. Wide retained memory intentionally rose from 2,344 to 1,076,008 B/Local; production warm/parallel improved 1.7%/2.3%. Full protocol: [`aggressive-local-cache-2026-09-07.md`](aggressive-local-cache-2026-09-07.md).
@@ -465,36 +477,7 @@ The query-key path is inactive for that broad result because ready-ID caching
 is capped at 256 candidates. These failures reproduce without the query-key
 patch and are not counted as correction measurements.
 
-### Production Lossy checkpoint 2026-08-31
+## Additional checkpoint measurements
 
-Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, 38 098 constraints. Полная
-production-схема, включая `[16]byte`, `[2]string`, `Between[time.Time]` и
-`CompareBy[[3]int]`, собрана под единым бюджетом 377 122 bytes (50% exact
-accounting). Команда:
-
-```sh
-GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkProductionShapeLossySearch/' \
-  -benchmem -benchtime=1s -count=5 .
-```
-
-| Path | Median | B/op | allocs/op |
-| --- | ---: | ---: | ---: |
-| `Index.Search` | 70 030 ns/op | 40 222 | 23 |
-| warm `Local.Search` | 1 386 ns/op | 0 | 0 |
-
-Это самостоятельный lossy checkpoint: бюджет меняет amplification и состав
-представлений. Детали профилей и отклонённой comparator-physical key композиции
-зафиксированы в `optimization-decisions.md`.
-
-### Stable string equality checkpoint 2026-09-02
-
-Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`. Три отдельных shared-key Lossy50
-процесса дали одинаковые 220 790 accounted bytes и 3,155 candidates/query.
-`300ms x5`: Lossy50 Index median 70 788 ns/op, 25 720 B/op, 20 allocs/op;
-warm Local 64,04 ns/op, 0 B/op, 0 allocs/op. Exact/identity: 51 328/51 846
-ns/op Index и 61,15/60,81 ns/op Local. Production `500ms x5`: median 47 770
-ns/op Index и 5 482 ns/op Local; performance gate шага 6 остаётся открыт.
-
-## Дополнительные checkpoint-измерения
-
-Остальные замеры вынесены в [`performance-checkpoints.md`](performance-checkpoints.md).
+Production Lossy and the other detailed checkpoint measurements are in
+[`performance-checkpoints.md`](performance-checkpoints.md).
