@@ -98,7 +98,7 @@ func (local *Local[C, ID]) Visit(value C, yield func(ID) bool) {
 	if local.observed {
 		root, exclusions = local.index.observedRoot, local.index.observedExclusions
 	}
-	visitMatches(root, local.index.values, local.index.idChunkShift, local.pool, exclusions, value, yield)
+	visitMatches(root, local.index.values, local.pool, exclusions, value, yield)
 }
 
 func (local *Local[C, ID]) requireOpen() {
@@ -114,7 +114,7 @@ func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
 	if yield == nil {
 		return
 	}
-	visitMatches(ix.root, ix.values, ix.idChunkShift, ix.pool, ix.exclusions, value, yield)
+	visitMatches(ix.root, ix.values, ix.pool, ix.exclusions, value, yield)
 }
 
 func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
@@ -126,13 +126,13 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 	if pool.observeRuntime && ix.rootMetrics != nil {
 		if root, ok := root.(*allRule[C]); ok {
 			metrics := pool.rootInspectorObserver(ix.rootMetrics)
-			searchAllMatches(root, ix.values, ix.idChunkShift, pool, exclusions, value, dst, ix.rootMetrics)
+			searchAllMatches(root, ix.values, pool, exclusions, value, dst, ix.rootMetrics)
 			metrics.observeCardinality(uint64(len(*dst) - before))
 			return len(*dst) != before
 		}
 	}
 	if all, ok := root.(*allRule[C]); ok {
-		searchAllMatches(all, ix.values, ix.idChunkShift, pool, exclusions, value, dst, nil)
+		searchAllMatches(all, ix.values, pool, exclusions, value, dst, nil)
 		return len(*dst) != before
 	}
 	bits := pool.get()
@@ -144,7 +144,7 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 		bits.AndNot(excluded)
 		pool.put(excluded)
 	}
-	*dst = appendChunkedBitmapValues(bits, ix.values, ix.idChunkShift, *dst)
+	*dst = appendBitmapValues(bits, ix.values, *dst)
 	if pool.observeRuntime && ix.rootMetrics != nil {
 		pool.rootInspectorObserver(ix.rootMetrics).observeCardinality(uint64(len(*dst) - before))
 	}
@@ -155,7 +155,6 @@ func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {
 func searchAllMatches[C any, ID comparable](
 	root *allRule[C],
 	values []ID,
-	idChunkShift uint8,
 	pool *bitmapPool,
 	exclusions []exclusionRule[C],
 	value C,
@@ -166,7 +165,7 @@ func searchAllMatches[C any, ID comparable](
 	if len(exclusions) == 0 {
 		if cached := root.loadLocalQueryResult(pool, value); cached != nil {
 			for _, id := range cached.ids {
-				result = appendChunkValues(result, values, id, idChunkShift)
+				result = append(result, values[id])
 			}
 			*dst = result
 			return
@@ -240,7 +239,7 @@ func searchAllMatches[C any, ID comparable](
 		if candidates != nil || cachedResult != nil {
 			if cachedResult != nil && cachedResult.idsSet && excluded == nil {
 				for _, id := range cachedResult.ids {
-					result = appendChunkValues(result, values, id, idChunkShift)
+					result = append(result, values[id])
 				}
 			} else {
 				if cachedResult != nil {
@@ -250,17 +249,17 @@ func searchAllMatches[C any, ID comparable](
 				if excluded != nil {
 					candidates.AndNot(excluded)
 				}
-				result = appendChunkedBitmapValues(candidates, values, idChunkShift, result)
+				result = appendBitmapValues(candidates, values, result)
 			}
 			if candidates != nil {
 				pool.put(candidates)
 			}
 		} else {
-			result = appendBitmapAllMatches(rankedChildren, excluded, values, idChunkShift, pool, result)
+			result = appendBitmapAllMatches(rankedChildren, excluded, values, pool, result)
 		}
 	} else {
 		result = appendScannedAllMatches(
-			root, rankedChildren, exclusions, excluded, value, values, idChunkShift, pool, result,
+			root, rankedChildren, exclusions, excluded, value, values, pool, result,
 		)
 	}
 	if excluded != nil {

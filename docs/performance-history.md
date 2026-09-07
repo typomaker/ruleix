@@ -2,7 +2,7 @@
 
 ## 2026-09-07: `v0.8.2` versus current `HEAD`
 
-Seven interleaved production runs show `Index.Search` improving by 9.58%, but warm and parallel `Local` regress by 38.07% and 36.22%; retained Local memory is unchanged and the index grows 0.17%. The immediate parent matches `HEAD`, so the final commit is neutral but the accumulated release-relative search regression blocks release readiness. Full protocol: [`benchmark-v0.8.2-vs-head-2026-09-07.md`](benchmark-v0.8.2-vs-head-2026-09-07.md).
+Initial interleaved runs found `Index.Search` 9.58% faster but warm and parallel `Local` 38.07% and 36.22% slower. Bisect identified the unused ID-chunk experiment in `1dee1c1`; removing it restored Local to release parity while preserving an 11.27% Index improvement. Build latency and retained Local memory remain neutral; retained index is +0.17%. Full protocol: [`benchmark-v0.8.2-vs-head-2026-09-07.md`](benchmark-v0.8.2-vs-head-2026-09-07.md).
 
 ## 2026-09-07: strict equality antonym components
 

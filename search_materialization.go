@@ -79,7 +79,6 @@ func appendBitmapAllMatches[ID comparable](
 	rankedChildren []rankedBitmap,
 	excluded *roaring.Bitmap,
 	values []ID,
-	idChunkShift uint8,
 	pool *bitmapPool,
 	result []ID,
 ) []ID {
@@ -98,7 +97,7 @@ func appendBitmapAllMatches[ID comparable](
 		if excluded != nil {
 			bits.AndNot(excluded)
 		}
-		result = appendChunkedBitmapValues(bits, values, idChunkShift, result)
+		result = appendBitmapValues(bits, values, result)
 		pool.put(bits)
 		return result
 	}
@@ -110,7 +109,7 @@ func appendBitmapAllMatches[ID comparable](
 	if excluded != nil {
 		bits.AndNot(excluded)
 	}
-	result = appendChunkedBitmapValues(bits, values, idChunkShift, result)
+	result = appendBitmapValues(bits, values, result)
 	return result
 }
 
@@ -138,42 +137,6 @@ func appendBitmapValues[ID comparable](bits *roaring.Bitmap, values []ID, result
 	return result
 }
 
-func appendChunkedBitmapValues[ID comparable](
-	bits *roaring.Bitmap,
-	values []ID,
-	idChunkShift uint8,
-	result []ID,
-) []ID {
-	if idChunkShift == 0 {
-		return appendBitmapValues(bits, values, result)
-	}
-	if bits.GetCardinality() < manyIteratorCardinalityThreshold {
-		bits.Iterate(func(id uint32) bool {
-			result = appendChunkValues(result, values, id, idChunkShift)
-			return true
-		})
-		return result
-	}
-
-	iterator := bits.ManyIterator()
-	var ids [256]uint32
-	for count := iterator.NextMany(ids[:]); count != 0; count = iterator.NextMany(ids[:]) {
-		for _, id := range ids[:count] {
-			result = appendChunkValues(result, values, id, idChunkShift)
-		}
-	}
-	return result
-}
-
-func appendChunkValues[ID comparable](result, values []ID, chunkID uint32, shift uint8) []ID {
-	start := uint64(chunkID) << shift
-	if start >= uint64(len(values)) {
-		return result
-	}
-	end := min(start+(uint64(1)<<shift), uint64(len(values)))
-	return append(result, values[int(start):int(end)]...)
-}
-
 func appendScannedAllMatches[C any, ID comparable](
 	root *allRule[C],
 	rankedChildren []rankedBitmap,
@@ -181,7 +144,6 @@ func appendScannedAllMatches[C any, ID comparable](
 	excluded *roaring.Bitmap,
 	value C,
 	values []ID,
-	idChunkShift uint8,
 	pool *bitmapPool,
 	result []ID,
 ) []ID {
@@ -204,7 +166,7 @@ func appendScannedAllMatches[C any, ID comparable](
 			}
 		}
 		if matches {
-			result = appendChunkValues(result, values, id, idChunkShift)
+			result = append(result, values[id])
 		}
 		return true
 	})
@@ -214,7 +176,6 @@ func appendScannedAllMatches[C any, ID comparable](
 func visitMatches[C any, ID comparable](
 	root Rule[C],
 	values []ID,
-	idChunkShift uint8,
 	pool *bitmapPool,
 	exclusions []exclusionRule[C],
 	value C,
@@ -229,16 +190,7 @@ func visitMatches[C any, ID comparable](
 		bits.AndNot(excluded)
 		pool.put(excluded)
 	}
-	bits.Iterate(func(id uint32) bool {
-		start := uint64(id) << idChunkShift
-		end := min(start+(uint64(1)<<idChunkShift), uint64(len(values)))
-		for index := start; index < end; index++ {
-			if !yield(values[int(index)]) {
-				return false
-			}
-		}
-		return true
-	})
+	bits.Iterate(func(id uint32) bool { return yield(values[id]) })
 }
 
 func addExclusions[C any](rules []exclusionRule[C], value C, dst *roaring.Bitmap, pool *bitmapPool) {

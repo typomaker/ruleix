@@ -26,7 +26,6 @@ type Index[C any, ID comparable] struct {
 	observedRoot       Rule[C]
 	rootMetrics        *inspectorRuntime
 	values             []ID
-	idChunkShift       uint8
 	pool               *bitmapPool
 	nodes              int
 	exclusions         []exclusionRule[C]
@@ -99,11 +98,7 @@ type buildOptions struct {
 	// identityLossy selects the exact-key head of every Lossy representation
 	// ladder after normal policy analysis. It is a test/benchmark control, not
 	// a public memory-limit mode.
-	identityLossy bool
-	// idChunkShift is an experimental lossy-build control. Positive postings
-	// receive dense ID chunks while the rule tree continues to operate on
-	// ordinary uint32 values. Search expands matching chunks at the boundary.
-	idChunkShift        uint8
+	identityLossy       bool
 	observeWorkingUsage func(usage, target uint64)
 }
 
@@ -117,9 +112,6 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 ) (*Index[C, ID], buildStatistics, error) {
 	if entries == nil {
 		return nil, buildStatistics{}, fmt.Errorf("ruleix: nil entry sequence")
-	}
-	if options.idChunkShift >= 32 {
-		return nil, buildStatistics{}, fmt.Errorf("ruleix: ID chunk shift must be below 32")
 	}
 	ids := &nodeIDAllocator{}
 	state := schema.newState(ids, hints)
@@ -150,7 +142,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 			internalIDs[id] = internalID
 			values = append(values, id)
 		}
-		state.insert(constraint, internalID>>options.idChunkShift)
+		state.insert(constraint, internalID)
 		entryIndex++
 		if options.enableStreaming && !options.identityLossy && entryIndex%lossyBuildPressureInterval == 0 {
 			var usage, target uint64
@@ -197,9 +189,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 			options.observeWorkingUsage(usage, target)
 		}
 	}
-	ix := &Index[C, ID]{
-		root: state, values: values, idChunkShift: options.idChunkShift, pool: newBitmapPool(),
-	}
+	ix := &Index[C, ID]{root: state, values: values, pool: newBitmapPool()}
 	var err error
 	ix.root, err = compileLossyRules(ix.root, options.identityLossy)
 	if err != nil {
@@ -216,9 +206,6 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		ix.root.collectBuildStatistics(statistics.nodes)
 	}
 	internalCount := uint64(len(ix.values))
-	if options.idChunkShift != 0 && internalCount != 0 {
-		internalCount = (internalCount-1)/(uint64(1)<<options.idChunkShift) + 1
-	}
 	ix.root = optimizeRule(ix.root, internalCount)
 	var inspections []pendingInspection
 	ix.root, err = stripInspectors(ix.root, make(map[*inspectorState]struct{}), &inspections)
@@ -232,9 +219,6 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	// intentionally hidden while retaining the inspector-to-child association.
 	ix.root = optimizeRule(ix.root, internalCount)
 	ix.exclusions = collectExclusionRules(ix.root, nil)
-	if options.idChunkShift != 0 && len(ix.exclusions) != 0 {
-		return nil, buildStatistics{}, fmt.Errorf("ruleix: experimental ID chunking does not support exclusions")
-	}
 	if len(ix.exclusions) != 0 {
 		universe := roaring.New()
 		universe.AddRange(0, uint64(len(ix.values)))
@@ -280,12 +264,6 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	}
 	prepareRuleSearch(ix.observedRoot)
 	prepareRuleSearch(ix.root)
-	if ix.idChunkShift != 0 {
-		disableChunkUnsafeExecution(ix.observedRoot)
-		if ix.root != ix.observedRoot {
-			disableChunkUnsafeExecution(ix.root)
-		}
-	}
 	ix.nodes = int(ids.next)
 	for _, inspection := range inspections {
 		for _, id := range inspection.nodes {
@@ -303,25 +281,6 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		}})
 	}
 	return ix, statistics, nil
-}
-
-// Chunk postings preserve bitmap semantics, but per-ID operations assume that
-// an operand names one exact rule. Force chunked All execution through complete
-// bitmap operands so Index and Local retain the same conservative result.
-func disableChunkUnsafeExecution[T any](rule Rule[T]) {
-	switch typed := rule.(type) {
-	case *allRule[T]:
-		typed.directIDComplete = false
-		for i := range typed.execution {
-			typed.execution[i].directID = nil
-			typed.execution[i].filter = nil
-		}
-		for _, child := range typed.children {
-			disableChunkUnsafeExecution(child)
-		}
-	case *inspectedRuntimeRule[T]:
-		disableChunkUnsafeExecution(typed.child)
-	}
 }
 
 // Zip pairs equally sized constraint and ID slices into a sequence accepted by

@@ -52,7 +52,8 @@ Mode-agnostic `allRule` сохранил общий executor, а порог го
 candidates/query, 0 B/op и 0 allocs/op. Exact control сохранил 309,8 ns/op.
 Десятисекундные profiles дали 1 616/1 102 ns/op: baseline тратил 65,1%
 cumulative CPU на Roaring iteration и 20,0% на planning, кандидат — 65,2% на
-неизбежные `appendChunkValues`/`memmove` и 14,5% на query-key validation.
+существовавшие тогда `appendChunkValues`/`memmove` и 14,5% на query-key
+validation. ID-chunk experiment and this decoding overhead were later removed.
 
 `BenchmarkProductionShapeLossyLocalRetainedMemory`, `20x x5`, дал медианы
 93 403/96 477 retained-B/Local (+3 074 bytes, +3,3%). `memprofilerate=1`
