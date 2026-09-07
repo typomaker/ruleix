@@ -81,16 +81,22 @@ wildcard. Wildcard добавляется к выбранной concrete-кор�
 а разные глубины одной структуры. До реализации нужны accounting модели для
 узлов/bitmap, алгоритм budget pruning и сравнение с flat physical-key index.
 
-Первый test-only feasibility prototype построил адаптивный prefix forest для
-семи непустых production equality leaves. Split score уменьшал сумму квадратов
-posting cardinality на каждый дополнительный accounted byte; wildcard bitmap
-оставался вне дерева. При том же equality-only 75% checkpoint `234 076 B`
-модель с 8/16-byte node overhead использовала 230 554/232 276 bytes и вернула
-150 candidates/query — observable parity с Exact против 358 у flat ladder.
-При 20/24-byte overhead она успела купить меньше splits и вернула 747/1 485
-кандидатов при 233 524/233 402 bytes. Реалистичный runtime-node тем самым уже
-хуже плоского индекса. Дерево остаётся полезным Build-time способом подобрать
-разбиение, но публиковаться должен прежний плоский concrete-key index с общим
-transformer-ом: identity является exact-состоянием, hash partition — одним из
-compressed-состояний. Это сохраняет единый executor и не хранит wildcard в
-дереве.
+Первый test-only prototype ошибочно моделировал только семь из четырнадцати
+equality leaves, поэтому ранние числа 150/747/1 485 нельзя было сравнивать с
+полным equality-only baseline. Исправленная модель включает все 14 колонок.
+При том же checkpoint `234 076 B` независимый split score (уменьшение суммы
+квадратов posting cardinality на byte) вернул 4 975 candidates/query для
+8/16-byte nodes и 5 028 для 20/24-byte nodes. Текущий production planner на
+этом же срезе возвращает 358. Следовательно, отклонён не bitmap-антоним и не
+дерево как representation, а **независимый поколоночный score**, который не
+видит корреляцию итогового `All`.
+
+Контрольный плоский prototype подтвердил проблему objective. Изолированный
+greedy остановился на `209 480 B` и 5 135 candidates/query, потому что один
+переход часто не меняет пересечение. Совместный одинаковый уровень всех колонок
+использовал `233 032 B` и дал 3 803 candidates/query. Значит, следующий planner
+должен считать пересечения concrete sibling-антонимов **между колонками** и
+выбирать комбинацию переходов; максимизация physical keys или локальной
+селективности недостаточна. Wildcard по-прежнему исключён из дерева и score.
+Опубликованное состояние должно использовать общий transformer: identity для
+exact и выбранное partition/tree state для compressed, без проверки RuleMode.
