@@ -352,9 +352,9 @@ func buildAntonymSelectivityBenchmarkIndex(
 
 // BenchmarkStrictEqualityAntonymSelectivityOrder exercises bitmap-sized
 // postings whose schema order is 2,048, 1,024, 586, and 585 IDs per side.
-// M1 Max, Go 1.26.0, GOMAXPROCS=1: 8s CPU runs kept general Index neutral at
-// 11,185/11,200 ns; 5s EarlyEmpty improved 10,074/8,244 ns. Bytes and
-// allocation counts stayed 8,905/6 and 8,240/4. See the design document.
+// M1 Max, Go 1.26.0, GOMAXPROCS=1, merged-main A/B: seven interleaved 1s runs
+// kept Index neutral at 10,623/10,588 ns and improved EarlyEmpty
+// 9,588/7,829 ns. Bytes/allocations stayed 8,905/6 and 8,240/4. See the doc.
 func BenchmarkStrictEqualityAntonymSelectivityOrder(b *testing.B) {
 	for _, path := range []string{"Index", "LocalRotating", "LocalStable", "EarlyEmpty"} {
 		b.Run(path, func(b *testing.B) {

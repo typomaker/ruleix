@@ -6,11 +6,7 @@ Initial interleaved runs found `Index.Search` 9.58% faster but warm and parallel
 
 ## 2026-09-07: strict equality antonym components
 
-The 1x1 optimization gave Exact Index `4,113 -> 423 ns/op`; one 3x3 component
-gave `4,125 -> 2,239 ns/op`, `19 -> 5` allocations, and retained Local
-`4,560 -> 3,680 B`. Ordered 4x4 intersections improved an early-empty case
-`10,074 -> 8,244 ns/op`; other gates were neutral. Full protocol:
-[`strict-equality-antonyms.md`](strict-equality-antonyms.md).
+The 1x1/3x3 components gave `4,113 -> 423`/`4,125 -> 2,239 ns/op`; merged-main ordered 4x4 early-empty improved `9,588 -> 7,829 ns/op`, with other gates neutral. Full protocol: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
 
 ## 2026-09-07: общий 512-ID Local cache
 

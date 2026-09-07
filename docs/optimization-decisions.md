@@ -12,13 +12,9 @@ The internal ID-chunk experiment was rejected: its global contiguous groups save
 
 ## 2026-09-07: strict equality antonym components accepted
 
-Build compiles complement equality classes as one mode-agnostic component. A 3x3
-component reduced Index `4,125 -> 2,239 ns/op` and `19 -> 5` allocations.
-Its bitmap path orders intersections after a safe COW seed. A disjoint 4x4 case
-improved `10,074 -> 8,244 ns/op`; the general skewed case was neutral at about
-11.2 us. An equal-cardinality fast path removed measured ordering overhead
-(`29,735 -> 29,492 ns/op`); allocations and retained state did not regress.
-Profiles and commands: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
+Build compiles complement equality classes mode-agnostically. Against merged `main`,
+ordered intersections improved early-empty `9,588 -> 7,829 ns/op`;
+general, production, allocation, and retained gates were neutral. Evidence: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
 
 ## 2026-09-07: compact Local ID threshold увеличен до 512
 

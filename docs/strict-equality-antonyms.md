@@ -91,9 +91,10 @@ components, unknown and missing keys, overlap/gap, empty wildcard, and
 
 ### Query-time selectivity order
 
-Commit `66a7c64` is the baseline. The focused fixture has 8,192 rules and a
-4x4 component; query postings appear in schema order with about 2,048, 1,024,
-586, and 585 IDs per side. Environment is the M1 Max configuration above.
+After merging `main`, baseline `a78b647` was compared with merge `a4e2acd`
+plus the ordering implementation. The fixture has 8,192 rules and a 4x4
+component; postings appear in schema order with about 2,048, 1,024, 586, and
+585 IDs per side. Environment is the M1 Max configuration above.
 
 ```sh
 GOMAXPROCS=1 go test -run '^$' \
@@ -101,20 +102,26 @@ GOMAXPROCS=1 go test -run '^$' \
   -benchmem -benchtime=1s -count=5
 ```
 
-The general Index case was neutral in longer profiles (`11,185 -> 11,200
-ns/op`) with 8,905 B and 6 allocations. With disjoint smallest postings,
-ordering stopped after the first two checks and improved `10,074 -> 8,244
-ns/op`; 8,240 B and 4 allocations were unchanged.
-Rotating and stable Local remained near 845 and 840 ns/op with zero allocations
-because their planner selected direct ID validation for this fixture.
+Seven interleaved 1s A/B pairs kept general Index neutral
+(`10,623 -> 10,588 ns/op`) with 8,905 B and 6 allocations. With disjoint
+smallest postings, ordering stopped after two checks and improved
+`9,588 -> 7,829 ns/op`; 8,240 B and 4 allocations were unchanged. Rotating
+and stable Local medians were neutral at 240.5/241.7 and 229.2/229.0 ns/op.
 
 An equal-cardinality 4x4 guard initially exposed 2.5% ordering overhead. The
 accepted fast path skips ordering whenever the first operand is already
 minimal. Seven interleaved 1s A/B pairs then gave neutral medians
-`29,735 -> 29,492 ns/op`, with identical 17,611 B and 8 allocations. Retained
-state is unchanged: the component remained 3,690 B/Local (`20x`, five runs).
+`29,751 -> 29,737 ns/op` in five interleaved 3s pairs, with identical 17,610 B
+and 8 allocations. Retained state stayed 3,690 B/component Local; production
+retained medians stayed about 96,449 B/Lossy Local and 1,322,934 B/Index.
 
-Eight-second CPU profiles showed the ordered path spending 31.6% cumulative in
-the recursive selector plus its Roaring intersections; the selector itself was
-below 1% flat CPU. Allocation profiles (`2s`, `-memprofilerate=1`) were
-unchanged, as expected from retaining the original copy-on-write seed.
+Five-second CPU profiles reproduced early-empty `10,018 -> 8,294 ns/op`; work
+remained dominated by Roaring intersection and the selector stayed below 1%
+flat CPU. Allocation profiles (`2s`, `-memprofilerate=1`) and per-op classes
+were unchanged, as expected from retaining the original copy-on-write seed.
+
+Six alternating-order production pairs (`2s`) were neutral: Exact Index median
+`30,317 -> 30,306 ns/op`, Exact Local `229.3 -> 229.7 ns/op`, Lossy Index
+`33,063 -> 33,200 ns/op`, and Lossy Local `508.4 -> 503.9 ns/op`; candidates,
+bytes, and allocation counts were identical. The 1x1 and compact 3x3 gates were
+also neutral in three interleaved 500ms pairs.
