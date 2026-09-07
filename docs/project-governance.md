@@ -119,3 +119,9 @@ conditions.
 
 Detailed chronological working notes may remain elsewhere in the repository,
 but they do not replace the maintained canonical summary in `docs/`.
+
+## Licensing
+
+Ruleix is distributed under the MIT License. The canonical license text and
+copyright notice are maintained in the repository-root [`LICENSE`](../LICENSE)
+file.
