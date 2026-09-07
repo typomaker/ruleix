@@ -126,7 +126,6 @@ func BenchmarkRequest(b *testing.B) {
 			}
 		}
 	}
-	b.Run("OPA", benchmarkRequestOPA)
 }
 
 // BenchmarkRequestParallel latest local smoke run command:
@@ -165,7 +164,6 @@ func BenchmarkRequestParallel(b *testing.B) {
 			})
 		}
 	}
-	b.Run("OPA", benchmarkRequestParallelOPA)
 }
 
 func BenchmarkRequestScaling(b *testing.B) {
