@@ -16,23 +16,6 @@ type productionRequestMatcher interface {
 	Match(productionBenchmarkConstraint, *[]productionBenchmarkID)
 }
 
-type productionRequestScopedMatcher interface {
-	BeginRequest()
-	EndRequest()
-}
-
-func productionBeginRequest(matcher productionRequestMatcher) {
-	if scoped, ok := matcher.(productionRequestScopedMatcher); ok {
-		scoped.BeginRequest()
-	}
-}
-
-func productionEndRequest(matcher productionRequestMatcher) {
-	if scoped, ok := matcher.(productionRequestScopedMatcher); ok {
-		scoped.EndRequest()
-	}
-}
-
 type productionLinearMatcher struct {
 	constraints []productionBenchmarkConstraint
 	ids         []productionBenchmarkID
@@ -113,27 +96,11 @@ func productionVersionCompare(a, b *productionBenchmarkVersion) int {
 }
 
 type productionRuleixMatcher struct {
-	index *ruleix.Index[productionBenchmarkConstraint, productionBenchmarkID]
 	local *ruleix.Local[productionBenchmarkConstraint, productionBenchmarkID]
 }
 
 func (m *productionRuleixMatcher) Match(q productionBenchmarkConstraint, dst *[]productionBenchmarkID) {
 	m.local.Search(q, dst)
-}
-
-func (m *productionRuleixMatcher) BeginRequest() {
-	if m.local != nil {
-		panic("Ruleix Local request already active")
-	}
-	m.local = m.index.Local()
-}
-
-func (m *productionRuleixMatcher) EndRequest() {
-	if m.local == nil {
-		panic("Ruleix Local request is not active")
-	}
-	m.local.Close()
-	m.local = nil
 }
 
 type productionBitmapMatcher struct {

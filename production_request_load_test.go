@@ -99,12 +99,10 @@ func runProductionLoad(factory productionMatcherFactory, rate, lookups int, dura
 					job = next
 				}
 				base := job.sequence * lookups % len(queries)
-				productionBeginRequest(matcher)
 				for j := range lookups {
 					results = results[:0]
 					matcher.Match(queries[(base+j)%len(queries)], &results)
 				}
-				productionEndRequest(matcher)
 				latencies <- time.Since(job.arrived)
 				completed.Add(1)
 			}
