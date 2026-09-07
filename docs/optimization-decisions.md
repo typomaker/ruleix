@@ -264,8 +264,8 @@ short-circuit после первого найденного ID, блоки 1/4/
 retained limit. Причина является следствием несовместимых membership shapes:
 legacy fused physical keys дают ранний выход по компактному posting, тогда как общий
 range layout выбирает между широким aggregate lookup и несколькими posting
-lookups. Прототип удалён; шаг 5 roadmap остаётся запланированным до появления
-общего layout, который не ухудшает ни один search path.
+lookups. Прототип удалён; к идее общего layout стоит возвращаться только при
+варианте, который не ухудшает ни один search path.
 
 Повторная проверка на `8ce6ca6` после добавления lossy range aggregates также
 не изменила вывод. Восстановленный общий layout прошёл boundary/differential

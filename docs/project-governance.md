@@ -9,7 +9,7 @@ updated only when a new canonical entry point is required.
 ## Agent workflow
 
 - Complete the entire task as assigned, including every explicitly requested
-  deliverable and every applicable roadmap gate or acceptance criterion. Do
+  deliverable and acceptance criterion. Do
   not unilaterally reduce the task to a convenient slice, milestone, or partial
   implementation and present that subset as completion. Small, reviewable
   commits and intermediate checkpoints are allowed, but continue working after
@@ -19,19 +19,6 @@ updated only when a new canonical entry point is required.
   remains and why.
 - After fully completing each assigned task, create a Git commit containing all
   changes related to that task.
-- Keep every roadmap step in the canonical format defined by `ROADMAP.md`.
-  When a step is fully completed, mark it with its completion date and a concise
-  result summary. The summary must state the delivered outcome and the relevant
-  gates that passed, while detailed evidence remains in the relevant canonical
-  documents. Do not mark a partially implemented step as complete.
-- When every step in a roadmap milestone is complete, first create a dedicated
-  pre-cleanup commit in which `ROADMAP.md` still contains the complete milestone
-  goal, steps, completion dates, result summaries, and passed gates. Only after
-  that commit may the completed milestone be removed and the next roadmap be
-  added or activated. Record the cleaned and activated roadmap in a second,
-  separate post-activation commit. Never combine these two states in one commit.
-  Do not create roadmap-history or milestone-archive files; Git history is the
-  sole archive for removed roadmap content.
 - Before committing, run the appropriate checks and `git diff --check`.
 - Changed production code must have at least 90% test coverage. Measure coverage
   over the executable lines added or modified by the task (diff coverage), not

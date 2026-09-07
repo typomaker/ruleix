@@ -21,9 +21,9 @@ that fits approximately within the budget.
 
 ### Streaming quantization contract
 
-The active implementation milestone replaces the existing lossy planners and
+The streaming implementation replaces the existing lossy planners and
 representation ladders. They are compatibility and correctness references,
-not constraints on the replacement design. The normative model is one current
+not constraints on the design. The normative model is one current
 generation per rule: an exact key maps to a bitmap in the same physical index
 used by Exact, while the rule stores one current precision level. Exact always
 uses level 0. Lossy also starts at level 0 and changes level only at a pressure
@@ -453,7 +453,10 @@ rate because their false-positive boundary depends on the query value.
 
 ## Validation and rollout
 
-Correctness gates compare exact and lossy results on generated and adversarial data; performance gates measure retained memory, candidate quality, latency and allocations. The active requirements and sequencing live in `ROADMAP.md`.
+Validation compares exact and lossy results on generated and adversarial data
+and measures retained memory, candidate quality, latency and allocations. The
+roadmap names the product direction; this document defines the technical
+contract.
 Step 11 verification on 2026-09-03 used `go test ./...`, `go test -race ./...`, `go test ./... -count=5`, and `go test ./... -coverprofile=/tmp/ruleix-step11.cover`; all passed, repository coverage was 90.8%, and the changed production functions reported by `go tool cover -func` were fully covered except the existing `prepareStreamingNext`/limit branches (still above the 90% changed-code gate). No benchmarks or profiles were run.
 
 The comparable level-0 equality change was verified on 2026-09-03 with

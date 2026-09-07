@@ -2,8 +2,8 @@
 
 ## Статус проверки 2026-09-02
 
-Шаг 6 roadmap остаётся в работе. Общая реализация сохранена: удалять или
-откатывать её из-за обнаруженной деградации запрещено условиями milestone.
+Проверка общей реализации продолжается. Обнаруженная деградация сама по себе
+не определяет судьбу реализации: сначала требуется установить её причину.
 Correctness, race, retained-memory и streaming gates проходят, но latency,
 allocation, candidate-quality и deterministic-build gates пока не позволяют
 завершить шаг.
@@ -400,7 +400,7 @@ Finest/identity Lossy полностью совпал с Exact по accounted by
 серии и CPU profiles; до такой проверки причина не приписывается layout или
 codec.
 
-Следующий эксперимент по roadmap — equality-only анализ реально выбранных
+Следующий эксперимент — equality-only анализ реально выбранных
 ступеней: posting cardinality distribution, weighted collision cost,
 максимальный physical key, estimated false-positive rate и candidates/query. После
 этого можно оценивать stable hash/salt и quality-aware score только по
