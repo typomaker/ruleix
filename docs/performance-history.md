@@ -1,11 +1,12 @@
 # История производительности
 
+## 2026-09-07: общий 512-ID Local cache
+
+На `ab24d5a` production Lossy Local улучшен `1 636 → 1 125 ns/op` при 358 candidates, 0 B/op и 0 allocs; retained Local вырос `93 403 → 96 477 B`. Interleaved A/B, CPU/allocation profiles и synthetic gates записаны в [`lossy-local-improvement-2026-09-07.md`](lossy-local-improvement-2026-09-07.md).
+
 ## 2026-09-03: финализация ordered precision state
 
-Build-only состояние квантования удалено из `orderedIndex`; `CompareBy(EQ)` получает lookup во время Build, а inspection metadata копируется до очистки.
-
-Apple M1 Max, Go 1.26.0; `go test -run '^$' -bench '^BenchmarkTemporaryCompareByEQRuntime/' -benchmem -benchtime=500ms -count=10 .`;
-baseline `49f0827`, candidate — этот commit, 128 EQ-записей, lossy limit 1024 bytes. Median exact 68,3/68,6 ns/op, lossy 97,3/97,3 ns/op; 0 B/op, 0 allocs/op. Более широкий benchmark сохранил allocation classes; full и race прошли.
+Build-only состояние квантования удалено из `orderedIndex`; `CompareBy(EQ)` получает lookup во время Build, а inspection metadata копируется до очистки. Apple M1 Max, Go 1.26.0; `BenchmarkTemporaryCompareByEQRuntime`, 500ms x10: baseline `49f0827`/candidate, exact 68,3/68,6 ns/op, lossy 97,3/97,3 ns/op, 0 B/op и 0 allocs/op; широкий benchmark, full и race прошли.
 
 ## 2026-09-03: release gate шага 12 остаётся открыт
 

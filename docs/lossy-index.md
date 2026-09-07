@@ -50,6 +50,12 @@ the current set of ordered keys is the complete state. Posting containers,
 indexes, matcher logic, range execution, routing, aggregates, and Local caches
 are the Exact implementations. Lossy introduces no parallel search node.
 
+Identity/exact and compressed representations are states of the same build
+algorithm. Selection, lookup, planning, result caching, and validation must not
+branch on `RuleMode` or add Lossy-only checks. A key transformer at the identity
+level returns the original physical key unchanged; coarser levels apply another
+state of that same transformer before the shared index and executor paths.
+
 At each fixed checkpoint, accounted usage is compared with the saturating soft
 target `MemoryLimit + MemoryLimit/4`. While usage exceeds that target, the
 aggregate selector evaluates one atomic transition for every eligible rule,

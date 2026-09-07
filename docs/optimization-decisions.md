@@ -6,6 +6,32 @@
 соответствующих канонических документах; здесь приведены только выводы,
 подтверждённые бенчмарком или профилем.
 
+## 2026-09-07: compact Local ID threshold увеличен до 512
+
+Общий порог готового результата увеличен с 256 до 512 IDs; существующий общий
+64 KiB result-cache budget по-прежнему ограничивает суммарные bitmap, query
+keys, input pointers и `[]uint32`. Более широкие результаты остаются на прежнем
+bitmap path. Код не читает `RuleMode` и одинаков для Exact, identity и
+compressed состояний общего executor-а.
+
+На parent `ab24d5a`, Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, пять
+интерливированных пар по 1s дали production Lossy Local median
+`1 636 → 1 125 ns/op` (−31,2%), неизменные 358 candidates/query, 0 B/op и
+0 allocs/op. Десятисекундные CPU profiles подтвердили смену пути: baseline
+тратил 65,1% cumulative samples в Roaring iteration и 20,0% в восстановлении
+плана; кандидат тратил 65,2% в `appendChunkValues`/`memmove` и 14,5% в
+collision-safe query-key validation. Ускорение устраняет повторное planning и
+bitmap enumeration, но не маскирует сохранённую candidate amplification.
+
+Новый retained benchmark с двумя прогретыми запросами (`20x x5`) показал
+медианы `93 403 → 96 477 B/Local` (+3 074 bytes, +3,3%). Это соответствует
+двум дополнительным compact ID slices; `memprofilerate=1` сохранил общий
+allocation profile, разница полного alloc space составила около 0,04 MiB на
+20 Local. Synthetic Budget100/50/25 repeated и rotating в трёх
+интерливированных 300ms парах сохранили latency и allocation classes. Решение
+принято как второй путь после отклонённых candidate-planner эвристик; поиск
+более селективного общего representation algorithm остаётся отдельной задачей.
+
 ## 2026-09-03: mode-agnostic equality lookup micro-optimizations отклонены
 
 На baseline `4126439` проверены две общие для любого physical key `K`
