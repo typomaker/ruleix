@@ -237,7 +237,7 @@ func searchAllMatches[C any, ID comparable](
 	//nolint:nestif // Broad result assembly keeps ownership and exclusion handling together.
 	if broad {
 		if candidates != nil || cachedResult != nil {
-			if cachedResult != nil && cachedResult.idsSet && excluded == nil {
+			if cachedResult != nil && excluded == nil {
 				for _, id := range cachedResult.ids {
 					result = append(result, values[id])
 				}

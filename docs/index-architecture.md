@@ -170,30 +170,29 @@ posting, фильтрация существующих кандидатов и �
 же семантику, но отдаёт значения callback-функции и поддерживает досрочную
 остановку.
 
-## Временная память и `Local`
-Общий `Index` содержит `sync.Pool` для временных bitmap и буферов ранжирования.
-Пулы меняют только scratch-объекты; опубликованные postings неизменяемы.
-Слишком большие временные bitmap не возвращаются в пул, чтобы единичный
-широкий запрос не поднял постоянный memory floor.
+## Temporary memory and `Local`
 
-`Index.Local()` добавляет состояние, принадлежащее одному последовательному
-потребителю:
+The shared `Index` owns a `sync.Pool` for scratch bitmaps and ranking buffers.
+It discards bitmaps above 64 KiB so a rare wide `Index.Search` cannot raise the
+controlled-memory path's retained floor. Published postings remain immutable.
 
-- кэши bitmap отдельных фильтров с admission после повторного использования;
-- адаптацию небольшого кэша с двух до четырёх записей;
-- кэш порядка детей и некоторых готовых результатов `All`;
-- общий лимит удерживаемой памяти для child-кэшей, планов и результатов.
+`Index.Local()` is the explicitly memory-for-speed path for one sequential
+consumer. Each filter admits a repeated value into two bitmap slots and may
+adapt to four under reuse pressure. `All` nodes retain four exact results and
+their schema-bounded child-order plan. These fixed entry counts, rather than
+aggregate byte caps, bound cache multiplicity; retained bytes scale with index
+cardinality, schema size, and the number of simultaneously live Locals.
 
-Готовый результат `All` адресуется collision-safe tuple исходных query-side
-значений. Lossy equality использует для этого тот же `optionalValue`, что и
-exact equality, хотя postings внутри индекса адресуются округлённым physical key.
-Это позволяет повторному `Local.Search` вернуть сохранённые ID до
-восстановления плана; physical key намеренно не используется как cache key,
-поскольку повторное codec hashing оказалось дороже прямого сравнения значения.
+Every admitted `All` result keeps compact internal IDs, including wide results,
+so an exact query-key hit can append output without ranking, bitmap copying, or
+Roaring iteration. Local scratch bitmaps are also reusable regardless of size.
+The result is addressed by a collision-safe tuple of original query-side values;
+physical keys are intentionally not cache keys because rehashing them costs more
+than comparing their semantic values.
 
-`Local.Close` очищает состояние запроса, возвращает внутренний пул индексу и
-публикует накопленную выборочную телеметрию. Использование закрытого `Local`
-является ошибкой.
+`Local.Close` clears query identity, admission, replacement, and result state,
+returns reusable storage to the owning Index, and publishes sampled telemetry.
+Using a closed `Local` is an error. Memory-constrained callers use `Index.Search`.
 
 ## Lossy-представления
 ### Целевой контракт ключей общей exact/lossy-архитектуры

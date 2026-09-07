@@ -248,16 +248,11 @@ func cachedChildMoreSelective(first uint64, children []rankedBitmap) bool {
 func (r *allRule[T]) rememberLocalPlan(pool *bitmapPool, rankedChildren []rankedBitmap) {
 	plan := pool.allPlans[r]
 	if plan == nil {
-		bytes := uint64(localAllPlanEntryBytes + len(rankedChildren)*8)
-		if bytes > uint64(maxLocalAllPlanBytes)-min(pool.allPlanBytes, uint64(maxLocalAllPlanBytes)) {
-			return
-		}
 		if pool.allPlans == nil {
 			pool.allPlans = make(map[any]*localAllPlan)
 		}
-		plan = &localAllPlan{order: make([]int, len(rankedChildren)), bytes: bytes}
+		plan = &localAllPlan{order: make([]int, len(rankedChildren))}
 		pool.allPlans[r] = plan
-		pool.allPlanBytes += bytes
 	}
 	for i, ranked := range rankedChildren {
 		plan.order[i] = ranked.childIdx
@@ -298,6 +293,7 @@ func (r *allRule[T]) loadLocalResult(
 	return nil
 }
 
+//nolint:gocognit,nestif // Query-key validation keeps the cache-hit path allocation-free.
 func (r *allRule[T]) loadLocalQueryResult(pool *bitmapPool, value T) *localAllResult {
 	if pool.local == nil || pool.observeRuntime {
 		return nil
@@ -308,7 +304,7 @@ func (r *allRule[T]) loadLocalQueryResult(pool *bitmapPool, value T) *localAllRe
 	}
 	for i := range plan.results {
 		result := &plan.results[i]
-		if !result.idsSet || result.epoch != pool.cacheEpoch {
+		if result.bits == nil || result.epoch != pool.cacheEpoch {
 			continue
 		}
 		match := true
@@ -387,29 +383,9 @@ func (r *allRule[T]) storeLocalResult(
 		return
 	}
 	entry := &plan.results[plan.next]
-	keys, keyBytes, keysSet := r.captureLocalQueryKeys(value)
-	bitmapBytes := bits.GetSizeInBytes()
-	inputCapacity := len(rankedChildren)
-	if cap(entry.inputs) > inputCapacity {
-		inputCapacity = cap(entry.inputs)
-	}
-	inputBytes := uint64(inputCapacity) * 8
-	idCapacity := 0
+	keys, _, keysSet := r.captureLocalQueryKeys(value)
 	cardinality := bits.GetCardinality()
-	if cardinality <= maxLocalAllResultIDs {
-		idCapacity = int(cardinality)
-		if cap(entry.ids) > idCapacity {
-			idCapacity = cap(entry.ids)
-		}
-	}
-	entryBytes := saturatingAdd(bitmapBytes+inputBytes+uint64(idCapacity)*4, keyBytes)
-	available := uint64(maxLocalAllResultBytes) - min(pool.allResultBytes, uint64(maxLocalAllResultBytes))
-	available = saturatingAdd(available, entry.bytes)
-	if entryBytes > available {
-		return
-	}
 	plan.next = (plan.next + 1) % uint8(len(plan.results))
-	pool.allResultBytes -= entry.bytes
 	if cap(entry.inputs) < len(rankedChildren) {
 		entry.inputs = make([]*roaring.Bitmap, len(rankedChildren))
 	} else {
@@ -429,23 +405,16 @@ func (r *allRule[T]) storeLocalResult(
 	} else {
 		entry.keys = nil
 	}
-	entry.idsSet = cardinality <= maxLocalAllResultIDs
-	if entry.idsSet {
-		if cap(entry.ids) < int(cardinality) {
-			entry.ids = make([]uint32, 0, cardinality)
-		} else {
-			entry.ids = entry.ids[:0]
-		}
-		bits.Iterate(func(id uint32) bool {
-			entry.ids = append(entry.ids, id)
-			return true
-		})
+	if uint64(cap(entry.ids)) < cardinality {
+		entry.ids = make([]uint32, 0, cardinality)
 	} else {
-		entry.ids = nil
+		entry.ids = entry.ids[:0]
 	}
+	bits.Iterate(func(id uint32) bool {
+		entry.ids = append(entry.ids, id)
+		return true
+	})
 	entry.epoch = pool.cacheEpoch
-	entry.bytes = entryBytes
-	pool.allResultBytes += entryBytes
 }
 
 func cachedCardinality[T any](rule Rule[T], value T, pool *bitmapPool) (uint64, bool) {

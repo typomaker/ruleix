@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `Local.Search` is now the explicit memory-for-speed path: fixed byte budgets
+  no longer reject wide child or `All` results and every cached exact result
+  retains compact internal IDs. Its scratch pool reuses wide bitmaps, while
+  `Index.Search` preserves the 64 KiB pooled-bitmap cap for controlled memory.
+
 - Lossy ordered pressure now merges one least-populated adjacent posting pair
   per step and globally chooses the smallest memory release, allowing
   another filter to be reconsidered before further precision is discarded.

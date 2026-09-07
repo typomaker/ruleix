@@ -2,6 +2,7 @@ package ruleix_test
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
 
 	"github.com/typomaker/ruleix"
@@ -12,12 +13,16 @@ type warmResultConstraint struct {
 	active bool
 }
 
-// BenchmarkWarmLocalResultCardinality L4 parent baseline is recorded in
-// ROADMAP_HISTORY.md. Keep the boundary cases synchronized with the compact
-// result limits evaluated there so later measurements remain comparable.
+// BenchmarkWarmLocalResultCardinality covers the former 512-ID cutoff and
+// wider results. Apple M1 Max, Go 1.26.0, GOMAXPROCS=1, 300ms x3: removing
+// the cutoff changed 513/1024/2048/4095 IDs from 1,355/2,643/5,121/10,028
+// ns/op to 304.5/565.7/1,121/2,189 ns/op, all at 0 B/op and 0 allocs/op.
 func BenchmarkWarmLocalResultCardinality(b *testing.B) {
 	const largeCardinality = (4 << 10) - 1
-	cardinalities := []int{1, 8, 45, 64, 65, 96, 97, 128, 129, 256, 257, largeCardinality}
+	cardinalities := []int{
+		1, 8, 45, 64, 65, 96, 97, 128, 129, 256, 257,
+		511, 512, 513, 1024, 2048, largeCardinality,
+	}
 	total := 0
 	for _, cardinality := range cardinalities {
 		total += cardinality
@@ -74,6 +79,95 @@ func BenchmarkWarmLocalResultCardinality(b *testing.B) {
 			}
 			benchmarkIntResult = matches
 		})
+	}
+}
+
+// BenchmarkWarmLocalWideResult exercises a result whose alternating internal
+// IDs exceed the former 64 KiB result-cache budget. Run with GOMAXPROCS=1,
+// -benchtime=200ms, and -count=3 for the comparable numbers documented in
+// docs/performance-history.md.
+func BenchmarkWarmLocalWideResult(b *testing.B) {
+	const entries = 500_000
+	constraints := make([]warmResultConstraint, entries)
+	ids := make([]int, entries)
+	for id := range entries {
+		constraints[id] = warmResultConstraint{group: id & 1, active: true}
+		ids[id] = id
+	}
+	index, err := ruleix.New[warmResultConstraint, int](ruleix.All(
+		ruleix.Include(func(value warmResultConstraint) (int, bool) { return value.group, true }),
+		ruleix.Include(func(value warmResultConstraint) (bool, bool) { return value.active, true }),
+	)).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	local := index.Local()
+	b.Cleanup(local.Close)
+	query := warmResultConstraint{group: 0, active: true}
+	matches := make([]int, 0, entries/2)
+	for range 4 {
+		matches = matches[:0]
+		local.Search(query, &matches)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		matches = matches[:0]
+		local.Search(query, &matches)
+	}
+	benchmarkIntResult = matches
+}
+
+// BenchmarkWarmLocalWideResultRetainedMemory measures the memory deliberately
+// traded for the wide-result speedup. Apple M1 Max, Go 1.26.0, GOMAXPROCS=1,
+// 5x x3: the aggressive cache retained 1,076,008 B/Local versus 2,344 B/Local
+// with the former 64 KiB result budget.
+func BenchmarkWarmLocalWideResultRetainedMemory(b *testing.B) {
+	const entries = 500_000
+	constraints := make([]warmResultConstraint, entries)
+	ids := make([]int, entries)
+	for id := range entries {
+		constraints[id] = warmResultConstraint{group: id & 1, active: true}
+		ids[id] = id
+	}
+	index, err := ruleix.New[warmResultConstraint, int](ruleix.All(
+		ruleix.Include(func(value warmResultConstraint) (int, bool) { return value.group, true }),
+		ruleix.Include(func(value warmResultConstraint) (bool, bool) { return value.active, true }),
+	)).Build(ruleix.Zip(constraints, ids))
+	if err != nil {
+		b.Fatal(err)
+	}
+	locals := make([]*ruleix.Local[warmResultConstraint, int], b.N)
+	matches := make([]int, 0, entries/2)
+	query := warmResultConstraint{group: 0, active: true}
+	runtime.GC()
+	runtime.GC()
+	before := heapAlloc()
+
+	b.ResetTimer()
+	for i := range b.N {
+		local := index.Local()
+		for range 4 {
+			matches = matches[:0]
+			local.Search(query, &matches)
+		}
+		locals[i] = local
+	}
+	b.StopTimer()
+
+	runtime.GC()
+	runtime.GC()
+	after := heapAlloc()
+	runtime.KeepAlive(index)
+	runtime.KeepAlive(locals)
+	runtime.KeepAlive(matches)
+	var retained uint64
+	if after > before {
+		retained = after - before
+	}
+	b.ReportMetric(float64(retained)/float64(b.N), "retained-B/local")
+	for _, local := range locals {
+		local.Close()
 	}
 }
 

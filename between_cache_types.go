@@ -46,5 +46,4 @@ type betweenCacheEntry[V any] struct {
 	from        V
 	until       V
 	bits        *roaring.Bitmap
-	bytes       uint64
 }

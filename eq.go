@@ -364,7 +364,6 @@ func (r *eqRule[T, V, K]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	bits := cache.replace(value, pool)
 	r.addMatches(value, bits)
 	dst.Or(bits)
-	cache.commit(bits, pool)
 }
 
 func (r *eqRule[T, V, K]) addMatches(value optionalValue[V], dst *roaring.Bitmap) {

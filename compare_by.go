@@ -296,7 +296,6 @@ func (r *compareByRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool)
 	bits := cache.replace(value, pool)
 	r.each(v, bits.Or)
 	dst.Or(bits)
-	cache.commit(bits, pool)
 }
 func (r *compareByRule[T, V]) matchesID(v T, id uint32) bool {
 	found := false

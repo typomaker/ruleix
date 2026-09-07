@@ -59,6 +59,18 @@ func TestBitmapPoolDiscardsOversizedBitmap(t *testing.T) {
 	require.NotSame(t, bits, pool.get())
 }
 
+func TestLocalBitmapPoolReusesOversizedBitmap(t *testing.T) {
+	pool := newLocalBitmapPool(0)
+	bits := pool.get()
+	for id := uint32(0); bits.GetSizeInBytes() <= maxPooledBitmapBytes; id++ {
+		bits.Add(id << 16)
+	}
+
+	pool.put(bits)
+
+	require.Same(t, bits, pool.get())
+}
+
 // BenchmarkBitmapPoolRareWide models a large scratch result appearing among
 // predominantly narrow searches. It guards both narrow reuse and the cost of
 // rejecting the occasional oversized bitmap.

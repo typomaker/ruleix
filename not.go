@@ -70,7 +70,6 @@ func (r *notRule[T, V]) exclude(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	bits := cache.replace(value, pool)
 	r.addExclusions(value, bits)
 	dst.Or(bits)
-	cache.commit(bits, pool)
 }
 
 func (r *notRule[T, V]) addExclusions(value optionalValue[V], dst *roaring.Bitmap) {

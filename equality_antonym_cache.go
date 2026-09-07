@@ -5,7 +5,6 @@ import "github.com/RoaringBitmap/roaring/v2"
 type strictEqualityAntonymCacheEntry struct {
 	keys        []any
 	bits        *roaring.Bitmap
-	bytes       uint64
 	initialized bool
 }
 
@@ -76,31 +75,12 @@ func (c *strictEqualityAntonymCache[T]) replace(
 	} else {
 		entry.bits.Clear()
 	}
-	pool.childCacheBytes -= entry.bytes
-	keys, keyBytes := rule.captureQueryKeys(value, entry.keys)
+	keys, _ := rule.captureQueryKeys(value, entry.keys)
 	*entry = strictEqualityAntonymCacheEntry{
-		keys: keys, bits: entry.bits, bytes: keyBytes, initialized: true,
+		keys: keys, bits: entry.bits, initialized: true,
 	}
 	entry.bits.SetCopyOnWrite(true)
 	return entry.bits
-}
-
-func (c *strictEqualityAntonymCache[T]) commit(bits *roaring.Bitmap, pool *bitmapPool) {
-	for index := range c.entries {
-		entry := &c.entries[index]
-		if entry.bits != bits {
-			continue
-		}
-		bytes := saturatingAdd(entry.bytes, bits.GetSizeInBytes())
-		if bytes > uint64(maxLocalChildCacheBytes)-min(pool.childCacheBytes, uint64(maxLocalChildCacheBytes)) {
-			*entry = strictEqualityAntonymCacheEntry{}
-			pool.put(bits)
-			return
-		}
-		entry.bytes = bytes
-		pool.childCacheBytes += bytes
-		return
-	}
 }
 
 func (r *strictEqualityAntonymRule[T]) queryKeysMatch(value T, keys []any) bool {
@@ -134,7 +114,6 @@ func (c *strictEqualityAntonymCache[T]) reset(pool *bitmapPool) {
 	for index := range c.entries {
 		entry := &c.entries[index]
 		if entry.bits != nil {
-			pool.childCacheBytes -= entry.bytes
 			pool.put(entry.bits)
 		}
 	}

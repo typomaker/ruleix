@@ -13,7 +13,6 @@ type localNodeCache struct {
 type localAllPlan struct {
 	order     []int
 	firstCard uint64
-	bytes     uint64
 	// Keep a bounded exact-intersection working set alongside the learned child
 	// order. Repeated Local queries can share their immutable containers with a
 	// scratch result instead of cloning the first posting on every search.
@@ -28,8 +27,6 @@ type localAllResult struct {
 	keys   []any
 	epoch  uint64
 	bits   *roaring.Bitmap
-	bytes  uint64
-	idsSet bool
 }
 
 func (p *localAllPlan) resetResults(pool *bitmapPool) {
@@ -38,7 +35,6 @@ func (p *localAllPlan) resetResults(pool *bitmapPool) {
 		if result.bits != nil {
 			pool.put(result.bits)
 		}
-		pool.allResultBytes -= result.bytes
 		*result = localAllResult{}
 	}
 	p.next = 0
@@ -164,7 +160,6 @@ type valueBitmapCacheEntry[V any] struct {
 	hasValue    bool
 	value       V
 	bits        *roaring.Bitmap
-	bytes       uint64
 }
 
 func newValueBitmapCache[V any](pool *bitmapPool, id ...nodeID) *valueBitmapCache[V] {
@@ -229,8 +224,6 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V], pool *bitmapPool) 
 	} else {
 		entry.bits.Clear()
 	}
-	pool.childCacheBytes -= entry.bytes
-	entry.bytes = 0
 	entry.bits.SetCopyOnWrite(true)
 	entry.initialized = true
 	entry.hasValue = value.ok
@@ -242,32 +235,10 @@ func (c *valueBitmapCache[V]) replace(value optionalValue[V], pool *bitmapPool) 
 	return entry.bits
 }
 
-func (c *valueBitmapCache[V]) commit(bits *roaring.Bitmap, pool *bitmapPool) {
-	for i := 0; i < c.capacity(); i++ {
-		entry := c.entry(i)
-		if entry.bits != bits {
-			continue
-		}
-		bytes := bits.GetSizeInBytes()
-		if bytes > uint64(maxLocalChildCacheBytes)-min(pool.childCacheBytes, uint64(maxLocalChildCacheBytes)) {
-			entry.initialized = false
-			var zero V
-			entry.value = zero
-			entry.bits = nil
-			pool.put(bits)
-			return
-		}
-		entry.bytes = bytes
-		pool.childCacheBytes += bytes
-		return
-	}
-}
-
 func (c *valueBitmapCache[V]) reset(pool *bitmapPool) {
 	for i := 0; i < c.capacity(); i++ {
 		entry := c.entry(i)
 		if entry.bits != nil {
-			pool.childCacheBytes -= entry.bytes
 			pool.put(entry.bits)
 		}
 	}

@@ -98,7 +98,7 @@ func TestLocalQueryKeysUseOperationEquality(t *testing.T) {
 	require.True(t, providers[3].localQueryKeyMatches(base, compareKey), "query-side CompareBy operator is ignored")
 }
 
-func TestLocalAllResultCacheHonorsSharedByteBudget(t *testing.T) {
+func TestLocalAllResultCacheRetainsWideCompactResults(t *testing.T) {
 	pool := newLocalBitmapPool(1)
 	pool.observeRuntime = false
 	rule := &allRule[int]{}
@@ -107,56 +107,44 @@ func TestLocalAllResultCacheHonorsSharedByteBudget(t *testing.T) {
 	ranked := []rankedBitmap{{bits: roaring.BitmapOf(1), childIdx: 0}}
 
 	large := roaring.New()
-	for id := uint32(0); large.GetSizeInBytes() <= maxLocalAllResultBytes; id += 2 {
-		large.Add(id)
+	for id := uint32(0); large.GetSizeInBytes() <= maxPooledBitmapBytes; id++ {
+		large.Add(id << 16)
 	}
 	rule.storeLocalResult(pool, ranked, large, 0)
-	require.Zero(t, pool.allResultBytes)
-	require.Nil(t, plan.results[0].bits)
-
-	small := roaring.BitmapOf(1, 2, 3)
-	rule.storeLocalResult(pool, ranked, small, 0)
-	require.Positive(t, pool.allResultBytes)
-	require.LessOrEqual(t, pool.allResultBytes, uint64(maxLocalAllResultBytes))
-	require.True(t, plan.results[0].idsSet)
-	require.Equal(t, []uint32{1, 2, 3}, plan.results[0].ids)
+	require.NotNil(t, plan.results[0].bits)
+	require.Equal(t, large.GetCardinality(), uint64(len(plan.results[0].ids)))
+	require.Equal(t, uint32(0), plan.results[0].ids[0])
 	plan.resetResults(pool)
-	require.Zero(t, pool.allResultBytes)
+	require.Nil(t, plan.results[0].bits)
+	require.Nil(t, plan.results[0].ids)
 }
 
-func TestLocalAllResultCacheKeepsWideResultsOnBitmapPath(t *testing.T) {
+func TestLocalAllResultCacheKeepsEveryResultOnCompactPath(t *testing.T) {
 	pool := newLocalBitmapPool(1)
 	rule := &allRule[int]{}
 	plan := &localAllPlan{order: []int{0}}
 	pool.allPlans = map[any]*localAllPlan{rule: plan}
 	ranked := []rankedBitmap{{bits: roaring.BitmapOf(1), childIdx: 0}}
 	wide := roaring.New()
-	wide.AddRange(0, maxLocalAllResultIDs+1)
+	wide.AddRange(0, 4<<10)
 
 	rule.storeLocalResult(pool, ranked, wide, 0)
 
 	require.NotNil(t, plan.results[0].bits)
-	require.False(t, plan.results[0].idsSet)
-	require.Nil(t, plan.results[0].ids)
+	require.Len(t, plan.results[0].ids, 4<<10)
 }
 
-func TestLocalAllPlanHonorsSharedByteBudget(t *testing.T) {
+func TestLocalAllPlanRetainsWideSchema(t *testing.T) {
 	pool := newLocalBitmapPool(0)
-	children := make([]Rule[int], maxLocalAllPlanBytes/8)
+	children := make([]Rule[int], 10_000)
 	ranked := make([]rankedBitmap, len(children))
 	for i := range ranked {
 		ranked[i] = rankedBitmap{childIdx: i, card: 1}
 	}
 	rule := &allRule[int]{children: children}
 	rule.rememberLocalPlan(pool, ranked)
-	require.Nil(t, pool.allPlans)
-	require.Zero(t, pool.allPlanBytes)
-
-	small := &allRule[int]{children: children[:2]}
-	small.rememberLocalPlan(pool, ranked[:2])
-	require.NotNil(t, pool.allPlans[small])
-	require.Positive(t, pool.allPlanBytes)
-	require.LessOrEqual(t, pool.allPlanBytes, uint64(maxLocalAllPlanBytes))
+	require.NotNil(t, pool.allPlans[rule])
+	require.Len(t, pool.allPlans[rule].order, len(children))
 }
 
 func TestLocalRejectsInvalidCachedPlan(t *testing.T) {
@@ -169,38 +157,29 @@ func TestLocalRejectsInvalidCachedPlan(t *testing.T) {
 	require.False(t, reused)
 }
 
-func TestLocalResetDropsPlansAndTheirAccounting(t *testing.T) {
+func TestLocalResetDropsPlansAndResults(t *testing.T) {
 	pool := newLocalBitmapPool(0)
 	rule := &allRule[int]{children: []Rule[int]{&countingRule{}}}
 	rule.rememberLocalPlan(pool, []rankedBitmap{{childIdx: 0, card: 1}})
 	require.NotEmpty(t, pool.allPlans)
-	require.Positive(t, pool.allPlanBytes)
 
 	pool.resetLocal()
 	require.Nil(t, pool.allPlans)
-	require.Zero(t, pool.allPlanBytes)
-	require.Zero(t, pool.allResultBytes)
 }
 
-func TestLocalChildCacheHonorsSharedByteBudget(t *testing.T) {
+func TestLocalChildCacheRetainsWideBitmap(t *testing.T) {
 	pool := newLocalBitmapPool(1)
 	cache := newValueBitmapCache[int](pool)
 	value := optionalValue[int]{value: 1, ok: true}
 	bits := cache.replace(value, pool)
-	for id := uint32(0); bits.GetSizeInBytes() <= maxLocalChildCacheBytes; id += 2 {
-		bits.Add(id)
+	for id := uint32(0); bits.GetSizeInBytes() <= maxPooledBitmapBytes; id++ {
+		bits.Add(id << 16)
 	}
-	cache.commit(bits, pool)
-
 	reused, found := comparableValueCacheLookup(cache, value)
+	require.True(t, found)
+	require.Same(t, bits, reused)
+	cache.reset(pool)
+	reused, found = comparableValueCacheLookup(cache, value)
 	require.False(t, found)
 	require.Nil(t, reused)
-	require.Zero(t, pool.childCacheBytes)
-
-	small := cache.replace(value, pool)
-	small.AddMany([]uint32{1, 2, 3})
-	cache.commit(small, pool)
-	require.Positive(t, pool.childCacheBytes)
-	cache.reset(pool)
-	require.Zero(t, pool.childCacheBytes)
 }

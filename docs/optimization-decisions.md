@@ -16,26 +16,21 @@ Build compiles complement equality classes mode-agnostically. Against merged `ma
 ordered intersections improved early-empty `9,588 -> 7,829 ns/op`;
 general, production, allocation, and retained gates were neutral. Evidence: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
 
-## 2026-09-07: compact Local ID threshold увеличен до 512
+## 2026-09-07: Local caches prioritize speed over retained memory
 
-Общий порог готового результата увеличен с 256 до 512 IDs; существующий общий
-64 KiB result-cache budget по-прежнему ограничивает суммарные bitmap, query
-keys, input pointers и `[]uint32`. Более широкие результаты остаются на прежнем
-bitmap path. Код не читает `RuleMode` и одинаков для Exact, identity и
-compressed состояний общего executor-а.
+`Index.Search` remains the controlled-memory path. `Local.Search` now keeps
+wide child and exact `All` results under fixed 2-to-4 entry counts without the
+former aggregate byte budgets. Every exact result stores compact internal IDs,
+and Local scratch pools reuse wide bitmaps; the shared Index pool retains its
+64 KiB cap.
 
-На parent `ab24d5a`, Apple M1 Max, Go 1.26.0, `GOMAXPROCS=1`, пять
-интерливированных пар по 1s дали production Lossy Local median
-`1 636 → 1 125 ns/op` (−31,2%), неизменные 358 candidates/query, 0 B/op и
-0 allocs/op. Десятисекундные CPU profiles подтвердили смену пути: baseline
-тратил 65,1% cumulative samples в Roaring iteration и 20,0% в восстановлении
-плана; кандидат тогда тратил 65,2% в удалённых позднее `appendChunkValues`/`memmove`
-и 14,5% в collision-safe query-key validation. Ускорение устраняет повторное planning и
-bitmap enumeration, но не маскирует сохранённую candidate amplification.
-
-Retained benchmark (`20x x5`) дал `93 403 → 96 477 B/Local` (+3,3%) из-за
-двух compact ID slices; synthetic Budget100/50/25 gates не регрессировали.
-Решение принято как второй путь после отклонённых planner-эвристик.
+The former 512-to-513 boundary slowed a warm query from 297 to 1,355 ns/op.
+The candidate serves 513 IDs in 305 ns/op and 4,095 IDs in 2,189 rather than
+10,028 ns/op. A 250,000-match wide query improves from 798 to 132 us/op and
+from 124,921 B/op to zero, while retained memory intentionally rises from
+2,344 to 1,076,008 B/Local. Production warm and parallel medians improve by
+1.7% and 2.3% to 221.3 ns/op and 231.1 ns/search. Full evidence and commands:
+[`aggressive-local-cache-2026-09-07.md`](aggressive-local-cache-2026-09-07.md).
 
 ## 2026-09-03: mode-agnostic equality lookup micro-optimizations отклонены
 

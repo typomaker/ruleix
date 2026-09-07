@@ -198,7 +198,6 @@ func (r *strictEqualityAntonymRule[T]) search(value T, dst *roaring.Bitmap, pool
 	bits := cache.replace(r, value, pool)
 	r.addMatches(value, bits, pool)
 	dst.Or(bits)
-	cache.commit(bits, pool)
 }
 func (r *strictEqualityAntonymRule[T]) matchesID(value T, id uint32) bool {
 	if r.leftOne != nil {

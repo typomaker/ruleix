@@ -7,20 +7,17 @@ import (
 )
 
 type bitmapPool struct {
-	pool            sync.Pool
-	rankedPool      sync.Pool
-	local           []localNodeCache
-	allPlans        map[any]*localAllPlan
-	allPlanBytes    uint64
-	allResultBytes  uint64
-	childCacheBytes uint64
-	cacheEpoch      uint64
-	observers       cacheObservers // test-only fallback for caches without a compiled node ID
-	inspectors      localInspectorRuntimeChunk
-	nodeObservers   []cacheObservers
-	rootRuntime     *inspectorRuntime
-	rootObserver    inspectorRuntimeObserver
-	observeRuntime  bool
+	pool           sync.Pool
+	rankedPool     sync.Pool
+	local          []localNodeCache
+	allPlans       map[any]*localAllPlan
+	cacheEpoch     uint64
+	observers      cacheObservers // test-only fallback for caches without a compiled node ID
+	inspectors     localInspectorRuntimeChunk
+	nodeObservers  []cacheObservers
+	rootRuntime    *inspectorRuntime
+	rootObserver   inspectorRuntimeObserver
+	observeRuntime bool
 }
 
 type localInspectorRuntime struct {
@@ -86,30 +83,6 @@ func (p *bitmapPool) flushInspectorMetrics() {
 // 64 KiB keeps the common small and medium scratch bitmaps reusable while
 // discarding bitmaps large enough to have accumulated many containers.
 const maxPooledBitmapBytes = 64 << 10
-
-// maxLocalAllResultBytes bounds exact-intersection bitmaps retained by one
-// Local across every compiled All node. Plans remain cheap and schema-bounded;
-// result payloads depend on query cardinality and need a separate byte budget.
-const maxLocalAllResultBytes = 64 << 10
-
-// maxLocalAllResultIDs bounds the compact representation used to bypass
-// bitmap copying and enumeration on exact warm-result cache hits. Wider
-// results keep the existing Roaring path, where the slice's retained memory
-// and linear copy cost would be less attractive.
-const maxLocalAllResultIDs = 512
-
-// maxLocalAllPlanBytes bounds the map entries and child-order slices retained
-// by one Local. The accounting deliberately charges the complete slice
-// capacity plus a conservative map-entry allowance, rather than only the
-// currently used order length.
-const maxLocalAllPlanBytes = 64 << 10
-
-const localAllPlanEntryBytes = 64
-
-// maxLocalChildCacheBytes bounds materialized filter results retained across
-// every node in one Local. Entry-count limits alone are insufficient when a
-// repeated query produces a very large bitmap.
-const maxLocalChildCacheBytes = 1 << 20
 
 type rankedBitmap struct {
 	bits     *roaring.Bitmap
@@ -181,12 +154,10 @@ func (p *bitmapPool) resetLocal() {
 		plan.resetResults(p)
 	}
 	p.allPlans = nil
-	p.allPlanBytes = 0
 	p.cacheEpoch++
 	for i := range p.local {
 		p.local[i].reset(p)
 	}
-	p.childCacheBytes = 0
 }
 
 func (p *bitmapPool) invalidateResultCache() { p.cacheEpoch++ }
@@ -197,7 +168,7 @@ func (p *bitmapPool) get() *roaring.Bitmap {
 	return bm
 }
 func (p *bitmapPool) put(bm *roaring.Bitmap) {
-	if bm.GetSizeInBytes() > maxPooledBitmapBytes {
+	if p.local == nil && bm.GetSizeInBytes() > maxPooledBitmapBytes {
 		return
 	}
 	bm.Clear()

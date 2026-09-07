@@ -1,16 +1,16 @@
 # История производительности
 
+## 2026-09-07: aggressive Local cache policy
+
+Removing Local byte caps and the 512-ID cutoff changed 513 matches from 1,355 to 305 ns/op and a 250,000-match query from 798 to 132 us/op with 0 B/op instead of 124,921 B/op. Wide retained memory intentionally rose from 2,344 to 1,076,008 B/Local; production warm/parallel improved 1.7%/2.3%. Full protocol: [`aggressive-local-cache-2026-09-07.md`](aggressive-local-cache-2026-09-07.md).
+
 ## 2026-09-07: `v0.8.2` versus current `HEAD`
 
-Initial interleaved runs found `Index.Search` 9.58% faster but warm and parallel `Local` 38.07% and 36.22% slower. Bisect identified the unused ID-chunk experiment in `1dee1c1`; removing it restored Local to release parity while preserving an 11.27% Index improvement. Build latency and retained Local memory remain neutral; retained index is +0.17%. Full protocol: [`benchmark-v0.8.2-vs-head-2026-09-07.md`](benchmark-v0.8.2-vs-head-2026-09-07.md).
+Initial runs found warm and parallel `Local` 38.07% and 36.22% slower. Bisect identified unused ID chunking; removal restored Local parity while preserving an 11.27% Index improvement. Full protocol: [`benchmark-v0.8.2-vs-head-2026-09-07.md`](benchmark-v0.8.2-vs-head-2026-09-07.md).
 
 ## 2026-09-07: strict equality antonym components
 
-The 1x1/3x3 components gave `4,113 -> 423`/`4,125 -> 2,239 ns/op`; merged-main ordered 4x4 early-empty improved `9,588 -> 7,829 ns/op`, with other gates neutral. Full protocol: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
-
-## 2026-09-07: общий 512-ID Local cache
-
-На `ab24d5a` production Lossy Local улучшен `1 636 → 1 125 ns/op` при 358 candidates, 0 B/op и 0 allocs; retained Local вырос `93 403 → 96 477 B`. Interleaved A/B, CPU/allocation profiles и synthetic gates: [`lossy-local-improvement-2026-09-07.md`](lossy-local-improvement-2026-09-07.md).
+The 1x1/3x3 components gave `4,113 -> 423`/`4,125 -> 2,239 ns/op`; merged-main ordered 4x4 early-empty improved `9,588 -> 7,829 ns/op`, with other gates neutral. Evidence: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
 
 ## 2026-09-03: финализация ordered precision state
 
