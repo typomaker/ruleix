@@ -33,10 +33,11 @@ component, preserving collision-safe `Local` cache validation.
 
 ## Search execution
 
-For each side, cardinality is estimated as the smallest concrete posting. The
-executor starts with that posting and checks the remaining operands in the
-side. Small physical equality sets are scanned directly; larger sets use a
-pooled bitmap intersection. The two side results are united. A 1x1 component
+For each side, cardinality is estimated as the smallest concrete posting. Small
+physical equality sets scan that posting directly. The bitmap path retains the
+first posting as its copy-on-write seed, then intersects the remaining operands
+by increasing concrete cardinality. If the first operand is already minimal,
+the original loop performs no ordering work. The two side results are united. A 1x1 component
 keeps the former direct union fast path, so the accepted pair case does not pay
 for the generalized representation.
 
@@ -87,3 +88,33 @@ Correctness coverage includes 1x1 and asymmetric components, deterministic
 components, unknown and missing keys, overlap/gap, empty wildcard, and
 `MatchAll`. Final gates are `go test ./...`, `go test -race ./...`, at least
 90% changed-production-line coverage, and `git diff --check`.
+
+### Query-time selectivity order
+
+Commit `66a7c64` is the baseline. The focused fixture has 8,192 rules and a
+4x4 component; query postings appear in schema order with about 2,048, 1,024,
+586, and 585 IDs per side. Environment is the M1 Max configuration above.
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkStrictEqualityAntonymSelectivityOrder/' \
+  -benchmem -benchtime=1s -count=5
+```
+
+The general Index case was neutral in longer profiles (`11,185 -> 11,200
+ns/op`) with 8,905 B and 6 allocations. With disjoint smallest postings,
+ordering stopped after the first two checks and improved `10,074 -> 8,244
+ns/op`; 8,240 B and 4 allocations were unchanged.
+Rotating and stable Local remained near 845 and 840 ns/op with zero allocations
+because their planner selected direct ID validation for this fixture.
+
+An equal-cardinality 4x4 guard initially exposed 2.5% ordering overhead. The
+accepted fast path skips ordering whenever the first operand is already
+minimal. Seven interleaved 1s A/B pairs then gave neutral medians
+`29,735 -> 29,492 ns/op`, with identical 17,611 B and 8 allocations. Retained
+state is unchanged: the component remained 3,690 B/Local (`20x`, five runs).
+
+Eight-second CPU profiles showed the ordered path spending 31.6% cumulative in
+the recursive selector plus its Roaring intersections; the selector itself was
+below 1% flat CPU. Allocation profiles (`2s`, `-memprofilerate=1`) were
+unchanged, as expected from retaining the original copy-on-write seed.

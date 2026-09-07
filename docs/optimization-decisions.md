@@ -8,13 +8,13 @@
 
 ## 2026-09-07: strict equality antonym components accepted
 
-Build groups equal wildcard bitmaps into equivalence classes and compiles two
-complement classes as one component. This generalizes the accepted 1x1 pair
-without Exact/Lossy branches. On a 3x3 fixture, one component versus three
-pairs reduced Index median `4,125 -> 2,239 ns/op` and `19 -> 5` allocations;
-Local improved `2,758 -> 2,467 ns/op`; retained Local fell `4,560 -> 3,680 B`. Production has
-no components and preserved search and retained-memory classes. Proof,
-commands, A/B, and profiles: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
+Build compiles complement equality classes as one mode-agnostic component. A 3x3
+component reduced Index `4,125 -> 2,239 ns/op` and `19 -> 5` allocations.
+Its bitmap path orders intersections after a safe COW seed. A disjoint 4x4 case
+improved `10,074 -> 8,244 ns/op`; the general skewed case was neutral at about
+11.2 us. An equal-cardinality fast path removed measured ordering overhead
+(`29,735 -> 29,492 ns/op`); allocations and retained state did not regress.
+Profiles and commands: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
 
 ## 2026-09-07: compact Local ID threshold увеличен до 512
 

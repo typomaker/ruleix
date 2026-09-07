@@ -322,3 +322,89 @@ func BenchmarkStrictEqualityAntonymGraphRetainedMemory(b *testing.B) {
 		})
 	}
 }
+
+func buildAntonymSelectivityBenchmarkIndex(
+	b *testing.B, modulus [4]int,
+) *Index[antonymGraphConstraint, int] {
+	b.Helper()
+	const entries = 8192
+	constraints := make([]antonymGraphConstraint, entries)
+	ids := make([]int, entries)
+	for id := range constraints {
+		ids[id] = id
+		from, until := 0, 4
+		if id < entries/2 {
+			from, until = 4, 8
+		}
+		for field := from; field < until; field++ {
+			constraints[id].values[field] = antonymPointer(id % modulus[field%4])
+		}
+	}
+	index, _, err := buildIndexPhysicalAliases(
+		antonymGraphSchema(8), Zip(constraints, ids), false, nil,
+		buildOptions{compilePhysicalAliases: true, compileStrictAntonyms: true, enableStreaming: true},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return index
+}
+
+// BenchmarkStrictEqualityAntonymSelectivityOrder exercises bitmap-sized
+// postings whose schema order is 2,048, 1,024, 586, and 585 IDs per side.
+// M1 Max, Go 1.26.0, GOMAXPROCS=1: 8s CPU runs kept general Index neutral at
+// 11,185/11,200 ns; 5s EarlyEmpty improved 10,074/8,244 ns. Bytes and
+// allocation counts stayed 8,905/6 and 8,240/4. See the design document.
+func BenchmarkStrictEqualityAntonymSelectivityOrder(b *testing.B) {
+	for _, path := range []string{"Index", "LocalRotating", "LocalStable", "EarlyEmpty"} {
+		b.Run(path, func(b *testing.B) {
+			index := buildAntonymSelectivityBenchmarkIndex(b, [4]int{2, 4, 7, 7})
+			local := index.Local()
+			b.Cleanup(local.Close)
+			queries := make([]antonymGraphConstraint, 8)
+			for query := range queries {
+				for field := range 8 {
+					queries[query].values[field] = antonymPointer(query % 2)
+				}
+			}
+			if path == "EarlyEmpty" {
+				for field := 0; field < 8; field += 4 {
+					queries[0].values[field+2] = antonymPointer(0)
+					queries[0].values[field+3] = antonymPointer(1)
+				}
+			}
+			var matches []int
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := range b.N {
+				matches = matches[:0]
+				query := queries[i%len(queries)]
+				if path == "LocalStable" || path == "EarlyEmpty" {
+					query = queries[0]
+				}
+				if path == "Index" || path == "EarlyEmpty" {
+					index.Search(query, &matches)
+				} else {
+					local.Search(query, &matches)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkStrictEqualityAntonymUniformOrder is the equal-cardinality guard:
+// choosing an order cannot reduce intermediate bitmap sizes in this fixture.
+func BenchmarkStrictEqualityAntonymUniformOrder(b *testing.B) {
+	index := buildAntonymSelectivityBenchmarkIndex(b, [4]int{2, 2, 2, 2})
+	query := antonymGraphConstraint{}
+	for field := range 8 {
+		query.values[field] = antonymPointer(0)
+	}
+	var matches []int
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		matches = matches[:0]
+		index.Search(query, &matches)
+	}
+}

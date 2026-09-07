@@ -2,9 +2,9 @@
 
 ## 2026-09-07: strict equality antonym components
 
-The 1x1 optimization gave Exact Index `4,113 -> 423 ns/op`. One 3x3 component then reduced
-Index `4,125 -> 2,239 ns/op`, allocations `19 -> 5`, retained Local `4,560 -> 3,680 B`;
-stable Local remained near 143 ns with zero allocations; production was neutral.
+The 1x1 optimization gave Exact Index `4,113 -> 423 ns/op`; one 3x3 component reduced
+Index `4,125 -> 2,239 ns/op`. Ordered 4x4 intersections improved an early-empty
+case `10,074 -> 8,244 ns/op`; general, equal-cardinality, and retained gates were neutral.
 Full protocol: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
 
 ## 2026-09-07: общий 512-ID Local cache
