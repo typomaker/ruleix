@@ -8,6 +8,22 @@ updated only when a new canonical entry point is required.
 
 ## Agent workflow
 
+- Before starting task execution, prepare and present a sufficiently detailed
+  plan for user approval. The plan must be actionable enough to serve as the
+  basis of a well-defined goal: include the intended outcome, scope and
+  relevant non-goals, constraints and assumptions, implementation steps,
+  concrete deliverables, acceptance criteria, and the checks or evidence that
+  will verify completion. Add risks, dependencies, open questions, rollout or
+  rollback considerations, and other task-specific details when they affect
+  successful delivery. Do not treat a restatement of the requested outcome or
+  a bare list of steps as an adequate plan.
+- Do not begin executing the plan until the user has explicitly approved it.
+  After approval and before any implementation work, create a goal from the
+  approved plan. The goal must preserve the plan's outcome, scope, deliverables,
+  acceptance criteria, verification requirements, and material constraints so
+  that completion can be judged against them. If the approved scope changes,
+  revise the plan, obtain approval for the revision, and align the goal before
+  continuing.
 - Complete the entire task as assigned, including every explicitly requested
   deliverable and acceptance criterion. Do
   not unilaterally reduce the task to a convenient slice, milestone, or partial
