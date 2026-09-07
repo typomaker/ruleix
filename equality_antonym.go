@@ -230,7 +230,8 @@ func (r *strictEqualityAntonymRule[T]) addSideMatches(
 		side[0].addConcreteMatches(value, dst)
 		return
 	}
-	if candidateIndex, candidateCardinality := strictEqualitySideCandidate(side, value); candidateIndex >= 0 {
+	candidateIndex, candidateCardinality := strictEqualitySideCandidate(side, value)
+	if candidateIndex >= 0 {
 		if candidateCardinality == 0 {
 			return
 		}
@@ -245,15 +246,52 @@ func (r *strictEqualityAntonymRule[T]) addSideMatches(
 		}
 	}
 	bits := pool.get()
-	side[0].addConcreteMatches(value, bits)
-	for _, operand := range side[1:] {
-		operand.intersectConcreteMatches(value, bits, pool)
-		if bits.IsEmpty() {
-			break
+	if candidateIndex == 0 {
+		side[0].addConcreteMatches(value, bits)
+		for _, operand := range side[1:] {
+			operand.intersectConcreteMatches(value, bits, pool)
+			if bits.IsEmpty() {
+				break
+			}
 		}
+		dst.Or(bits)
+		pool.put(bits)
+		return
 	}
+	side[0].addConcreteMatches(value, bits)
+	strictEqualityIntersectSideByCardinality(side, value, bits, pool, ^uint64(0), len(side))
 	dst.Or(bits)
 	pool.put(bits)
+}
+
+// strictEqualityIntersectSideByCardinality selects every rank before the first
+// intersection, then applies them while recursion unwinds. This keeps ordering
+// independent of copy-on-write container detachment without retaining a slice.
+func strictEqualityIntersectSideByCardinality[T any](
+	side []strictEqualityOperand[T], value T, bits *roaring.Bitmap, pool *bitmapPool,
+	beforeCardinality uint64, beforeIndex int,
+) bool {
+	selectedIndex, selectedCardinality := -1, uint64(0)
+	for index := 1; index < len(side); index++ {
+		cardinality := side[index].concreteMatchCardinality(value)
+		if cardinality > beforeCardinality || cardinality == beforeCardinality && index >= beforeIndex {
+			continue
+		}
+		if selectedIndex < 0 || cardinality > selectedCardinality ||
+			cardinality == selectedCardinality && index > selectedIndex {
+			selectedIndex, selectedCardinality = index, cardinality
+		}
+	}
+	if selectedIndex < 0 {
+		return true
+	}
+	if !strictEqualityIntersectSideByCardinality(
+		side, value, bits, pool, selectedCardinality, selectedIndex,
+	) {
+		return false
+	}
+	side[selectedIndex].intersectConcreteMatches(value, bits, pool)
+	return !bits.IsEmpty()
 }
 
 func strictEqualitySetAllMatches[T any](

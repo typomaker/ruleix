@@ -257,13 +257,14 @@ func TestStrictEqualityAntonymRuntimeContract(t *testing.T) {
 	require.False(t, found)
 }
 
-type antonymGraphConstraint struct{ values [6]*int }
+type antonymGraphConstraint struct{ values [8]*int }
 
 func antonymGraphSchema(fields int) Rule[antonymGraphConstraint] {
 	// Distinct literals deliberately give canonicalization distinct getter PCs.
 	rules := []Rule[antonymGraphConstraint]{
 		Include(antonymGraphValue0), Include(antonymGraphValue1), Include(antonymGraphValue2),
 		Include(antonymGraphValue3), Include(antonymGraphValue4), Include(antonymGraphValue5),
+		Include(antonymGraphValue6), Include(antonymGraphValue7),
 	}
 	return All(rules[:fields]...)
 }
@@ -274,6 +275,8 @@ func antonymGraphValue2(value antonymGraphConstraint) (int, bool) { return anton
 func antonymGraphValue3(value antonymGraphConstraint) (int, bool) { return antonymGraphValue(value, 3) }
 func antonymGraphValue4(value antonymGraphConstraint) (int, bool) { return antonymGraphValue(value, 4) }
 func antonymGraphValue5(value antonymGraphConstraint) (int, bool) { return antonymGraphValue(value, 5) }
+func antonymGraphValue6(value antonymGraphConstraint) (int, bool) { return antonymGraphValue(value, 6) }
+func antonymGraphValue7(value antonymGraphConstraint) (int, bool) { return antonymGraphValue(value, 7) }
 
 func antonymGraphValue(value antonymGraphConstraint, field int) (int, bool) {
 	key := value.values[field]
@@ -419,4 +422,32 @@ func TestStrictEqualityAntonymLargeComponentPaths(t *testing.T) {
 	filtered := roaring.New()
 	strictEqualityFilterSet(set, component.left, 0, query, filtered)
 	require.True(t, filtered.IsEmpty())
+}
+
+func TestStrictEqualityAntonymOrdersWidePostings(t *testing.T) {
+	const entries = 4096
+	constraints := make([]antonymGraphConstraint, entries)
+	ids := make([]int, entries)
+	modulus := [4]int{2, 3, 3, 3}
+	for id := range constraints {
+		ids[id] = id
+		from, until := 0, 4
+		if id < entries/2 {
+			from, until = 4, 8
+		}
+		for field := from; field < until; field++ {
+			constraints[id].values[field] = antonymPointer(id % modulus[field%4])
+		}
+	}
+	index, err := New[antonymGraphConstraint, int](antonymGraphSchema(8)).Build(Zip(constraints, ids))
+	require.NoError(t, err)
+	for residue := range 3 {
+		query := antonymGraphConstraint{}
+		for field := range 8 {
+			query.values[field] = antonymPointer(residue % modulus[field%4])
+		}
+		var got []int
+		index.Search(query, &got)
+		require.Equal(t, matchAntonymGraphConstraints(constraints, query, 8), got)
+	}
 }

@@ -78,9 +78,9 @@ Rule-схема + поток (constraint, external ID)
 8. Эквивалентные неизменяемые bitmap интернируются. Для `All` компилируются
    физические алиасы и классы повторяющихся equality-результатов, чтобы не
    выполнять одинаковую работу несколько раз.
-9. Strict wildcard-complement equivalence classes among equality children of
-   an `All` are compiled into one component. Search intersects concrete
-   postings within each side and unions the two results; the proof is in
+9. Strict wildcard-complement equality classes are compiled into one component.
+   Search keeps a safe copy-on-write seed, intersects the remaining concrete
+   postings in cardinality order, and unions the sides; the proof is in
    [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
 10. Ordered-структуры и остальные узлы подготавливаются к поиску; Roaring
    bitmap переводятся в copy-on-write режим до публикации индекса.

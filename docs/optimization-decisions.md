@@ -12,7 +12,9 @@ The internal ID-chunk experiment was rejected: its global contiguous groups save
 
 ## 2026-09-07: strict equality antonym components accepted
 
-Build groups equal wildcard bitmaps into equivalence classes and compiles two complement classes as one component. This generalizes the accepted 1x1 pair without Exact/Lossy branches. On a 3x3 fixture, one component versus three pairs reduced Index median `4,125 -> 2,239 ns/op` and `19 -> 5` allocations; Local improved `2,758 -> 2,467 ns/op`; retained Local fell `4,560 -> 3,680 B`. Production has no components and preserved search and retained-memory classes. Proof, commands, A/B, and profiles: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
+Build compiles complement equality classes mode-agnostically. Against merged `main`,
+ordered intersections improved early-empty `9,588 -> 7,829 ns/op`;
+general, production, allocation, and retained gates were neutral. Evidence: [`strict-equality-antonyms.md`](strict-equality-antonyms.md).
 
 ## 2026-09-07: compact Local ID threshold увеличен до 512
 
