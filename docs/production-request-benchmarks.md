@@ -17,7 +17,8 @@ Correctness is a gate, not a timed operation: natural and optimized linear,
 handwritten bitmap, Ruleix global Index, and Ruleix Local must return identical
 sets for every generated query. Dataset/index construction, query generation,
 and result capacity allocation are excluded from matching measurements. The
-parallel suite creates one Local or mutable bitmap scratch area per worker.
+parallel suite creates and closes one Ruleix Local per request. The Local is
+shared by all lookups in that request and never survives its boundary.
 
 The load runner schedules matcher-only work at 100–2,000 requests/s and records
 achieved throughput, p50/p90/p99/p99.9/max queue-plus-match latency, allocations,
@@ -27,13 +28,13 @@ core figure is labeled theoretical CPU-time requirement.
 
 The September 7, 2026 M1 Max series found that Large Working Set at 100
 lookups/request missed 700 requests/s on one core for every implementation.
-Ruleix Index was fastest in that single-core series (median 4.446 ms/request),
-while Ruleix Local was 7.000 ms because 2,048 rotating queries populate rather
-than repeatedly hit its query cache. At eight benchmark CPUs, medians were
-approximately 1,125 requests/s for Ruleix Index, 1,162 for Ruleix Local, 892 for
-the handwritten bitmap baseline, 209 for optimized linear, and 153 for natural
-linear. This comparison is synthetic and must not be merged with the observed
-production p99.9 number.
+Ruleix Index was fastest in the single-core Independent series (median 4.453
+ms/request). Request-scoped Ruleix Local measured 7.369 ms for Independent and
+6.105 ms for Correlated requests; only the latter benefits from shared context
+inside the request. Its parallel Correlated medians were 166, 331, 555, and
+1,053 requests/s at 1, 2, 4, and 8 CPUs. Historical worker-scoped cache results
+are not valid for this contract. This comparison is synthetic and must not be
+merged with the observed production p99.9 number.
 
 OPA, GoRules/ZEN, Grule, and Casbin remain outside direct comparison until an
 adapter proves the same collect-all-ID semantics without reducing the schema or

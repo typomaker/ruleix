@@ -18,8 +18,9 @@ be explained by the matching engine alone.
 - `LinearOptimized` checks selective UUID/platform dimensions first.
 - `HandwrittenBitmap` directly indexes the most selective customer UUID with
   the same Roaring library as Ruleix and applies specialized residual checks.
-- `RuleixIndex` and `RuleixLocal` use only Ruleix's public `Search` APIs. A
-  distinct `Local` is created for each parallel worker.
+- `RuleixIndex` and `RuleixLocal` use only Ruleix's public APIs. `RuleixLocal`
+  creates one request-scoped cache before the first lookup, shares it only
+  among that request's lookups, and closes it at the request boundary.
 
 OPA, GoRules/ZEN, and Grule are not in the direct table. None is already a
 dependency, and adding one without an independently verified collect-all rule
@@ -55,7 +56,8 @@ explicit, non-production-claimed mixture 10%×10, 30%×25, 30%×50, 20%×75,
 10%×100 lookups.
 
 The saturation/tail runner has no HTTP or serialization layer. It includes
-queueing delay after synthetic arrival, uses one matcher per worker, and emits
+queueing delay after synthetic arrival, keeps execution workers but not Local
+caches across requests, and emits
 CSV with achieved throughput, p50/p90/p99/p99.9/max, bytes, allocations, and GC:
 
 ```sh
@@ -91,7 +93,7 @@ not production telemetry.
 | LinearOptimized | 32,491 | 324.91 | 0 | 0 | 22.74 |
 | HandwrittenBitmap | 8,005 | 80.05 | 22,400 | 200 | 5.60 |
 | RuleixIndex | 4,453 | 44.53 | 4,279,684 | 2,855 | 3.12 |
-| RuleixLocal | 6,986 | 69.86 | 5,129,527 | 1,924 | 4.89 |
+| RuleixLocal | 7,369 | 73.69 | 5,310,958 | 1,999 | 5.16 |
 
 The final column is only the theoretical CPU-time requirement:
 `700 × seconds/request`. It is not capacity planning and excludes scheduling,
@@ -100,11 +102,9 @@ target passes on one core only when measured request time is at most 1/700 s;
 parallel results are the appropriate empirical target check.
 
 In this large-working-set run every implementation misses 700 requests/s on a
-single core at 100 lookups/request. The surprising `RuleixLocal` result is
-workload-dependent: 2,048 rotating keys exceed its hottest cache behavior and
-incur cache population; the Hot Context variants quantify the intended reuse
-case separately. This result is retained rather than tuning the query stream to
-favor the local cache.
+single core at 100 lookups/request. Request-scoped `RuleixLocal` measured 6.10
+ms for Correlated versus 7.37 ms for Independent queries: common dimensions are
+reused inside one request, while no cache entry survives into the next request.
 
 Parallel smoke series on the same host (`200ms × 3`, medians, 100 lookups) gave:
 
@@ -114,7 +114,7 @@ Parallel smoke series on the same host (`200ms × 3`, medians, 100 lookups) gave
 | LinearOptimized | 31 | 62 | 109 | 209 | none |
 | HandwrittenBitmap | 120 | 238 | 460 | 892 | 8 CPU |
 | RuleixIndex | 226 | 427 | 796 | 1,125 | 4 CPU |
-| RuleixLocal | 170 | 341 | 663 | 1,162 | 8 CPU |
+| RuleixLocal | 166 | 331 | 555 | 1,053 | 8 CPU |
 
 Values are requests/s. The short window is suitable for a checked-in local
 checkpoint, not a deployment sizing decision; use the documented `count=5`

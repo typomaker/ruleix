@@ -23,8 +23,6 @@ func TestProductionBenchmarkImplementationsProduceSameResults(t *testing.T) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](productionBenchmarkSchema()).Build(ruleix.Zip(constraints, ids))
 	require.NoError(t, err)
-	local := index.Local()
-	t.Cleanup(local.Close)
 	implementations := []struct {
 		name string
 		m    productionRequestMatcher
@@ -33,7 +31,7 @@ func TestProductionBenchmarkImplementationsProduceSameResults(t *testing.T) {
 		{"LinearOptimized", &productionLinearMatcher{constraints: constraints, ids: ids, optimized: true}},
 		{"HandwrittenBitmap", newProductionBitmapMatcher(constraints, ids)},
 		{"RuleixIndex", &productionIndexMatcher{index}},
-		{"RuleixLocal", &productionRuleixMatcher{local}},
+		{"RuleixLocal", &productionRuleixMatcher{index: index}},
 	}
 	for _, mode := range []string{"Independent", "Correlated"} {
 		for _, workingSet := range []bool{true, false} {
@@ -44,12 +42,28 @@ func TestProductionBenchmarkImplementationsProduceSameResults(t *testing.T) {
 				expected = productionSortedIDs(expected)
 				for _, implementation := range implementations[1:] {
 					var actual []productionBenchmarkID
+					productionBeginRequest(implementation.m)
 					implementation.m.Match(query, &actual)
+					productionEndRequest(implementation.m)
 					require.Equalf(t, expected, productionSortedIDs(actual), "%s/%t query %d: %s", mode, workingSet, qi, implementation.name)
 				}
 			}
 		}
 	}
+}
+
+func TestProductionRuleixLocalIsRequestScoped(t *testing.T) {
+	constraints, ids := productionBenchmarkDataN(100)
+	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](productionBenchmarkSchema()).Build(ruleix.Zip(constraints, ids))
+	require.NoError(t, err)
+	matcher := &productionRuleixMatcher{index: index}
+	matcher.BeginRequest()
+	require.NotNil(t, matcher.local)
+	var matches []productionBenchmarkID
+	matcher.Match(productionBenchmarkQuery(1), &matches)
+	matcher.Match(productionBenchmarkQuery(2), &matches)
+	matcher.EndRequest()
+	require.Nil(t, matcher.local)
 }
 
 type productionMatcherFactory struct {
@@ -64,7 +78,6 @@ func productionMatcherFactories(b testing.TB, entries int) ([]productionMatcherF
 		b.Fatal(err)
 	}
 	bitmap := newProductionBitmapMatcher(constraints, ids)
-	var locals []*ruleix.Local[productionBenchmarkConstraint, productionBenchmarkID]
 	factories := []productionMatcherFactory{
 		{"LinearNatural", func() productionRequestMatcher { return &productionLinearMatcher{constraints: constraints, ids: ids} }},
 		{"LinearOptimized", func() productionRequestMatcher {
@@ -72,16 +85,9 @@ func productionMatcherFactories(b testing.TB, entries int) ([]productionMatcherF
 		}},
 		{"HandwrittenBitmap", func() productionRequestMatcher { clone := *bitmap; return &clone }},
 		{"RuleixIndex", func() productionRequestMatcher { return &productionIndexMatcher{index} }},
-		{"RuleixLocal", func() productionRequestMatcher {
-			local := index.Local()
-			locals = append(locals, local)
-			return &productionRuleixMatcher{local}
-		}},
+		{"RuleixLocal", func() productionRequestMatcher { return &productionRuleixMatcher{index: index} }},
 	}
 	return factories, func() {
-		for _, local := range locals {
-			local.Close()
-		}
 		runtime.KeepAlive(index)
 	}
 }
@@ -92,11 +98,13 @@ func benchmarkProductionRequest(b *testing.B, matcher productionRequestMatcher, 
 	b.ResetTimer()
 	for i := range b.N {
 		base := (i * lookups) % len(queries)
+		productionBeginRequest(matcher)
 		for j := range lookups {
 			results = results[:0]
 			matcher.Match(queries[(base+j)%len(queries)], &results)
 			productionRequestSink = results
 		}
+		productionEndRequest(matcher)
 	}
 	b.StopTimer()
 	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*lookups), "ns/lookup")
@@ -107,7 +115,7 @@ func benchmarkProductionRequest(b *testing.B, matcher productionRequestMatcher, 
 // BenchmarkRequest latest local smoke run (Apple M1 Max, Go 1.26.0,
 // 38,098 constraints, Independent/LargeWorkingSet, 100ms): at 100 lookups,
 // LinearNatural 47.0 ms/request, LinearOptimized 32.5 ms, HandwrittenBitmap
-// 8.01 ms, RuleixIndex 4.45 ms, and RuleixLocal 6.99 ms.
+// 8.01 ms, RuleixIndex 4.45 ms, and request-scoped RuleixLocal 7.37 ms.
 func BenchmarkRequest(b *testing.B) {
 	factories, cleanup := productionMatcherFactories(b, productionBenchmarkEntries)
 	b.Cleanup(cleanup)
@@ -151,10 +159,12 @@ func BenchmarkRequestParallel(b *testing.B) {
 					matcher, results, request := worker.matcher, worker.results, 0
 					for pb.Next() {
 						base := request * lookups % len(queries)
+						productionBeginRequest(matcher)
 						for j := range lookups {
 							results = results[:0]
 							matcher.Match(queries[(base+j)%len(queries)], &results)
 						}
+						productionEndRequest(matcher)
 						request++
 					}
 					workers <- workerState{matcher, results}
@@ -190,10 +200,12 @@ func BenchmarkSyntheticMixedRequest(b *testing.B) {
 			b.ResetTimer()
 			for i := range b.N {
 				lookups, base := mixture[i%len(mixture)], i*100%len(queries)
+				productionBeginRequest(matcher)
 				for j := range lookups {
 					results = results[:0]
 					matcher.Match(queries[(base+j)%len(queries)], &results)
 				}
+				productionEndRequest(matcher)
 			}
 		})
 	}
