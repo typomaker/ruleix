@@ -76,3 +76,14 @@ Build-selected hash нельзя оценивать только по числу
 на каждом уровне даёт антоним без false negatives. Это не отдельный Lossy path,
 а разные глубины одной структуры. До реализации нужны accounting модели для
 узлов/bitmap, алгоритм budget pruning и сравнение с flat physical-key index.
+
+Первый test-only feasibility prototype построил адаптивный prefix forest для
+семи непустых production equality leaves. Split score уменьшал сумму квадратов
+posting cardinality на каждый дополнительный accounted byte; wildcard bitmap
+оставался вне дерева. При том же equality-only 75% checkpoint `234 076 B`
+модель с 8/16-byte node overhead использовала 230 554/232 276 bytes и вернула
+150 candidates/query — observable parity с Exact против 358 у flat ladder.
+При 24-byte overhead она успела купить меньше splits и вернула 1 485
+кандидатов при 233 402 bytes. Результат доказывает feasibility адаптивного
+разбиения, но не production layout: следующий шаг обязан измерить реальные
+Go nodes/routing, unknown-key behavior и search latency общего executor-а.
