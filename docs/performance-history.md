@@ -1,6 +1,6 @@
 # История производительности
 
-## 2026-09-08: `v0.8.3` warm Local regression attribution
+## 2026-09-08: `v0.8.4` corrects the `v0.8.3` warm Local regression
 
 Nine interleaved release pairs reproduced `Local.Search` at 222.4 versus 225.3
 ns/op (+1.30%). The primary cause was grouped query-key control flow added by

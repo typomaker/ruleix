@@ -122,7 +122,8 @@ The correction was implemented after the attribution task on baseline
 `4c640e916d78feb27a47c62dbef08a731523f0e0`. It dispatches grouped validation
 before the cache-slot loop. The ordinary loop checks the prepared execution
 shape once and then reads its immutable query-key provider slots directly;
-an existing Local result plan cannot precede search preparation.
+an existing Local result plan cannot precede search preparation. This
+correction is released as `v0.8.4`.
 
 Both detached benchmark worktrees used identical benchmark and test sources,
 so test-only generic instantiations could not alter one binary's layout. Nine
