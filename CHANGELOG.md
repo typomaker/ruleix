@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.8.4] - 2026-09-08
+
+### Fixed
+
+- Restored warm and parallel `Local.Search` performance by separating grouped
+  query validation from the ordinary prepared cache-slot lookup. Comparable
+  release measurements are recorded in
+  [`docs/performance-history.md`](docs/performance-history.md); no aggregate
+  release benchmark exists yet.
+
+## [0.8.3] - 2026-09-07
+
 ### Changed
 
 - `Local.Search` is now the explicit memory-for-speed path: fixed byte budgets
@@ -451,7 +465,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.8.4...HEAD
+[0.8.4]: https://github.com/typomaker/ruleix/compare/v0.8.3...v0.8.4
+[0.8.3]: https://github.com/typomaker/ruleix/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/typomaker/ruleix/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/typomaker/ruleix/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/typomaker/ruleix/compare/v0.7.1...v0.8.0
