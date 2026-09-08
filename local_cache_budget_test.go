@@ -98,6 +98,49 @@ func TestLocalQueryKeysUseOperationEquality(t *testing.T) {
 	require.True(t, providers[3].localQueryKeyMatches(base, compareKey), "query-side CompareBy operator is ignored")
 }
 
+func TestLocalAllResultCacheValidatesOrdinaryPreparedKeys(t *testing.T) {
+	provider := &eqRule[int, int, int]{get: func(value int) (int, bool) { return value, true }}
+	rule := &allRule[int]{children: []Rule[int]{provider}}
+	pool := newLocalBitmapPool(1)
+	plan := &localAllPlan{}
+	pool.allPlans = map[any]*localAllPlan{rule: plan}
+
+	require.Nil(t, rule.loadLocalQueryResult(pool, 7), "an unprepared execution cannot own a cached result")
+	rule.execution = []executionCapability[int]{{queryKey: provider}}
+	plan.results[0] = localAllResult{bits: roaring.BitmapOf(1), epoch: pool.cacheEpoch}
+	require.Nil(t, rule.loadLocalQueryResult(pool, 7), "a key-count mismatch cannot hit")
+
+	wrong, _ := provider.localQueryKey(8)
+	plan.results[0].keys = []any{wrong}
+	require.Nil(t, rule.loadLocalQueryResult(pool, 7), "a different query cannot hit")
+	rule.execution[0].queryKey = nil
+	require.Nil(t, rule.loadLocalQueryResult(pool, 7), "a missing provider cannot validate a hit")
+
+	rule.execution[0].queryKey = provider
+	key, _ := provider.localQueryKey(7)
+	plan.results[0].keys[0] = key
+	require.Same(t, &plan.results[0], rule.loadLocalQueryResult(pool, 7))
+}
+
+func TestLocalAllResultCacheValidatesGroupedKeys(t *testing.T) {
+	provider := &eqRule[int, int, int]{get: func(value int) (int, bool) { return value, true }}
+	rule := &allRule[int]{queryKeyProviders: []localQueryKeyProvider[int]{provider}}
+	plan := &localAllPlan{}
+	plan.results[0] = localAllResult{epoch: 2}
+	plan.results[1] = localAllResult{bits: roaring.BitmapOf(1), epoch: 1}
+	plan.results[2] = localAllResult{bits: roaring.BitmapOf(2), epoch: 2}
+	key, _ := provider.localQueryKey(7)
+	plan.results[3] = localAllResult{bits: roaring.BitmapOf(3), epoch: 2, keys: []any{key}}
+
+	require.Same(t, &plan.results[3], rule.loadGroupedLocalQueryResult(plan, 2, 7))
+	rule.queryKeyProviders[0] = nil
+	require.Nil(t, rule.loadGroupedLocalQueryResult(plan, 2, 7), "a missing grouped provider cannot validate a hit")
+	rule.queryKeyProviders[0] = provider
+	wrong, _ := provider.localQueryKey(8)
+	plan.results[3].keys[0] = wrong
+	require.Nil(t, rule.loadGroupedLocalQueryResult(plan, 2, 7), "a different grouped query cannot hit")
+}
+
 func TestLocalAllResultCacheRetainsWideCompactResults(t *testing.T) {
 	pool := newLocalBitmapPool(1)
 	pool.observeRuntime = false

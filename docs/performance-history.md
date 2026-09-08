@@ -2,13 +2,14 @@
 
 ## 2026-09-08: `v0.8.3` warm Local regression attribution
 
-Nine interleaved two-second pairs reproduced `Local.Search` at 222.4 versus
-225.3 ns/op (+1.30%). Validation-only decomposition retained the full gap.
-The primary cause is grouped query-key control flow added inside the cache-slot
-loop by `f0b0d68`: a semantics-preserving helper split improved the introducing
-state by 0.95% and `v0.8.3` by 0.45%. The hot function shrank from 768 to 496
-bytes in the reverse experiment. A smaller +0.37% boundary starts at
-`1508c7c`. Full evidence:
+Nine interleaved release pairs reproduced `Local.Search` at 222.4 versus 225.3
+ns/op (+1.30%). The primary cause was grouped query-key control flow added by
+`f0b0d68` inside the cache-slot loop. The correction separates grouped lookup
+and reads already-prepared ordinary execution slots directly: a harness-matched
+nine-pair comparison against `4c640e9` measured 228.3 versus 218.7 ns/op
+(-4.20%, `p<0.001`) with unchanged allocations. CPU profiles removed 0.71 s
+flat from `executionCapability` and 0.62 s from `loadLocalQueryResult` over 20
+seconds. Production Index and grouped antonym paths were neutral. Full evidence:
 [`local-search-v0.8.3-regression-profile.md`](local-search-v0.8.3-regression-profile.md).
 
 ## 2026-09-07: `v0.8.2` versus `v0.8.3`

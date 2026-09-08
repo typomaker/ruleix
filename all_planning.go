@@ -293,7 +293,6 @@ func (r *allRule[T]) loadLocalResult(
 	return nil
 }
 
-//nolint:gocognit,nestif // Query-key validation keeps the cache-hit path allocation-free.
 func (r *allRule[T]) loadLocalQueryResult(pool *bitmapPool, value T) *localAllResult {
 	if pool.local == nil || pool.observeRuntime {
 		return nil
@@ -302,32 +301,47 @@ func (r *allRule[T]) loadLocalQueryResult(pool *bitmapPool, value T) *localAllRe
 	if plan == nil {
 		return nil
 	}
+	if r.queryKeyProviders != nil {
+		return r.loadGroupedLocalQueryResult(plan, pool.cacheEpoch, value)
+	}
+	if len(r.execution) != len(r.children) {
+		return nil
+	}
 	for i := range plan.results {
 		result := &plan.results[i]
 		if result.bits == nil || result.epoch != pool.cacheEpoch {
 			continue
 		}
+		if len(result.keys) != len(r.children) {
+			continue
+		}
 		match := true
-		if r.queryKeyProviders != nil {
-			if len(result.keys) != len(r.queryKeyProviders) {
-				continue
+		for child := range r.children {
+			provider := r.execution[child].queryKey
+			if provider == nil || !provider.localQueryKeyMatches(value, result.keys[child]) {
+				match = false
+				break
 			}
-			for keyIndex, provider := range r.queryKeyProviders {
-				if provider == nil || !provider.localQueryKeyMatches(value, result.keys[keyIndex]) {
-					match = false
-					break
-				}
+		}
+		if match {
+			return result
+		}
+	}
+	return nil
+}
+
+func (r *allRule[T]) loadGroupedLocalQueryResult(plan *localAllPlan, epoch uint64, value T) *localAllResult {
+	for i := range plan.results {
+		result := &plan.results[i]
+		if result.bits == nil || result.epoch != epoch || len(result.keys) != len(r.queryKeyProviders) {
+			continue
+		}
+		match := true
+		for keyIndex, provider := range r.queryKeyProviders {
+			if provider == nil || !provider.localQueryKeyMatches(value, result.keys[keyIndex]) {
+				match = false
+				break
 			}
-		} else if len(result.keys) == len(r.children) {
-			for child := range r.children {
-				provider := r.executionCapability(child).queryKey
-				if provider == nil || !provider.localQueryKeyMatches(value, result.keys[child]) {
-					match = false
-					break
-				}
-			}
-		} else {
-			match = false
 		}
 		if match {
 			return result

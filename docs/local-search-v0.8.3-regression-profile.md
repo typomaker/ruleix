@@ -114,7 +114,34 @@ passed `GOMAXPROCS=1 go test ./...`. This recovers the complete measured
 Applied in a disposable `v0.8.3` worktree, the same helper split changed 221.8
 to 220.8 ns/op (**-0.45%**, `p<0.001`) and passed the full test suite. Later
 source layout changes alter the magnitude, but the direction and causal hot
-operation remain stable. Production code was not changed in this task.
+operation remain stable.
+
+## Applied correction
+
+The correction was implemented after the attribution task on baseline
+`4c640e916d78feb27a47c62dbef08a731523f0e0`. It dispatches grouped validation
+before the cache-slot loop. The ordinary loop checks the prepared execution
+shape once and then reads its immutable query-key provider slots directly;
+an existing Local result plan cannot precede search preparation.
+
+Both detached benchmark worktrees used identical benchmark and test sources,
+so test-only generic instantiations could not alter one binary's layout. Nine
+alternating two-second process pairs measured:
+
+| Path | Baseline | Correction | Delta |
+| --- | ---: | ---: | ---: |
+| production `Local.Search` | 228.3 ns/op | 218.7 ns/op | **-4.20%, `p<0.001`** |
+| strict-pairs `Index.Search` | 4.069 us/op | 4.138 us/op | neutral, `p=0.546` |
+
+A separate seven-pair one-second matrix measured production Local at 225.0
+versus 215.3 ns/op (-4.31%, `p=0.001`). Production Index and all pairs/component
+Index, LocalRotating, and LocalStable paths were neutral except component Index,
+which improved 2.83%. Every allocation class was unchanged.
+
+Comparable 20-second CPU profiles measured 227.4 versus 216.9 ns/op. The
+normalized diff removed 0.71 s flat from `executionCapability` and 0.62 s flat
+from `loadLocalQueryResult`. Focused tests cover both lookup functions at 100%;
+`GOMAXPROCS=1 go test ./...` passes with 91.3% package statement coverage.
 
 ## Commands and environment
 

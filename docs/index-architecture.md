@@ -188,7 +188,10 @@ so an exact query-key hit can append output without ranking, bitmap copying, or
 Roaring iteration. Local scratch bitmaps are also reusable regardless of size.
 The result is addressed by a collision-safe tuple of original query-side values;
 physical keys are intentionally not cache keys because rehashing them costs more
-than comparing their semantic values.
+than comparing their semantic values. Ordinary and grouped query-key validation
+use separate lookup loops. Once an `All` result plan exists, ordinary validation
+reads the immutable prepared execution slots directly instead of rechecking their
+availability for every child of every cache slot.
 
 `Local.Close` clears query identity, admission, replacement, and result state,
 returns reusable storage to the owning Index, and publishes sampled telemetry.

@@ -1,10 +1,12 @@
 # Проверенные оптимизации и решения
 
-Этот документ — краткий реестр завершённых performance-экспериментов Ruleix.
-Он отвечает на три вопроса: что проверяли, что решили и почему. Подробные
-замеры, команды воспроизведения и промежуточные варианты сохраняются в Git и
-соответствующих канонических документах; здесь приведены только выводы,
-подтверждённые бенчмарком или профилем.
+Краткий реестр решений: что проверяли, что решили и почему. Приведены только
+подтверждённые выводы; детали хранятся в Git и канонических документах.
+
+## 2026-09-08: Local query-key hot-loop split accepted
+
+Grouped validation was split from ordinary cached-result lookup, whose prepared
+slots are read directly. Local improved 4.20% without regression. Evidence: [`local-search-v0.8.3-regression-profile.md`](local-search-v0.8.3-regression-profile.md).
 
 ## 2026-09-07: ID chunking rejected and removed
 
