@@ -9,8 +9,9 @@ Measured on 7 September 2026. The baseline is `v0.8.2`
 `v0.8.3` improves production-shaped `Index.Search` latency by 10.59% with
 unchanged search allocation classes. Warm `Local.Search` is 0.97% slower in
 the interleaved confirmation series and 2.91% slower in separate 15-second CPU
-profile runs. This release-relative Local regression is reproducible, but its
-cause remains unresolved and it therefore stays under investigation.
+profile runs. Follow-up profiling localized the primary cause to grouped
+query-key control flow added to the ordinary cache-hit loop. See
+[`local-search-v0.8.3-regression-profile.md`](local-search-v0.8.3-regression-profile.md).
 
 Parallel Local is inconclusive: the confirmation series was 1.98% slower, but
 the comparable 15-second profile runs both measured 250.4 ns/search. It is not
@@ -20,9 +21,8 @@ The retained index is 0.17% larger. Cold Local retained memory is unchanged;
 the warm, adaptive, and adversarial Local classes are 0.24%, 0.22%, and 0.32%
 smaller.
 
-The release gate is not clean because the warm Local search regression has no
-conclusive attribution or correction. No production change was made during
-this measurement task.
+The release gate is not clean because the warm Local search regression remains
+uncorrected. No production change was made during this measurement task.
 
 ## Comparable confirmation results
 
@@ -86,12 +86,11 @@ conclusively explain the small release-relative delta. In particular:
   `go.mod`, and `go.sum`; the final commit changes only `LICENSE` and project
   governance documentation, so it cannot introduce executable work.
 
-These checks reject the two initial attribution hypotheses but do not localize
-the first causal change across the non-monotonic post-`v0.8.2` history. Project
-policy does not allow the regression to be accepted or rejected on an
-unresolved hypothesis. A correction task should continue with focused Local
-microbenchmarks and controlled code-layout experiments before changing
-production code.
+These checks rejected the two initial attribution hypotheses. Follow-up
+validation-only decomposition, first-parent boundary measurements, compiler
+inspection, and reverse experiments subsequently localized the primary cause;
+see [`local-search-v0.8.3-regression-profile.md`](local-search-v0.8.3-regression-profile.md).
+The correction remains a separate task.
 
 ## Environment and commands
 

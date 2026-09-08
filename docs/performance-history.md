@@ -1,5 +1,16 @@
 # История производительности
 
+## 2026-09-08: `v0.8.3` warm Local regression attribution
+
+Nine interleaved two-second pairs reproduced `Local.Search` at 222.4 versus
+225.3 ns/op (+1.30%). Validation-only decomposition retained the full gap.
+The primary cause is grouped query-key control flow added inside the cache-slot
+loop by `f0b0d68`: a semantics-preserving helper split improved the introducing
+state by 0.95% and `v0.8.3` by 0.45%. The hot function shrank from 768 to 496
+bytes in the reverse experiment. A smaller +0.37% boundary starts at
+`1508c7c`. Full evidence:
+[`local-search-v0.8.3-regression-profile.md`](local-search-v0.8.3-regression-profile.md).
+
 ## 2026-09-07: `v0.8.2` versus `v0.8.3`
 
 Seven interleaved one-second pairs measured `Index.Search` 10.59% faster,
@@ -7,9 +18,8 @@ warm `Local.Search` 0.97% slower, parallel Local 1.98% slower, and Build 1.59%
 slower. A 15-second profile reproduced the warm Local delta but not the
 parallel delta. Search allocation classes are unchanged; retained index is
 0.17% larger and retained warm/adaptive/adversarial Local memory is
-0.22–0.32% smaller. The warm Local regression remains under investigation
-because profiles and two focused commit boundaries did not conclusively
-localize it. Full protocol:
+0.22–0.32% smaller. Follow-up profiling localized its primary cause to grouped
+query-key control flow in the ordinary cache-hit loop. Full release protocol:
 [`benchmark-v0.8.2-v0.8.3-2026-09-07.md`](benchmark-v0.8.2-v0.8.3-2026-09-07.md).
 
 ## 2026-09-07: aggressive Local cache policy
