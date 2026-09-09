@@ -337,18 +337,8 @@ for range workers {
 Use `index.Search` when searches do not have value locality or when maintaining
 a per-goroutine context is inconvenient. The index and its regular `Search`
 method remain safe for concurrent use.
-`Local.Visit` provides the same caching for streaming result iteration.
-
 A complete runnable example is available in
 [`examples/local_search`](examples/local_search).
-
-`Visit` avoids collecting results and supports early termination:
-
-```go
-index.Visit(value, func(id string) bool {
-	return handle(id) // false stops iteration
-})
-```
 
 If the same external ID is inserted more than once, it is returned at most
 once. Its first matching insertion determines result order.

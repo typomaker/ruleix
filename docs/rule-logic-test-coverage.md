@@ -31,7 +31,7 @@ not imply complete semantic coverage.
 | Rule | Covered valid logic | Confirmed gaps |
 | --- | --- | --- |
 | `Include` | exact match, non-match, stored wildcard, missing query, duplicate IDs, present zero versus absent | no known public semantic gap |
-| `Exclude` | forbidden match, non-match, missing query, stored missing value, repeated ID exclusion, present zero versus absent, scanning-reference differential, `Search` and `Visit` | no known public semantic gap |
+| `Exclude` | forbidden match, non-match, missing query, stored missing value, repeated ID exclusion, present zero versus absent, scanning-reference differential, `Search` | no known public semantic gap |
 | `Greater`, `GreaterOrEqual`, `Less`, `LessOrEqual` | all four directions, strict and inclusive equality boundaries, less/equal/greater values, stored wildcard, missing query, present zero versus absent | no known public semantic gap |
 | `CompareBy` | all five operators, equality and broad scanning-reference comparisons, ignored query operator, stored wildcard, missing query value, missing operator error, unsupported operator error | boundary truth tables remain split across focused and scanning-reference tests rather than duplicated in one table |
 | `Between` | covered, non-covered, exact inclusive bounds, stored/query bounds missing independently and together, repeated IDs, inverted intervals, scanning-reference comparisons | no known public semantic gap; inverted intervals intentionally use the two independent bound comparisons |

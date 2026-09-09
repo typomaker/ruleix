@@ -173,26 +173,6 @@ func appendScannedAllMatches[C any, ID comparable](
 	return result
 }
 
-func visitMatches[C any, ID comparable](
-	root Rule[C],
-	values []ID,
-	pool *bitmapPool,
-	exclusions []exclusionRule[C],
-	value C,
-	yield func(ID) bool,
-) {
-	bits := pool.get()
-	defer pool.put(bits)
-	root.search(value, bits, pool)
-	if len(exclusions) != 0 {
-		excluded := pool.get()
-		addExclusions(exclusions, value, excluded, pool)
-		bits.AndNot(excluded)
-		pool.put(excluded)
-	}
-	bits.Iterate(func(id uint32) bool { return yield(values[id]) })
-}
-
 func addExclusions[C any](rules []exclusionRule[C], value C, dst *roaring.Bitmap, pool *bitmapPool) {
 	for _, rule := range rules {
 		rule.exclude(value, dst, pool)

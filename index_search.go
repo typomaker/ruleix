@@ -87,34 +87,10 @@ func (local *Local[C, ID]) Close() {
 	local.closed = true
 }
 
-// Visit calls yield for matching IDs while reusing this Local's cached state.
-// A nil yield function is a no-op.
-func (local *Local[C, ID]) Visit(value C, yield func(ID) bool) {
-	local.requireOpen()
-	if yield == nil {
-		return
-	}
-	root, exclusions := local.index.root, local.index.exclusions
-	if local.observed {
-		root, exclusions = local.index.observedRoot, local.index.observedExclusions
-	}
-	visitMatches(root, local.index.values, local.pool, exclusions, value, yield)
-}
-
 func (local *Local[C, ID]) requireOpen() {
 	if local == nil || local.index == nil || local.closed {
 		panic("ruleix: closed Local")
 	}
-}
-
-// Visit calls yield once for each unique matching ID in first-match order.
-// Iteration stops immediately when yield returns false. A nil yield function is
-// a no-op.
-func (ix *Index[C, ID]) Visit(value C, yield func(ID) bool) {
-	if yield == nil {
-		return
-	}
-	visitMatches(ix.root, ix.values, ix.pool, ix.exclusions, value, yield)
 }
 
 func (ix *Index[C, ID]) search(value C, dst *[]ID, pool *bitmapPool) bool {

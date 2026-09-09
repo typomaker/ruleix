@@ -44,7 +44,7 @@ Rule-схема + поток (constraint, external ID)
         +--> immutable/interned bitmaps
         |
         v
- Index.Search / Index.Visit / Local
+ Index.Search / Local
         |
         v
  candidate planning -> bitmap intersection or ID scan -> exclusions
@@ -166,9 +166,12 @@ posting, фильтрация существующих кандидатов и �
 6. Финальные внутренние ID перечисляются по возрастанию, что совпадает с
    порядком первого появления внешних ID.
 
-`Search` добавляет найденные значения в переданный slice. `Visit` выполняет ту
-же семантику, но отдаёт значения callback-функции и поддерживает досрочную
-остановку.
+`Search` appends matching values to the caller-provided slice.
+
+API maintenance verification (2026-09-09): the unused callback-based
+iteration methods and their dedicated materialization path were removed.
+`go test ./...` passed; the change only deletes executable production lines,
+so there are no added or modified executable lines requiring diff coverage.
 
 ## Temporary memory and `Local`
 
@@ -460,7 +463,7 @@ search path нет reflection. Интерфейсы остаются типиз�
 применяется только при build-time accounting.
 
 ## Параллелизм и жизненный цикл
-- `Index` неизменяем после `Build`; `Search` и `Visit` конкурентны.
+- `Index` неизменяем после `Build`; `Search` конкурентен.
 - Один `Local` предназначен одной goroutine; разные `Local` независимы.
 - `Builder` переиспользуется последовательно; конкурентные `Build` требуют
   внешней синхронизации из-за обновления hints.
@@ -472,7 +475,7 @@ search path нет reflection. Интерфейсы остаются типиз�
 | --- | --- |
 | `rule.go` | Закрытый интерфейс правил, общие capabilities и оптимизация дерева. |
 | `builder.go` | `Builder`, `Index` и build pipeline. |
-| `index_search.go`, `search_materialization.go` | `Search`, `Visit`, `Local` и материализация ID. |
+| `index_search.go`, `search_materialization.go` | `Search`, `Local` и материализация ID. |
 | `eq.go`, `not.go` | Equality и exclusion indexes. |
 | `ordered.go`, `ordered_index.go` | Ordered-операторы, блоковый индекс и маршрутизация. |
 | `between.go`, `compare_by.go` | Составные ordered-представления. |

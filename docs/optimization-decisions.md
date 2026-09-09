@@ -73,11 +73,6 @@ These are hypotheses, not performance claims:
 - Revisit allocation-free fused range intersection only if the destination
   bitmap can remain caller-owned and all public search paths remain neutral or
   better.
-- Measure a root-`All` executor for `Index.Visit` and `Local.Visit`. The current
-  `Visit` path calls generic `root.search`, so it does not use candidate scans,
-  physical-source deduplication, learned Local plans, or compact exact results.
-  Any prototype must preserve insertion order and immediate callback stopping,
-  and must compare both Visit APIs rather than extrapolating from Search.
 - Measure post-exclusion exact-result reuse for `Local.Search`. Query-key hits
   are currently bypassed whenever extracted exclusions exist, even though the
   later bitmap-result cache can still be reused before applying exclusions.

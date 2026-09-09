@@ -77,9 +77,9 @@ if snapshot.Bound() {
 }
 ```
 
-Runtime counters are low-priority, best-effort telemetry. `Index.Search` and
-`Index.Visit` never collect them, keeping the shared search path identical with
-and without inspection. One of every 64 `Local` contexts is selected when it
+Runtime counters are low-priority, best-effort telemetry. `Index.Search` does
+not collect them, keeping the shared search path identical with and without
+inspection. One of every 64 `Local` contexts is selected when it
 is created; all searches through a selected context accumulate counters
 without atomic operations and publish them when `Local.Close` is called.
 Unselected contexts execute the plain compiled tree. Consequently, snapshots

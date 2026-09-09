@@ -20,7 +20,7 @@ type Builder[C any, ID comparable] struct {
 }
 
 // Index maps query values to the unique IDs of all matching stored constraints.
-// It is immutable after Build and safe for concurrent calls to Search and Visit.
+// It is immutable after Build and safe for concurrent calls to Search.
 type Index[C any, ID comparable] struct {
 	root               Rule[C]
 	observedRoot       Rule[C]
