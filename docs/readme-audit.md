@@ -8,7 +8,6 @@ The README was reviewed against the public API and canonical documentation on
 - Corrected the minimum Go version from 1.23 to the `go.mod` requirement of
   Go 1.24.
 - Replaced the long introductory example with a smaller complete quick start.
-- Added the missing `Index.Visit` and `Local.Visit` guidance.
 - Made the `Index.Search` versus `Local.Search` memory and concurrency trade-off
   explicit.
 - Kept user-visible wildcard, result-order, build, Lossy, and Inspect contracts

@@ -156,16 +156,7 @@ matches = matches[:0]
 index.Search(nextQuery, &matches)
 ```
 
-An `Index` is immutable and its `Search` and `Visit` methods are safe for
-concurrent use. Use `Visit` to process results without collecting them or to
-stop early:
-
-```go
-index.Visit(query, func(id string) bool {
-	fmt.Println(id)
-	return true // return false to stop
-})
-```
+An `Index` is immutable and its `Search` method is safe for concurrent use.
 
 ### Choosing `Index` or `Local`
 
@@ -186,7 +177,7 @@ for query := range queries {
 A `Local` is not safe for concurrent use; create one per goroutine. It is the
 explicit memory-for-speed path and may retain wide cached results. Always call
 `Close` so its state can be cleared and reused. A closed `Local` cannot be used
-again. `Local.Visit` provides the same callback contract as `Index.Visit`.
+again.
 
 ## Memory-bounded indexes
 
