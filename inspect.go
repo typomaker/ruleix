@@ -102,10 +102,12 @@ func (s InspectorSnapshot) CacheMiss() uint64 { return s.runtime.cacheMiss }
 // CacheAdmission reports observed cache admissions.
 func (s InspectorSnapshot) CacheAdmission() uint64 { return s.runtime.cacheAdmission }
 
-// CacheEviction reports observed cache evictions.
+// CacheEviction reports observed cache evictions. Unbounded Local caches do
+// not evict entries, so this compatibility counter remains zero.
 func (s InspectorSnapshot) CacheEviction() uint64 { return s.runtime.cacheEviction }
 
-// CacheExpansion reports observed adaptive cache capacity expansions.
+// CacheExpansion reports observed adaptive cache capacity expansions. Local
+// caches no longer have fixed capacities, so this compatibility counter remains zero.
 func (s InspectorSnapshot) CacheExpansion() uint64 { return s.runtime.cacheExpansion }
 
 // CandidateCheck reports observed direct internal-ID membership checks.

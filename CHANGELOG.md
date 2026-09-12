@@ -7,7 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-No changes yet.
+### Changed
+
+- `Local.Search` now caches every cacheable query on its first miss and retains
+  an unbounded distinct working set until `Local.Close`. Slot admission, LRU
+  eviction, and adaptive two-to-four-entry limits were removed from equality,
+  ordered, `CompareBy`, `Between`, exclusion, strict-antonym, and exact `All`
+  result caches. `Index.Search` remains the controlled-memory path for one-off
+  queries.
 
 ## [0.8.4] - 2026-09-08
 

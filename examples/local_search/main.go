@@ -32,7 +32,7 @@ func main() {
 		panic(err)
 	}
 
-	// Local belongs to this goroutine and retains two recent intermediate
+	// Local belongs to this goroutine and retains intermediate
 	// bitmaps per filter. The immutable index may still be shared globally.
 	local := index.Local()
 	defer local.Close()

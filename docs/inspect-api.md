@@ -100,9 +100,10 @@ check. This distinction preserves the selected execution strategy.
 
 `CacheHit`, `CacheMiss`, `CacheAdmission`, `CacheEviction`, and
 `CacheExpansion` count events in selected Local contexts. They are monotonic
-sample counters, not estimates of total workload activity. `CacheExpansion`
-counts adaptive cache transitions from two to four bitmap entries in that
-sample.
+sample counters, not estimates of total workload activity. A first lookup is a
+miss followed by an immediate admission, and later lookups are hits. The
+`CacheEviction` and `CacheExpansion` accessors remain for source compatibility
+but return zero because Local caches neither evict nor have fixed capacities.
 Inspector exposes no gauges: every runtime scalar is a monotonic counter, while
 distributions use `Histogram`.
 

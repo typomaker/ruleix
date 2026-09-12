@@ -47,10 +47,12 @@ func (r *allRule[T]) rankChildren(
 	pool *bitmapPool,
 	rankedChildren []rankedBitmap,
 ) bool {
+	refreshLocalPlan := false
 	if pool.local != nil {
 		if result, reused := r.reuseLocalPlan(v, pool, rankedChildren); reused {
 			return result
 		}
+		refreshLocalPlan = r.localPlan(pool) != nil
 	}
 	// Rank constant-time equality bounds first. If one is already small enough
 	// for direct ID validation, ordered cardinalities cannot improve the chosen
@@ -118,6 +120,11 @@ func (r *allRule[T]) rankChildren(
 	}
 	if pool.local != nil {
 		r.rememberLocalPlan(pool, rankedChildren)
+		if refreshLocalPlan {
+			if result, reused := r.reuseLocalPlan(v, pool, rankedChildren); reused {
+				return result
+			}
+		}
 	}
 	return true
 }
@@ -274,7 +281,7 @@ func (r *allRule[T]) loadLocalResult(
 	if plan == nil {
 		return nil
 	}
-	for i := range plan.results {
+	for i := len(plan.results) - 1; i >= 0; i-- {
 		result := &plan.results[i]
 		if result.bits == nil || result.epoch != pool.cacheEpoch || len(result.inputs) != len(rankedChildren) {
 			continue
@@ -307,7 +314,7 @@ func (r *allRule[T]) loadLocalQueryResult(pool *bitmapPool, value T) *localAllRe
 	if len(r.execution) != len(r.children) {
 		return nil
 	}
-	for i := range plan.results {
+	for i := len(plan.results) - 1; i >= 0; i-- {
 		result := &plan.results[i]
 		if result.bits == nil || result.epoch != pool.cacheEpoch {
 			continue
@@ -331,7 +338,7 @@ func (r *allRule[T]) loadLocalQueryResult(pool *bitmapPool, value T) *localAllRe
 }
 
 func (r *allRule[T]) loadGroupedLocalQueryResult(plan *localAllPlan, epoch uint64, value T) *localAllResult {
-	for i := range plan.results {
+	for i := len(plan.results) - 1; i >= 0; i-- {
 		result := &plan.results[i]
 		if result.bits == nil || result.epoch != epoch || len(result.keys) != len(r.queryKeyProviders) {
 			continue
@@ -396,10 +403,10 @@ func (r *allRule[T]) storeLocalResult(
 	if plan == nil {
 		return
 	}
-	entry := &plan.results[plan.next]
 	keys, _, keysSet := r.captureLocalQueryKeys(value)
 	cardinality := bits.GetCardinality()
-	plan.next = (plan.next + 1) % uint8(len(plan.results))
+	plan.results = append(plan.results, localAllResult{})
+	entry := &plan.results[len(plan.results)-1]
 	if cap(entry.inputs) < len(rankedChildren) {
 		entry.inputs = make([]*roaring.Bitmap, len(rankedChildren))
 	} else {

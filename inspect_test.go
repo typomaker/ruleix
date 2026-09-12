@@ -244,8 +244,8 @@ func TestInspectReportsCumulativeLocalCacheMetrics(t *testing.T) {
 	local.Close()
 	snapshot = inspector.Snapshot()
 	require.Equal(t, Histogram{One: 3}, snapshot.ResultCardinality())
-	require.Equal(t, uint64(1), snapshot.CacheHit())
-	require.Equal(t, uint64(2), snapshot.CacheMiss())
+	require.Equal(t, uint64(2), snapshot.CacheHit())
+	require.Equal(t, uint64(1), snapshot.CacheMiss())
 	require.Equal(t, uint64(1), snapshot.CacheAdmission())
 	require.Zero(t, snapshot.CacheEviction())
 
@@ -278,7 +278,7 @@ func TestInspectSamplesTelemetryWithoutInstrumentingOrdinarySearches(t *testing.
 	require.Equal(t, Histogram{One: 1}, inspector.Snapshot().ResultCardinality())
 }
 
-func TestInspectReportsCumulativeAdaptiveCacheExpansions(t *testing.T) {
+func TestInspectKeepsRetiredCacheExpansionCounterAtZero(t *testing.T) {
 	type interval struct{ from, until int }
 	var inspector Inspector
 	index, err := New[interval, int](Inspect(&inspector, Between(
@@ -313,15 +313,15 @@ func TestInspectReportsCumulativeAdaptiveCacheExpansions(t *testing.T) {
 	require.Zero(t, snapshot.CacheExpansion(), "open Local metrics remain buffered")
 	first.Close()
 	snapshot = inspector.Snapshot()
-	require.Equal(t, uint64(1), snapshot.CacheExpansion(), "counter remains monotonic")
+	require.Zero(t, snapshot.CacheExpansion(), "unbounded caches do not expand between fixed capacities")
 
 	index.localTelemetry.Store(63)
 	second := index.Local()
 	warm(second)
 	snapshot = inspector.Snapshot()
-	require.Equal(t, uint64(1), snapshot.CacheExpansion(), "open Local metrics remain buffered")
+	require.Zero(t, snapshot.CacheExpansion(), "open Local metrics remain buffered")
 	second.Close()
-	require.Equal(t, uint64(2), inspector.Snapshot().CacheExpansion(), "expansions aggregate across Local lifetimes")
+	require.Zero(t, inspector.Snapshot().CacheExpansion(), "the compatibility counter remains retired")
 }
 
 func TestInspectRejectsOneInspectorOnMultipleRules(t *testing.T) {

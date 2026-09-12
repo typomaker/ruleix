@@ -152,6 +152,7 @@ func (p *bitmapPool) resetLocal() {
 	p.flushInspectorMetrics()
 	for _, plan := range p.allPlans {
 		plan.resetResults(p)
+		plan.valid = false
 	}
 	p.allPlans = nil
 	p.cacheEpoch++
@@ -160,7 +161,11 @@ func (p *bitmapPool) resetLocal() {
 	}
 }
 
-func (p *bitmapPool) invalidateResultCache() { p.cacheEpoch++ }
+func (p *bitmapPool) invalidateResultCache() {
+	for _, plan := range p.allPlans {
+		plan.valid = false
+	}
+}
 func (p *bitmapPool) get() *roaring.Bitmap {
 	bm := p.pool.Get().(*roaring.Bitmap)
 	bm.Clear()

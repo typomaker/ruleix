@@ -8,16 +8,10 @@ type strictEqualityAntonymCacheEntry struct {
 	initialized bool
 }
 
-type strictEqualityAntonymSeen struct {
-	keys        []any
-	initialized bool
-}
-
 type strictEqualityAntonymCache[T any] struct {
 	entries   [2]strictEqualityAntonymCacheEntry
-	seen      [2]strictEqualityAntonymSeen
-	next      uint8
-	seenNext  uint8
+	count     uint8
+	overflow  []*strictEqualityAntonymCacheEntry
 	observers *cacheObservers
 }
 
@@ -36,46 +30,35 @@ func (c *strictEqualityAntonymCache[T]) lookup(
 func (c *strictEqualityAntonymCache[T]) peek(
 	rule *strictEqualityAntonymRule[T], value T,
 ) (*roaring.Bitmap, bool) {
-	for index := range c.entries {
+	for index := range len(c.entries) {
 		entry := &c.entries[index]
 		if entry.initialized && rule.queryKeysMatch(value, entry.keys) {
-			c.next = uint8(1 - index)
+			return entry.bits, true
+		}
+	}
+	for _, entry := range c.overflow {
+		if rule.queryKeysMatch(value, entry.keys) {
 			return entry.bits, true
 		}
 	}
 	return nil, false
 }
 
-func (c *strictEqualityAntonymCache[T]) admit(rule *strictEqualityAntonymRule[T], value T) bool {
-	for index := range c.seen {
-		entry := &c.seen[index]
-		if entry.initialized && rule.queryKeysMatch(value, entry.keys) {
-			*entry = strictEqualityAntonymSeen{}
-			c.observers.admission()
-			return true
-		}
-	}
-	keys, _ := rule.captureQueryKeys(value, c.seen[c.seenNext].keys)
-	c.seen[c.seenNext] = strictEqualityAntonymSeen{keys: keys, initialized: true}
-	c.seenNext = 1 - c.seenNext
-	return false
-}
-
 func (c *strictEqualityAntonymCache[T]) replace(
 	rule *strictEqualityAntonymRule[T], value T, pool *bitmapPool,
 ) *roaring.Bitmap {
 	pool.invalidateResultCache()
-	entry := &c.entries[c.next]
-	c.next = 1 - c.next
-	if entry.initialized {
-		c.observers.eviction()
-	}
-	if entry.bits == nil {
+	keys, _ := rule.captureQueryKeys(value, nil)
+	var entry *strictEqualityAntonymCacheEntry
+	if int(c.count) < len(c.entries) {
+		entry = &c.entries[c.count]
+		c.count++
 		entry.bits = pool.get()
 	} else {
-		entry.bits.Clear()
+		entry = &strictEqualityAntonymCacheEntry{bits: pool.get()}
+		c.overflow = append(c.overflow, entry)
 	}
-	keys, _ := rule.captureQueryKeys(value, entry.keys)
+	c.observers.admission()
 	*entry = strictEqualityAntonymCacheEntry{
 		keys: keys, bits: entry.bits, initialized: true,
 	}
@@ -111,12 +94,17 @@ func (r *strictEqualityAntonymRule[T]) captureQueryKeys(value T, reuse []any) ([
 }
 
 func (c *strictEqualityAntonymCache[T]) reset(pool *bitmapPool) {
-	for index := range c.entries {
+	for index := range int(c.count) {
 		entry := &c.entries[index]
 		if entry.bits != nil {
 			pool.put(entry.bits)
 		}
 	}
+	for _, entry := range c.overflow {
+		pool.put(entry.bits)
+	}
 	observers := c.observers
 	*c = strictEqualityAntonymCache[T]{observers: observers}
 }
+
+func (c *strictEqualityAntonymCache[T]) entryCount() int { return int(c.count) + len(c.overflow) }

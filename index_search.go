@@ -14,12 +14,11 @@ func (ix *Index[C, ID]) Search(value C, dst *[]ID) bool {
 	return ix.search(value, dst, ix.pool)
 }
 
-// Local returns a search context that initially caches up to two recently
-// repeated intermediate bitmap results per filter node and can adapt to four
-// for a repeatedly reused working set. A value is admitted after its second
-// recent use, so one-off queries do not retain their result bitmaps. It
-// can reduce repeated work when adjacent searches share constraint values, at
-// the cost of retaining admitted bitmaps for the lifetime of the Local.
+// Local returns a search context that caches every materialized intermediate
+// bitmap result for its lifetime. It can eliminate repeated work across an
+// arbitrarily large query working set at the cost of retaining every distinct
+// cached query value and result until Close. Use Index.Search for one-off
+// queries that should not retain per-query state.
 //
 // A Local is not safe for concurrent use. Create one per goroutine:
 //
@@ -67,8 +66,8 @@ func (local *Local[C, ID]) Search(value C, dst *[]ID) bool {
 
 // Close releases cached search results and returns the internal context to the
 // originating Index for reuse. Empty per-node cache structures and learned All
-// child orders remain with that recyclable context, while all admission and
-// replacement state is reset so its next Local lifetime starts cold. A closed
+// child orders remain with that recyclable context, while all query and result
+// state is reset so its next Local lifetime starts cold. A closed
 // Local must not be used again. Repeated calls to Close are safe.
 func (local *Local[C, ID]) Close() {
 	if local == nil || local.closed || local.index == nil {

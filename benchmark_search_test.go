@@ -198,7 +198,7 @@ func BenchmarkLocalOrderedReuse(b *testing.B) {
 		{"Cycle3", func(n int) int { return benchmarkEntries/2 + n%3 }},
 		{"Cycle4", func(n int) int { return benchmarkEntries/2 + n%4 }},
 		{"HotWithInterlopers", func(n int) int { return benchmarkEntries/2 + [...]int{0, 1, 0, 2}[n&3] }},
-		{"Churn", func(n int) int { return n % benchmarkEntries }},
+		{"WorkingSet1024", func(n int) int { return n % 1_024 }},
 	}
 	for _, mode := range modes {
 		for _, local := range []bool{false, true} {
@@ -235,7 +235,7 @@ func BenchmarkLocalCompareByReuse(b *testing.B) {
 		{"Repeat", func(int) int { return benchmarkEntries / 2 }},
 		{"Alternate", func(n int) int { return benchmarkEntries/2 + (n & 1) }},
 		{"HotWithInterlopers", func(n int) int { return benchmarkEntries/2 + [...]int{0, 1, 0, 2}[n&3] }},
-		{"Churn", func(n int) int { return n % benchmarkEntries }},
+		{"WorkingSet1024", func(n int) int { return n % 1_024 }},
 	}
 	for _, mode := range modes {
 		for _, local := range []bool{false, true} {
@@ -334,7 +334,7 @@ func BenchmarkLocalBetweenReuse(b *testing.B) {
 		{"Cycle3", func(n int) (int, int) { return 5_000, 7_000 + n%3 }},
 		{"Cycle4", func(n int) (int, int) { return 5_000, 7_000 + n%4 }},
 		{"HotWithInterlopers", func(n int) (int, int) { return 5_000, 7_000 + [...]int{0, 1, 0, 2}[n&3] }},
-		{"Churn", func(n int) (int, int) { return n % 5_000, 7_000 }},
+		{"WorkingSet1024", func(n int) (int, int) { return n % 1_024, 7_000 }},
 	}
 	for _, mode := range modes {
 		for _, local := range []bool{false, true} {
@@ -375,7 +375,7 @@ func BenchmarkLocalExcludeReuse(b *testing.B) {
 		{"Repeat", func(int) int { return 0 }},
 		{"Alternate", func(n int) int { return n & 1 }},
 		{"HotWithInterlopers", func(n int) int { return [...]int{0, 1, 0, 2}[n&3] }},
-		{"Churn", func(n int) int { return n }},
+		{"WorkingSet1024", func(n int) int { return n % 1_024 }},
 	}
 	for _, mode := range modes {
 		for _, local := range []bool{false, true} {

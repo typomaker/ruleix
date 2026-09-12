@@ -399,12 +399,13 @@ func (r *allRule[T]) searchRanked(
 	if len(rankedChildren) == 0 {
 		return
 	}
-	if r.duplicateEquality != nil {
+	useEqualityDedup := pool.local == nil || rankedChildren[0].bits == nil
+	if r.duplicateEquality != nil && useEqualityDedup {
 		if r.executionCounters != nil {
 			r.executionCounters.linearEqualityDedupRuns++
 		}
 		rankedChildren = r.deduplicateEqualityResults(v, rankedChildren)
-	} else if r.equalityClassCount != 0 {
+	} else if r.equalityClassCount != 0 && useEqualityDedup {
 		rankedChildren = r.deduplicateEqualityClasses(v, rankedChildren, checkedClasses)
 	}
 	// Local plans prioritize reuse and must keep their zero-allocation hot path.

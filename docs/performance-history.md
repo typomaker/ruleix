@@ -26,6 +26,20 @@ link to this document.
 
 ## Release measurements
 
+### Immediate unbounded Local cache checkpoint
+
+On 2026-09-12, baseline `d0e6daa` and the candidate working tree were measured
+on Apple M1 Max, macOS/arm64, Go 1.26, with `-benchmem`, 300-500 ms runs, and
+three to five samples. Production exact-result hits stayed at zero allocations:
+the baseline medians were 188.6 and 190.5 ns/op for its first and second slots,
+while the candidate's unbounded reverse-recency lookup measured about 190-192
+ns/op for both queries. Repeated `Between` Local measured about 58 ns/op on
+both revisions, and the four-value cycle remained about 70 ns/op. The new
+1,024-value `Between` working set measured about 1.22 us/op versus 2.53 us/op
+for `Index.Search`; comparable equality and exclusion caches use hash lookup
+instead of a linear overflow scan. All reported warm cache paths retained their
+existing allocation classes.
+
 ### `v0.8.3` to `v0.8.4`
 
 Measured 2026-09-08 on Apple M1 Max, macOS arm64, Go 1.26.0,

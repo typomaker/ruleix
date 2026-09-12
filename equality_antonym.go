@@ -191,10 +191,6 @@ func (r *strictEqualityAntonymRule[T]) search(value T, dst *roaring.Bitmap, pool
 		dst.Or(bits)
 		return
 	}
-	if !cache.admit(r, value) {
-		r.addMatches(value, dst, pool)
-		return
-	}
 	bits := cache.replace(r, value, pool)
 	r.addMatches(value, bits, pool)
 	dst.Or(bits)

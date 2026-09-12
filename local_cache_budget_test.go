@@ -102,7 +102,7 @@ func TestLocalAllResultCacheValidatesOrdinaryPreparedKeys(t *testing.T) {
 	provider := &eqRule[int, int, int]{get: func(value int) (int, bool) { return value, true }}
 	rule := &allRule[int]{children: []Rule[int]{provider}}
 	pool := newLocalBitmapPool(1)
-	plan := &localAllPlan{}
+	plan := &localAllPlan{results: make([]localAllResult, 1)}
 	pool.allPlans = map[any]*localAllPlan{rule: plan}
 
 	require.Nil(t, rule.loadLocalQueryResult(pool, 7), "an unprepared execution cannot own a cached result")
@@ -125,7 +125,7 @@ func TestLocalAllResultCacheValidatesOrdinaryPreparedKeys(t *testing.T) {
 func TestLocalAllResultCacheValidatesGroupedKeys(t *testing.T) {
 	provider := &eqRule[int, int, int]{get: func(value int) (int, bool) { return value, true }}
 	rule := &allRule[int]{queryKeyProviders: []localQueryKeyProvider[int]{provider}}
-	plan := &localAllPlan{}
+	plan := &localAllPlan{results: make([]localAllResult, 4)}
 	plan.results[0] = localAllResult{epoch: 2}
 	plan.results[1] = localAllResult{bits: roaring.BitmapOf(1), epoch: 1}
 	plan.results[2] = localAllResult{bits: roaring.BitmapOf(2), epoch: 2}
@@ -158,8 +158,7 @@ func TestLocalAllResultCacheRetainsWideCompactResults(t *testing.T) {
 	require.Equal(t, large.GetCardinality(), uint64(len(plan.results[0].ids)))
 	require.Equal(t, uint32(0), plan.results[0].ids[0])
 	plan.resetResults(pool)
-	require.Nil(t, plan.results[0].bits)
-	require.Nil(t, plan.results[0].ids)
+	require.Nil(t, plan.results)
 }
 
 func TestLocalAllResultCacheKeepsEveryResultOnCompactPath(t *testing.T) {

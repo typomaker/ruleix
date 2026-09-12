@@ -241,13 +241,15 @@ func TestStrictEqualityAntonymRuntimeContract(t *testing.T) {
 
 	pool := newBitmapPool()
 	pool.local = make([]localNodeCache, int(pair.nodeID)+1)
-	for range 4 {
-		bits := roaring.New()
-		pair.search(query, bits, pool)
-		require.Equal(t, []uint32{0, 2, 3}, bits.ToArray())
-	}
+	bits := roaring.New()
+	pair.search(query, bits, pool)
+	require.Equal(t, []uint32{0, 2, 3}, bits.ToArray())
 	_, found := pair.lookupCachedBitmap(query, pool)
 	require.True(t, found)
+	for value := 11; value < 139; value++ {
+		pair.search(strictAntonymConstraint{id: antonymPointer(value), name: antonymPointer("foo")}, roaring.New(), pool)
+	}
+	require.Equal(t, 129, pair.cache(pool).entryCount())
 	keys, retained := pair.captureQueryKeys(query, nil)
 	require.NotZero(t, retained)
 	require.True(t, pair.queryKeysMatch(query, keys))

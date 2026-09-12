@@ -180,11 +180,13 @@ It discards bitmaps above 64 KiB so a rare wide `Index.Search` cannot raise the
 controlled-memory path's retained floor. Published postings remain immutable.
 
 `Index.Local()` is the explicitly memory-for-speed path for one sequential
-consumer. Each filter admits a repeated value into two bitmap slots and may
-adapt to four under reuse pressure. `All` nodes retain four exact results and
-their schema-bounded child-order plan. These fixed entry counts, rather than
-aggregate byte caps, bound cache multiplicity; retained bytes scale with index
-cardinality, schema size, and the number of simultaneously live Locals.
+consumer. Every cacheable filter miss is admitted immediately, and every
+distinct bitmap remains available without a slot limit until `Local.Close`.
+`All` nodes likewise retain every valid exact result alongside their
+schema-bounded child-order plan. Retained bytes therefore scale with index
+cardinality, schema size, distinct queries, and the number of simultaneously
+live Locals. Callers that issue one-off queries or require controlled retained
+memory use `Index.Search`.
 
 Every admitted `All` result keeps compact internal IDs, including wide results,
 so an exact query-key hit can append output without ranking, bitmap copying, or
@@ -196,7 +198,7 @@ use separate lookup loops. Once an `All` result plan exists, ordinary validation
 reads the immutable prepared execution slots directly instead of rechecking their
 availability for every child of every cache slot.
 
-`Local.Close` clears query identity, admission, replacement, and result state,
+`Local.Close` clears query identity and result state,
 returns reusable storage to the owning Index, and publishes sampled telemetry.
 Using a closed `Local` is an error. Memory-constrained callers use `Index.Search`.
 

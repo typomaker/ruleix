@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestValueBitmapCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
+func TestValueBitmapCacheRetainsEveryEntry(t *testing.T) {
 	cache := &valueBitmapCache[int]{}
 	a, b, c := 1, 2, 3
 	pool := newBitmapPool()
@@ -23,8 +23,9 @@ func TestValueBitmapCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 
 	cache.replace(optionalValue[int]{value: c, ok: true}, pool).Add(3)
 
-	_, found = comparableValueCacheLookup(cache, optionalValue[int]{value: b, ok: true})
-	require.False(t, found)
+	bits, found = comparableValueCacheLookup(cache, optionalValue[int]{value: b, ok: true})
+	require.True(t, found)
+	require.True(t, bits.Contains(2))
 	bits, found = comparableValueCacheLookup(cache, optionalValue[int]{value: a, ok: true})
 	require.True(t, found)
 	require.True(t, bits.Contains(1))
@@ -44,9 +45,10 @@ func TestValueBitmapCacheClearsValueForNilEntry(t *testing.T) {
 	cache.replace(optionalValue[*value]{value: second, ok: true}, pool)
 	cache.replace(optionalValue[*value]{}, pool)
 
-	require.True(t, cache.entries[0].initialized)
-	require.False(t, cache.entries[0].hasValue)
-	require.Nil(t, cache.entries[0].value)
+	entry := cache.entry(cache.entryCount() - 1)
+	require.True(t, entry.initialized)
+	require.False(t, entry.hasValue)
+	require.Nil(t, entry.value)
 }
 
 func TestLocalCloseResetsNodeCachesAndReturnsInternalContext(t *testing.T) {
@@ -92,6 +94,7 @@ func TestResetLocalReturnsCachedBitmapsToScratchPool(t *testing.T) {
 	betweenBits := pool.get()
 	betweenBits.AddRange(100, 200)
 	betweenCache.entries[0] = betweenCacheEntry[int]{initialized: true, bits: betweenBits}
+	betweenCache.count = 1
 	pool.local[0].ordered = valueCache
 	pool.local[1].between = betweenCache
 	pool.allPlans = map[any]*localAllPlan{"all": {order: []int{1, 0}}}
@@ -100,12 +103,10 @@ func TestResetLocalReturnsCachedBitmapsToScratchPool(t *testing.T) {
 
 	require.True(t, valueBits.IsEmpty())
 	require.True(t, betweenBits.IsEmpty())
-	require.Nil(t, valueCache.entries[0].bits)
-	require.Nil(t, betweenCache.entries[0].bits)
+	require.Zero(t, valueCache.entryCount())
+	require.Zero(t, betweenCache.entryCount())
 	require.Same(t, valueCache, pool.local[0].ordered)
 	require.Same(t, betweenCache, pool.local[1].between)
-	require.Equal(t, 2, valueCache.capacity())
-	require.Equal(t, 2, betweenCache.capacity())
 	require.Nil(t, pool.allPlans)
 }
 
@@ -233,7 +234,7 @@ func BenchmarkLocalLifecycleReuse(b *testing.B) {
 	})
 }
 
-func TestBetweenCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
+func TestBetweenCacheRetainsEveryEntry(t *testing.T) {
 	type interval struct{ from, until *int }
 	pointer := func(value int) *int { return &value }
 	schema := Between(GetterFromPointer(func(value interval) *int { return value.from }), GetterFromPointer(func(value interval) *int { return value.until }), cmp.Compare[int])
@@ -258,11 +259,12 @@ func TestBetweenCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
 
 	rule := index.root.(*betweenRule[interval, int])
 	cache := local.pool.local[rule.nodeID].between.(*betweenCache[int])
-	cachedBounds := make(map[[2]int]bool, len(cache.entries))
-	for _, entry := range cache.entries {
+	cachedBounds := make(map[[2]int]bool, cache.entryCount())
+	for i := 0; i < cache.entryCount(); i++ {
+		entry := cache.entry(i)
 		cachedBounds[[2]int{entry.from, entry.until}] = true
 	}
-	require.Equal(t, map[[2]int]bool{{10, 20}: true, {12, 22}: true}, cachedBounds)
+	require.Equal(t, map[[2]int]bool{{10, 20}: true, {11, 21}: true, {12, 22}: true}, cachedBounds)
 }
 
 func TestBetweenCacheClearsMissingBounds(t *testing.T) {
@@ -291,14 +293,15 @@ func TestBetweenCacheClearsMissingBounds(t *testing.T) {
 
 	rule := index.root.(*betweenRule[interval, *bound])
 	cache := local.pool.local[rule.nodeID].between.(*betweenCache[*bound])
-	require.True(t, cache.entries[0].initialized)
-	require.False(t, cache.entries[0].hasFrom)
-	require.False(t, cache.entries[0].hasUntil)
-	require.Nil(t, cache.entries[0].from)
-	require.Nil(t, cache.entries[0].until)
+	entry := cache.entry(cache.entryCount() - 1)
+	require.True(t, entry.initialized)
+	require.False(t, entry.hasFrom)
+	require.False(t, entry.hasUntil)
+	require.Nil(t, entry.from)
+	require.Nil(t, entry.until)
 }
 
-func TestBetweenCacheGrowsForRepeatedWorkingSet(t *testing.T) {
+func TestBetweenCacheRetainsUnboundedWorkingSet(t *testing.T) {
 	type interval struct{ from, until *int }
 	pointer := func(value int) *int { return &value }
 	schema := Between(
@@ -312,28 +315,23 @@ func TestBetweenCacheGrowsForRepeatedWorkingSet(t *testing.T) {
 	))
 	require.NoError(t, err)
 	local := index.Local()
-	queries := [...]interval{
-		{from: pointer(10), until: pointer(20)},
-		{from: pointer(11), until: pointer(21)},
-		{from: pointer(12), until: pointer(22)},
-		{from: pointer(13), until: pointer(23)},
+	queries := make([]interval, 128)
+	for value := range queries {
+		queries[value] = interval{from: pointer(value), until: pointer(value + 20)}
 	}
 
 	var matches []int
-	for range 6 {
-		for _, query := range queries {
-			matches = matches[:0]
-			local.Search(query, &matches)
-			require.Equal(t, []int{1}, matches)
-		}
+	for _, query := range queries {
+		matches = matches[:0]
+		local.Search(query, &matches)
 	}
 
 	rule := index.root.(*betweenRule[interval, int])
 	cache := local.pool.local[rule.nodeID].between.(*betweenCache[int])
-	require.Equal(t, 4, cache.capacity())
+	require.Equal(t, len(queries), cache.entryCount())
 	for _, query := range queries {
 		found := false
-		for i := 0; i < cache.capacity(); i++ {
+		for i := 0; i < cache.entryCount(); i++ {
 			entry := cache.entry(i)
 			found = found || entry.initialized && entry.from == *query.from && entry.until == *query.until
 		}
@@ -341,73 +339,26 @@ func TestBetweenCacheGrowsForRepeatedWorkingSet(t *testing.T) {
 	}
 }
 
-func TestBetweenCacheDoesNotRetainChurnBitmaps(t *testing.T) {
-	cache := &betweenCache[int]{}
-	for value := 0; value < 100; value++ {
-		from := optionalValue[int]{value: value, ok: true}
-		until := optionalValue[int]{value: value + 10, ok: true}
-		require.False(t, cache.admit(from, until, cmp.Compare[int]))
-	}
-
-	require.Nil(t, cache.overflow)
-	for _, entry := range cache.entries {
-		require.False(t, entry.initialized)
-		require.Nil(t, entry.bits)
-	}
-}
-
-func TestValueBitmapCacheAdmitsOnlyRepeatedValues(t *testing.T) {
-	cache := &valueBitmapCache[int]{}
-	one := optionalValue[int]{value: 1, ok: true}
-	two := optionalValue[int]{value: 2, ok: true}
-
-	require.False(t, comparableValueCacheAdmit(cache, one))
-	require.False(t, comparableValueCacheAdmit(cache, two))
-	require.True(t, comparableValueCacheAdmit(cache, one))
-	require.False(t, comparableValueCacheAdmit(cache, one))
-}
-
-func TestValueBitmapCacheGrowsForRepeatedWorkingSet(t *testing.T) {
+func TestValueBitmapCacheRetainsUnboundedWorkingSet(t *testing.T) {
 	cache := &valueBitmapCache[int]{}
 	pool := newBitmapPool()
-	values := [...]optionalValue[int]{
-		{value: 1, ok: true}, {value: 2, ok: true},
-		{value: 3, ok: true}, {value: 4, ok: true},
+	values := make([]optionalValue[int], 128)
+	for value := range values {
+		values[value] = optionalValue[int]{value: value, ok: true}
 	}
 
-	for range 6 {
-		for _, value := range values {
-			if _, found := comparableValueCacheLookup(cache, value); found {
-				continue
-			}
-			if comparableValueCacheAdmit(cache, value) {
-				cache.replace(value, pool)
-			}
-		}
+	for _, value := range values {
+		cache.replace(value, pool)
 	}
 
-	require.NotNil(t, cache.overflow)
+	require.Equal(t, len(values), cache.entryCount())
 	for _, value := range values {
 		_, found := comparableValueCacheLookup(cache, value)
 		require.True(t, found)
 	}
 }
 
-func TestValueBitmapCacheDoesNotRetainChurnBitmaps(t *testing.T) {
-	cache := &valueBitmapCache[int]{}
-	for value := 0; value < 100; value++ {
-		admitted := comparableValueCacheAdmit(cache, optionalValue[int]{value: value, ok: true})
-		require.False(t, admitted)
-	}
-
-	require.Nil(t, cache.overflow)
-	for _, entry := range cache.entries {
-		require.False(t, entry.initialized)
-		require.Nil(t, entry.bits)
-	}
-}
-
-func TestLocalAdmitsEqualityBitmapAfterSecondUse(t *testing.T) {
+func TestLocalCachesEqualityBitmapAfterFirstUse(t *testing.T) {
 	type constraint struct{ value int }
 	index, err := New[constraint, int](Include(func(value constraint) (int, bool) {
 		return value.value, true
@@ -419,17 +370,11 @@ func TestLocalAdmitsEqualityBitmapAfterSecondUse(t *testing.T) {
 	var matches []int
 	local.Search(query, &matches)
 	cache := local.pool.local[0].equality.(*valueBitmapCache[int])
-	require.NotNil(t, cache.seen)
-	require.False(t, cache.entries[0].initialized)
-
-	matches = matches[:0]
-	local.Search(query, &matches)
-	require.Nil(t, cache.seen)
 	require.True(t, cache.entries[0].initialized)
 	require.Equal(t, []int{1}, matches)
 }
 
-func TestLocalAllResultCacheInvalidatesWhenChildCacheChanges(t *testing.T) {
+func TestLocalAllResultCacheRetainsUnboundedQueries(t *testing.T) {
 	type constraint struct{ group, score int }
 	constraints := make([]constraint, 60)
 	ids := make([]int, len(constraints))
@@ -456,8 +401,7 @@ func TestLocalAllResultCacheInvalidatesWhenChildCacheChanges(t *testing.T) {
 			}
 		}
 	}
-	require.Positive(t, local.pool.cacheEpoch)
 	plan := local.pool.allPlans[index.root]
 	require.NotNil(t, plan)
-	require.True(t, plan.results[0].bits != nil || plan.results[1].bits != nil)
+	require.Len(t, plan.results, 5)
 }
