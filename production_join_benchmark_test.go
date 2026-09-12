@@ -71,6 +71,8 @@ func TestProductionJoinQueriesFollowSingleDimensionSteps(t *testing.T) {
 // BenchmarkProductionJoinLocal models one joined Cartesian batch of 100
 // queries. Adjacent queries change one of four dimensions while reusing the
 // other three. Run with GOMAXPROCS=1 and compare identical copies of this file.
+// Apple M1 Max, Go 1.26, 300ms x5 medians: Index 1,770,979 ns/batch;
+// cold Local 1,198,984 ns/batch; warm Local 237,107 ns/batch and 0 allocs/op.
 func BenchmarkProductionJoinLocal(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](
@@ -122,6 +124,7 @@ func BenchmarkProductionJoinLocal(b *testing.B) {
 
 // BenchmarkProductionJoinLocalRetainedMemory reports the live heap retained by
 // one Local after its complete 100-query Cartesian batch has been cached.
+// Apple M1 Max, Go 1.26, 20x x3 median: 241,258 retained-B/Local.
 func BenchmarkProductionJoinLocalRetainedMemory(b *testing.B) {
 	constraints, ids := productionBenchmarkData()
 	index, err := ruleix.New[productionBenchmarkConstraint, productionBenchmarkID](

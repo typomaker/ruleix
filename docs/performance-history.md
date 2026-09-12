@@ -40,6 +40,30 @@ for `Index.Search`; comparable equality and exclusion caches use hash lookup
 instead of a linear overflow scan. All reported warm cache paths retained their
 existing allocation classes.
 
+The joined-query checkpoint uses the identical
+`BenchmarkProductionJoinLocal` harness on `v0.8.4` (`b7d0ef9`), the pre-change
+main baseline `d0e6daa`, and candidate `2eb4fec`. Each Local processes a
+reflected `5 x 5 x 2 x 2` Cartesian product: 100 queries where adjacent values
+change exactly one of activity day, platform version, slot type, or DBS flag.
+Runs were interleaved with `GOMAXPROCS=1`, `-benchmem`, `-benchtime=300ms`, and
+five samples on Apple M1 Max with Go 1.26.
+
+| Revision | Index batch, ns | Cold Local batch, ns | Warm Local batch, ns | Warm allocs/op |
+| --- | ---: | ---: | ---: | ---: |
+| `v0.8.4` (`b7d0ef9`) | 1,788,243 | 1,298,559 | 1,186,206 | 1,400 |
+| Baseline (`d0e6daa`) | 1,729,227 | 1,271,996 | 1,155,796 | 1,400 |
+| Candidate (`2eb4fec`) | 1,770,979 | 1,198,984 | 237,107 | 0 |
+
+The candidate warm batch is 4.87x faster than the immediate baseline and
+5.00x faster than the latest release. Cold Local improved 5.7% and 7.7%
+respectively. Candidate cold filling retained every query immediately, changing
+the measured cold allocation shape from about 934 KiB and 1,401 allocations to
+628 KiB and 2,141 allocations per batch; the extra small allocations become
+retained cache state rather than repeated warm work. A separate interleaved
+`20x`, three-sample retained-memory run measured 241,258 B/Local for the
+candidate versus 150,634 B/Local for both controls, a deliberate 60.2% increase
+for the larger retained working set.
+
 ### `v0.8.3` to `v0.8.4`
 
 Measured 2026-09-08 on Apple M1 Max, macOS arm64, Go 1.26.0,
