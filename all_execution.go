@@ -254,7 +254,7 @@ func (r *allRule[T]) filterCandidates(index int, value T, dst *roaring.Bitmap, p
 	if pool.local != nil {
 		return false
 	}
-	filter := r.executionCapability(index).filter
+	filter := r.childExecution(index).filter
 	if filter == nil {
 		return false
 	}
@@ -263,7 +263,7 @@ func (r *allRule[T]) filterCandidates(index int, value T, dst *roaring.Bitmap, p
 }
 
 func (r *allRule[T]) matchesChildID(index int, value T, id uint32, pool *bitmapPool) bool {
-	matcher := r.executionCapability(index).directID
+	matcher := r.childExecution(index).directID
 	if matcher == nil {
 		return false
 	}

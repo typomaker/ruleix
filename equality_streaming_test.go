@@ -37,7 +37,7 @@ func buildExactStreamingEquality(order []int) *eqRule[streamingEqualityFixture, 
 
 func TestEqualityModeBelongsToBuildPolicy(t *testing.T) {
 	rule := buildExactStreamingEquality([]int{0, 1, 2})
-	_, ruleSelectsMode := any(rule).(inspectionModer)
+	_, ruleSelectsMode := any(rule).(inspectionModeProvider)
 	require.False(t, ruleSelectsMode)
 
 	adaptive := &streamingAdaptiveLeaf[streamingEqualityFixture]{child: rule}

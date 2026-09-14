@@ -30,7 +30,7 @@ func All[T any](rules ...Rule[T]) Rule[T] { return &allRule[T]{children: rules} 
 
 type allRule[T any] struct {
 	children                []Rule[T]
-	execution               []executionCapability[T]
+	execution               []allChildExecution[T]
 	queryKeyProviders       []localQueryKeyProvider[T]
 	planningProviders       []planningBitmapProvider[T]
 	directIDComplete        bool
@@ -127,9 +127,9 @@ func (r *allRule[T]) prepareSearch() {
 	}
 	for i, child := range r.children {
 		if r.execution == nil {
-			r.execution = make([]executionCapability[T], len(r.children))
+			r.execution = make([]allChildExecution[T], len(r.children))
 		}
-		r.execution[i] = describeExecutionCapability(child)
+		r.execution[i] = describeAllChildExecution(child)
 		if r.execution[i].posting != nil {
 			if r.planningProviders == nil {
 				r.planningProviders = make([]planningBitmapProvider[T], len(r.children))
@@ -162,7 +162,7 @@ func (r *allRule[T]) prepareSearch() {
 }
 
 func (r *allRule[T]) supportsDirectIDMatch(index int) bool {
-	return r.executionCapability(index).directID != nil
+	return r.childExecution(index).directID != nil
 }
 
 func (r *allRule[T]) prepareSharedWildcardGroups() {
@@ -340,7 +340,7 @@ func (r *allRule[T]) isCardinalityZero(v T) bool {
 }
 func (r *allRule[T]) matchesID(v T, id uint32) bool {
 	for i := range r.children {
-		matcher := r.executionCapability(i).directID
+		matcher := r.childExecution(i).directID
 		if matcher == nil || !matcher.matchesID(v, id) {
 			return false
 		}

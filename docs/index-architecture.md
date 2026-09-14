@@ -141,10 +141,9 @@ map-backed представление: строковый miss уже не да�
 
 ### `All`
 
-`All` не имеет одного фиксированного физического алгоритма. При подготовке
-узел описывает возможности детей: дешёвая оценка кардинальности, готовый
-posting, фильтрация существующих кандидатов и прямая проверка одного ID.
-Исполнитель выбирает стратегию для каждого запроса.
+`All` selects its physical algorithm per query. Its planning invariants,
+compiled child operations, and execution choices are documented in
+[`query-execution.md`](query-execution.md).
 
 ## Выполнение запроса
 Обычный листовой запрос получает временный bitmap из `bitmapPool`, заполняет

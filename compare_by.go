@@ -43,6 +43,23 @@ type compareByRule[T any, V any] struct {
 type compareByBuildState struct{ quantized [5]bool }
 type orderedEqualityLookup[V any] func(*orderedIndex[V], V) *roaring.Bitmap
 
+type compareByOperatorMetadata struct {
+	storageDirection   direction
+	canonicalDirection direction
+	inclusive          bool
+}
+
+// EQ keeps the historical lower-bound storage direction used by ordered
+// rebuilding, while its canonical operation identifies the query-side
+// equality bound as greaterThan. Range operators share both directions.
+var compareByOperatorTable = [...]compareByOperatorMetadata{
+	OperatorEQ:  {storageDirection: lessThan, canonicalDirection: greaterThan, inclusive: true},
+	OperatorLT:  {storageDirection: lessThan, canonicalDirection: lessThan},
+	OperatorLTE: {storageDirection: lessThan, canonicalDirection: lessThan, inclusive: true},
+	OperatorGT:  {storageDirection: greaterThan, canonicalDirection: greaterThan},
+	OperatorGTE: {storageDirection: greaterThan, canonicalDirection: greaterThan, inclusive: true},
+}
+
 func exactOrderedEquality[V any](index *orderedIndex[V], value V) *roaring.Bitmap {
 	return index.exact(value)
 }
@@ -69,10 +86,7 @@ func (r *compareByRule[T, V]) refreshedStreamingDetails(details inspectionDetail
 }
 
 func compareByDirection(operator Operator) direction {
-	if operator == OperatorGT || operator == OperatorGTE {
-		return greaterThan
-	}
-	return lessThan
+	return compareByOperatorTable[operator].storageDirection
 }
 
 func (*compareByRule[T, V]) rule() {}
@@ -82,14 +96,13 @@ func (r *compareByRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
 		schema:         r,
 		operationCount: uint8(len(r.indexes)),
 	}
-	directions := [...]direction{greaterThan, lessThan, lessThan, greaterThan, greaterThan}
-	inclusive := [...]bool{true, false, true, false, true}
 	for operator := range descriptor.operations {
+		metadata := compareByOperatorTable[operator]
 		descriptor.operations[operator] = canonicalOperationID{
 			representation: canonicalCompareBy,
 			owner:          r, queryBound: r, role: canonicalStoredOperator,
 			operator:  Operator(operator),
-			direction: directions[operator], inclusive: inclusive[operator],
+			direction: metadata.canonicalDirection, inclusive: metadata.inclusive,
 			wildcard: canonicalMissingStoredMatches, comparator: canonicalOpaqueComparator,
 		}
 	}
@@ -161,19 +174,11 @@ func (r *compareByRule[T, V]) each(v T, visit func(*roaring.Bitmap)) {
 			visit(bits)
 		}
 	}
-	// query < stored / query <= stored
-	if index := r.indexes[OperatorLT]; index != nil {
-		index.walk(value, true, false, visit)
-	}
-	if index := r.indexes[OperatorLTE]; index != nil {
-		index.walk(value, true, true, visit)
-	}
-	// query > stored / query >= stored
-	if index := r.indexes[OperatorGT]; index != nil {
-		index.walk(value, false, false, visit)
-	}
-	if index := r.indexes[OperatorGTE]; index != nil {
-		index.walk(value, false, true, visit)
+	for operator := OperatorLT; operator <= OperatorGTE; operator++ {
+		if index := r.indexes[operator]; index != nil {
+			metadata := compareByOperatorTable[operator]
+			index.walk(value, metadata.canonicalDirection == lessThan, metadata.inclusive, visit)
+		}
 	}
 }
 func (r *compareByRule[T, V]) appendMatchingBitmaps(v T, dst []*roaring.Bitmap) []*roaring.Bitmap {
@@ -187,17 +192,13 @@ func (r *compareByRule[T, V]) appendMatchingBitmaps(v T, dst []*roaring.Bitmap) 
 			dst = append(dst, bits)
 		}
 	}
-	if index := r.indexes[OperatorLT]; index != nil {
-		index.walk(value, true, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
-	}
-	if index := r.indexes[OperatorLTE]; index != nil {
-		index.walk(value, true, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
-	}
-	if index := r.indexes[OperatorGT]; index != nil {
-		index.walk(value, false, false, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
-	}
-	if index := r.indexes[OperatorGTE]; index != nil {
-		index.walk(value, false, true, func(bits *roaring.Bitmap) { dst = append(dst, bits) })
+	for operator := OperatorLT; operator <= OperatorGTE; operator++ {
+		if index := r.indexes[operator]; index != nil {
+			metadata := compareByOperatorTable[operator]
+			index.walk(value, metadata.canonicalDirection == lessThan, metadata.inclusive, func(bits *roaring.Bitmap) {
+				dst = append(dst, bits)
+			})
+		}
 	}
 	return dst
 }
@@ -215,17 +216,13 @@ func (r *compareByRule[T, V]) estimateCardinality(v T) uint64 {
 			n += bits.GetCardinality()
 		}
 	}
-	if index := r.indexes[OperatorLT]; index != nil {
-		n += index.estimateCardinality(value, true, false)
-	}
-	if index := r.indexes[OperatorLTE]; index != nil {
-		n += index.estimateCardinality(value, true, true)
-	}
-	if index := r.indexes[OperatorGT]; index != nil {
-		n += index.estimateCardinality(value, false, false)
-	}
-	if index := r.indexes[OperatorGTE]; index != nil {
-		n += index.estimateCardinality(value, false, true)
+	for operator := OperatorLT; operator <= OperatorGTE; operator++ {
+		if index := r.indexes[operator]; index != nil {
+			metadata := compareByOperatorTable[operator]
+			n += index.estimateCardinality(
+				value, metadata.canonicalDirection == lessThan, metadata.inclusive,
+			)
+		}
 	}
 	return n
 }

@@ -38,6 +38,11 @@ type betweenLocalQueryKey[V any] struct {
 	hasFrom, hasUntil bool
 }
 
+type betweenSearchSide[T any, V any] struct {
+	rule  *orderedRule[T, V]
+	value optionalValue[V]
+}
+
 func (r *betweenRule[T, V]) runtimeNodeID() nodeID    { return r.nodeID }
 func (*betweenRule[T, V]) inspectionStrategy() string { return "between" }
 
@@ -100,58 +105,40 @@ func (r *betweenRule[T, V]) estimateCardinality(v T) uint64 {
 	return until
 }
 func (r *betweenRule[T, V]) estimateCachedCardinality(v T, pool *bitmapPool) (uint64, bool) {
-	if pool.local == nil {
-		return 0, false
-	}
-	cache, _ := pool.local[int(r.nodeID)].between.(*betweenCache[V])
-	if cache == nil {
-		return 0, false
-	}
 	from, until := getOptional(r.from.get, v), getOptional(r.until.get, v)
-	for i := range len(cache.entries) {
-		entry := &cache.entries[i]
-		if entry.initialized && entry.hasFrom == from.ok && entry.hasUntil == until.ok &&
-			(!from.ok || r.compare(entry.from, from.value) == 0) &&
-			(!until.ok || r.compare(entry.until, until.value) == 0) {
-			return entry.bits.GetCardinality(), true
-		}
+	_, entry := r.findCachedEntry(pool, from, until)
+	if entry == nil {
+		return 0, false
 	}
-	for _, entry := range cache.overflow {
-		if entry.hasFrom == from.ok && entry.hasUntil == until.ok &&
-			(!from.ok || r.compare(entry.from, from.value) == 0) &&
-			(!until.ok || r.compare(entry.until, until.value) == 0) {
-			return entry.bits.GetCardinality(), true
-		}
-	}
-	return 0, false
+	return entry.bits.GetCardinality(), true
 }
 func (r *betweenRule[T, V]) lookupCachedBitmap(v T, pool *bitmapPool) (*roaring.Bitmap, bool) {
-	if pool.local == nil {
+	from, until := getOptional(r.from.get, v), getOptional(r.until.get, v)
+	return r.lookupCachedBitmapFor(pool, from, until)
+}
+func (r *betweenRule[T, V]) lookupCachedBitmapFor(
+	pool *bitmapPool,
+	from, until optionalValue[V],
+) (*roaring.Bitmap, bool) {
+	cache, entry := r.findCachedEntry(pool, from, until)
+	if entry == nil {
 		return nil, false
+	}
+	cache.observers.hit()
+	return entry.bits, true
+}
+func (r *betweenRule[T, V]) findCachedEntry(
+	pool *bitmapPool,
+	from, until optionalValue[V],
+) (*betweenCache[V], *betweenCacheEntry[V]) {
+	if pool.local == nil {
+		return nil, nil
 	}
 	cache, _ := pool.local[int(r.nodeID)].between.(*betweenCache[V])
 	if cache == nil {
-		return nil, false
+		return nil, nil
 	}
-	from, until := getOptional(r.from.get, v), getOptional(r.until.get, v)
-	for i := range len(cache.entries) {
-		entry := &cache.entries[i]
-		if entry.initialized && entry.hasFrom == from.ok && entry.hasUntil == until.ok &&
-			(!from.ok || r.compare(entry.from, from.value) == 0) &&
-			(!until.ok || r.compare(entry.until, until.value) == 0) {
-			cache.observers.hit()
-			return entry.bits, true
-		}
-	}
-	for _, entry := range cache.overflow {
-		if entry.hasFrom == from.ok && entry.hasUntil == until.ok &&
-			(!from.ok || r.compare(entry.from, from.value) == 0) &&
-			(!until.ok || r.compare(entry.until, until.value) == 0) {
-			cache.observers.hit()
-			return entry.bits, true
-		}
-	}
-	return nil, false
+	return cache, cache.find(from, until, r.compare)
 }
 func (r *betweenRule[T, V]) localQueryKey(v T) (any, uint64) {
 	from, hasFrom := r.from.get(v)
@@ -186,7 +173,7 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		cache = newBetweenCache[V](pool, r.nodeID)
 		node.between = cache
 	}
-	if bits, found := r.lookupCachedBitmap(v, pool); found {
+	if bits, found := r.lookupCachedBitmapFor(pool, from, until); found {
 		dst.Or(bits)
 		return
 	}
@@ -245,20 +232,9 @@ func (r *betweenRule[T, V]) matchesID(v T, id uint32) bool {
 }
 
 func (r *betweenRule[T, V]) filterCandidates(v T, dst *roaring.Bitmap, _ *bitmapPool) {
-	fromValue := getOptional(r.from.get, v)
-	untilValue := getOptional(r.until.get, v)
-	first, second := r.from, r.until
-	firstValue, secondValue := fromValue, untilValue
-	if r.until.estimateCardinality(v) < r.from.estimateCardinality(v) {
-		first, second = r.until, r.from
-		firstValue, secondValue = untilValue, fromValue
-	}
-
+	first, second := r.rankedSearchSides(v)
 	var inline [16]*roaring.Bitmap
-	for _, side := range []struct {
-		rule  *orderedRule[T, V]
-		value optionalValue[V]
-	}{{first, firstValue}, {second, secondValue}} {
+	for _, side := range [...]betweenSearchSide[T, V]{first, second} {
 		postings := side.rule.appendMatchingBitmaps(side.value, inline[:0])
 		if len(postings) == 0 {
 			dst.Clear()
@@ -296,22 +272,15 @@ func (r *betweenRule[T, V]) internBitmaps(interner *bitmapInterner) {
 }
 
 func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmapPool) {
-	fromValue := getOptional(r.from.get, v)
-	untilValue := getOptional(r.until.get, v)
-	base, other := r.from, r.until
-	baseValue, otherValue := fromValue, untilValue
-	if r.until.estimateCardinality(v) < r.from.estimateCardinality(v) {
-		base, other = r.until, r.from
-		baseValue, otherValue = untilValue, fromValue
-	}
+	base, other := r.rankedSearchSides(v)
 
 	candidates := pool.get()
-	base.addMatches(baseValue, candidates)
+	base.rule.addMatches(base.value, candidates)
 	if candidates.GetCardinality() <= allCandidateScanLimit {
 		iterator := candidates.Iterator()
 		for iterator.HasNext() {
 			id := iterator.Next()
-			if other.matchesID(v, id) {
+			if other.rule.matchesID(v, id) {
 				dst.Add(id)
 			}
 		}
@@ -319,7 +288,7 @@ func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmap
 		return
 	}
 	var inline [16]*roaring.Bitmap
-	postings := other.appendMatchingBitmaps(otherValue, inline[:0])
+	postings := other.rule.appendMatchingBitmaps(other.value, inline[:0])
 	if len(postings) == 0 {
 		candidates.Clear()
 	} else {
@@ -327,4 +296,16 @@ func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmap
 	}
 	dst.Or(candidates)
 	pool.put(candidates)
+}
+
+func (r *betweenRule[T, V]) rankedSearchSides(v T) (
+	betweenSearchSide[T, V],
+	betweenSearchSide[T, V],
+) {
+	from := betweenSearchSide[T, V]{rule: r.from, value: getOptional(r.from.get, v)}
+	until := betweenSearchSide[T, V]{rule: r.until, value: getOptional(r.until.get, v)}
+	if r.until.estimateCardinality(v) < r.from.estimateCardinality(v) {
+		return until, from
+	}
+	return from, until
 }

@@ -115,6 +115,12 @@ that callers may mutate a compiled rule. The sealed interface also lets Ruleix
 select different internal snapshot implementations for different compiled rule
 types without changing the public API.
 
+Internal inspection metadata uses role-based provider names:
+`inspectionStrategyProvider`, `inspectionModeProvider`, and
+`inspectionDetailsProvider`. These interfaces describe optional capabilities
+of compiled rules and are intentionally separate from the public `Inspector`
+handle.
+
 ## Runtime binding
 
 The intended flow is:

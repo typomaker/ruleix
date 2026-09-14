@@ -106,7 +106,7 @@ func TestLocalAllResultCacheValidatesOrdinaryPreparedKeys(t *testing.T) {
 	pool.allPlans = map[any]*localAllPlan{rule: plan}
 
 	require.Nil(t, rule.loadLocalQueryResult(pool, 7), "an unprepared execution cannot own a cached result")
-	rule.execution = []executionCapability[int]{{queryKey: provider}}
+	rule.execution = []allChildExecution[int]{{queryKey: provider}}
 	plan.results[0] = localAllResult{bits: roaring.BitmapOf(1), epoch: pool.cacheEpoch}
 	require.Nil(t, rule.loadLocalQueryResult(pool, 7), "a key-count mismatch cannot hit")
 

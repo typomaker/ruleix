@@ -455,26 +455,26 @@ func removeRuntimeExclusionInspectors[T any](rules []exclusionRule[T]) []exclusi
 	return plain
 }
 
-type inspectionStrategist interface{ inspectionStrategy() string }
-type inspectionModer interface{ inspectionMode() RuleMode }
-type inspectionDetailer interface{ inspectionDetails() inspectionDetails }
+type inspectionStrategyProvider interface{ inspectionStrategy() string }
+type inspectionModeProvider interface{ inspectionMode() RuleMode }
+type inspectionDetailsProvider interface{ inspectionDetails() inspectionDetails }
 
 func inspectionDetailsOf[T any](rule Rule[T]) inspectionDetails {
-	if details, ok := rule.(inspectionDetailer); ok {
+	if details, ok := rule.(inspectionDetailsProvider); ok {
 		return details.inspectionDetails()
 	}
 	return inspectionDetails{}
 }
 
 func inspectionModeOf[T any](rule Rule[T]) RuleMode {
-	if mode, ok := rule.(inspectionModer); ok {
+	if mode, ok := rule.(inspectionModeProvider); ok {
 		return mode.inspectionMode()
 	}
 	return RuleModeExact
 }
 
 func inspectionStrategyOf[T any](rule Rule[T]) string {
-	if strategy, ok := rule.(inspectionStrategist); ok {
+	if strategy, ok := rule.(inspectionStrategyProvider); ok {
 		return strategy.inspectionStrategy()
 	}
 	return "custom"

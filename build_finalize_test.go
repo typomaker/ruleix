@@ -83,16 +83,16 @@ func TestOrderedFamiliesDoNotExposeBuildMode(t *testing.T) {
 		compare: cmp.Compare[int], wildcard: roaring.New(), index: index,
 		build: &orderedRuleBuildState{quantized: true},
 	}
-	_, orderedSelectsMode := any(ordered).(inspectionModer)
+	_, orderedSelectsMode := any(ordered).(inspectionModeProvider)
 	require.False(t, orderedSelectsMode)
 
 	comparison := &compareByRule[int, int]{build: &compareByBuildState{}}
 	comparison.build.quantized[OperatorEQ] = true
-	_, comparisonSelectsMode := any(comparison).(inspectionModer)
+	_, comparisonSelectsMode := any(comparison).(inspectionModeProvider)
 	require.False(t, comparisonSelectsMode)
 
 	between := &betweenRule[int, int]{from: ordered, until: ordered}
-	_, betweenSelectsMode := any(between).(inspectionModer)
+	_, betweenSelectsMode := any(between).(inspectionModeProvider)
 	require.False(t, betweenSelectsMode)
 
 	policy := &streamingAdaptiveLeaf[int]{child: ordered, approximate: true}

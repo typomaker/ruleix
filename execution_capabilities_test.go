@@ -31,20 +31,20 @@ func (r *unsupportedBatchRule) search(_ int, dst *roaring.Bitmap, _ *bitmapPool)
 func (*unsupportedBatchRule) exclude(int, *roaring.Bitmap, *bitmapPool)    {}
 func (*unsupportedBatchRule) collectBuildStatistics([]nodeBuildStatistics) {}
 
-func TestExecutionCapabilityUnwrapsDirectIDOperationsTruthfully(t *testing.T) {
+func TestAllChildExecutionUnwrapsDirectIDOperationsTruthfully(t *testing.T) {
 	leaf := &countingRule{ids: []uint32{1, 2}}
 	wrapped := &inspectionDetailsRule[int]{
 		child: &lossyRule[int]{child: leaf},
 	}
-	capability := describeExecutionCapability[int](wrapped)
+	capability := describeAllChildExecution[int](wrapped)
 	require.NotNil(t, capability.directID)
 	require.True(t, capability.directID.matchesID(0, 2))
 
 	unsupported := &inspectionDetailsRule[int]{child: &unsupportedBatchRule{bits: roaring.BitmapOf(1)}}
-	require.Nil(t, describeExecutionCapability[int](unsupported).directID)
+	require.Nil(t, describeAllChildExecution[int](unsupported).directID)
 }
 
-func TestExecutionCapabilityCompilesOuterCachedBitmapProvider(t *testing.T) {
+func TestAllChildExecutionCompilesOuterCachedBitmapProvider(t *testing.T) {
 	leaf := &cachedEstimateRule{
 		costlyEstimateRule: &costlyEstimateRule{child: &countingRule{ids: []uint32{1}}},
 		bits:               roaring.BitmapOf(1),
@@ -52,7 +52,7 @@ func TestExecutionCapabilityCompilesOuterCachedBitmapProvider(t *testing.T) {
 	metrics := &inspectorRuntime{}
 	wrapped := &inspectedRuntimeRule[int]{child: leaf, metrics: metrics}
 
-	capability := describeExecutionCapability[int](wrapped)
+	capability := describeAllChildExecution[int](wrapped)
 	require.Equal(t, cachedBitmapProvider[int](wrapped), capability.cached)
 	bits, found := capability.cached.lookupCachedBitmap(0, newLocalBitmapPool(0))
 	require.True(t, found)
@@ -61,7 +61,7 @@ func TestExecutionCapabilityCompilesOuterCachedBitmapProvider(t *testing.T) {
 
 func TestEqualityDirectIDWorkIsBoundedButLargeCandidateSetsStayOnBitmapPath(t *testing.T) {
 	equality := &eqRule[int, int, int]{wildcard: roaring.BitmapOf(1)}
-	capability := describeExecutionCapability[int](equality)
+	capability := describeAllChildExecution[int](equality)
 	require.Equal(t, uint64(32), capability.directIDWork)
 
 	rule := &allRule[int]{children: []Rule[int]{
@@ -75,19 +75,31 @@ func TestEqualityDirectIDWorkIsBoundedButLargeCandidateSetsStayOnBitmapPath(t *t
 }
 
 func TestNestedAllAdvertisesDirectIDOnlyWhenEveryChildSupportsIt(t *testing.T) {
-	supported := &allRule[int]{children: []Rule[int]{
-		&countingRule{ids: []uint32{1}},
-		&inspectionDetailsRule[int]{child: &countingRule{ids: []uint32{1}}},
-	}}
-	supported.prepareSearch()
-	require.NotNil(t, describeExecutionCapability[int](supported).directID)
+	for _, state := range []struct {
+		name     string
+		prepared bool
+	}{
+		{name: "Unprepared"},
+		{name: "Prepared", prepared: true},
+	} {
+		t.Run(state.name, func(t *testing.T) {
+			supported := &allRule[int]{children: []Rule[int]{
+				&countingRule{ids: []uint32{1}},
+				&inspectionDetailsRule[int]{child: &countingRule{ids: []uint32{1}}},
+			}}
+			unsupported := &allRule[int]{children: []Rule[int]{
+				&countingRule{ids: []uint32{1}},
+				&unsupportedBatchRule{bits: roaring.BitmapOf(1)},
+			}}
+			if state.prepared {
+				supported.prepareSearch()
+				unsupported.prepareSearch()
+			}
 
-	unsupported := &allRule[int]{children: []Rule[int]{
-		&countingRule{ids: []uint32{1}},
-		&unsupportedBatchRule{bits: roaring.BitmapOf(1)},
-	}}
-	unsupported.prepareSearch()
-	require.Nil(t, describeExecutionCapability[int](unsupported).directID)
+			require.NotNil(t, describeAllChildExecution[int](supported).directID)
+			require.Nil(t, describeAllChildExecution[int](unsupported).directID)
+		})
+	}
 }
 
 func TestAllMaterializesUnsupportedRuleOncePerCandidateBatch(t *testing.T) {

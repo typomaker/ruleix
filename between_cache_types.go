@@ -24,3 +24,31 @@ type betweenCacheEntry[V any] struct {
 	until       V
 	bits        *roaring.Bitmap
 }
+
+func (c *betweenCache[V]) find(
+	from, until optionalValue[V],
+	compare Compare[V],
+) *betweenCacheEntry[V] {
+	for i := range int(c.count) {
+		entry := &c.entries[i]
+		if entry.matches(from, until, compare) {
+			return entry
+		}
+	}
+	for _, entry := range c.overflow {
+		if entry.matches(from, until, compare) {
+			return entry
+		}
+	}
+	return nil
+}
+
+func (e *betweenCacheEntry[V]) matches(
+	from, until optionalValue[V],
+	compare Compare[V],
+) bool {
+	return e.initialized &&
+		e.hasFrom == from.ok && e.hasUntil == until.ok &&
+		(!from.ok || compare(e.from, from.value) == 0) &&
+		(!until.ok || compare(e.until, until.value) == 0)
+}

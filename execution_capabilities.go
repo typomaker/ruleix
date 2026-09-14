@@ -1,10 +1,10 @@
 package ruleix
 
-// executionCapability is the immutable description of operations an All
-// child can execute directly. Nil operation slots are deliberately explicit:
-// callers must materialize complete once for the batch instead of discovering
-// an interface (or accidentally materializing) for every candidate ID.
-type executionCapability[T any] struct {
+// allChildExecution describes the operations one All child can execute
+// directly. Nil operation slots are deliberately explicit: callers must
+// materialize the complete child result once for the batch instead of
+// discovering an interface (or accidentally materializing) for every ID.
+type allChildExecution[T any] struct {
 	posting      planningBitmapProvider[T]
 	cached       cachedBitmapProvider[T]
 	directID     ruleIDMatcher[T]
@@ -13,9 +13,9 @@ type executionCapability[T any] struct {
 	queryKey     localQueryKeyProvider[T]
 }
 
-func describeExecutionCapability[T any](rule Rule[T]) executionCapability[T] {
+func describeAllChildExecution[T any](rule Rule[T]) allChildExecution[T] {
 	operationRule := unwrapExecutionRule(rule)
-	result := executionCapability[T]{}
+	result := allChildExecution[T]{}
 	// Preserve the outer rule here: cache-capable inspector wrappers delegate
 	// through their observer, while the immutable operation slots below may be
 	// safely resolved from the unwrapped representation.
@@ -23,47 +23,58 @@ func describeExecutionCapability[T any](rule Rule[T]) executionCapability[T] {
 	result.posting, _ = operationRule.(planningBitmapProvider[T])
 	result.filter, _ = operationRule.(candidateFilter[T])
 	result.queryKey, _ = operationRule.(localQueryKeyProvider[T])
-	if nested, ok := operationRule.(*allRule[T]); ok { //nolint:nestif // Mirrors prepared and fallback rule layouts.
-		if nested.planningPrepared {
-			for i := range nested.children {
-				if !nested.supportsDirectIDMatch(i) {
-					return result
-				}
-			}
-		} else {
-			for _, child := range nested.children {
-				if !supportsRuleIDMatch(child) {
-					return result
-				}
-			}
-		}
-		result.directID = nested
-		result.directIDWork = allUnmaterializedDirectIDWork
-		return result
-	}
-	result.directID, _ = operationRule.(ruleIDMatcher[T])
-	if result.directID != nil {
-		result.directIDWork = allUnmaterializedDirectIDWork
-		if estimator, ok := operationRule.(directIDWorkEstimator); ok {
-			result.directIDWork = estimator.directIDWork()
-		}
-	}
+	result.directID, result.directIDWork = describeDirectIDExecution(operationRule)
 	return result
 }
 
-func (r *allRule[T]) executionCapability(index int) *executionCapability[T] {
+func describeDirectIDExecution[T any](rule Rule[T]) (ruleIDMatcher[T], uint64) {
+	if nested, ok := rule.(*allRule[T]); ok {
+		if !nested.allChildrenSupportDirectID() {
+			return nil, 0
+		}
+		return nested, allUnmaterializedDirectIDWork
+	}
+	matcher, ok := rule.(ruleIDMatcher[T])
+	if !ok {
+		return nil, 0
+	}
+	work := uint64(allUnmaterializedDirectIDWork)
+	if estimator, ok := rule.(directIDWorkEstimator); ok {
+		work = estimator.directIDWork()
+	}
+	return matcher, work
+}
+
+func (r *allRule[T]) allChildrenSupportDirectID() bool {
+	if r.planningPrepared {
+		for i := range r.children {
+			if !r.supportsDirectIDMatch(i) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, child := range r.children {
+		if !supportsRuleIDMatch(child) {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *allRule[T]) childExecution(index int) *allChildExecution[T] {
 	if len(r.execution) == len(r.children) {
 		return &r.execution[index]
 	}
-	capability := describeExecutionCapability(r.children[index])
-	return &capability
+	execution := describeAllChildExecution(r.children[index])
+	return &execution
 }
 
 func (r *allRule[T]) directIDOperationWork(index int, materialized bool) uint64 {
 	if materialized {
 		return allDirectIDWork
 	}
-	work := r.executionCapability(index).directIDWork
+	work := r.childExecution(index).directIDWork
 	if work == 0 {
 		return allUnmaterializedDirectIDWork
 	}

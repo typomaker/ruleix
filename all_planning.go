@@ -91,7 +91,7 @@ func (r *allRule[T]) rankChildren(
 			if rankedChildren[i].card != ^uint64(0) {
 				continue
 			}
-			if provider := r.executionCapability(i).cached; provider != nil {
+			if provider := r.childExecution(i).cached; provider != nil {
 				if bits, found := provider.lookupCachedBitmap(v, pool); found {
 					rankedChildren[i].bits = bits
 					rankedChildren[i].card = bits.GetCardinality()
@@ -142,7 +142,7 @@ func (r *allRule[T]) reuseLocalPlan(
 	if len(r.planningProviders) == 0 && r.planningPrepared {
 		for rank, childIdx := range plan.order {
 			ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
-			if provider := r.executionCapability(childIdx).cached; provider != nil {
+			if provider := r.childExecution(childIdx).cached; provider != nil {
 				if bits, found := provider.lookupCachedBitmap(v, pool); found {
 					ranked.bits = bits
 					ranked.card = bits.GetCardinality()
@@ -223,7 +223,7 @@ func (r *allRule[T]) populatePlanningLocalPlan(
 
 func (r *allRule[T]) cachedLocalPlanChild(v T, pool *bitmapPool, childIdx int) rankedBitmap {
 	ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
-	provider := r.executionCapability(childIdx).cached
+	provider := r.childExecution(childIdx).cached
 	if provider == nil {
 		return ranked
 	}
@@ -362,7 +362,7 @@ func (r *allRule[T]) captureLocalQueryKeys(value T) ([]any, uint64, bool) {
 		keys := make([]any, len(r.children))
 		var bytes uint64
 		for child := range r.children {
-			provider := r.executionCapability(child).queryKey
+			provider := r.childExecution(child).queryKey
 			if provider == nil {
 				return nil, 0, false
 			}
