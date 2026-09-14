@@ -28,7 +28,7 @@ func TestStrictEqualityAntonymDifferential(t *testing.T) {
 					constraints[id].name = antonymPointer(string(rune('a' + random.Intn(12))))
 				}
 			}
-			var schema Rule[strictAntonymConstraint] = strictAntonymSchema()
+			schema := strictAntonymSchema()
 			if compressed {
 				schema = Lossy(schema, MemoryLimit(math.MaxUint64))
 			}
@@ -57,7 +57,10 @@ func TestStrictEqualityAntonymDifferential(t *testing.T) {
 				var baselineMatches, integratedMatches []int
 				baseline.Search(query, &baselineMatches)
 				integrated.Search(query, &integratedMatches)
-				require.Equal(t, baselineMatches, integratedMatches, "compressed=%v iteration=%d query=%d", compressed, iteration, queryIndex)
+				require.Equal(
+					t, baselineMatches, integratedMatches,
+					"compressed=%v iteration=%d query=%d", compressed, iteration, queryIndex,
+				)
 			}
 		}
 	}
@@ -106,8 +109,12 @@ func TestStrictEqualityAntonymSearch(t *testing.T) {
 		value strictAntonymConstraint
 		want  []int
 	}{
-		{name: "right-key-absent", value: strictAntonymConstraint{id: antonymPointer(10), name: antonymPointer("buz")}, want: []int{1}},
-		{name: "both-keys-present", value: strictAntonymConstraint{id: antonymPointer(10), name: antonymPointer("foo")}, want: []int{1, 3, 4}},
+		{name: "right-key-absent", value: strictAntonymConstraint{
+			id: antonymPointer(10), name: antonymPointer("buz"),
+		}, want: []int{1}},
+		{name: "both-keys-present", value: strictAntonymConstraint{
+			id: antonymPointer(10), name: antonymPointer("foo"),
+		}, want: []int{1, 3, 4}},
 		{name: "left-value-missing", value: strictAntonymConstraint{name: antonymPointer("foo")}, want: []int{3, 4}},
 		{name: "both-keys-absent", value: strictAntonymConstraint{id: antonymPointer(12), name: antonymPointer("buz")}},
 	}
@@ -142,7 +149,11 @@ func TestStrictWildcardComplementsRejectOverlapAndGap(t *testing.T) {
 		constraints []strictAntonymConstraint
 	}{
 		{name: "overlap", constraints: []strictAntonymConstraint{{}, {id: antonymPointer(1)}, {name: antonymPointer("a")}}},
-		{name: "gap", constraints: []strictAntonymConstraint{{id: antonymPointer(1), name: antonymPointer("a")}, {id: antonymPointer(2)}, {name: antonymPointer("b")}}},
+		{name: "gap", constraints: []strictAntonymConstraint{
+			{id: antonymPointer(1), name: antonymPointer("a")},
+			{id: antonymPointer(2)},
+			{name: antonymPointer("b")},
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -400,7 +411,8 @@ func TestStrictEqualityAntonymLargeComponentPaths(t *testing.T) {
 	}
 	index, err := New[antonymGraphConstraint, int](antonymGraphSchema(6)).Build(Zip(constraints, ids))
 	require.NoError(t, err)
-	component := index.root.(*allRule[antonymGraphConstraint]).children[0].(*strictEqualityAntonymRule[antonymGraphConstraint])
+	root := index.root.(*allRule[antonymGraphConstraint])
+	component := root.children[0].(*strictEqualityAntonymRule[antonymGraphConstraint])
 	query := antonymGraphConstraint{}
 	for field := range 6 {
 		query.values[field] = antonymPointer(7)

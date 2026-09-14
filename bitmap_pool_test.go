@@ -1,6 +1,7 @@
 package ruleix
 
 import (
+	"runtime/debug"
 	"testing"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -60,6 +61,8 @@ func TestBitmapPoolDiscardsOversizedBitmap(t *testing.T) {
 }
 
 func TestLocalBitmapPoolReusesOversizedBitmap(t *testing.T) {
+	previousGCPercent := debug.SetGCPercent(-1)
+	t.Cleanup(func() { debug.SetGCPercent(previousGCPercent) })
 	pool := newLocalBitmapPool(0)
 	bits := pool.get()
 	for id := uint32(0); bits.GetSizeInBytes() <= maxPooledBitmapBytes; id++ {

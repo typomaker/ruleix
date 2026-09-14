@@ -132,7 +132,9 @@ func TestLossyExactDifferentialEverySupportedRule(t *testing.T) {
 	}{
 		{"Include", 16 << 10, func() Rule[lossyDifferentialConstraint] { return Include(name) }},
 		{"Greater", 16 << 10, func() Rule[lossyDifferentialConstraint] { return Greater(value, cmp.Compare[int]) }},
-		{"GreaterOrEqual", 16 << 10, func() Rule[lossyDifferentialConstraint] { return GreaterOrEqual(value, cmp.Compare[int]) }},
+		{"GreaterOrEqual", 16 << 10, func() Rule[lossyDifferentialConstraint] {
+			return GreaterOrEqual(value, cmp.Compare[int])
+		}},
 		{"Less", 16 << 10, func() Rule[lossyDifferentialConstraint] { return Less(value, cmp.Compare[int]) }},
 		{"LessOrEqual", 16 << 10, func() Rule[lossyDifferentialConstraint] { return LessOrEqual(value, cmp.Compare[int]) }},
 		{"Between", 32 << 10, func() Rule[lossyDifferentialConstraint] {
@@ -142,7 +144,11 @@ func TestLossyExactDifferentialEverySupportedRule(t *testing.T) {
 			return CompareBy(value, operator, cmp.Compare[int])
 		}},
 		{"All", 160 << 10, func() Rule[lossyDifferentialConstraint] {
-			return All(Include(name), GreaterOrEqual(value, cmp.Compare[int]), Between(from, until, cmp.Compare[int]))
+			return All(
+				Include(name),
+				GreaterOrEqual(value, cmp.Compare[int]),
+				Between(from, until, cmp.Compare[int]),
+			)
 		}},
 	}
 	for _, test := range tests {
@@ -184,7 +190,11 @@ func TestIdentityLossyDifferentialEverySupportedRule(t *testing.T) {
 		}},
 		{"All", func() Rule[lossyDifferentialConstraint] {
 			var inspector Inspector
-			return All(Inspect(&inspector, Include(name)), GreaterOrEqual(value, cmp.Compare[int]), Between(from, until, cmp.Compare[int]))
+			return All(
+				Inspect(&inspector, Include(name)),
+				GreaterOrEqual(value, cmp.Compare[int]),
+				Between(from, until, cmp.Compare[int]),
+			)
 		}},
 	}
 	for _, test := range tests {

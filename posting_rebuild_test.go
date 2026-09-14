@@ -39,7 +39,9 @@ func TestRebuildPostingGenerationRejectsAccountingOverflow(t *testing.T) {
 }
 
 func TestRebuildPostingGenerationRejectsInvalidCapacity(t *testing.T) {
-	next, usage, ok := rebuildPostingGeneration(postingGeneration[uint64](nil), -1, 0, func(key uint64) uint64 { return key })
+	next, usage, ok := rebuildPostingGeneration(
+		postingGeneration[uint64](nil), -1, 0, func(key uint64) uint64 { return key },
+	)
 	require.False(t, ok)
 	require.Nil(t, next)
 	require.Zero(t, usage)

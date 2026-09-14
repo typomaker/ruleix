@@ -216,8 +216,11 @@ func TestComparatorBoundaryFirstGenerationNeedsTwoKeys(t *testing.T) {
 func TestOrderedNeighborRebuildKeepsLowEdgeMatches(t *testing.T) {
 	constraints, _ := lossyDifferentialData()
 	rule := &orderedRule[lossyDifferentialConstraint, int]{
-		get: func(value lossyDifferentialConstraint) (int, bool) { return value.value, value.valuePresent }, compare: cmp.Compare[int],
-		dir: lessThan, wildcard: roaring.New(), index: newOrderedIndex(cmp.Compare[int]),
+		get: func(value lossyDifferentialConstraint) (int, bool) {
+			return value.value, value.valuePresent
+		},
+		compare: cmp.Compare[int],
+		dir:     lessThan, wildcard: roaring.New(), index: newOrderedIndex(cmp.Compare[int]),
 	}
 	adaptive := &streamingAdaptiveLeaf[lossyDifferentialConstraint]{child: rule}
 	for id := range 4096 {

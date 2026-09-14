@@ -24,7 +24,11 @@ func TestLossyOrderedEstimateAndIDMatchAgreeWithSearch(t *testing.T) {
 	rule.index.insertPosting(0, roaring.BitmapOf(0, 1))
 	rule.index.insertPosting(10, roaring.BitmapOf(2, 3))
 	rule.index.insertPosting(20, roaring.BitmapOf(4, 5))
-	for _, query := range []lossyConstraint{{minimum: -1, present: true}, {minimum: 0, present: true}, {minimum: 15, present: true}, {minimum: 40, present: true}, {}} {
+	queries := []lossyConstraint{
+		{minimum: -1, present: true}, {minimum: 0, present: true},
+		{minimum: 15, present: true}, {minimum: 40, present: true}, {},
+	}
+	for _, query := range queries {
 		bits := roaring.New()
 		rule.search(query, bits, newBitmapPool())
 		require.Equal(t, bits.GetCardinality(), rule.estimateCardinality(query))

@@ -10,7 +10,8 @@ import (
 func (*eqRule[T, V, K]) streamingLossyAccumulator() {}
 
 func (r *eqRule[T, V, K]) fitStreamingLimit(limit uint64) {
-	for r.streamingEqualityDetails(inspectionDetails{}).MemoryUsageBytes > limit && r.quantizer.level < equalityTerminalLevel {
+	for r.streamingEqualityDetails(inspectionDetails{}).MemoryUsageBytes > limit &&
+		r.quantizer.level < equalityTerminalLevel {
 		r.rebuildEqualityNext()
 	}
 }

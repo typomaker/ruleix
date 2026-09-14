@@ -41,8 +41,8 @@ func cloneCompareByRule[T any, V any](r *compareByRule[T, V]) *compareByRule[T, 
 	}
 	for operator, index := range r.indexes {
 		if index != nil {
-			copy := index.cloneBuild()
-			clone.indexes[operator] = &copy
+			indexCopy := index.cloneBuild()
+			clone.indexes[operator] = &indexCopy
 		}
 	}
 	return &clone

@@ -116,60 +116,78 @@ func compileLossyRules[T any](rule Rule[T], identity bool) (Rule[T], error) {
 func compileStreamingLossyTree[T any](rule Rule[T], identity bool, path string) (Rule[T], error) {
 	switch typed := rule.(type) {
 	case *lossyRule[T]:
-		if err := typed.validatePolicy(); err != nil {
+		return compileStreamingLossyPolicy(typed, identity, path)
+	case *allRule[T]:
+		return compileStreamingLossyAll(typed, identity, path)
+	case *inspectRule[T]:
+		return compileStreamingLossyInspect(typed, identity, path)
+	default:
+		return compileStreamingLossyLeaf(rule, path)
+	}
+}
+
+func compileStreamingLossyPolicy[T any](typed *lossyRule[T], identity bool, path string) (Rule[T], error) {
+	if err := typed.validatePolicy(); err != nil {
+		return nil, fmt.Errorf("ruleix: %s: %w", path, err)
+	}
+	child, err := compileStreamingLossyTree(typed.child, identity, path+"/child")
+	if err != nil {
+		return nil, err
+	}
+	if !identity {
+		fitStreamingAggregateHard(child, typed.limit)
+	}
+	child, details, err := refreshStreamingLossyDetails(child)
+	if err != nil {
+		return nil, err
+	}
+	if !identity && details.MemoryUsageBytes > typed.limit {
+		return nil, fmt.Errorf("ruleix: %s cannot fit the memory limit", path)
+	}
+	if !identity {
+		details.MemoryLimitBytes, details.MemoryLimitAvailable = typed.limit, true
+		child = clampLossyDiagnosticLimits(child, typed.limit)
+	}
+	return &inspectionDetailsRule[T]{child: child, details: details, mode: lossyPolicyMode(child)}, nil
+}
+
+func compileStreamingLossyAll[T any](typed *allRule[T], identity bool, path string) (Rule[T], error) {
+	children := make([]Rule[T], len(typed.children))
+	for i, child := range typed.children {
+		compiled, err := compileStreamingLossyTree(child, identity, fmt.Sprintf("%s/All[%d]", path, i))
+		if err != nil {
+			return nil, err
+		}
+		children[i] = compiled
+	}
+	return &allRule[T]{children: children}, nil
+}
+
+func compileStreamingLossyInspect[T any](typed *inspectRule[T], identity bool, path string) (Rule[T], error) {
+	child, err := compileStreamingLossyTree(typed.child, identity, path+"/Inspect")
+	if err != nil {
+		return nil, err
+	}
+	details := refreshedStreamingRuleDetails(child, inspectionDetailsOf(child))
+	return &inspectRule[T]{dst: typed.dst, child: &inspectionDetailsRule[T]{
+		child: child, details: details, mode: lossyPolicyMode(child),
+	}}, nil
+}
+
+func compileStreamingLossyLeaf[T any](rule Rule[T], path string) (Rule[T], error) {
+	provider, accounted := any(rule).(streamingDetailsProvider)
+	if _, ok := any(rule).(streamingFirstGenerationFactory[T]); !ok || !accounted {
+		return nil, fmt.Errorf("ruleix: %s: Lossy does not support this rule representation", path)
+	}
+	if validator, ok := any(rule).(interface{ validateStreamingLossy() error }); ok {
+		if err := validator.validateStreamingLossy(); err != nil {
 			return nil, fmt.Errorf("ruleix: %s: %w", path, err)
 		}
-		child, err := compileStreamingLossyTree(typed.child, identity, path+"/child")
-		if err != nil {
-			return nil, err
-		}
-		if !identity {
-			fitStreamingAggregateHard(child, typed.limit)
-		}
-		child, details, err := refreshStreamingLossyDetails(child)
-		if err != nil {
-			return nil, err
-		}
-		if !identity && details.MemoryUsageBytes > typed.limit {
-			return nil, fmt.Errorf("ruleix: %s cannot fit the memory limit", path)
-		}
-		if !identity {
-			details.MemoryLimitBytes, details.MemoryLimitAvailable = typed.limit, true
-			child = clampLossyDiagnosticLimits(child, typed.limit)
-		}
-		return &inspectionDetailsRule[T]{child: child, details: details, mode: lossyPolicyMode(child)}, nil
-	case *allRule[T]:
-		children := make([]Rule[T], len(typed.children))
-		for i, child := range typed.children {
-			compiled, err := compileStreamingLossyTree(child, identity, fmt.Sprintf("%s/All[%d]", path, i))
-			if err != nil {
-				return nil, err
-			}
-			children[i] = compiled
-		}
-		return &allRule[T]{children: children}, nil
-	case *inspectRule[T]:
-		child, err := compileStreamingLossyTree(typed.child, identity, path+"/Inspect")
-		if err != nil {
-			return nil, err
-		}
-		details := refreshedStreamingRuleDetails(child, inspectionDetailsOf(child))
-		return &inspectRule[T]{dst: typed.dst, child: &inspectionDetailsRule[T]{
-			child: child, details: details, mode: lossyPolicyMode(child),
-		}}, nil
-	default:
-		provider, accounted := any(rule).(streamingDetailsProvider)
-		if _, ok := any(rule).(streamingFirstGenerationFactory[T]); !ok || !accounted {
-			return nil, fmt.Errorf("ruleix: %s: Lossy does not support this rule representation", path)
-		}
-		if validator, ok := any(rule).(interface{ validateStreamingLossy() error }); ok {
-			if err := validator.validateStreamingLossy(); err != nil {
-				return nil, fmt.Errorf("ruleix: %s: %w", path, err)
-			}
-		}
-		details := provider.refreshedStreamingDetails(inspectionDetails{})
-		return &inspectionDetailsRule[T]{child: &streamingAdaptiveLeaf[T]{child: rule}, details: details, mode: RuleModeExact}, nil
 	}
+	details := provider.refreshedStreamingDetails(inspectionDetails{})
+	return &inspectionDetailsRule[T]{
+		child: &streamingAdaptiveLeaf[T]{child: rule}, details: details, mode: RuleModeExact,
+	}, nil
 }
 
 func clampLossyDiagnosticLimits[T any](rule Rule[T], limit uint64) Rule[T] {
@@ -188,7 +206,9 @@ func clampLossyDiagnosticLimits[T any](rule Rule[T], limit uint64) Rule[T] {
 			limit = min(details.MemoryLimitBytes, limit)
 		}
 		details.MemoryLimitBytes, details.MemoryLimitAvailable = limit, true
-		return &inspectionDetailsRule[T]{child: clampLossyDiagnosticLimits(typed.child, limit), details: details, mode: typed.mode}
+		return &inspectionDetailsRule[T]{
+			child: clampLossyDiagnosticLimits(typed.child, limit), details: details, mode: typed.mode,
+		}
 	default:
 		return rule
 	}

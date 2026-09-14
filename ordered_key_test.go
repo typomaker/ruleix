@@ -24,8 +24,13 @@ func TestCompiledOrderedKeyEncoderMatchesScalarContract(t *testing.T) {
 	assertOrderedEncoder(t, []uint16{0, 1, math.MaxUint16})
 	assertOrderedEncoder(t, []uint32{0, 1, math.MaxUint32})
 	assertOrderedEncoder(t, []uint64{0, 1, math.MaxUint64})
-	assertOrderedEncoder(t, []float32{float32(math.Inf(-1)), -1, -0.0, 0, 1, float32(math.Inf(1)), float32(math.NaN())})
-	assertOrderedEncoder(t, []float64{math.Inf(-1), -1, -0.0, 0, 1, math.Inf(1), math.NaN()})
+	assertOrderedEncoder(t, []float32{
+		float32(math.Inf(-1)), -1, float32(math.Copysign(0, -1)), 0, 1,
+		float32(math.Inf(1)), float32(math.NaN()),
+	})
+	assertOrderedEncoder(t, []float64{
+		math.Inf(-1), -1, math.Copysign(0, -1), 0, 1, math.Inf(1), math.NaN(),
+	})
 }
 
 func assertOrderedEncoder[V any](t *testing.T, values []V) {

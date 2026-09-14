@@ -101,30 +101,41 @@ func (i *orderedIndex[V]) matches(value V, ascending, inclusive bool, id uint32)
 	blockIndex := i.blockFor(value)
 	block := &i.blocks[blockIndex]
 	if ascending {
-		lo, hi := 0, len(block.items)
-		for lo < hi {
-			mid := int(uint(lo+hi) >> 1)
-			cmp := i.compare(block.items[mid].value, value)
-			if cmp < 0 || !inclusive && cmp == 0 {
-				lo = mid + 1
-			} else {
-				hi = mid
-			}
+		return i.matchesAscending(blockIndex, block, value, inclusive, id)
+	}
+	return i.matchesDescending(blockIndex, block, value, inclusive, id)
+}
+
+func (i *orderedIndex[V]) matchesAscending(
+	blockIndex int, block *orderedBlock[V], value V, inclusive bool, id uint32,
+) bool {
+	lo, hi := 0, len(block.items)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		cmp := i.compare(block.items[mid].value, value)
+		if cmp < 0 || !inclusive && cmp == 0 {
+			lo = mid + 1
+		} else {
+			hi = mid
 		}
-		if lo == 0 {
-			if block.bits.Contains(id) {
+	}
+	if lo == 0 {
+		if block.bits.Contains(id) {
+			return true
+		}
+	} else {
+		for pos := lo; pos < len(block.items); pos++ {
+			if block.items[pos].bits.Contains(id) {
 				return true
 			}
-		} else {
-			for pos := lo; pos < len(block.items); pos++ {
-				if block.items[pos].bits.Contains(id) {
-					return true
-				}
-			}
 		}
-		return i.blockRangeContains(blockIndex+1, len(i.blocks), id)
 	}
+	return i.blockRangeContains(blockIndex+1, len(i.blocks), id)
+}
 
+func (i *orderedIndex[V]) matchesDescending(
+	blockIndex int, block *orderedBlock[V], value V, inclusive bool, id uint32,
+) bool {
 	lo, hi := 0, len(block.items)
 	for lo < hi {
 		mid := int(uint(lo+hi) >> 1)
@@ -135,15 +146,12 @@ func (i *orderedIndex[V]) matches(value V, ascending, inclusive bool, id uint32)
 			hi = mid
 		}
 	}
-	if lo == len(block.items) {
-		if block.bits.Contains(id) {
+	if lo == len(block.items) && block.bits.Contains(id) {
+		return true
+	}
+	for pos := lo - 1; pos >= 0; pos-- {
+		if block.items[pos].bits.Contains(id) {
 			return true
-		}
-	} else {
-		for pos := lo - 1; pos >= 0; pos-- {
-			if block.items[pos].bits.Contains(id) {
-				return true
-			}
 		}
 	}
 	return i.blockRangeContains(0, blockIndex, id)

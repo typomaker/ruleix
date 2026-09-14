@@ -57,7 +57,9 @@ func TestLossyCodecScalarFixtures(t *testing.T) {
 	testCodecFixture(t, "comparable-struct", []fixtureStruct{{flag: true}, {code: 1}, {name: "x"}}, true)
 	testCodecFixture(t, "named-uuid", []fixtureUUID{{1}, {15: 1}, {1, 2, 3}}, true)
 	testCodecFixture(t, "google-uuid", []uuid.UUID{{1}, {15: 1}, {1, 2, 3}}, true)
-	testCodecFixture(t, "time", []time.Time{time.Unix(0, 0), time.Unix(1, 2), time.Unix(1, 2).In(time.FixedZone("x", 60))}, true)
+	testCodecFixture(t, "time", []time.Time{
+		time.Unix(0, 0), time.Unix(1, 2), time.Unix(1, 2).In(time.FixedZone("x", 60)),
+	}, true)
 }
 
 func TestEqualityStringCodecUsesStableHash(t *testing.T) {
@@ -256,7 +258,10 @@ func TestLossyCodecFixtureBuildOrderAndWorkingPressure(t *testing.T) {
 
 	exactUsage := codecFixtureUsage(t, constraints, ids, get, math.MaxUint64)
 	limit := uint64(16 << 10)
-	require.Greater(t, exactUsage, limit+limit/5, "exact-first working state must materially exceed the experimental soft target")
+	require.Greater(
+		t, exactUsage, limit+limit/5,
+		"exact-first working state must materially exceed the experimental soft target",
+	)
 	t.Logf("exact-first-accounted-working=%d retained-limit=%d experimental-soft-target=%d checkpoints=%d",
 		exactUsage, limit, limit+limit/5, entries/4096)
 

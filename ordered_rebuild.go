@@ -64,7 +64,10 @@ func bestOrderedMerge[V any](index *orderedIndex[V], _ direction) (orderedMergeC
 	return best, best.position >= 0
 }
 
-func betterOrderedMerge(candidate orderedMergeCandidate, candidateOK bool, current orderedMergeCandidate, currentOK bool) bool {
+func betterOrderedMerge(
+	candidate orderedMergeCandidate, candidateOK bool,
+	current orderedMergeCandidate, currentOK bool,
+) bool {
 	return candidateOK && (!currentOK || candidate.cardinality < current.cardinality ||
 		candidate.cardinality == current.cardinality && candidate.postingFootprint > current.postingFootprint)
 }

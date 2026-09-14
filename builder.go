@@ -144,35 +144,10 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		}
 		state.insert(constraint, internalID)
 		entryIndex++
-		if options.enableStreaming && !options.identityLossy && entryIndex%lossyBuildPressureInterval == 0 {
-			var usage, target uint64
-			var hasTarget bool
-			if streaming {
-				usage, target, hasTarget = lossyStreamingBuildPressure(state)
-			} else {
-				var err error
-				usage, target, hasTarget, err = lossyBuildPressure(state)
-				if err != nil {
-					buildErr = err
-					return false
-				}
-			}
-			if hasTarget && options.observeWorkingUsage != nil {
-				options.observeWorkingUsage(usage, target)
-			}
-			if hasTarget && usage > target {
-				if streaming {
-					fitStreamingPolicies(state)
-				} else {
-					var err error
-					state, err = compileLossyRules(state, false)
-					if err != nil {
-						buildErr = err
-						return false
-					}
-					state = wrapStreamingLossyLeaves(state)
-					streaming = true
-				}
+		if shouldCheckBuildPressure(options, entryIndex) {
+			state, streaming, buildErr = applyBuildPressure(state, streaming, options.observeWorkingUsage)
+			if buildErr != nil {
+				return false
 			}
 		}
 		return true
@@ -281,6 +256,43 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		}})
 	}
 	return ix, statistics, nil
+}
+
+func shouldCheckBuildPressure(options buildOptions, entryIndex int) bool {
+	return options.enableStreaming &&
+		!options.identityLossy &&
+		entryIndex%lossyBuildPressureInterval == 0
+}
+
+func applyBuildPressure[C any](
+	state Rule[C], streaming bool, observe func(usage, target uint64),
+) (Rule[C], bool, error) {
+	var usage, target uint64
+	var hasTarget bool
+	if streaming {
+		usage, target, hasTarget = lossyStreamingBuildPressure(state)
+	} else {
+		var err error
+		usage, target, hasTarget, err = lossyBuildPressure(state)
+		if err != nil {
+			return state, streaming, err
+		}
+	}
+	if hasTarget && observe != nil {
+		observe(usage, target)
+	}
+	if !hasTarget || usage <= target {
+		return state, streaming, nil
+	}
+	if streaming {
+		fitStreamingPolicies(state)
+		return state, true, nil
+	}
+	compiled, err := compileLossyRules(state, false)
+	if err != nil {
+		return state, false, err
+	}
+	return wrapStreamingLossyLeaves(compiled), true, nil
 }
 
 // Zip pairs equally sized constraint and ID slices into a sequence accepted by

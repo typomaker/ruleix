@@ -31,9 +31,11 @@ func TestGetterRulesDistinguishPresentZeroFromAbsent(t *testing.T) {
 	}{
 		{"Include", ruleix.Include(optionalNumberGetter), []string{"absent", "zero"}, []string{"absent"}},
 		{"Greater", ruleix.Greater(optionalNumberGetter, cmp.Compare[int]), []string{"absent"}, []string{"absent"}},
-		{"GreaterOrEqual", ruleix.GreaterOrEqual(optionalNumberGetter, cmp.Compare[int]), []string{"absent", "zero"}, []string{"absent"}},
+		{"GreaterOrEqual", ruleix.GreaterOrEqual(optionalNumberGetter, cmp.Compare[int]),
+			[]string{"absent", "zero"}, []string{"absent"}},
 		{"Less", ruleix.Less(optionalNumberGetter, cmp.Compare[int]), []string{"absent", "one"}, []string{"absent"}},
-		{"LessOrEqual", ruleix.LessOrEqual(optionalNumberGetter, cmp.Compare[int]), []string{"absent", "zero", "one"}, []string{"absent"}},
+		{"LessOrEqual", ruleix.LessOrEqual(optionalNumberGetter, cmp.Compare[int]),
+			[]string{"absent", "zero", "one"}, []string{"absent"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
