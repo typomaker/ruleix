@@ -7,7 +7,7 @@ from pathlib import Path
 samples = defaultdict(list)
 for line in Path(sys.argv[1]).read_text().splitlines():
     if re.fullmatch(
-        r"(v082-correct|v082|current) (mixed|tiny|medium|broad|rotate)", line
+        r"(v082-correct|v082|current) (mixed|tiny|medium|broad|rotate|zero)", line
     ):
         key = tuple(line.split())
     if line.startswith("BenchmarkProductionDumpLocalRequest100 "):

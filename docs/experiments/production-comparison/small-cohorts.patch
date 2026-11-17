@@ -1,0 +1,25 @@
+--- production_dump_workload_test.go
++++ production_dump_workload_test.go
+@@ -223 +223,4 @@
+-	require.Contains(b, []string{"narrow", "broad", "tiny", "medium"}, cohort)
++	// M1 Max, Go 1.27.3, GOMAXPROCS=1, 3 x 80,000 requests, 100 offers/Local.
++	// v0.8.2 -> 086a91b mean: 0 candidates 10.279 -> 11.627 us;
++	// 1-3 candidates 38.948 -> 18.887 us. See the production comparison report.
++	require.Contains(b, []string{"narrow", "broad", "tiny", "medium", "zero"}, cohort)
+@@ -227 +230 @@
+-		minimum, maximum = 1, 4
++		minimum, maximum = 1, 3
+@@ -240,0 +244,13 @@
++	}
++	if cohort == "zero" {
++		absent := uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
++		for _, row := range rows {
++			require.NotEqual(b, absent, row.CustomerUUID)
++		}
++		for _, request := range requests {
++			for i := range request {
++				request[i].CustomerUUID = absent
++			}
++		}
++		b.Logf("zero candidates: %d requests with absent customer", len(requests))
++		return requests

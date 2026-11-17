@@ -30,6 +30,25 @@ func TestProductionVersionDigest(t *testing.T) {
 	require.NoError(t, err)
 	requests := productionDumpRequests(rows, 64)
 	require.Len(t, requests, 64)
+	if os.Getenv("RULEIX_COMPARISON_SMALL") == "1" {
+		absent := uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
+		for _, row := range rows {
+			require.NotEqual(t, absent, row.CustomerUUID)
+		}
+		for _, original := range requests {
+			request := slices.Clone(original)
+			for i := range request {
+				request[i].CustomerUUID = absent
+			}
+			searchProductionDumpRequest(index, request, func(i int, matches []uuid.UUID) {
+				require.Empty(t, matches)
+				var want []uuid.UUID
+				index.Search(request[i], &want)
+				require.Empty(t, want)
+			})
+		}
+		t.Log("verified 6,400 zero-candidate offers against Local and Index")
+	}
 	hash := sha256.New()
 	var count [4]byte
 	offers, total := 0, 0

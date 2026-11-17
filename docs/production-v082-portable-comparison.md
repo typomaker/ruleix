@@ -118,6 +118,51 @@ The single-offer prefix has one extra reported allocation in current,
 despite lower mean time and fewer allocated bytes. This comparison
 records that difference and does not modify either executor.
 
+## Follow-up: zero and 1–3 candidates
+
+The same revisions, environment and dump were measured in three
+interleaved runs per release, 80,000 complete 100-offer requests per
+run. Medians of per-run metrics follow. Candidate count here means
+the number of distinct constraint UUIDs associated with the customer,
+as in the earlier cohort selector, before other offer predicates.
+The 1–3 cohort contains 16 of the original 64 customer requests.
+
+The original generator seeds customers from existing dump rows, so
+it cannot produce zero candidates. The zero control copies all 64
+request shapes and substitutes one customer UUID verified absent
+from the dump. It measures a missing-customer lookup, rather than
+an offer whose other filters eliminate an existing customer's rows.
+There is no combined 0–3 figure because the production frequency
+of missing-customer requests is unknown.
+
+| Candidates | Metric | v0.8.2 | 086a91b |
+| --- | --- | ---: | ---: |
+| 0 | Mean | 10.279 µs | 11.627 µs |
+| 0 | p99 | 11.250 µs | 12.750 µs |
+| 0 | p99.9 | 25.500 µs | 28.250 µs |
+| 0 | Bytes / allocations | 24 / 1 | 24 / 1 |
+| 1–3 | Mean | 38.948 µs | 18.887 µs |
+| 1–3 | p99 | 53.709 µs | 25.209 µs |
+| 1–3 | p99.9 | 85.125 µs | 55.792 µs |
+| 1–3 | Bytes / allocations | 952 / 11 | 776 / 10 |
+
+For 1–3 candidates, mean improves 2.06x and p99.9 improves 1.53x.
+The zero-candidate mean regresses 13.1% and p99.9 regresses 10.8%.
+Zero mean samples span 10.271–10.422 µs on v0.8.2 and
+11.564–11.703 µs on current. This is a reproduced release-to-release
+regression whose cause remains unlocalized; this report does not
+accept it as a trade-off or introduce a search implementation change.
+Both versions additionally verified empty results for 6,400
+missing-customer offers through Local and Index. The existing
+12,800-offer result digest remains identical across versions.
+
+To reproduce the follow-up, use the runner with
+`RULEIX_COMPARISON_SMALL=1`; the archived patch changes only the
+shared cohort selector. It selects 1–3 candidates and adds the
+missing-customer control, retaining the same request timer and
+Local lifecycle. The result fixture also verifies zero-candidate
+correctness in this mode.
+
 ## Reproduction and interpretation
 
 ```sh

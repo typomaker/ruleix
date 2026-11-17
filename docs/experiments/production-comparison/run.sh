@@ -20,6 +20,9 @@ for version in v082 current; do
             git show "086a91b:$name"
         } > "$scratch/$version/$name"
     done
+    if test "${RULEIX_COMPARISON_SMALL:-0}" = 1; then
+        patch "$scratch/$version/production_dump_workload_test.go" < "$fixtures/small-cohorts.patch"
+    fi
     cp "$fixtures/digest_test.go.txt" "$scratch/$version/production_comparison_digest_test.go"
     {
         printf '//go:build go1.24\n\n'
@@ -40,12 +43,20 @@ for version in v082 current; do
 done
 cmp "$scratch/v082-digest.json" "$scratch/current-digest.json"
 
+modes="mixed tiny medium broad rotate"
+if test "${RULEIX_COMPARISON_SMALL:-0}" = 1; then
+    modes="zero tiny"
+fi
 for version in v082 current current v082 v082 current; do
-    for mode in mixed tiny medium broad rotate; do
+    for mode in $modes; do
         printf '%s %s\n' "$version" "$mode"
         case "$mode" in
             mixed) RULEIX_PLANNER_BUCKET='' RULEIX_PLANNER_ROTATE=0 "$scratch/$version.test" -test.run '^$' -test.bench '^BenchmarkProductionDumpLocalRequest100$' -test.benchtime=80000x -test.benchmem ;;
             rotate) RULEIX_PLANNER_BUCKET='' RULEIX_PLANNER_ROTATE=1 "$scratch/$version.test" -test.run '^$' -test.bench '^BenchmarkProductionDumpLocalRequest100$' -test.benchtime=50000x -test.benchmem ;;
+            zero|tiny)
+                iterations=50000x
+                if test "${RULEIX_COMPARISON_SMALL:-0}" = 1; then iterations=80000x; fi
+                RULEIX_PLANNER_BUCKET="$mode" RULEIX_PLANNER_ROTATE=0 "$scratch/$version.test" -test.run '^$' -test.bench '^BenchmarkProductionDumpLocalRequest100$' -test.benchtime="$iterations" -test.benchmem ;;
             *) RULEIX_PLANNER_BUCKET="$mode" RULEIX_PLANNER_ROTATE=0 "$scratch/$version.test" -test.run '^$' -test.bench '^BenchmarkProductionDumpLocalRequest100$' -test.benchtime=50000x -test.benchmem ;;
         esac
     done

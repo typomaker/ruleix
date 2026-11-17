@@ -369,7 +369,7 @@ records the same dump harness on the tag and on `4de8383`.
 Three paired 80,000-request controls against db3ae77 measured broad mean
 49.145 → 44.170 µs and mixed mean 31.867 → 31.005 µs on Apple M1 Max.
 The [portable study](local-between-go.md) records p99.9 controls. Against
-[v0.8.2](production-v082-portable-comparison.md), mean/p99.9 changed 74.915/200.792 → 30.960/79.167 µs.
+[v0.8.2](production-v082-portable-comparison.md), mixed mean/p99.9 improved 2.42x/2.54x; the zero-candidate mean regressed 13.1%.
 
 ## ARM64 packed Between masks
 
