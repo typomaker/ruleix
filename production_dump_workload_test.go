@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -107,6 +108,14 @@ func searchProductionDumpRequest(
 ) {
 	local := index.Local()
 	defer local.Close()
+	searchProductionDumpOffers(local, request, visit)
+}
+
+func searchProductionDumpOffers(
+	local *ruleix.Local[productionDumpConstraint, uuid.UUID],
+	request []productionDumpConstraint,
+	visit func(int, []uuid.UUID),
+) {
 	var matches []uuid.UUID
 	for i, offer := range request {
 		matches = matches[:0]
@@ -157,19 +166,11 @@ func TestProductionDumpLocalRequest(t *testing.T) {
 	})
 }
 
-// Apple M1 Max, macOS 26.6.2, Go 1.27.3, GOMAXPROCS=1, -benchtime=2s,
-// -count=3, 96,630 constraints: median 87,703 ns/request, 877.0 ns/offer,
-// 2,392 B/request and 63 allocs/request. See docs/performance-history.md.
+// Apple M1 Max, macOS 26.6.2, Go 1.27.3, GOMAXPROCS=1,
+// 96,630 constraints and 45,000 requests per run: about 56.5 µs/request,
+// 921 B/request and 17 allocs/request. See docs/build-and-local-lookup.md.
 func BenchmarkProductionDumpLocalRequest100(b *testing.B) {
-	path := os.Getenv("RULEIX_PRODUCTION_DUMP")
-	if path == "" {
-		b.Skip("set RULEIX_PRODUCTION_DUMP to the production JSON dump path")
-	}
-	input, err := os.Open(path)
-	require.NoError(b, err)
-	defer input.Close()
-
-	rows, ids := readProductionDump(b, input)
+	rows, ids := loadProductionDumpBenchmark(b)
 	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
 	require.NoError(b, err)
 	const requestCount = 64
@@ -179,14 +180,104 @@ func BenchmarkProductionDumpLocalRequest100(b *testing.B) {
 		checkProductionDumpRequest(b, request)
 		require.Len(b, request, productionDumpOffersPerRequest)
 	}
+	if os.Getenv("RULEIX_PLANNER_ROTATE") == "1" {
+		for _, request := range requests {
+			ordered := slices.Clone(request)
+			for i := range request {
+				request[i] = ordered[(i*37)%productionDumpOffersPerRequest]
+			}
+		}
+	}
 	b.Logf("loaded %d constraints and generated %d requests", len(rows), len(requests))
 
 	b.ReportAllocs()
+	samples := make([]time.Duration, 0, 100_000)
 	run := 0
 	for b.Loop() {
+		start := time.Now()
 		searchProductionDumpRequest(index, requests[run%len(requests)], nil)
+		samples = append(samples, time.Since(start))
 		run++
 	}
+	slices.Sort(samples)
+	b.ReportMetric(float64(samples[(99*len(samples)+99)/100-1].Nanoseconds()), "p99-ns/request")
+	b.ReportMetric(float64(samples[(999*len(samples)+999)/1000-1].Nanoseconds()), "p99.9-ns/request")
 	b.ReportMetric(productionDumpOffersPerRequest, "offers/op")
 	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*productionDumpOffersPerRequest), "ns/offer")
+}
+
+// Keep each Local live until measurement ends so every request acquires fresh
+// storage. Use a fixed count such as -benchtime=5000x. The baseline on
+// Apple M1 Max, Go 1.27.3, GOMAXPROCS=1 measured 57.3 µs, 4,844 B, and
+// 31 allocs per request across three runs.
+func BenchmarkProductionDumpFreshLocal100(b *testing.B) {
+	rows, ids := loadProductionDumpBenchmark(b)
+	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
+	require.NoError(b, err)
+	requests := productionDumpRequests(rows, 64)
+	require.Len(b, requests, 64)
+	locals := make([]*ruleix.Local[productionDumpConstraint, uuid.UUID], b.N)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := range locals {
+		local := index.Local()
+		searchProductionDumpOffers(local, requests[i%len(requests)], nil)
+		locals[i] = local
+	}
+	b.StopTimer()
+	for _, local := range locals {
+		local.Close()
+	}
+}
+
+func loadProductionDumpBenchmark(b *testing.B) ([]productionDumpConstraint, []uuid.UUID) {
+	b.Helper()
+	path := os.Getenv("RULEIX_PRODUCTION_DUMP")
+	if path == "" {
+		b.Skip("set RULEIX_PRODUCTION_DUMP to the production JSON dump path")
+	}
+	input, err := os.Open(path)
+	require.NoError(b, err)
+	defer input.Close()
+	return readProductionDump(b, input)
+}
+
+// Apple M1 Max, Go 1.27.3, GOMAXPROCS=1, -benchtime=12x, two samples:
+// 152.37 ms and 46,366 allocations/op. See docs/build-and-local-lookup.md.
+func BenchmarkProductionDumpBuildProbe(b *testing.B) {
+	rows, ids := loadProductionDumpBenchmark(b)
+	builder := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema())
+	b.ReportAllocs()
+	for b.Loop() {
+		index, err := builder.Build(ruleix.Zip(rows, ids))
+		require.NoError(b, err)
+		runtime.KeepAlive(index)
+	}
+}
+
+// Use a fixed count, such as -benchtime=12x. All indexes remain live until the
+// final heap sample. Apple M1 Max, Go 1.27.3, GOMAXPROCS=1, 12x, two
+// samples: about 2.58 MB/index. See docs/build-and-local-lookup.md.
+func BenchmarkProductionDumpRetainedProbe(b *testing.B) {
+	rows, ids := loadProductionDumpBenchmark(b)
+	indexes := make([]*ruleix.Index[productionDumpConstraint, uuid.UUID], b.N)
+	builder := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema())
+	runtime.GC()
+	runtime.GC()
+	before := heapAlloc()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := range indexes {
+		index, err := builder.Build(ruleix.Zip(rows, ids))
+		require.NoError(b, err)
+		indexes[i] = index
+	}
+	b.StopTimer()
+	runtime.GC()
+	runtime.GC()
+	after := heapAlloc()
+	runtime.KeepAlive(rows)
+	runtime.KeepAlive(ids)
+	runtime.KeepAlive(indexes)
+	b.ReportMetric(float64(int64(after)-int64(before))/float64(b.N), "retained-B/index")
 }

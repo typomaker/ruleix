@@ -14,6 +14,7 @@ type bitmapInterner struct {
 	canonical     map[bitmapFingerprint]internedBitmap
 	collisions    map[bitmapFingerprint][]internedBitmap
 	nextID        physicalSourceID
+	cloneNew      bool
 	singletonRefs []uint32
 }
 
@@ -58,6 +59,10 @@ func (i *bitmapInterner) internSourceWithFingerprint(
 	}
 	canonical := i.canonical[fingerprint]
 	if canonical.bits == nil {
+		if i.cloneNew {
+			bits = bits.Clone()
+			*target = bits
+		}
 		id := i.allocateSourceID()
 		i.canonical[fingerprint] = internedBitmap{bits: bits, id: id}
 		return id
@@ -74,6 +79,10 @@ func (i *bitmapInterner) internSourceWithFingerprint(
 	}
 	if i.collisions == nil {
 		i.collisions = make(map[bitmapFingerprint][]internedBitmap)
+	}
+	if i.cloneNew {
+		bits = bits.Clone()
+		*target = bits
 	}
 	id := i.allocateSourceID()
 	i.collisions[fingerprint] = append(i.collisions[fingerprint], internedBitmap{bits: bits, id: id})

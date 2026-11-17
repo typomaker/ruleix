@@ -81,11 +81,10 @@ func (r *betweenRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistic
 	// components whose future statistics belong to this node.
 	id := ids.allocate()
 	hint := hints.node(id)
-	return &betweenRule[T, V]{
-		nodeID: id,
-		from:   r.from.newStateWithID(id, hint.between[0]),
-		until:  r.until.newStateWithID(id, hint.between[1]),
-	}
+	from := r.from.newStateWithID(id, hint.between[0])
+	until := r.until.newStateWithID(id, hint.between[1])
+	from.build.repeatedID, until.build.repeatedID = &ids.repeatedID, &ids.repeatedID
+	return &betweenRule[T, V]{nodeID: id, from: from, until: until}
 }
 func (*betweenRule[T, V]) validate(T) error { return nil }
 func (r *betweenRule[T, V]) insert(v T, id uint32) {

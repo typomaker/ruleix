@@ -144,6 +144,8 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 			internalIDs[id] = internalID
 			values = append(values, id)
 		}
+		// Reuse the ID lookup to avoid checking known-new IDs in ordered postings.
+		ids.repeatedID = exists
 		state.insert(constraint, internalID)
 		entryIndex++
 		if shouldCheckBuildPressure(options, entryIndex) {

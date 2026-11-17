@@ -89,7 +89,10 @@ type orderedRule[T any, V any] struct {
 
 // orderedRuleBuildState contains precision-controller state needed only while
 // Build is still accepting values. It is removed before the rule is published.
-type orderedRuleBuildState struct{ quantized bool }
+type orderedRuleBuildState struct {
+	quantized  bool
+	repeatedID *bool
+}
 
 func (r *orderedRule[T, V]) markBuildQuantized() {
 	if r.build == nil {
@@ -212,7 +215,9 @@ func (r *orderedRule[T, V]) canonicalDescriptor() canonicalRuleDescriptor {
 }
 func (r *orderedRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[T] {
 	id := ids.allocate()
-	return r.newStateWithID(id, hints.node(id).ordered)
+	state := r.newStateWithID(id, hints.node(id).ordered)
+	state.build.repeatedID = &ids.repeatedID
+	return state
 }
 func (r *orderedRule[T, V]) newStateWithID(id nodeID, hint orderedBuildStatistics) *orderedRule[T, V] {
 	return &orderedRule[T, V]{
@@ -225,6 +230,10 @@ func (r *orderedRule[T, V]) insert(v T, id uint32) {
 	value, ok := r.get(v)
 	if !ok {
 		r.wildcard.Add(id)
+		return
+	}
+	if r.build != nil && !r.build.quantized && r.build.repeatedID != nil && *r.build.repeatedID {
+		r.index.insertWithDuplicateCheck(value, id, true)
 		return
 	}
 	r.index.insertOrdered(value, id, r.dir, r.build != nil && r.build.quantized)

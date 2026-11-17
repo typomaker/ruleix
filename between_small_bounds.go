@@ -104,14 +104,21 @@ func (r *betweenRule[T, V]) withSmallBounds() Rule[T] {
 	}
 	for _, side := range []*orderedRule[T, V]{r.from, r.until} {
 		block := &side.index.blocks[0]
-		// Trim append-grown storage before the original postings are interned.
-		block.items = slices.Clone(block.items)
-		block.bits = block.bits.Clone()
-		for _, item := range block.items {
-			item.bits = item.bits.Clone()
+		if cap(block.items) > len(block.items) {
+			block.items = slices.Clone(block.items)
 		}
 	}
 	return &smallBetweenRule[T, V]{betweenRule: r, bounds: bounds}
+}
+
+func (r *smallBetweenRule[T, V]) internBitmaps(interner *bitmapInterner) {
+	for _, side := range []*orderedRule[T, V]{r.from, r.until} {
+		interner.intern(&side.wildcard)
+		// Trim only the postings retained as canonical bitmap instances.
+		interner.cloneNew = true
+		side.index.internBitmaps(interner)
+		interner.cloneNew = false
+	}
 }
 
 func prepareSmallBetweenChildren[T any](root *allRule[T]) {

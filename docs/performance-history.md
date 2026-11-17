@@ -343,6 +343,12 @@ cardinality prefixes.
 The [Local candidate validation trials](local-candidate-validation.md)
 record the Include lookup, saved-plan lookup and cached-intersection trials.
 
+## Ordered Build and Local lookup
+
+The [ordered Build and Local planning experiments](build-and-local-lookup.md)
+record the duplicate insertion, small Between interning, and Include memo
+measurements against `2f913e2`.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint

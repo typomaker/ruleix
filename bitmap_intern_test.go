@@ -71,3 +71,19 @@ func TestPhysicalSourceIDsAreBuildScoped(t *testing.T) {
 	require.Equal(t, physicalSourceID(1), firstInterner.internSource(&first))
 	require.Equal(t, physicalSourceID(1), secondInterner.internSource(&second))
 }
+
+func TestBitmapInternerClonesOnlyNewPostings(t *testing.T) {
+	interner := newBitmapInterner()
+	interner.cloneNew = true
+	fingerprint := bitmapFingerprint{checksum: 1, cardinality: 2}
+	for _, original := range []*roaring.Bitmap{roaring.BitmapOf(1, 2), roaring.BitmapOf(3, 4)} {
+		posting := original
+		id := interner.internSourceWithFingerprint(&posting, fingerprint)
+		require.NotSame(t, original, posting)
+		require.True(t, original.Equals(posting))
+
+		equal := original.Clone()
+		require.Equal(t, id, interner.internSourceWithFingerprint(&equal, fingerprint))
+		require.Same(t, posting, equal)
+	}
+}

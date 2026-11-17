@@ -285,8 +285,9 @@ func newMatchAllRule[T any](bits *roaring.Bitmap) Rule[T] {
 type nodeID uint32
 
 type nodeIDAllocator struct {
-	next      nodeID
-	canonical map[any]any
+	repeatedID bool
+	next       nodeID
+	canonical  map[any]any
 }
 
 type canonicalRepresentation uint8

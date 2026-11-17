@@ -240,14 +240,25 @@ func (i *orderedIndex[V]) internBitmaps(interner *bitmapInterner) {
 	}
 }
 func (i *orderedIndex[V]) insert(value V, id uint32) {
+	i.insertWithDuplicateCheck(value, id, false)
+}
+
+func (i *orderedIndex[V]) insertWithDuplicateCheck(value V, id uint32, repeatedID bool) {
 	i.accountingValid = false
 	if len(i.blocks) != 0 {
 		blockIndex := i.blockFor(value)
 		block := &i.blocks[blockIndex]
 		pos := i.searchBlock(block, value)
 		if pos < len(block.items) && i.compare(block.items[pos].value, value) == 0 {
-			block.items[pos].bits.Add(id)
-			block.bits.Add(id)
+			posting := block.items[pos].bits
+			if repeatedID {
+				if posting.CheckedAdd(id) {
+					block.bits.Add(id)
+				}
+			} else {
+				posting.Add(id)
+				block.bits.Add(id)
+			}
 			return
 		}
 	}
