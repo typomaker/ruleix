@@ -61,6 +61,10 @@ a design conclusion or hypothesis.
 
 ## Open optimization opportunities
 
+The [direct Between bounds experiment](between-id-experiment.md) measured
+a faster direct candidate check with additional retained index bytes.
+The prototype remains test-only pending a memory-neutral layout.
+
 These are hypotheses, not performance claims:
 
 - Define one stable aggregate release benchmark before publishing benchmark
