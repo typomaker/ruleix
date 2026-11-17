@@ -1,0 +1,131 @@
+--- /dev/null
++++ b/neon_fused.go
+@@ -0,0 +1,72 @@
++package ruleix
++
++import (
++	"math/bits"
++	"sort"
++)
++
++type packedBetweenOperand[T any] interface {
++	preparePackedBetween(T, []uint32, uint64, *packedBetweenLanes) (uint64, uint64)
++}
++
++func (r *smallBetweenRule[T, V]) preparePackedBetween(v T, ids []uint32, mask uint64, data *packedBetweenLanes) (uint64, uint64) {
++	from, until := r.from, r.until
++	// The compiled dictionary uses one-based endpoint positions. Resolve
++	// the query's allowed position range once per side for the whole mask.
++	var minUpper, maxLower uint16
++	if query, ok := from.get(v); ok {
++		items := from.index.blocks[0].items
++		maxLower = uint16(sort.Search(len(items), func(i int) bool {
++			return from.compare(items[i].value, query) > 0
++		}))
++	}
++	if query, ok := until.get(v); ok {
++		items := until.index.blocks[0].items
++		minUpper = uint16(sort.Search(len(items), func(i int) bool {
++			return until.compare(items[i].value, query) >= 0
++		}) + 1)
++	} else {
++		minUpper = 1 << 8
++	}
++	lowerWildcard, upperWildcard := !from.wildcard.IsEmpty(), !until.wildcard.IsEmpty()
++	for pending := mask; pending != 0; pending &= pending - 1 {
++		slot := bits.TrailingZeros64(pending)
++		id := ids[slot]
++		var pair uint16
++		if uint64(id) < uint64(len(r.bounds.keys)) {
++			pair = r.bounds.values[r.bounds.keys[id]]
++		}
++		data.lower[slot], data.upper[slot] = byte(pair), byte(pair>>8)
++		if lowerWildcard && from.wildcard.Contains(id) {
++			data.lowerWild[slot] = 255
++		}
++		if upperWildcard && until.wildcard.Contains(id) {
++			data.upperWild[slot] = 255
++		}
++	}
++	return uint64(maxLower), uint64(minUpper - 1)
++}
++
++func (r *allRule[T]) applyFusedCandidateMasks(v T, ids []uint32, mask uint64, pending uint8) uint64 {
++	for pending != 0 && mask != 0 {
++		first := bits.TrailingZeros8(pending)
++		remaining := pending &^ (1 << first)
++		next := bits.TrailingZeros8(remaining)
++		if next < 8 && r.maskEqualityOrder&(1<<first|1<<next) == 0 {
++			a, okA := r.children[first].(packedBetweenOperand[T])
++			b, okB := r.children[next].(packedBetweenOperand[T])
++			if okA && okB {
++				var data [2]packedBetweenLanes
++				var positions [4]uint64
++				positions[0], positions[1] = a.preparePackedBetween(v, ids, mask, &data[0])
++				positions[2], positions[3] = b.preparePackedBetween(v, ids, mask, &data[1])
++				mask &= neonFusedBetweenMask(&data, &positions)
++				pending = remaining &^ (1 << next)
++				continue
++			}
++		}
++		mask = r.children[first].(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
++		pending = remaining
++	}
++	return mask
++}
+--- a/local_candidate_mask.go
++++ b/local_candidate_mask.go
+@@ -108,5 +108,11 @@
+-	for i, child := range r.children {
+-		if i != m.first {
+-			mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
+-			if mask == 0 {
+-				return true
++	if r.narrowMaskPrepared {
++		pending := uint8(1)<<len(r.children) - 1
++		pending &^= 1 << m.first
++		mask = r.applyFusedCandidateMasks(v, ids, mask, pending)
++	} else {
++		for i, child := range r.children {
++			if i != m.first {
++				mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
++				if mask == 0 {
++					return true
++				}
+@@ -150,0 +157,3 @@
++	if pending&r.maskEqualityOrder == 0 && bits.OnesCount8(pending) == 2 {
++		return r.applyFusedCandidateMasks(v, ids, mask, pending)
++	}
+@@ -193,2 +202,4 @@
+-	for active := mask; active != 0; active &= active - 1 {
+-		slot := bits.TrailingZeros64(active)
++	var data packedBetweenLanes
++	lowerWildcard, upperWildcard := !from.wildcard.IsEmpty(), !until.wildcard.IsEmpty()
++	for pending := mask; pending != 0; pending &= pending - 1 {
++		slot := bits.TrailingZeros64(pending)
+@@ -197,12 +208,13 @@
+-		bounds := r.bounds
+-		if uint64(id) < uint64(len(bounds.keys)) {
+-			pair = bounds.values[bounds.keys[id]]
+-		}
+-		lower, upper := uint16(uint8(pair)), pair>>8
+-		if ((lower == 0 || lower > maxLower) && !from.wildcard.Contains(id)) ||
+-			(upper < minUpper && !until.wildcard.Contains(id)) {
+-			mask &^= uint64(1) << slot
+-		}
+-	}
+-	return mask
+-}
++		if uint64(id) < uint64(len(r.bounds.keys)) {
++			pair = r.bounds.values[r.bounds.keys[id]]
++		}
++		data.lower[slot], data.upper[slot] = byte(pair), byte(pair>>8)
++		if lowerWildcard && from.wildcard.Contains(id) {
++			data.lowerWild[slot] = 255
++		}
++		if upperWildcard && until.wildcard.Contains(id) {
++			data.upperWild[slot] = 255
++		}
++	}
++	return neonBetweenMask(&data, uint64(maxLower), uint64(minUpper-1)) & mask
++}

@@ -364,6 +364,13 @@ against `a4ac2fd`.
 The [v0.8.2 comparison](local-interval-and-narrow-trials.md#comparison-with-v082)
 records the same dump harness on the tag and on `4de8383`.
 
+## ARM64 packed Between masks
+
+At db3ae77, three paired 50,000-request controls measured broad mean
+49.186 → 43.985 µs and mixed mean 31.991 → 30.971 µs with the selected
+ARM64 kernels. The [complete study](local-neon-trials.md) records
+p99.9 variation, narrow controls, storage, profiles and all prototypes.
+
 ## Local predicate projection
 
 The [predicate projection trials](local-predicate-projection-trials.md)

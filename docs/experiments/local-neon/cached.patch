@@ -1,0 +1,97 @@
+--- a/local_candidate_mask.go
++++ b/local_candidate_mask.go
+@@ -18,0 +19 @@
++	applyCachedVectorMask(T, []uint32, uint64, int, *localAllIntersection) uint64
+@@ -100 +101 @@
+-func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *localCandidateMask, values []ID, dst *[]ID) bool {
++func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *localCandidateMask, state *localAllIntersection, values []ID, dst *[]ID) bool {
+@@ -110 +111,5 @@
+-			mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
++			if r.narrowMaskPrepared {
++				mask = child.(candidateMaskOperand[T]).applyCachedVectorMask(v, ids, mask, i, state)
++			} else {
++				mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
++			}
+@@ -193,2 +198,4 @@
+-	for active := mask; active != 0; active &= active - 1 {
+-		slot := bits.TrailingZeros64(active)
++	var data packedBetweenLanes
++	lowerWildcard, upperWildcard := !from.wildcard.IsEmpty(), !until.wildcard.IsEmpty()
++	for pending := mask; pending != 0; pending &= pending - 1 {
++		slot := bits.TrailingZeros64(pending)
+@@ -197,12 +204,13 @@
+-		bounds := r.bounds
+-		if uint64(id) < uint64(len(bounds.keys)) {
+-			pair = bounds.values[bounds.keys[id]]
+-		}
+-		lower, upper := uint16(uint8(pair)), pair>>8
+-		if ((lower == 0 || lower > maxLower) && !from.wildcard.Contains(id)) ||
+-			(upper < minUpper && !until.wildcard.Contains(id)) {
+-			mask &^= uint64(1) << slot
+-		}
+-	}
+-	return mask
+-}
++		if uint64(id) < uint64(len(r.bounds.keys)) {
++			pair = r.bounds.values[r.bounds.keys[id]]
++		}
++		data.lower[slot], data.upper[slot] = byte(pair), byte(pair>>8)
++		if lowerWildcard && from.wildcard.Contains(id) {
++			data.lowerWild[slot] = 255
++		}
++		if upperWildcard && until.wildcard.Contains(id) {
++			data.upperWild[slot] = 255
++		}
++	}
++	return neonBetweenMask(&data, uint64(maxLower), uint64(minUpper-1)) & mask
++}
+--- /dev/null
++++ b/neon_cached.go
+@@ -0,0 +1,42 @@
++package ruleix
++
++import "sort"
++
++func (r *eqRule[T, V, K]) applyCachedVectorMask(v T, ids []uint32, mask uint64, _ int, _ *localAllIntersection) uint64 {
++	return r.applyCandidateMask(v, ids, mask)
++}
++func (r *smallBetweenRule[T, V]) applyCachedVectorMask(v T, ids []uint32, mask uint64, child int, state *localAllIntersection) uint64 {
++	if !r.from.wildcard.IsEmpty() || !r.until.wildcard.IsEmpty() || (state.projecting && state.count != uint8(child+1)) {
++		return r.applyCandidateMask(v, ids, mask)
++	}
++	if !state.projecting {
++		*state = localAllIntersection{projecting: true, count: uint8(child + 1)}
++		for slot, id := range ids {
++			var pair uint16
++			if uint64(id) < uint64(len(r.bounds.keys)) {
++				pair = r.bounds.values[r.bounds.keys[id]]
++			}
++			state.ids[slot/2] |= uint32(pair) << (16 * (slot % 2))
++		}
++	}
++	from, until := r.from, r.until
++	// The compiled dictionary uses one-based endpoint positions. Resolve
++	// the query's allowed position range once per side for the whole mask.
++	var minUpper, maxLower uint16
++	if query, ok := from.get(v); ok {
++		items := from.index.blocks[0].items
++		maxLower = uint16(sort.Search(len(items), func(i int) bool {
++			return from.compare(items[i].value, query) > 0
++		}))
++	}
++	if query, ok := until.get(v); ok {
++		items := until.index.blocks[0].items
++		minUpper = uint16(sort.Search(len(items), func(i int) bool {
++			return until.compare(items[i].value, query) >= 0
++		}) + 1)
++	} else {
++		minUpper = 1 << 8
++	}
++
++	return neonSimpleBetweenMask(&state.ids, uint64(maxLower), uint64(minUpper-1)) & mask
++}
+--- a/index_search.go
++++ b/index_search.go
+@@ -153 +153 @@
+-			} else if appendCandidateMaskMatches(root, value, mask, values, dst) {
++			} else if appendCandidateMaskMatches(root, value, mask, &pool.partial, values, dst) {

@@ -1,0 +1,35 @@
+--- a/local_candidate_mask.go
++++ b/local_candidate_mask.go
+@@ -193,2 +193,4 @@
+-	for active := mask; active != 0; active &= active - 1 {
+-		slot := bits.TrailingZeros64(active)
++	var data packedBetweenLanes
++	lowerWildcard, upperWildcard := !from.wildcard.IsEmpty(), !until.wildcard.IsEmpty()
++	for pending := mask; pending != 0; pending &= pending - 1 {
++		slot := bits.TrailingZeros64(pending)
+@@ -197,12 +199,13 @@
+-		bounds := r.bounds
+-		if uint64(id) < uint64(len(bounds.keys)) {
+-			pair = bounds.values[bounds.keys[id]]
+-		}
+-		lower, upper := uint16(uint8(pair)), pair>>8
+-		if ((lower == 0 || lower > maxLower) && !from.wildcard.Contains(id)) ||
+-			(upper < minUpper && !until.wildcard.Contains(id)) {
+-			mask &^= uint64(1) << slot
+-		}
+-	}
+-	return mask
+-}
++		if uint64(id) < uint64(len(r.bounds.keys)) {
++			pair = r.bounds.values[r.bounds.keys[id]]
++		}
++		data.lower[slot], data.upper[slot] = byte(pair), byte(pair>>8)
++		if lowerWildcard && from.wildcard.Contains(id) {
++			data.lowerWild[slot] = 255
++		}
++		if upperWildcard && until.wildcard.Contains(id) {
++			data.upperWild[slot] = 255
++		}
++	}
++	return neonBetweenMask(&data, uint64(maxLower), uint64(minUpper-1)) & mask
++}

@@ -1,0 +1,14 @@
+//go:build arm64 && !purego
+
+package ruleix
+
+//go:noescape
+func neonBetweenMask(data *packedBetweenLanes, lower, upper uint64) uint64
+
+//go:noescape
+func neonFusedBetweenMask(data *[2]packedBetweenLanes, positions *[4]uint64) uint64
+
+//go:noescape
+func neonSimpleBetweenMask(data *[8]uint32, lower, upper uint64) uint64
+
+const packedBetweenAvailable = true

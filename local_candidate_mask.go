@@ -8,10 +8,11 @@ import (
 type localCandidateMask struct {
 	// The published equality set is immutable. Its identity is checked
 	// against every offer before reusing the candidate slots.
-	source *equalitySet
-	ids    [2 * allCandidateScanLimit]uint32
-	first  int
-	count  uint8
+	source   *equalitySet
+	ids      [2 * allCandidateScanLimit]uint32
+	first    uint32
+	count    uint8
+	platform localCandidatePlatform
 }
 
 type candidateMaskOperand[T any] interface {
@@ -41,7 +42,7 @@ type candidateMaskSource[T any] interface {
 }
 
 func (r *allRule[T]) rememberCandidateMask(pool *bitmapPool, v T, first rankedBitmap) {
-	if pool.observeRuntime || r.executionCounters != nil || first.card > uint64(len(pool.candidateMask.ids)) || (first.card <= allCandidateScanLimit && !r.narrowMaskPrepared) {
+	if uint64(first.childIdx) > uint64(^uint32(0)) || pool.observeRuntime || r.executionCounters != nil || first.card > uint64(len(pool.candidateMask.ids)) || (first.card <= allCandidateScanLimit && !r.narrowMaskPrepared) {
 		return
 	}
 	source, ok := r.children[first.childIdx].(candidateMaskSource[T])
@@ -70,7 +71,11 @@ func (r *allRule[T]) rememberCandidateMask(pool *bitmapPool, v T, first rankedBi
 	if pool.partial.projecting {
 		pool.partial = localAllIntersection{}
 	}
-	m.source, m.first, m.count = posting, first.childIdx, uint8(card)
+	m.source, m.first, m.count = posting, uint32(first.childIdx), uint8(card)
+	if packedBetweenAvailable && card > allCandidateScanLimit && r.narrowMaskPrepared &&
+		r.maskEqualityOrder != uint8(1)<<len(r.children)-1 {
+		m.rememberPackedState(pool)
+	}
 	if posting.bits == nil {
 		if posting.small == nil {
 			m.ids[0] = posting.single
@@ -106,8 +111,12 @@ func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *loc
 	ids := m.ids[:m.count]
 	mask := (uint64(1) << m.count) - 1
 	for i, child := range r.children {
-		if i != m.first {
-			mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
+		if i != int(m.first) {
+			if r.narrowMaskPrepared && packedBetweenAvailable && r.maskEqualityOrder&(uint8(1)<<i) == 0 {
+				mask = child.(cachedVectorOperand[T]).applyCachedVectorMask(v, ids, mask, i, m.packedState())
+			} else {
+				mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
+			}
 			if mask == 0 {
 				return true
 			}

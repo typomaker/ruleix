@@ -166,9 +166,10 @@ func TestProductionDumpLocalRequest(t *testing.T) {
 	})
 }
 
-// Apple M1 Max, macOS 26.6.2, Go 1.27.3, GOMAXPROCS=1, 96,630 constraints,
-// 60,000 requests per run: 50.64 µs mean, 97.42 µs p99.9, 845 B and 12
-// allocs per request. See docs/local-candidate-structural-trials.md.
+// Apple M1 Max, macOS 26.6.2, Go 1.27.3, GOMAXPROCS=1, 96,630 rows.
+// Three 50,000-request samples with packed ARM64 bounds measured 30.97 µs
+// mean, 78.88 µs p99.9, 845 B and 12 allocations per mixed 100-offer request.
+// See docs/local-neon-trials.md for narrow, broad, rotated and baseline controls.
 func BenchmarkProductionDumpLocalRequest100(b *testing.B) {
 	rows, ids := loadProductionDumpBenchmark(b)
 	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
@@ -217,7 +218,16 @@ func productionDumpCohort(
 	cohort string,
 ) [][]productionDumpConstraint {
 	b.Helper()
-	require.Contains(b, []string{"narrow", "broad"}, cohort)
+	require.Contains(b, []string{"narrow", "broad", "tiny", "medium"}, cohort)
+	minimum, maximum := 0, 8
+	switch cohort {
+	case "tiny":
+		minimum, maximum = 1, 4
+	case "medium":
+		minimum = 5
+	case "broad":
+		minimum, maximum = 9, 16
+	}
 	candidates := make(map[uuid.UUID]map[uuid.UUID]struct{}, len(requests))
 	for _, request := range requests {
 		candidates[request[0].CustomerUUID] = make(map[uuid.UUID]struct{})
@@ -230,7 +240,7 @@ func productionDumpCohort(
 	selected := make([][]productionDumpConstraint, 0, len(requests))
 	for _, request := range requests {
 		size := len(candidates[request[0].CustomerUUID])
-		if (cohort == "narrow" && size <= 8) || (cohort == "broad" && size >= 9 && size <= 16) {
+		if size >= minimum && size <= maximum {
 			selected = append(selected, request)
 		}
 	}

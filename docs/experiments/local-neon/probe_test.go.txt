@@ -1,0 +1,77 @@
+package ruleix_test
+
+import (
+	"fmt"
+	"runtime"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"github.com/typomaker/ruleix"
+)
+
+// Apple M1 Max, Go 1.27.3, GOMAXPROCS=1, -benchtime=50000x.
+// Latest complete-request and storage results are in docs/local-neon-trials.md.
+func BenchmarkSIMDShortRequests(b *testing.B) {
+	rows, ids := loadProductionDumpBenchmark(b)
+	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
+	require.NoError(b, err)
+	requests := productionDumpRequests(rows, 64)
+	for _, length := range []int{1, 4, 16} {
+		b.Run(fmt.Sprint(length), func(b *testing.B) {
+			samples := make([]time.Duration, 0, 100000)
+			turn := 0
+			b.ReportAllocs()
+			for b.Loop() {
+				start := time.Now()
+				searchProductionDumpRequest(index, requests[turn%len(requests)][:length], nil)
+				samples = append(samples, time.Since(start))
+				turn++
+			}
+			slices.Sort(samples)
+			b.ReportMetric(float64(samples[(999*len(samples)+999)/1000-1].Nanoseconds()), "p99.9-ns/request")
+		})
+	}
+}
+
+// GOMAXPROCS=1, -benchtime=1000x. Retained probes keep all contexts live.
+// See docs/local-neon-trials.md for the latest paired footprint measurements.
+func BenchmarkProductionDumpReopenedLocalRetainedProbe(b *testing.B) {
+	rows, ids := loadProductionDumpBenchmark(b)
+	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
+	require.NoError(b, err)
+	requests := productionDumpRequests(rows, 64)
+	require.Len(b, requests, 64)
+	locals := make([]*ruleix.Local[productionDumpConstraint, uuid.UUID], b.N)
+
+	runtime.GC()
+	runtime.GC()
+	before := heapAlloc()
+	for i := range locals {
+		local := index.Local()
+		searchProductionDumpOffers(local, requests[i%len(requests)], nil)
+		locals[i] = local
+	}
+	for _, local := range locals {
+		local.Close()
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := range locals {
+		local := index.Local()
+		searchProductionDumpOffers(local, requests[(i+1)%len(requests)], nil)
+		locals[i] = local
+	}
+	b.StopTimer()
+	runtime.GC()
+	runtime.GC()
+	after := heapAlloc()
+	runtime.KeepAlive(index)
+	runtime.KeepAlive(requests)
+	b.ReportMetric(float64(int64(after)-int64(before))/float64(b.N), "retained-B/Local")
+	for _, local := range locals {
+		local.Close()
+	}
+}

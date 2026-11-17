@@ -12,6 +12,7 @@ a design conclusion or hypothesis.
 
 | Date | Name | Area | Decision and evidence |
 | --- | --- | --- | --- |
+| 2026-11-17 | ARM64 Packed Between Masks | Local broad execution | Reuse existing scratch for one non-wildcard operand and gather other bounds on stack. Broad mean improved about 10.6% with the same allocation and storage classes. Use scalar checks for up to eight candidates. See [end-to-end controls](local-neon-trials.md). |
 | 2026-11-17 | Narrow Include Projection | All execution | Prepare a mask on a repeated exact posting. Reuse the existing intersection scratch and bypass projection for unstable keys. Full-dump mean and p99.9 moved from 35.59 to 31.92 µs and 85.79 to 80.38 µs. See [measurements](local-predicate-projection-trials.md#selected-projection). |
 | 2026-11-17 | Prepared Narrow Candidate Masks | All execution | Compile support and equality order at Build for masks of up to eight candidates. Use separate dispatch for the narrow path. Mixed p99.9 improved from 99.83 to 85.38 µs and narrow p99.9 from 97.88 to 74.79 µs. See [measurements](local-interval-and-narrow-trials.md#selected-execution). |
 | 2026-11-17 | Local Candidate Mask and Between Positions | All execution | Reuse a verified leading posting of 9–16 IDs and filter it in a word-sized mask. Resolve Between endpoint positions once per offer against the existing build dictionary. Full-dump p99.9 moved from 119.58 to 97.42 µs and allocations from 17 to 12 per request. See [measurements](local-candidate-structural-trials.md). |
