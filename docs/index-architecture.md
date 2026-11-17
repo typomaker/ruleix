@@ -196,7 +196,7 @@ physical keys are intentionally not cache keys because rehashing them costs more
 than comparing their semantic values. Ordinary and grouped query-key validation
 use separate lookup loops. Once an `All` result plan exists, ordinary validation
 reads the immutable prepared execution slots directly instead of rechecking their
-availability for every child of every cache slot. See [Local candidate masks](local-candidate-structural-trials.md#implementation) for small exact candidate sets.
+availability for every child of every cache slot. See [Local candidate masks](local-candidate-structural-trials.md#implementation) and [narrow execution](local-interval-and-narrow-trials.md) for small exact candidate sets.
 
 `Local.Close` clears query identity and result state,
 returns reusable storage to the owning Index, and publishes sampled telemetry.

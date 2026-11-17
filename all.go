@@ -34,6 +34,8 @@ type allRule[T any] struct {
 	queryKeyProviders       []localQueryKeyProvider[T]
 	planningProviders       []planningBitmapProvider[T]
 	directIDComplete        bool
+	narrowMaskPrepared      bool
+	maskEqualityOrder       uint8
 	equalityClassCount      uint32
 	compiledEqualityClasses bool
 	// sharedWildcardGroups is allocated only when Build finds equality children

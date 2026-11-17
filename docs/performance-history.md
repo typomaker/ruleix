@@ -355,6 +355,12 @@ The [structural Local trials](local-candidate-structural-trials.md) compare
 reusing small candidate lists, building dense predicate columns, and
 projecting the existing Between endpoint dictionary against `409a51b`.
 
+## Interval masks and narrow direct execution
+
+The [interval and narrow trials](local-interval-and-narrow-trials.md)
+compare bounded interval reuse and direct execution for up to eight IDs
+against `a4ac2fd`.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint

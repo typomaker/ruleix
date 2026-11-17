@@ -18,24 +18,43 @@ type candidateMaskOperand[T any] interface {
 	applyCandidateMask(T, []uint32, uint64) uint64
 }
 
+func (r *allRule[T]) prepareNarrowMaskOperands() {
+	if len(r.children) < 2 || len(r.children) > 8 {
+		return
+	}
+	var equality uint8
+	for i, child := range r.children {
+		if _, ok := child.(candidateMaskOperand[T]); !ok {
+			return
+		}
+		if _, ok := child.(candidateMaskSource[T]); ok {
+			equality |= uint8(1) << i
+		}
+	}
+	r.narrowMaskPrepared = equality != 0
+	r.maskEqualityOrder = equality
+}
+
 type candidateMaskSource[T any] interface {
 	candidateMaskPosting(T) *equalitySet
 }
 
 func (r *allRule[T]) rememberCandidateMask(pool *bitmapPool, v T, first rankedBitmap) {
-	if pool.observeRuntime || r.executionCounters != nil || first.card > uint64(len(pool.candidateMask.ids)) {
+	if pool.observeRuntime || r.executionCounters != nil || first.card > uint64(len(pool.candidateMask.ids)) || (first.card <= allCandidateScanLimit && !r.narrowMaskPrepared) {
 		return
 	}
 	source, ok := r.children[first.childIdx].(candidateMaskSource[T])
 	if !ok {
 		return
 	}
-	for i, child := range r.children {
-		if i == first.childIdx {
-			continue
-		}
-		if _, ok := child.(candidateMaskOperand[T]); !ok {
-			return
+	if !r.narrowMaskPrepared {
+		for i, child := range r.children {
+			if i == first.childIdx {
+				continue
+			}
+			if _, ok := child.(candidateMaskOperand[T]); !ok {
+				return
+			}
 		}
 	}
 	posting := source.candidateMaskPosting(v)
@@ -43,13 +62,17 @@ func (r *allRule[T]) rememberCandidateMask(pool *bitmapPool, v T, first rankedBi
 		return
 	}
 	card := posting.cardinality()
-	if card <= allCandidateScanLimit || card > uint64(len(pool.candidateMask.ids)) {
+	if card == 0 || card > uint64(len(pool.candidateMask.ids)) || (card <= allCandidateScanLimit && !r.narrowMaskPrepared) {
 		return
 	}
 	m := pool.candidateMask
 	m.source, m.first, m.count = posting, first.childIdx, uint8(card)
 	if posting.bits == nil {
-		copy(m.ids[:], posting.small)
+		if posting.small == nil {
+			m.ids[0] = posting.single
+		} else {
+			copy(m.ids[:], posting.small)
+		}
 	} else {
 		n := 0
 		posting.bits.Iterate(func(id uint32) bool {
@@ -94,6 +117,39 @@ func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *loc
 	}
 	*dst = result
 	return true
+}
+
+func appendNarrowCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *localCandidateMask, values []ID, dst *[]ID) bool {
+	posting := r.children[m.first].(candidateMaskSource[T]).candidateMaskPosting(v)
+	if posting != m.source {
+		m.source = nil
+		return false
+	}
+	ids := m.ids[:m.count]
+	mask := (uint64(1) << m.count) - 1
+	active := uint8(1)<<len(r.children) - 1
+	active &^= uint8(1) << m.first
+	equality := active & r.maskEqualityOrder
+	if mask = r.applyPreparedCandidateMask(v, ids, mask, equality); mask != 0 {
+		mask = r.applyPreparedCandidateMask(v, ids, mask, active&^equality)
+	}
+	result := *dst
+	for mask != 0 {
+		slot := bits.TrailingZeros64(mask)
+		mask &= mask - 1
+		result = append(result, values[ids[slot]])
+	}
+	*dst = result
+	return true
+}
+
+func (r *allRule[T]) applyPreparedCandidateMask(v T, ids []uint32, mask uint64, pending uint8) uint64 {
+	for pending != 0 && mask != 0 {
+		child := r.children[bits.TrailingZeros8(pending)]
+		pending &= pending - 1
+		mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
+	}
+	return mask
 }
 
 func (r *eqRule[T, V, K]) applyCandidateMask(v T, ids []uint32, mask uint64) uint64 {

@@ -42,6 +42,12 @@ func TestLocalCandidateMaskChecksSourceAndClearsOnClose(t *testing.T) {
 	require.NotNil(t, mask.source)
 	require.NotSame(t, first, mask.source)
 	check(offer{group: 4, slot: 1})
+	require.NotNil(t, mask.source)
+	require.Equal(t, uint8(1), mask.count)
+	require.Equal(t, uint32(40), mask.ids[0])
+	check(offer{group: 4, slot: 0})
+	require.Equal(t, uint8(1), mask.count)
+	check(offer{group: 5, slot: 0})
 	require.Nil(t, mask.source)
 	check(offer{group: 1, slot: -1})
 	check(offer{group: 1, slot: 1})
@@ -121,4 +127,22 @@ func TestLocalCandidateMaskCopiesBitmapPosting(t *testing.T) {
 
 	source.wildcard.Add(0)
 	require.Nil(t, source.candidateMaskPosting(1))
+}
+
+func TestNarrowCandidateMaskPreparation(t *testing.T) {
+	get := func(v int) (int, bool) { return v, true }
+	supported := &allRule[int]{children: []Rule[int]{Include(get), Include(get)}}
+	supported.prepareNarrowMaskOperands()
+	require.True(t, supported.narrowMaskPrepared)
+
+	for _, children := range [][]Rule[int]{
+		nil,
+		{Include(get)},
+		{Include(get), Exclude(get)},
+		{Include(get), Include(get), Include(get), Include(get), Include(get), Include(get), Include(get), Include(get), Include(get)},
+	} {
+		root := &allRule[int]{children: children}
+		root.prepareNarrowMaskOperands()
+		require.False(t, root.narrowMaskPrepared)
+	}
 }

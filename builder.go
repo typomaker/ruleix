@@ -256,6 +256,9 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	}
 	prepareRuleSearch(ix.observedRoot)
 	prepareRuleSearch(ix.root)
+	if r, ok := ix.root.(*allRule[C]); ok && !hasMemoryLimit && accountingErr == nil && len(ix.exclusions) == 0 {
+		r.prepareNarrowMaskOperands()
+	}
 	ix.nodes = int(ids.next)
 	for _, inspection := range inspections {
 		for _, id := range inspection.nodes {

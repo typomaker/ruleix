@@ -146,7 +146,11 @@ func searchAllMatches[C any, ID comparable](
 			return
 		}
 		if mask := pool.candidateMask; mask != nil && mask.source != nil && !pool.observeRuntime {
-			if appendCandidateMaskMatches(root, value, mask, values, dst) {
+			if mask.count <= allCandidateScanLimit && root.narrowMaskPrepared {
+				if appendNarrowCandidateMaskMatches(root, value, mask, values, dst) {
+					return
+				}
+			} else if appendCandidateMaskMatches(root, value, mask, values, dst) {
 				return
 			}
 		}
@@ -168,7 +172,8 @@ func searchAllMatches[C any, ID comparable](
 		*dst = result
 		return
 	}
-	if len(exclusions) == 0 && rankedChildren[0].card > allCandidateScanLimit && pool.candidateMask != nil {
+	if len(exclusions) == 0 && pool.candidateMask != nil &&
+		(rankedChildren[0].card > allCandidateScanLimit || root.narrowMaskPrepared) {
 		root.rememberCandidateMask(pool, value, rankedChildren[0])
 	}
 	// Dense identity lookup pays for itself while operands are cold. Once the
