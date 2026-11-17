@@ -170,9 +170,24 @@ func (r *allRule[T]) validateCandidateBitmap(
 	if !r.directIDComplete {
 		r.materializeUnsupportedRemaining(v, pool, remaining)
 	}
-	r.orderCandidateValidation(dst.GetCardinality(), remaining)
 	accepted := pool.get()
-	dst.Iterate(func(id uint32) bool {
+	r.collectValidatedCandidates(v, dst, accepted, pool, remaining)
+	dst.Clear()
+	dst.Or(accepted)
+	pool.put(accepted)
+	return !dst.IsEmpty()
+}
+
+// collectValidatedCandidates appends accepted candidates to a separate bitmap.
+// The source may belong to an immutable posting or to a Local child cache.
+func (r *allRule[T]) collectValidatedCandidates(
+	v T,
+	source, accepted *roaring.Bitmap,
+	pool *bitmapPool,
+	remaining []rankedBitmap,
+) {
+	r.orderCandidateValidation(source.GetCardinality(), remaining)
+	source.Iterate(func(id uint32) bool {
 		for _, ranked := range remaining {
 			if ranked.bits != nil {
 				if r.executionCounters != nil {
@@ -191,10 +206,6 @@ func (r *allRule[T]) validateCandidateBitmap(
 		accepted.Add(id)
 		return true
 	})
-	dst.Clear()
-	dst.Or(accepted)
-	pool.put(accepted)
-	return !dst.IsEmpty()
 }
 
 // materializeUnsupportedRemaining is shared by bitmap-returning and direct

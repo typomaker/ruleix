@@ -116,3 +116,27 @@ func TestAllMaterializesUnsupportedRuleOncePerCandidateBatch(t *testing.T) {
 	require.Equal(t, []uint32{2, 4, 6}, dst.ToArray())
 	require.Equal(t, 1, unsupported.searchCalls)
 }
+
+func TestLocalValidatesReadyMediumCandidatePosting(t *testing.T) {
+	const candidateCount = 2 * allCandidateScanLimit
+	ids := make([]uint32, candidateCount)
+	for i := range ids {
+		ids[i] = uint32(i)
+	}
+	source := roaring.BitmapOf(ids...)
+	filter := &countingRule{ids: []uint32{2, 4, 20}}
+	root := &allRule[int]{children: []Rule[int]{&countingRule{ids: ids}, filter}}
+	root.prepareSearch()
+	ranked := []rankedBitmap{
+		{bits: source, card: candidateCount, childIdx: 0},
+		{card: 100, childIdx: 1},
+	}
+	pool := newLocalBitmapPool(0)
+	result := roaring.New()
+
+	require.True(t, prepareRankedAllCandidates(root, 0, pool, ranked, result, nil))
+	require.Equal(t, []uint32{2, 4}, result.ToArray())
+	require.Equal(t, ids, source.ToArray())
+	require.Equal(t, candidateCount, filter.matchIDCalls)
+	require.Zero(t, filter.searchCalls)
+}

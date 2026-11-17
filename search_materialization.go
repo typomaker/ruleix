@@ -11,6 +11,13 @@ func prepareRankedAllCandidates[C any](
 	metrics *inspectorRuntime,
 ) bool {
 	if rankedChildren[0].card > allCandidateScanLimit {
+		first := rankedChildren[0]
+		// A small ready posting lets Local validate directly into its result
+		// bitmap and retain the ordinary exact-result cache.
+		if pool.local != nil && root.directIDComplete && first.bits != nil && first.card <= 2*allCandidateScanLimit {
+			root.collectValidatedCandidates(value, first.bits, candidates, pool, rankedChildren[1:])
+			return !candidates.IsEmpty()
+		}
 		return root.intersectRankedInOrderObserved(value, candidates, pool, rankedChildren, metrics, nil)
 	}
 	if rankedChildren[0].bits != nil {

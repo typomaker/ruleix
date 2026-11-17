@@ -152,6 +152,111 @@ p99.9 ranges were 246.58–275.38 and 254.88–257.04 µs, respectively. In
 70,000-request profiles they measured 254.00 and 253.29 µs. Neither refresh
 variant is included in the candidate. Improving plan refresh remains open.
 
+### Candidate cardinality and the request tail
+
+At `419334a`, 51 of the 64 buyers in the dump workload had at most eight
+distinct modifier IDs in their customer UUID posting. The other 13 had
+9–16 IDs. In a mixed 50,000-request run, 41 of the 51 observations at or
+above the global p99.9 came from the 13 buyers. Within the two groups,
+p99 was 94.42 and 214.38 µs, respectively. Group membership uses the raw
+customer posting before other predicates.
+
+Separate 60,000-request profile runs selected one group at a time via a
+temporary benchmark overlay. Hardware, toolchain, snapshot and
+`GOMAXPROCS` matched the preceding checkpoint. The up-to-eight-ID group
+averaged 67.19 µs and 802 B/op (11 allocs/op). The larger group averaged
+134.35 µs and 8,630 B/op (269 allocs/op). In the larger group's CPU profile,
+`validateCandidateBitmap` accounted for 3.29 of 8.18 sampled seconds,
+including 2.70 s in `Between.matchesID`. The second saved-plan lookup
+after ranking fresh operands accounted for 0.03 s.
+
+A trial reused child bitmaps from an unsuccessful saved-plan evaluation
+by restoring schema order before ranking again. Across three interleaved
+30,000-request samples per binary, baseline and trial medians were 85.37
+and 85.88 µs mean, 205.25 and 206.29 µs p99, and 281.79 and 282.83 µs
+p99.9. Both allocated 2,392 B and 63 objects per request. A 60,000-request
+profile restricted to larger buyer postings confirmed that the trial
+did not remove the dominant per-ID range validation. The bitmap reuse
+trial did not establish a reduction in tail latency.
+
+Two targeted validation trials also left the dominant work in place.
+The first applied the existing candidate filter when an unmaterialized
+range-like operand ranked first for 9–32 candidates. The second skipped
+per-posting probes after a failed whole-block membership test in
+descending ordered lookup. Two interleaved 35,000-request runs per
+binary, selected from the larger buyer group, left allocations at
+8,629 B/op and 269 allocs/op. The p99 ranges were 224–247 µs for the
+baseline, 234–249 µs for the filter, and 231–232 µs for the whole-block
+probe. Their 60,000-request profiles gave 2.54, 2.53, and 2.49 sampled
+CPU seconds in candidate validation. Neither variant established a
+net speedup.
+Expanding the filter to other ranked operands and probing the aggregate
+before scanning partially covered blocks also left the larger-buyer
+mean near 135–143 µs with 269 allocations per request. The modified
+paths remained outside the production patch.
+
+#### Direct validation of ready Local candidates
+
+The accepted candidate takes the direct-ID path for 9–16 candidates when
+the leading bitmap is already available and every operand supports direct
+ID validation. It writes the matches into the existing result bitmap while
+reading the leading bitmap in place. The exact-result cache keeps its
+normal eligibility rules. A preliminary direct-output trial also saved
+time but bypassed that cache. A trial that copied the leading bitmap
+before validation preserved the cache but used 66 allocations/request in
+the larger buyer group, compared with 43 for direct validation.
+
+Three alternating 50,000-request mixed samples against `419334a` gave
+these per-request medians. Tests were built with the same temporary
+benchmark overlay, which selects buyers by the number of distinct
+`modifier_uuid` values for their customer UUID and times every request.
+
+| Metric | Baseline | Candidate |
+| --- | ---: | ---: |
+| Mean latency | 81.85 µs | 76.84 µs |
+| p99 | 195.92 µs | 150.71 µs |
+| p99.9 | 255.46 µs | 168.25 µs |
+| p99, up to eight buyer IDs | 96.33 µs | 96.00 µs |
+| p99, 9–16 buyer IDs | 221.38 µs | 158.38 µs |
+| Bytes allocated | 2,391 | 921 |
+| Allocations | 63 | 17 |
+
+Two samples per binary at 22,000 requests also restricted the workload
+to the larger buyer group and repeated the first one or four offers
+throughout each request. With one distinct offer, p99 was 237.50 versus
+210.96 µs and allocations were 612 versus 216. With four distinct offers,
+p99 was 263.77 versus 241.81 µs and allocations were 428 versus 124.
+
+The larger-buyer CPU and allocation profiles used 60,000 requests.
+Mean latency fell from 135.05 to 111.77 µs, with allocations moving from
+8,630 B and 269 allocations to 1,390 B and 43 allocations. Cumulative
+CPU samples in request execution fell from 5.41 to 4.72 s. General bitmap
+intersection within it fell from 3.88 to 0.07 s. The new direct path
+still validates individual IDs and avoids the generic bitmap preparation.
+
+Two alternating 100-iteration retained-memory runs per binary measured
+approximately 2,968, 94,192, 112,928, and 2,221,722 retained bytes per
+Local for the cold, warm, adaptive and adversarial shapes. The change
+uses existing scratch and result bitmaps and has no index build changes.
+
+The control suite included exact and lossy production searches, skewed
+equality, extracted exclusions, warm exact hits, joined batches and
+Local teardown. Larger differences in the 200 ms controls prompted
+isolated repeats. At 700 ms and three runs per binary, warm joined
+Local remained near 245 µs/batch with zero allocations and cold joined
+Local moved from 1.266 to 1.279 ms/batch with 2,141 allocations. The
+isolated 600 ms joined Index control was 1.799 vs 1.782 ms per batch
+with 2,004 allocations. The isolated 500 ms Local exclusion controls
+were 2.983 vs 2.983 µs for ten candidates, and 4.041 vs 3.990 µs for
+100 candidates, both with four allocations. Matching CPU and
+allocation profiles at 2,600 Index batches and 750,000 ten-candidate
+Local exclusion searches did not reproduce the short-run slowdown.
+
+The focused test checks the 16-entry boundary, verifies that the source
+bitmap stays intact, and verifies that the remaining rule runs direct
+ID checks without materializing a bitmap. The complete test suite and
+`go vet ./...` passed. Changed executable line coverage was 13 of 13.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint

@@ -17,6 +17,12 @@ against rule interfaces before preparation and against compiled descriptors
 after preparation. An unsupported child explicitly falls back to one complete
 materialization for the candidate batch, never one materialization per ID.
 
+The root Local search can validate 9–16 candidates directly when its first
+ranked operand already has a bitmap and all children support direct-ID
+execution. It reads the borrowed bitmap and writes accepted IDs into the
+separate result bitmap. The normal exact-result cache and exclusion processing
+still consume that result. See [production dump measurements](performance-history.md#candidate-cardinality-and-the-request-tail).
+
 ## `Between` search sides and cache identity
 
 A `betweenSearchSide` keeps an ordered rule and its already extracted query
