@@ -24,6 +24,47 @@ link to this document.
   may not regress. A documented build-cost increase is allowed only under the
   exception in [project-governance.md](project-governance.md).
 
+## Production dump Local request benchmark
+
+`BenchmarkProductionDumpLocalRequest100` builds the supplied selection
+schema from a November 17, 2026 JSON snapshot with 96,630 constraint rows
+and 1,447 distinct modifier UUIDs. Each row uses `modifier_uuid` as the
+result ID. Columns outside the schema are ignored. Schema fields that are
+NULL throughout the snapshot contribute wildcard rules, and the loader
+rejects non-null values in those columns. The dump stays outside Git.
+Its SHA-256 is
+`ad126179e389201fdacc5b2ab5ff202e76506340ee2d9b3f5207a96d14ec9472`.
+
+The workload cycles through 64 distinct customers. Each request starts at
+one observed offer for that customer and takes 100 distinct offers from the
+snapshot's 150 observed store and slot combinations, ordered by store, day,
+type, and slot midpoint. Customer UUID and activity time stay fixed within
+the request. The activity time is the latest activity start in the dump.
+Across the 6,336 adjacent offer pairs, 4,354 change one field, 1,128 change
+two, and 854 change three. A separate scan of the snapshot predicts 526
+offers with at least one matching modifier across the 6,400 offers. These
+sequences are generated from indexed conditions and the actual production
+request distribution is unknown.
+
+One benchmark operation opens a Local, searches the offers sequentially
+while reusing the result slice, and closes the Local. Loading, index
+construction, offer generation, and request validation run outside the
+timer. `TestProductionDumpLocalRequest` uses a small inline snapshot to
+check adjacent offer changes, hits, misses, and modifier UUID deduplication
+without requiring an external file.
+
+```sh
+RULEIX_PRODUCTION_DUMP=/path/to/snapshot.json GOMAXPROCS=1 \
+  go test . -run '^$' -bench '^BenchmarkProductionDumpLocalRequest100$' \
+  -benchtime=2s -count=3
+```
+
+On Apple M1 Max, macOS 26.6.2/arm64, Go 1.27.3, the three samples were
+87,703, 87,405, and 89,939 ns/request. The median was 87,703 ns/request,
+877.0 ns/offer, 2,392 B/request, and 63 allocs/request. The benchmark was
+introduced on top of `f8536c9`. This is the first measurement for this
+workload. Verified with `go test ./...` and `git diff --check`.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint
