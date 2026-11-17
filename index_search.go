@@ -145,14 +145,14 @@ func searchAllMatches[C any, ID comparable](
 			*dst = result
 			return
 		}
-		if mask := pool.candidateMask; mask != nil && mask.source != nil && !pool.observeRuntime {
-			if mask.count <= allCandidateScanLimit && root.narrowMaskPrepared {
-				if appendNarrowCandidateMaskMatches(root, value, mask, &pool.partial, values, dst) {
-					return
-				}
-			} else if appendCandidateMaskMatches(root, value, pool, values, dst) {
-				return
-			}
+	}
+	if mask := pool.candidateMask; len(exclusions) == 0 && mask != nil && mask.source != nil && !pool.observeRuntime {
+		narrow := mask.count <= allCandidateScanLimit && root.narrowMaskPrepared
+		if narrow && appendNarrowCandidateMaskMatches(root, value, mask, &pool.partial, values, dst) {
+			return
+		}
+		if !narrow && appendCandidateMaskMatches(root, value, pool, values, dst) {
+			return
 		}
 	}
 	var inline [8]rankedBitmap

@@ -57,14 +57,6 @@ func (r *allRule[T]) collectValidatedCandidates(
 	if ids != nil {
 		count = uint64(len(ids))
 	}
-	type candidatePosting struct {
-		set      *equalitySet
-		wildcard *roaring.Bitmap
-		checked  bool
-	}
-	type candidatePostingResolver interface {
-		resolveCandidatePosting(T) (*equalitySet, *roaring.Bitmap)
-	}
 	// Resolve compact postings only if an ID survives to that operand.
 	var resolved [8]candidatePosting
 	resolve := pool.local != nil && !pool.observeRuntime && r.executionCounters == nil &&
@@ -72,32 +64,11 @@ func (r *allRule[T]) collectValidatedCandidates(
 	r.orderCandidateValidation(count, remaining)
 	add := func(id uint32) bool {
 		for i, ranked := range remaining {
-			if ranked.bits != nil {
-				if r.executionCounters != nil {
-					r.executionCounters.containsChecks++
-				}
-				observeCandidateCheck(r.children[ranked.childIdx], pool)
-				if !ranked.bits.Contains(id) {
-					return true
-				}
-				continue
-			}
+			var posting *candidatePosting
 			if resolve {
-				posting := &resolved[i]
-				if !posting.checked {
-					posting.checked = true
-					if equality, ok := r.childExecution(ranked.childIdx).directID.(candidatePostingResolver); ok {
-						posting.set, posting.wildcard = equality.resolveCandidatePosting(v)
-					}
-				}
-				if posting.wildcard != nil {
-					if !posting.wildcard.Contains(id) && (posting.set == nil || !posting.set.contains(id)) {
-						return true
-					}
-					continue
-				}
+				posting = &resolved[i]
 			}
-			if !r.matchesChildID(ranked.childIdx, v, id, pool) {
+			if !r.matchesValidatedCandidate(v, id, pool, ranked, posting) {
 				return true
 			}
 		}
@@ -270,4 +241,36 @@ func isExcluded[C any](rules []exclusionRule[C], value C, id uint32, pool *bitma
 		}
 	}
 	return false
+}
+
+type candidatePosting struct {
+	set      *equalitySet
+	wildcard *roaring.Bitmap
+	checked  bool
+}
+
+type candidatePostingResolver[T any] interface {
+	resolveCandidatePosting(T) (*equalitySet, *roaring.Bitmap)
+}
+
+func (r *allRule[T]) matchesValidatedCandidate(
+	v T, id uint32, pool *bitmapPool, ranked rankedBitmap, posting *candidatePosting,
+) bool {
+	if ranked.bits != nil {
+		if r.executionCounters != nil {
+			r.executionCounters.containsChecks++
+		}
+		observeCandidateCheck(r.children[ranked.childIdx], pool)
+		return ranked.bits.Contains(id)
+	}
+	if posting != nil && !posting.checked {
+		posting.checked = true
+		if equality, ok := r.childExecution(ranked.childIdx).directID.(candidatePostingResolver[T]); ok {
+			posting.set, posting.wildcard = equality.resolveCandidatePosting(v)
+		}
+	}
+	if posting != nil && posting.wildcard != nil {
+		return posting.wildcard.Contains(id) || posting.set != nil && posting.set.contains(id)
+	}
+	return r.matchesChildID(ranked.childIdx, v, id, pool)
 }

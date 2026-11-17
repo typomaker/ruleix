@@ -369,7 +369,7 @@ records the same dump harness on the tag and on `4de8383`.
 Three paired 80,000-request controls against db3ae77 measured broad mean 49.145 → 44.170 µs and mixed mean 31.867 → 31.005 µs on Apple M1 Max.
 The [portable study](local-between-go.md) records p99.9 controls. Against
 [v0.8.2](production-v082-portable-comparison.md), mixed mean/p99.9 improved 2.42x/2.54x; [empty-plan guards](local-zero-plan.md) subsequently restored zero-candidate parity.
-[Prepared early empty checks](local-early-empty.md) then reduced missing-customer/store/slot means 12.411/20.133/24.325 → 6.323/6.037/4.670 µs against 5f6e63e. The [fresh v0.8.2 comparison](production-v082-early-empty-comparison.md) records mixed mean/p99.9 77.585/235.666 → 32.957/94.125 µs and faster missing-customer/store/slot controls on the full 96,630-row index.
+[Prepared early empty checks](local-early-empty.md) then reduced missing-customer/store/slot means 12.411/20.133/24.325 → 6.323/6.037/4.670 µs against 5f6e63e. The [fresh v0.8.2 comparison](production-v082-early-empty-comparison.md) records mixed mean/p99.9 77.585/235.666 → 32.957/94.125 µs and faster missing-customer/store/slot controls on the full 96,630-row index. The [v0.9.0 release gate](experiments/release-0.9.0/README.md) rechecks final lint refactoring against 453f87d with identical allocation metrics.
 
 ## ARM64 packed Between masks
 

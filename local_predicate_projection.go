@@ -4,30 +4,42 @@ import "math/bits"
 
 const projectionDisabled uint32 = 1 << 9
 
-func (r *smallBetweenRule[T, V]) applyPackedEqualityMask(v T, ids []uint32, mask uint64, _ int, _ *localAllIntersection) uint64 {
+func (r *smallBetweenRule[T, V]) applyPackedEqualityMask(
+	v T,
+	ids []uint32,
+	mask uint64,
+	_ int,
+	_ *localAllIntersection,
+) uint64 {
 	return r.applyCandidateMask(v, ids, mask)
 }
 
-func (r *eqRule[T, V, K]) applyPackedEqualityMask(v T, ids []uint32, mask uint64, child int, state *localAllIntersection) uint64 {
+func (r *eqRule[T, V, K]) applyPackedEqualityMask(
+	v T,
+	ids []uint32,
+	mask uint64,
+	child int,
+	state *localAllIntersection,
+) uint64 {
 	if (state.projecting && state.ids[child]&projectionDisabled != 0) || r.coarsen != nil || len(r.values.sets) > 4095 {
 		return r.applyCandidateMask(v, ids, mask)
 	}
 	var set *equalitySet
 	var ordinal uint16
-	if value, ok := r.get(v); ok {
+	value, present := r.get(v)
+	if present && r.values.offsets != nil {
+		if offset, ok := r.values.offsets[r.equalityKey(value)]; ok {
+			ordinal = uint16(offset + 1)
+			set = &r.values.sets[offset]
+		}
+	}
+	if present && r.values.offsets == nil {
 		key := r.equalityKey(value)
-		if r.values.offsets != nil {
-			if offset, ok := r.values.offsets[key]; ok {
+		for offset := range int(r.values.count) {
+			if r.values.keys[offset] == key {
 				ordinal = uint16(offset + 1)
 				set = &r.values.sets[offset]
-			}
-		} else {
-			for offset := range int(r.values.count) {
-				if r.values.keys[offset] == key {
-					ordinal = uint16(offset + 1)
-					set = &r.values.sets[offset]
-					break
-				}
+				break
 			}
 		}
 	}

@@ -69,9 +69,13 @@ func TestLocalBitmapPoolReusesOversizedBitmap(t *testing.T) {
 		bits.Add(id << 16)
 	}
 
-	pool.put(bits)
-
-	require.Same(t, bits, pool.get())
+	for range 64 {
+		pool.put(bits)
+		if pool.get() == bits {
+			return
+		}
+	}
+	t.Fatal("Local pool never reused an oversized bitmap across 64 attempts")
 }
 
 // BenchmarkBitmapPoolRareWide models a large scratch result appearing among

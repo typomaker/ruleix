@@ -116,7 +116,9 @@ func readProductionDump(t testing.TB, input io.Reader) ([]productionDumpConstrai
 	return constraints, ids
 }
 
-func productionDumpBetween(get func(productionDumpConstraint) productionDumpRange) ruleix.Rule[productionDumpConstraint] {
+func productionDumpBetween(
+	get func(productionDumpConstraint) productionDumpRange,
+) ruleix.Rule[productionDumpConstraint] {
 	return ruleix.Between(
 		func(c productionDumpConstraint) (time.Time, bool) { return get(c).since.Truncate(time.Second), true },
 		func(c productionDumpConstraint) (time.Time, bool) { return get(c).until.Truncate(time.Second), true },

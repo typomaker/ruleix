@@ -477,7 +477,7 @@ search path нет reflection. Интерфейсы остаются типиз�
 | --- | --- |
 | `rule.go` | Закрытый интерфейс правил, общие capabilities и оптимизация дерева. |
 | `builder.go` | `Builder`, `Index` и build pipeline. |
-| `index_search.go`, `search_materialization.go` | `Search`, `Local` и материализация ID. |
+| `index_search.go`, `search_materialization.go` | Search, Local, cached-result dispatch, candidate validation, and ID materialization; release preparation flattens cached dispatch and isolates candidate validation without changing matching semantics. |
 | `eq.go`, `not.go` | Equality и exclusion indexes. |
 | `ordered.go`, `ordered_index.go` | Ordered-операторы, блоковый индекс и маршрутизация. |
 | `between.go`, `compare_by.go` | Составные ordered-представления. |

@@ -19,7 +19,7 @@ func TestProductionDumpLocalMatchesIndex(t *testing.T) {
 	}
 	input, err := os.Open(path)
 	require.NoError(t, err)
-	defer input.Close()
+	defer func() { require.NoError(t, input.Close()) }()
 	rows, ids := readProductionDump(t, input)
 
 	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))

@@ -140,7 +140,8 @@ func TestNarrowCandidateMaskPreparation(t *testing.T) {
 		nil,
 		{Include(get)},
 		{Include(get), Exclude(get)},
-		{Include(get), Include(get), Include(get), Include(get), Include(get), Include(get), Include(get), Include(get), Include(get)},
+		{Include(get), Include(get), Include(get), Include(get), Include(get),
+			Include(get), Include(get), Include(get), Include(get)},
 	} {
 		root := &allRule[int]{children: children}
 		root.prepareNarrowMaskOperands()

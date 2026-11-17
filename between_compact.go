@@ -34,7 +34,11 @@ type betweenBoundsCompactor interface {
 	compactBounds(refs, work []uint32)
 }
 
-func appendBetweenCompactors[T any](rule Rule[T], dst []betweenBoundsCompactor, underAll bool) []betweenBoundsCompactor {
+func appendBetweenCompactors[T any](
+	rule Rule[T],
+	dst []betweenBoundsCompactor,
+	underAll bool,
+) []betweenBoundsCompactor {
 	switch typed := rule.(type) {
 	case *inspectedRuntimeRule[T]:
 		return appendBetweenCompactors(typed.child, dst, underAll)
@@ -236,7 +240,11 @@ func (r *betweenRule[T, V]) addSide(side betweenSearchSide[T, V], dst *roaring.B
 	r.trimCompactBoundary(side.rule, plan, dst)
 }
 
-func (r *betweenRule[T, V]) intersectSide(side betweenSearchSide[T, V], dst *roaring.Bitmap, postings []*roaring.Bitmap) {
+func (r *betweenRule[T, V]) intersectSide(
+	side betweenSearchSide[T, V],
+	dst *roaring.Bitmap,
+	postings []*roaring.Bitmap,
+) {
 	if r.compact == nil {
 		postings = side.rule.appendMatchingBitmaps(side.value, postings)
 		if len(postings) == 0 {
@@ -261,7 +269,11 @@ func (r *betweenRule[T, V]) intersectSide(side betweenSearchSide[T, V], dst *roa
 	r.trimCompactBoundary(side.rule, plan, dst)
 }
 
-func (r *betweenRule[T, V]) visitCompactPostings(rule *orderedRule[T, V], plan betweenRange, visit func(*roaring.Bitmap)) {
+func (r *betweenRule[T, V]) visitCompactPostings(
+	rule *orderedRule[T, V],
+	plan betweenRange,
+	visit func(*roaring.Bitmap),
+) {
 	if plan.high > plan.low {
 		block := &rule.index.blocks[plan.boundary]
 		if block.items[0].bits == nil || plan.low == 0 && plan.high == len(block.items) {

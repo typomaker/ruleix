@@ -46,7 +46,12 @@ func (m *betweenIDMatcher) matchesID(v betweenIDFixture, id uint32) bool {
 		matchesBetweenIDBound(m.rule.until, m.until[id], v, id)
 }
 
-func matchesBetweenIDBound(side *orderedRule[betweenIDFixture, int], position uint32, v betweenIDFixture, id uint32) bool {
+func matchesBetweenIDBound(
+	side *orderedRule[betweenIDFixture, int],
+	position uint32,
+	v betweenIDFixture,
+	id uint32,
+) bool {
 	if side.wildcard.Contains(id) {
 		return true
 	}
@@ -63,14 +68,26 @@ func matchesBetweenIDBound(side *orderedRule[betweenIDFixture, int], position ui
 	return order >= 0
 }
 
-func buildBetweenIDExperiment(tb testing.TB, stored []betweenIDFixture, ids []int, lossy bool) (*Index[betweenIDFixture, int], *allRule[betweenIDFixture], *betweenRule[betweenIDFixture, int], int) {
+func buildBetweenIDExperiment(
+	tb testing.TB,
+	stored []betweenIDFixture,
+	ids []int,
+	lossy bool,
+) (*Index[betweenIDFixture, int], *allRule[betweenIDFixture], *betweenRule[betweenIDFixture, int], int) {
 	tb.Helper()
 	return buildBetweenIDFixture(tb, stored, ids, lossy, 64*1024, false)
 }
 
-func buildBetweenIDFixture(tb testing.TB, stored []betweenIDFixture, ids []int, lossy bool, limit uint64, compact bool) (*Index[betweenIDFixture, int], *allRule[betweenIDFixture], *betweenRule[betweenIDFixture, int], int) {
+func buildBetweenIDFixture(
+	tb testing.TB,
+	stored []betweenIDFixture,
+	ids []int,
+	lossy bool,
+	limit uint64,
+	compact bool,
+) (*Index[betweenIDFixture, int], *allRule[betweenIDFixture], *betweenRule[betweenIDFixture, int], int) {
 	tb.Helper()
-	var between Rule[betweenIDFixture] = Between(
+	between := Between(
 		func(v betweenIDFixture) (int, bool) { return v.from, !v.missingFrom },
 		func(v betweenIDFixture) (int, bool) { return v.until, !v.missingUntil },
 		cmp.Compare[int],
@@ -159,43 +176,56 @@ func BenchmarkBetweenIDExperiment(b *testing.B) {
 			}
 			for _, variant := range []string{"Baseline", "Table"} {
 				b.Run(name+"/"+path+"/"+variant, func(b *testing.B) {
-					b.ReportAllocs()
-					if path == "Build" {
-						for b.Loop() {
-							index, root, rule, position := buildBetweenIDExperiment(b, stored, ids, false)
-							if variant == "Table" {
-								root.execution[position].directID = newBetweenIDMatcher(rule, size)
-							}
-							betweenIDExperimentSink = index
-						}
-						return
-					}
-					index, root, rule, position := buildBetweenIDExperiment(b, stored, ids, false)
-					if variant == "Table" {
-						matcher := newBetweenIDMatcher(rule, size)
-						root.execution[position].directID = matcher
-					}
-					search := index.Search
-					if path == "Local" {
-						local := index.Local()
-						defer local.Close()
-						search = local.Search
-					}
-					out := make([]int, 0, candidates)
-					q := betweenIDFixture{from: 3 * size / 4, until: 5 * size / 4}
-					search(q, &out)
-					b.ResetTimer()
-					if variant == "Table" {
-						m := root.execution[position].directID.(*betweenIDMatcher)
-						b.ReportMetric(float64(unsafe.Sizeof(*m)+uintptr(size*2)*unsafe.Sizeof(m.from[0])), "table-B/index")
-					}
-					for n := 0; n < b.N; n++ {
-						q.category = n & 1023
-						out = out[:0]
-						search(q, &out)
-					}
+					benchmarkBetweenIDCase(b, stored, ids, path, variant, candidates)
 				})
 			}
 		}
+	}
+}
+
+func benchmarkBetweenIDCase(
+	b *testing.B,
+	stored []betweenIDFixture,
+	ids []int,
+	path,
+	variant string,
+	candidates int,
+) {
+	const size = 32768
+	b.ReportAllocs()
+	if path == "Build" {
+		for b.Loop() {
+			index, root, rule, position := buildBetweenIDExperiment(b, stored, ids, false)
+			if variant == "Table" {
+				root.execution[position].directID = newBetweenIDMatcher(rule, size)
+			}
+			betweenIDExperimentSink = index
+		}
+		return
+	}
+	index, root, rule, position := buildBetweenIDExperiment(b, stored, ids, false)
+	if variant == "Table" {
+		matcher := newBetweenIDMatcher(rule, size)
+		root.execution[position].directID = matcher
+	}
+	search := index.Search
+	if path == "Local" {
+		local := index.Local()
+		defer local.Close()
+		search = local.Search
+	}
+	out := make([]int, 0, candidates)
+	q := betweenIDFixture{from: 3 * size / 4, until: 5 * size / 4}
+	search(q, &out)
+	b.ResetTimer()
+	if variant == "Table" {
+		matcher := root.execution[position].directID.(*betweenIDMatcher)
+		bytes := unsafe.Sizeof(*matcher) + uintptr(len(matcher.from)+len(matcher.until))*unsafe.Sizeof(matcher.from[0])
+		b.ReportMetric(float64(bytes), "table-B/index")
+	}
+	for n := 0; n < b.N; n++ {
+		q.category = n & 1023
+		out = out[:0]
+		search(q, &out)
 	}
 }

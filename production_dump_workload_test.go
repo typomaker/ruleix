@@ -143,14 +143,35 @@ func checkProductionDumpRequest(t testing.TB, request []productionDumpConstraint
 
 func TestProductionDumpLocalRequest(t *testing.T) {
 	const fixture = `[
-		{"modifier_uuid":"00000000-0000-0000-0000-000000000001","customer_uuid":"00000000-0000-0000-0000-000000000011","store_uuid":"00000000-0000-0000-0000-000000000021",
-		 "activity":"(\"2026-11-17 12:00:00+03\",\"2026-11-17 19:00:00+03\")","slot_time":"(\"2021-01-01 16:00:00+03\",\"2021-01-01 19:00:00+03\")","slot_day_of_week":"Tuesday","slot_type":"planned","ignored":{"extra":true}},
-		{"modifier_uuid":"00000000-0000-0000-0000-000000000001","customer_uuid":"00000000-0000-0000-0000-000000000011","store_uuid":"00000000-0000-0000-0000-000000000021",
-		 "activity":"(\"2026-11-17 12:30:00+03\",\"2026-11-17 19:00:00+03\")","slot_time":"(\"2021-01-01 16:00:00+03\",\"2021-01-01 19:00:00+03\")","slot_day_of_week":"Tuesday","slot_type":"planned"},
-		{"modifier_uuid":"00000000-0000-0000-0000-000000000002","customer_uuid":"00000000-0000-0000-0000-000000000011","store_uuid":"00000000-0000-0000-0000-000000000021",
-		 "activity":"(\"2026-11-17 12:00:00+03\",\"2026-11-17 19:00:00+03\")","slot_time":"(\"2021-01-01 19:00:00+03\",\"2021-01-01 22:00:00+03\")","slot_day_of_week":"Tuesday","slot_type":"planned"},
-		{"modifier_uuid":"00000000-0000-0000-0000-000000000003","customer_uuid":"00000000-0000-0000-0000-000000000012","store_uuid":"00000000-0000-0000-0000-000000000022",
-		 "activity":"(\"2026-11-17 12:00:00+03\",\"2026-11-17 19:00:00+03\")","slot_time":"(\"2021-01-01 16:00:00+03\",\"2021-01-01 19:00:00+03\")","slot_day_of_week":"Wednesday","slot_type":"planned"}
+		{"modifier_uuid":"00000000-0000-0000-0000-000000000001",
+		 "customer_uuid":"00000000-0000-0000-0000-000000000011",
+		 "store_uuid":"00000000-0000-0000-0000-000000000021",
+		 "activity":"(\"2026-11-17 12:00:00+03\",\"2026-11-17 19:00:00+03\")",
+		 "slot_time":"(\"2021-01-01 16:00:00+03\",\"2021-01-01 19:00:00+03\")",
+		 "slot_day_of_week":"Tuesday",
+		 "slot_type":"planned",
+		 "ignored":{"extra":true}},
+		{"modifier_uuid":"00000000-0000-0000-0000-000000000001",
+		 "customer_uuid":"00000000-0000-0000-0000-000000000011",
+		 "store_uuid":"00000000-0000-0000-0000-000000000021",
+		 "activity":"(\"2026-11-17 12:30:00+03\",\"2026-11-17 19:00:00+03\")",
+		 "slot_time":"(\"2021-01-01 16:00:00+03\",\"2021-01-01 19:00:00+03\")",
+		 "slot_day_of_week":"Tuesday",
+		 "slot_type":"planned"},
+		{"modifier_uuid":"00000000-0000-0000-0000-000000000002",
+		 "customer_uuid":"00000000-0000-0000-0000-000000000011",
+		 "store_uuid":"00000000-0000-0000-0000-000000000021",
+		 "activity":"(\"2026-11-17 12:00:00+03\",\"2026-11-17 19:00:00+03\")",
+		 "slot_time":"(\"2021-01-01 19:00:00+03\",\"2021-01-01 22:00:00+03\")",
+		 "slot_day_of_week":"Tuesday",
+		 "slot_type":"planned"},
+		{"modifier_uuid":"00000000-0000-0000-0000-000000000003",
+		 "customer_uuid":"00000000-0000-0000-0000-000000000012",
+		 "store_uuid":"00000000-0000-0000-0000-000000000022",
+		 "activity":"(\"2026-11-17 12:00:00+03\",\"2026-11-17 19:00:00+03\")",
+		 "slot_time":"(\"2021-01-01 16:00:00+03\",\"2021-01-01 19:00:00+03\")",
+		 "slot_day_of_week":"Wednesday",
+		 "slot_type":"planned"}
 	]`
 	rows, ids := readProductionDump(t, strings.NewReader(fixture))
 	require.Len(t, rows, 4)
@@ -305,7 +326,7 @@ func loadProductionDumpBenchmark(b *testing.B) ([]productionDumpConstraint, []uu
 	}
 	input, err := os.Open(path)
 	require.NoError(b, err)
-	defer input.Close()
+	defer func() { require.NoError(b, input.Close()) }()
 	return readProductionDump(b, input)
 }
 

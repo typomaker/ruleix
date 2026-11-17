@@ -19,7 +19,12 @@ func TestPackedBetweenCacheMatchesScalar(t *testing.T) {
 	for _, owner := range []int{0, 3, 7} {
 		state := &localAllIntersection{}
 		for step := range 2048 {
-			query := betweenIDFixture{from: step%40 - 4, until: step*7%45 - 3, missingFrom: step%7 == 0, missingUntil: step%11 == 0}
+			query := betweenIDFixture{
+				from:         step%40 - 4,
+				until:        step*7%45 - 3,
+				missingFrom:  step%7 == 0,
+				missingUntil: step%11 == 0,
+			}
 			active := uint64(uint16(step * 137))
 			want := operand.applyCandidateMask(query, candidates, active)
 			got := operand.applyCachedBetweenMask(query, candidates, active, owner, state)
@@ -40,7 +45,8 @@ func TestPackedBetweenCacheMatchesScalar(t *testing.T) {
 	wild := wildRoot.execution[wildChild].directID.(*smallBetweenRule[betweenIDFixture, int])
 	state := &localAllIntersection{}
 	query := betweenIDFixture{from: 12, until: 27}
-	if got, want := wild.applyCachedBetweenMask(query, candidates, 65535, 0, state), wild.applyCandidateMask(query, candidates, 65535); got != want {
+	got := wild.applyCachedBetweenMask(query, candidates, 65535, 0, state)
+	if want := wild.applyCandidateMask(query, candidates, 65535); got != want {
 		t.Fatalf("wildcard got %x want %x", got, want)
 	}
 }

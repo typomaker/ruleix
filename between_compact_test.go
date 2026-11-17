@@ -32,39 +32,7 @@ func TestCompactBetweenMatchesBaseline(t *testing.T) {
 		{"LossyMerged", true, false, false, 64 << 10},
 	} {
 		t.Run(mode.name, func(t *testing.T) {
-			stored := stored
-			if mode.shuffled {
-				stored = slices.Clone(stored)
-				for i := range count {
-					stored[i].from = i*1023%count - count/2
-					stored[i].until = count + i*1023%count
-				}
-			}
-			baseline, _, original, _ := buildBetweenIDFixture(t, stored, ids, mode.lossy, mode.limit, false)
-			candidate, _, packed, _ := buildBetweenIDFixture(t, stored, ids, mode.lossy, mode.limit, true)
-			if (packed.compact != nil) != mode.packed {
-				t.Fatalf("compaction active = %t, want %t", packed.compact != nil, mode.packed)
-			}
-			local := candidate.Local()
-			defer local.Close()
-			for i := -2113; i < 6200; i += 19 {
-				q := betweenIDFixture{(i + 2113) % 128, i, i + 4200, i%7 == 0, i%9 == 0}
-				if got, want := packed.estimateCardinality(q), original.estimateCardinality(q); got != want {
-					t.Fatalf("query %+v estimate %d, want %d", q, got, want)
-				}
-				for id := uint32((i + 2113) % 8); id < count; id += 8 {
-					if packed.matchesID(q, id) != original.matchesID(q, id) {
-						t.Fatalf("query %+v changed ID %d", q, id)
-					}
-				}
-				var want, got, warm []int
-				baseline.Search(q, &want)
-				candidate.Search(q, &got)
-				local.Search(q, &warm)
-				if !slices.Equal(got, want) || !slices.Equal(warm, want) {
-					t.Fatalf("query %+v Index=%v Local=%v want=%v", q, got, warm, want)
-				}
-			}
+			checkCompactBetween(t, stored, ids, mode.lossy, mode.packed, mode.shuffled, mode.limit)
 		})
 	}
 }
@@ -130,35 +98,7 @@ func BenchmarkCompactBetween(b *testing.B) {
 			}
 			for _, version := range []string{"Baseline", "Compact"} {
 				b.Run(shape.name+"/"+path+"/"+version, func(b *testing.B) {
-					b.ReportAllocs()
-					compact := version == "Compact"
-					build := func() *Index[betweenIDFixture, int] {
-						index, _, rule, _ := buildBetweenIDFixture(b, stored, ids, false, 0, compact)
-						if (rule.compact != nil) != compact {
-							b.Fatal("unexpected compaction decision")
-						}
-						return index
-					}
-					if path == "Build" {
-						for b.Loop() {
-							betweenIDExperimentSink = build()
-						}
-						return
-					}
-					index := build()
-					search := index.Search
-					if path == "Local" {
-						local := index.Local()
-						defer local.Close()
-						search = local.Search
-					}
-					out := make([]int, 0, shape.candidates)
-					b.ResetTimer()
-					for i := 0; i < b.N; i++ {
-						q := betweenIDFixture{category: i % min(size/shape.candidates, 1024), from: 3*size/4 + i%61, until: 5*size/4 + i%59}
-						out = out[:0]
-						search(q, &out)
-					}
+					benchmarkCompactBetweenCase(b, stored, ids, path, version, shape.candidates)
 				})
 			}
 		}
@@ -190,5 +130,88 @@ func BenchmarkCompactBetweenRetained(b *testing.B) {
 			runtime.KeepAlive(indexes)
 			b.ReportMetric(float64(int64(after.HeapAlloc)-int64(before.HeapAlloc))/float64(b.N), "retained-B/index")
 		})
+	}
+}
+
+func checkCompactBetween(
+	t *testing.T,
+	stored []betweenIDFixture,
+	ids []int,
+	lossy, expectPacked, shuffled bool,
+	limit uint64,
+) {
+	t.Helper()
+	const count = 4096
+	if shuffled {
+		stored = slices.Clone(stored)
+		for i := range count {
+			stored[i].from = i*1023%count - count/2
+			stored[i].until = count + i*1023%count
+		}
+	}
+	baseline, _, original, _ := buildBetweenIDFixture(t, stored, ids, lossy, limit, false)
+	candidate, _, packed, _ := buildBetweenIDFixture(t, stored, ids, lossy, limit, true)
+	if (packed.compact != nil) != expectPacked {
+		t.Fatalf("compaction active = %t, want %t", packed.compact != nil, expectPacked)
+	}
+	local := candidate.Local()
+	defer local.Close()
+	for i := -2113; i < 6200; i += 19 {
+		q := betweenIDFixture{(i + 2113) % 128, i, i + 4200, i%7 == 0, i%9 == 0}
+		if got, want := packed.estimateCardinality(q), original.estimateCardinality(q); got != want {
+			t.Fatalf("query %+v estimate %d, want %d", q, got, want)
+		}
+		for id := uint32((i + 2113) % 8); id < count; id += 8 {
+			if packed.matchesID(q, id) != original.matchesID(q, id) {
+				t.Fatalf("query %+v changed ID %d", q, id)
+			}
+		}
+		var want, got, warm []int
+		baseline.Search(q, &want)
+		candidate.Search(q, &got)
+		local.Search(q, &warm)
+		if !slices.Equal(got, want) || !slices.Equal(warm, want) {
+			t.Fatalf("query %+v Index=%v Local=%v want=%v", q, got, warm, want)
+		}
+	}
+}
+
+func benchmarkCompactBetweenCase(
+	b *testing.B,
+	stored []betweenIDFixture,
+	ids []int,
+	path,
+	version string,
+	candidates int,
+) {
+	const size = 32768
+	b.ReportAllocs()
+	compact := version == "Compact"
+	build := func() *Index[betweenIDFixture, int] {
+		index, _, rule, _ := buildBetweenIDFixture(b, stored, ids, false, 0, compact)
+		if (rule.compact != nil) != compact {
+			b.Fatal("unexpected compaction decision")
+		}
+		return index
+	}
+	if path == "Build" {
+		for b.Loop() {
+			betweenIDExperimentSink = build()
+		}
+		return
+	}
+	index := build()
+	search := index.Search
+	if path == "Local" {
+		local := index.Local()
+		defer local.Close()
+		search = local.Search
+	}
+	out := make([]int, 0, candidates)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		q := betweenIDFixture{category: i % min(size/candidates, 1024), from: 3*size/4 + i%61, until: 5*size/4 + i%59}
+		out = out[:0]
+		search(q, &out)
 	}
 }

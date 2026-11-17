@@ -1,0 +1,27 @@
+=== RUN   TestProductionVersionDigest
+    production_comparison_digest_test.go:50: verified 6,400 zero-candidate offers against Local and Index
+    production_comparison_digest_test.go:85: {"Rows":96630,"Requests":128,"Offers":12800,"Matches":1248,"SHA256":"0ef4f277cac13b64449e69d6880f0b5a8a7d421670438ec141a20667d9784376"}
+--- PASS: TestProductionVersionDigest (1.02s)
+=== RUN   TestProductionDumpLocalMatchesIndex
+=== RUN   TestProductionDumpLocalMatchesIndex/Grouped
+=== RUN   TestProductionDumpLocalMatchesIndex/Rotating
+--- PASS: TestProductionDumpLocalMatchesIndex (1.01s)
+    --- PASS: TestProductionDumpLocalMatchesIndex/Grouped (0.01s)
+    --- PASS: TestProductionDumpLocalMatchesIndex/Rotating (0.01s)
+=== RUN   TestProductionEmptyControls
+=== RUN   TestProductionEmptyControls/zero
+    production_empty_controls_test.go:27: zero: 64 requests with forced absent keys
+=== RUN   TestProductionEmptyControls/storezero
+    production_empty_controls_test.go:27: storezero: 64 requests with forced absent keys
+=== RUN   TestProductionEmptyControls/slotzero
+    production_empty_controls_test.go:27: slotzero: 64 requests with forced absent keys
+=== RUN   TestProductionEmptyControls/intersectzero
+=== RUN   TestProductionEmptyControls/alternating
+    production_empty_controls_test.go:27: alternating: 64 requests with forced absent keys
+--- PASS: TestProductionEmptyControls (1.19s)
+    --- PASS: TestProductionEmptyControls/zero (0.04s)
+    --- PASS: TestProductionEmptyControls/storezero (0.05s)
+    --- PASS: TestProductionEmptyControls/slotzero (0.04s)
+    --- PASS: TestProductionEmptyControls/intersectzero (0.04s)
+    --- PASS: TestProductionEmptyControls/alternating (0.05s)
+PASS

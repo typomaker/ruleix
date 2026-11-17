@@ -251,14 +251,7 @@ func (i *orderedIndex[V]) insertWithDuplicateCheck(value V, id uint32, repeatedI
 		pos := i.searchBlock(block, value)
 		if pos < len(block.items) && i.compare(block.items[pos].value, value) == 0 {
 			posting := block.items[pos].bits
-			if repeatedID {
-				if posting.CheckedAdd(id) {
-					block.bits.Add(id)
-				}
-			} else {
-				posting.Add(id)
-				block.bits.Add(id)
-			}
+			addOrderedPostingID(posting, block.bits, id, repeatedID)
 			return
 		}
 	}
@@ -414,4 +407,14 @@ func (i *orderedIndex[V]) insertItem(item *orderedItem[V]) {
 	i.blocks = append(i.blocks, orderedBlock[V]{})
 	copy(i.blocks[blockIndex+2:], i.blocks[blockIndex+1:])
 	i.blocks[blockIndex+1] = right
+}
+
+func addOrderedPostingID(posting, aggregate *roaring.Bitmap, id uint32, repeatedID bool) {
+	if repeatedID && !posting.CheckedAdd(id) {
+		return
+	}
+	if !repeatedID {
+		posting.Add(id)
+	}
+	aggregate.Add(id)
 }

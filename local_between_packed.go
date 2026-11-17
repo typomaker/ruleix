@@ -12,7 +12,13 @@ type cachedBetweenOperand[T any] interface {
 // The first eligible broad operand borrows the existing intersection scratch.
 // Each uint32 stores two candidate bound pairs. Source changes and Local.Close
 // clear this storage through the ordinary candidate-mask lifecycle.
-func (r *smallBetweenRule[T, V]) applyCachedBetweenMask(v T, ids []uint32, mask uint64, child int, state *localAllIntersection) uint64 {
+func (r *smallBetweenRule[T, V]) applyCachedBetweenMask(
+	v T,
+	ids []uint32,
+	mask uint64,
+	child int,
+	state *localAllIntersection,
+) uint64 {
 	if !r.from.wildcard.IsEmpty() || !r.until.wildcard.IsEmpty() {
 		return r.applyCandidateMask(v, ids, mask)
 	}

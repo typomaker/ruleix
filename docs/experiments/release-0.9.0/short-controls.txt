@@ -1,0 +1,48 @@
+variant current
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkEmptyShort/zero/4       	 1000000	       459.1 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/16      	 1000000	      1171 ns/op	      24 B/op	       1 allocs/op
+PASS
+variant release-final
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkEmptyShort/zero/4       	 1000000	       451.8 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/16      	 1000000	      1172 ns/op	      24 B/op	       1 allocs/op
+PASS
+variant release-final
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkEmptyShort/zero/4       	 1000000	       451.5 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/16      	 1000000	      1153 ns/op	      24 B/op	       1 allocs/op
+PASS
+variant current
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkEmptyShort/zero/4       	 1000000	       456.0 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/16      	 1000000	      1162 ns/op	      24 B/op	       1 allocs/op
+PASS
+variant current
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkEmptyShort/zero/4       	 1000000	       453.1 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/16      	 1000000	      1160 ns/op	      24 B/op	       1 allocs/op
+PASS
+variant release-final
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkEmptyShort/zero/4       	 1000000	       455.0 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/16      	 1000000	      1163 ns/op	      24 B/op	       1 allocs/op
+PASS

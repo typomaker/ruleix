@@ -42,7 +42,8 @@ type candidateMaskSource[T any] interface {
 }
 
 func (r *allRule[T]) rememberCandidateMask(pool *bitmapPool, v T, first rankedBitmap) {
-	if pool.observeRuntime || r.executionCounters != nil || first.card > uint64(len(pool.candidateMask.ids)) || (first.card <= allCandidateScanLimit && !r.narrowMaskPrepared) {
+	if pool.observeRuntime || r.executionCounters != nil || first.card > uint64(len(pool.candidateMask.ids)) ||
+		(first.card <= allCandidateScanLimit && !r.narrowMaskPrepared) {
 		return
 	}
 	source, ok := r.children[first.childIdx].(candidateMaskSource[T])
@@ -64,7 +65,8 @@ func (r *allRule[T]) rememberCandidateMask(pool *bitmapPool, v T, first rankedBi
 		return
 	}
 	card := posting.cardinality()
-	if card == 0 || card > uint64(len(pool.candidateMask.ids)) || (card <= allCandidateScanLimit && !r.narrowMaskPrepared) {
+	if card == 0 || card > uint64(len(pool.candidateMask.ids)) ||
+		(card <= allCandidateScanLimit && !r.narrowMaskPrepared) {
 		return
 	}
 	m := pool.candidateMask
@@ -100,7 +102,13 @@ func (r *eqRule[T, V, K]) candidateMaskPosting(v T) *equalitySet {
 	return nil
 }
 
-func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, pool *bitmapPool, values []ID, dst *[]ID) bool {
+func appendCandidateMaskMatches[T any, ID comparable](
+	r *allRule[T],
+	v T,
+	pool *bitmapPool,
+	values []ID,
+	dst *[]ID,
+) bool {
 	m := pool.candidateMask
 	posting := r.children[m.first].(candidateMaskSource[T]).candidateMaskPosting(v)
 	if posting == nil {
@@ -134,7 +142,14 @@ func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, pool *
 	return true
 }
 
-func appendNarrowCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *localCandidateMask, state *localAllIntersection, values []ID, dst *[]ID) bool {
+func appendNarrowCandidateMaskMatches[T any, ID comparable](
+	r *allRule[T],
+	v T,
+	m *localCandidateMask,
+	state *localAllIntersection,
+	values []ID,
+	dst *[]ID,
+) bool {
 	posting := r.children[m.first].(candidateMaskSource[T]).candidateMaskPosting(v)
 	if posting == nil {
 		return true
@@ -161,7 +176,13 @@ func appendNarrowCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, 
 	return true
 }
 
-func (r *allRule[T]) applyPreparedCandidateMask(v T, ids []uint32, mask uint64, state *localAllIntersection, pending uint8) uint64 {
+func (r *allRule[T]) applyPreparedCandidateMask(
+	v T,
+	ids []uint32,
+	mask uint64,
+	state *localAllIntersection,
+	pending uint8,
+) uint64 {
 	for pending != 0 && mask != 0 {
 		i := bits.TrailingZeros8(pending)
 		pending &= pending - 1
