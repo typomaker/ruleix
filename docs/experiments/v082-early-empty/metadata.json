@@ -1,0 +1,25 @@
+{
+  "toolchain": "go version go1.27.3 darwin/arm64\n",
+  "v082": "7f32ddc6ccf6b12419a1efb5af1424ff64353cc0",
+  "v082_harness": {
+    "production_comparison_digest_test.go": "7b7e5b4de7bba2ee21e60e7db34374f6c33ed7643f4fb9d423ebfe22ee11cfb2",
+    "production_comparison_probe_test.go": "e4df5bb91e46ef3f6e10c6a330ccf310bd97cac5bb5c927755b9e99364a68bdb",
+    "production_empty_matrix_test.go": "993c14b8e0800fd27ae70286090e3171efaa3f24b2675f957f4467276aaba060",
+    "production_heap_test.go": "e5d5640d9e1992d3fb17c88e547ad62f28cafb699948d8199446d1e85efe6a4c",
+    "production_dump_workload_test.go": "e2fa9200515ffb63e695e9ffce95336fcc45930ab7ae45dc87dda5a0417e94a9",
+    "production_dump_local_differential_test.go": "2c35497865130f707724399aecfbe19582543577fec0f4236468ee4e851c41cb",
+    "production_empty_controls_test.go": "e724f9508d177c70e3337e44e07f0ca27cd7a2e13ae76321d916d634aa67703e",
+    "production_dump_schema_test.go": "506d19ebe4e71740fa900cbd99a457f20026acbb300dc1d8033be5ebf8d02a74"
+  },
+  "current": "a07b9dd04e2680fa51ac30d43b20f38470fce75c",
+  "current_harness": {
+    "production_comparison_digest_test.go": "7b7e5b4de7bba2ee21e60e7db34374f6c33ed7643f4fb9d423ebfe22ee11cfb2",
+    "production_comparison_probe_test.go": "e4df5bb91e46ef3f6e10c6a330ccf310bd97cac5bb5c927755b9e99364a68bdb",
+    "production_empty_matrix_test.go": "993c14b8e0800fd27ae70286090e3171efaa3f24b2675f957f4467276aaba060",
+    "production_heap_test.go": "e5d5640d9e1992d3fb17c88e547ad62f28cafb699948d8199446d1e85efe6a4c",
+    "production_dump_workload_test.go": "e2fa9200515ffb63e695e9ffce95336fcc45930ab7ae45dc87dda5a0417e94a9",
+    "production_dump_local_differential_test.go": "2c35497865130f707724399aecfbe19582543577fec0f4236468ee4e851c41cb",
+    "production_empty_controls_test.go": "e724f9508d177c70e3337e44e07f0ca27cd7a2e13ae76321d916d634aa67703e",
+    "production_dump_schema_test.go": "506d19ebe4e71740fa900cbd99a457f20026acbb300dc1d8033be5ebf8d02a74"
+  }
+}
