@@ -140,3 +140,43 @@ func TestLocalValidatesReadyMediumCandidatePosting(t *testing.T) {
 	require.Equal(t, candidateCount, filter.matchIDCalls)
 	require.Zero(t, filter.searchCalls)
 }
+
+func TestLocalReusesSelectivePostingPairUntilClose(t *testing.T) {
+	source := roaring.New()
+	source.AddRange(0, 2*allCandidateScanLimit)
+	first := rankedBitmap{bits: source, card: source.GetCardinality()}
+	posting := roaring.BitmapOf(2, 4, 6)
+	posting.AddRange(32, 64)
+	other := rankedBitmap{bits: posting, card: posting.GetCardinality(), childIdx: 1}
+	pool := newLocalBitmapPool(0)
+
+	require.Nil(t, pool.partial.candidates(first, []rankedBitmap{{}, first, other}))
+	require.Equal(t, []uint32{2, 4, 6}, pool.partial.candidates(first, []rankedBitmap{other}))
+	require.Equal(t, []uint32{2, 4, 6}, pool.partial.candidates(first, []rankedBitmap{other}))
+	require.Equal(t, uint64(2*allCandidateScanLimit), source.GetCardinality())
+
+	filter := &countingRule{ids: []uint32{2, 6, 7}}
+	root := &allRule[int]{children: []Rule[int]{&countingRule{}, &countingRule{}, filter}}
+	root.prepareSearch()
+	ranked := []rankedBitmap{first, other, {card: 100, childIdx: 2}}
+	result := roaring.New()
+	require.True(t, prepareRankedAllCandidates(root, 0, pool, ranked, result, nil))
+	require.Equal(t, []uint32{2, 6}, result.ToArray())
+	require.Equal(t, 3, filter.matchIDCalls)
+
+	wider := roaring.New()
+	wider.AddRange(0, 64)
+	wide := rankedBitmap{bits: wider, card: wider.GetCardinality()}
+	require.Nil(t, pool.partial.candidates(first, []rankedBitmap{wide}))
+	require.Nil(t, pool.partial.candidates(first, []rankedBitmap{wide}))
+
+	empty := roaring.New()
+	empty.AddRange(32, 64)
+	disjoint := rankedBitmap{bits: empty, card: empty.GetCardinality()}
+	require.Nil(t, pool.partial.candidates(first, []rankedBitmap{disjoint}))
+	require.NotNil(t, pool.partial.candidates(first, []rankedBitmap{disjoint}))
+	require.Empty(t, pool.partial.candidates(first, []rankedBitmap{disjoint}))
+
+	pool.resetLocal()
+	require.Nil(t, pool.partial.candidates(first, []rankedBitmap{disjoint}))
+}

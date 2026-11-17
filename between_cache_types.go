@@ -13,7 +13,7 @@ func newBetweenCache[V any](pool *bitmapPool, id ...nodeID) *betweenCache[V] {
 	if len(id) != 0 {
 		return &betweenCache[V]{observers: pool.observersFor(id[0])}
 	}
-	return &betweenCache[V]{observers: pool.observers.clone()}
+	return &betweenCache[V]{}
 }
 
 type betweenCacheEntry[V any] struct {

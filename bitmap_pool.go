@@ -12,7 +12,7 @@ type bitmapPool struct {
 	local          []localNodeCache
 	allPlans       map[any]*localAllPlan
 	cacheEpoch     uint64
-	observers      cacheObservers // test-only fallback for caches without a compiled node ID
+	partial        localAllIntersection
 	inspectors     localInspectorRuntimeChunk
 	nodeObservers  []cacheObservers
 	rootRuntime    *inspectorRuntime
@@ -149,6 +149,7 @@ func (p *bitmapPool) rootInspectorObserver(runtime *inspectorRuntime) inspectorR
 	return p.inspectorObserver(runtime)
 }
 func (p *bitmapPool) resetLocal() {
+	p.partial = localAllIntersection{}
 	p.flushInspectorMetrics()
 	for _, plan := range p.allPlans {
 		plan.resetResults(p)

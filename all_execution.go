@@ -171,7 +171,7 @@ func (r *allRule[T]) validateCandidateBitmap(
 		r.materializeUnsupportedRemaining(v, pool, remaining)
 	}
 	accepted := pool.get()
-	r.collectValidatedCandidates(v, dst, accepted, pool, remaining)
+	r.collectValidatedCandidates(v, dst, accepted, nil, pool, remaining)
 	dst.Clear()
 	dst.Or(accepted)
 	pool.put(accepted)
@@ -183,11 +183,16 @@ func (r *allRule[T]) validateCandidateBitmap(
 func (r *allRule[T]) collectValidatedCandidates(
 	v T,
 	source, accepted *roaring.Bitmap,
+	ids []uint32,
 	pool *bitmapPool,
 	remaining []rankedBitmap,
 ) {
-	r.orderCandidateValidation(source.GetCardinality(), remaining)
-	source.Iterate(func(id uint32) bool {
+	count := source.GetCardinality()
+	if ids != nil {
+		count = uint64(len(ids))
+	}
+	r.orderCandidateValidation(count, remaining)
+	add := func(id uint32) bool {
 		for _, ranked := range remaining {
 			if ranked.bits != nil {
 				if r.executionCounters != nil {
@@ -205,7 +210,14 @@ func (r *allRule[T]) collectValidatedCandidates(
 		}
 		accepted.Add(id)
 		return true
-	})
+	}
+	if ids == nil {
+		source.Iterate(add)
+	} else {
+		for _, id := range ids {
+			add(id)
+		}
+	}
 }
 
 // materializeUnsupportedRemaining is shared by bitmap-returning and direct

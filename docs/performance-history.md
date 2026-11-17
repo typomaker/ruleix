@@ -257,6 +257,81 @@ bitmap stays intact, and verifies that the remaining rule runs direct
 ID checks without materializing a bitmap. The complete test suite and
 `go vet ./...` passed. Changed executable line coverage was 13 of 13.
 
+#### Reusing one intersection across Local searches
+
+The baseline for this experiment was `21e3206`. The dump benchmark uses
+the latest activity start in the snapshot as the fixed request time. At
+that time all 1,447 modifier IDs match the activity rule, so intersecting
+activity with a buyer posting does not reduce it. In the 13 requests whose
+buyer had 9–16 candidates, the store stayed the same in 1,044 adjacent
+offer pairs. Intersecting the buyer and store postings removed at least
+half the candidates in 1,005 of those pairs. This analysis counts distinct
+modifier IDs per posting and does not assume those two postings will
+always be the leading operands in an actual search.
+
+The prototype used one entry in the root Local plan. It observed the
+leading ready bitmap and the smallest other ready bitmap. It computed
+their intersection on the second consecutive use of the pair and reused
+it only when it removed at least half of the leading candidates. Both
+versions used the existing `Local.Search` and schema. Matching bitmap
+identities was sufficient because the prototype borrowed only immutable
+postings or child cache entries that live for the Local's lifetime.
+
+The bitmap variant used the same temporary benchmark overlay, toolchain,
+machine and snapshot as the preceding experiment. Three alternating
+50,000-request samples gave median p99 of 162.04 vs 153.21 µs and p99.9 of
+203.50 vs 214.96 µs. Bytes per request increased from 921 to 1,087 and
+allocations from 17 to 23. In 60,000-request CPU and allocation profiles
+of the larger buyer group, direct candidate validation fell from 3.45 to
+2.78 sampled CPU seconds. Pair selection and construction added 0.41 s,
+and the sampled allocation profile attributed an estimated 1.35 million
+allocation objects to the new pair path, mostly Roaring array
+container copies. The synthetic warm Local retained a further 32 bytes
+per context in two alternating 100-iteration measurements per binary.
+
+Replacing the cached bitmap with an inline list of at most eight IDs
+removed those allocation objects. At the same 50,000-request run length,
+the plan-embedded list moved p99 from 158.00 to 147.13 µs and p99.9 from
+214.46 to 184.79 µs, with one outlying candidate p99.9 of 354.71 µs.
+Allocations stayed at 17 per request, but allocated bytes rose from 921
+to 985. The retained-Local test also showed a 64-byte increase for the
+adaptive case. The next variant moved the list to the reusable bitmap
+pool and removed an unused observer fallback in that pool.
+
+The pooled variant reused the one entry until the selected pair changed
+or the Local closed. Three alternate mixed runs of 60,000 requests per
+binary gave these medians:
+
+| Metric per request | `21e3206` | Pooled intersection |
+| --- | ---: | ---: |
+| Mean latency | 77.28 µs | 75.68 µs |
+| p99 | 151.42 µs | 139.42 µs |
+| p99.9 | 171.42 µs | 160.46 µs |
+| p99, 9–16 buyer IDs | 159.63 µs | 147.79 µs |
+| p99, up to eight buyer IDs | 96.83 µs | 96.21 µs |
+| Bytes allocated | 921 | 921 |
+| Allocations | 17 | 17 |
+
+The larger-buyer CPU and allocation profiles used 70,000 requests.
+Mean latency fell from 111.60 to 105.50 µs, with 1,391 B and 43 allocations
+per request on both binaries. Request execution used 5.68 vs 5.64 sampled
+CPU seconds. Two alternating 100-iteration retained-memory runs per
+binary measured approximately 128 fewer retained bytes per Local on
+the cold, warm, adaptive and adversarial shapes. The pooled list takes
+less space than the unused inline observer fallback it replaces.
+
+The 350 ms controls covered cold and warm joined searches, exact-cache
+hits, exclusions, lossy search, and Local teardown. Warm joined Local
+was 236.89 vs 237.34 µs per batch with zero allocations. An apparent
+short-run lossy Index slowdown did not recur in three isolated 600 ms
+runs or in 75,000-iteration CPU and allocation profiles. The isolated
+medians were 30.70 vs 30.48 µs, with 24 allocations on both versions.
+
+Focused tests cover admission, nonselective and empty intersections,
+rejection by remaining rules, immutable source bitmaps, and Local
+reset. The full suite and `go vet ./...` passed. Changed executable
+line coverage was 55 of 55.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint

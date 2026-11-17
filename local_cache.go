@@ -20,6 +20,58 @@ type localAllPlan struct {
 	valid   bool
 }
 
+// localAllIntersection keeps one pair of borrowed postings and its matching
+// IDs. The postings stay stable until the Local is closed.
+type localAllIntersection struct {
+	left, right *roaring.Bitmap
+	ids         [allCandidateScanLimit]uint32
+	count       uint8
+	checked     bool
+	narrowed    bool
+}
+
+func (p *localAllIntersection) candidates(first rankedBitmap, remaining []rankedBitmap) []uint32 {
+	var right *roaring.Bitmap
+	best := ^uint64(0)
+	for _, child := range remaining {
+		if child.bits == nil || child.owned || child.bits == first.bits {
+			continue
+		}
+		if child.card < best {
+			right, best = child.bits, child.card
+		}
+	}
+	if right == nil || first.owned {
+		return nil
+	}
+	if p.left != first.bits || p.right != right {
+		// Wait for a repeated pair before doing extra candidate checks.
+		p.left, p.right = first.bits, right
+		p.checked, p.narrowed, p.count = false, false, 0
+		return nil
+	}
+	if !p.checked {
+		p.checked, p.narrowed = true, true
+		limit := first.card / 2
+		first.bits.Iterate(func(id uint32) bool {
+			if !right.Contains(id) {
+				return true
+			}
+			if uint64(p.count) == limit {
+				p.narrowed = false
+				return false
+			}
+			p.ids[p.count] = id
+			p.count++
+			return true
+		})
+	}
+	if !p.narrowed {
+		return nil
+	}
+	return p.ids[:p.count]
+}
+
 type localAllResult struct {
 	inputs []*roaring.Bitmap
 	ids    []uint32
@@ -69,13 +121,6 @@ func (o *cacheObservers) pop() {
 	}
 	o.n--
 	o.items[o.n] = inspectorRuntimeObserver{}
-}
-func (o *cacheObservers) clone() *cacheObservers {
-	if o.n == 0 {
-		return nil
-	}
-	cloned := *o
-	return &cloned
 }
 func (o *cacheObservers) each(yield func(inspectorRuntimeObserver)) {
 	if o == nil {
@@ -145,7 +190,7 @@ func newValueBitmapCache[V any](pool *bitmapPool, id ...nodeID) *valueBitmapCach
 	if len(id) != 0 {
 		return &valueBitmapCache[V]{observers: pool.observersFor(id[0])}
 	}
-	return &valueBitmapCache[V]{observers: pool.observers.clone()}
+	return &valueBitmapCache[V]{}
 }
 
 func (c *valueBitmapCache[V]) lookup(value optionalValue[V], equal func(V, V) bool) (*roaring.Bitmap, bool) {

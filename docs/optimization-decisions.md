@@ -12,6 +12,7 @@ a design conclusion or hypothesis.
 
 | Date | Name | Area | Decision and evidence |
 | --- | --- | --- | --- |
+| 2026-11-17 | Local Posting Pair Reuse | All execution | Keep one selective pair of ready postings in the reusable Local pool. The full dump p99 improved from 151.42 to 139.42 µs with 17 allocations and 921 B per request on both revisions. See [measurements](performance-history.md#reusing-one-intersection-across-local-searches). |
 | 2026-11-17 | Direct Validation of Ready Local Candidates | All execution | Validate 9–16 candidate IDs into the result bitmap when the leading posting already exists and all operands support direct validation. The full dump p99.9 improved from 255.46 to 168.25 µs and allocations fell from 63 to 17 per request. See [measurements](performance-history.md#direct-validation-of-ready-local-candidates). |
 | 2026-11-17 | Ordered Between Cache Overflow | Local cache | Keep two inline range entries and search long overflow by comparator order. A fixed 1,024-range working set improved from 1,274 to 127 ns/op with equal allocations, while short Local and complete dump request gates remained comparable. See [measurements](performance-history.md#comparator-ordered-between-cache-overflow). |
 | 2026-11-17 | Compact Between Bounds | Compound ranges | Use direct endpoint positions for eligible All operands after compacting singleton postings. The [checkpoint measurements](between-compact-bounds.md) record more than 20x faster narrow Index searches and lower retained heap, with broad search controls. |

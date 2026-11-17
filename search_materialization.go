@@ -15,7 +15,11 @@ func prepareRankedAllCandidates[C any](
 		// A small ready posting lets Local validate directly into its result
 		// bitmap and retain the ordinary exact-result cache.
 		if pool.local != nil && root.directIDComplete && first.bits != nil && first.card <= 2*allCandidateScanLimit {
-			root.collectValidatedCandidates(value, first.bits, candidates, pool, rankedChildren[1:])
+			var ids []uint32
+			if !pool.observeRuntime {
+				ids = pool.partial.candidates(first, rankedChildren[1:])
+			}
+			root.collectValidatedCandidates(value, first.bits, candidates, ids, pool, rankedChildren[1:])
 			return !candidates.IsEmpty()
 		}
 		return root.intersectRankedInOrderObserved(value, candidates, pool, rankedChildren, metrics, nil)

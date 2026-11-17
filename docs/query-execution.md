@@ -23,6 +23,14 @@ execution. It reads the borrowed bitmap and writes accepted IDs into the
 separate result bitmap. The normal exact-result cache and exclusion processing
 still consume that result. See [production dump measurements](performance-history.md#candidate-cardinality-and-the-request-tail).
 
+The reusable Local pool tracks one pair of ready, borrowed bitmaps for
+that direct-validation path. On the second eligible use of the pair, it
+records up to eight intersecting IDs if the pair removes at least half
+of the leading candidates. Later calls can use these IDs as their
+candidate list. Reuse keys are bitmap identities and the entry is cleared
+with the Local, so its validity does not depend on field names or a new
+query API. See [the intersection reuse experiment](performance-history.md#reusing-one-intersection-across-local-searches).
+
 ## `Between` search sides and cache identity
 
 A `betweenSearchSide` keeps an ordered rule and its already extracted query
