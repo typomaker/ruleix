@@ -1,0 +1,192 @@
+small-current mixed
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     31828 ns/op	       318.3 ns/offer	       100.0 offers/op	     58000 p99-ns/request	    120167 p99.9-ns/request	     845 B/op	      12 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+small-current tiny
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     18993 ns/op	       189.9 ns/offer	       100.0 offers/op	     25584 p99-ns/request	     56750 p99.9-ns/request	     776 B/op	      10 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 16 requests for the tiny cohort
+PASS
+small-current medium
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     31439 ns/op	       314.4 ns/offer	       100.0 offers/op	     45292 p99-ns/request	     72625 p99.9-ns/request	     819 B/op	      11 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 28 requests for the medium cohort
+PASS
+small-current broad
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     44610 ns/op	       446.1 ns/offer	       100.0 offers/op	     59334 p99-ns/request	    101500 p99.9-ns/request	    1015 B/op	      19 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 13 requests for the broad cohort
+PASS
+small-current rotate
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     37210 ns/op	       372.1 ns/offer	       100.0 offers/op	     61084 p99-ns/request	     97000 p99.9-ns/request	     845 B/op	      12 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+entry-guards mixed
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     32605 ns/op	       326.1 ns/offer	       100.0 offers/op	     58875 p99-ns/request	     94125 p99.9-ns/request	     845 B/op	      12 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+entry-guards tiny
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     19952 ns/op	       199.5 ns/offer	       100.0 offers/op	     28042 p99-ns/request	     70584 p99.9-ns/request	     776 B/op	      10 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 16 requests for the tiny cohort
+PASS
+entry-guards medium
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     33600 ns/op	       336.0 ns/offer	       100.0 offers/op	     61750 p99-ns/request	    109542 p99.9-ns/request	     819 B/op	      11 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 28 requests for the medium cohort
+PASS
+entry-guards broad
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     46910 ns/op	       469.1 ns/offer	       100.0 offers/op	     67083 p99-ns/request	    107583 p99.9-ns/request	    1015 B/op	      19 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 13 requests for the broad cohort
+PASS
+entry-guards rotate
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     37405 ns/op	       374.0 ns/offer	       100.0 offers/op	     61667 p99-ns/request	    102084 p99.9-ns/request	     845 B/op	      12 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+entry-guards mixed
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     32374 ns/op	       323.7 ns/offer	       100.0 offers/op	     58541 p99-ns/request	     95209 p99.9-ns/request	     845 B/op	      12 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+entry-guards tiny
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     19468 ns/op	       194.7 ns/offer	       100.0 offers/op	     26459 p99-ns/request	     59709 p99.9-ns/request	     776 B/op	      10 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 16 requests for the tiny cohort
+PASS
+entry-guards medium
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     32392 ns/op	       323.9 ns/offer	       100.0 offers/op	     47167 p99-ns/request	     97875 p99.9-ns/request	     819 B/op	      11 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 28 requests for the medium cohort
+PASS
+entry-guards broad
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     45901 ns/op	       459.0 ns/offer	       100.0 offers/op	     64709 p99-ns/request	    132500 p99.9-ns/request	    1015 B/op	      19 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 13 requests for the broad cohort
+PASS
+entry-guards rotate
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     36811 ns/op	       368.1 ns/offer	       100.0 offers/op	     60541 p99-ns/request	    106042 p99.9-ns/request	     845 B/op	      12 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+small-current mixed
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     32389 ns/op	       323.9 ns/offer	       100.0 offers/op	     57959 p99-ns/request	    100834 p99.9-ns/request	     845 B/op	      12 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+small-current tiny
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     19745 ns/op	       197.5 ns/offer	       100.0 offers/op	     27125 p99-ns/request	     72584 p99.9-ns/request	     776 B/op	      10 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 16 requests for the tiny cohort
+PASS
+small-current medium
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     33004 ns/op	       330.0 ns/offer	       100.0 offers/op	     49500 p99-ns/request	    100292 p99.9-ns/request	     819 B/op	      11 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 28 requests for the medium cohort
+PASS
+small-current broad
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     45781 ns/op	       457.8 ns/offer	       100.0 offers/op	     62917 p99-ns/request	    134167 p99.9-ns/request	    1015 B/op	      19 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 13 requests for the broad cohort
+PASS
+small-current rotate
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   80000	     36745 ns/op	       367.5 ns/offer	       100.0 offers/op	     59708 p99-ns/request	    108625 p99.9-ns/request	     845 B/op	      12 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS

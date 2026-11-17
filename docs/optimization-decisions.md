@@ -12,6 +12,7 @@ a design conclusion or hypothesis.
 
 | Date | Name | Area | Decision and evidence |
 | --- | --- | --- | --- |
+| 2026-11-17 | Empty Local Plan Guards | All planning | Skip impossible reuse and result-cache lookups while the plan map is nil. Missing-customer mean improved 11.612 → 10.514 µs versus bf89413, matching v0.8.2 at 10.552 µs. Quiet nonempty means stayed within about 1%, with unchanged allocation traffic and layouts. See [cause and controls](local-zero-plan.md). |
 | 2026-11-17 | Portable Prepared Between Bounds | Local broad execution | Cache one non-wildcard operand in existing scratch and skip impossible wildcard checks for other non-wildcard ranges. Broad mean improved 49.145 → 44.170 µs and mixed mean 31.867 → 31.005 µs against db3ae77. Replaces the owner-retired assembly implementation. See [portable controls](local-between-go.md). |
 | 2026-11-17 | Narrow Include Projection | All execution | Prepare a mask on a repeated exact posting. Reuse the existing intersection scratch and bypass projection for unstable keys. Full-dump mean and p99.9 moved from 35.59 to 31.92 µs and 85.79 to 80.38 µs. See [measurements](local-predicate-projection-trials.md#selected-projection). |
 | 2026-11-17 | Prepared Narrow Candidate Masks | All execution | Compile support and equality order at Build for masks of up to eight candidates. Use separate dispatch for the narrow path. Mixed p99.9 improved from 99.83 to 85.38 µs and narrow p99.9 from 97.88 to 74.79 µs. See [measurements](local-interval-and-narrow-trials.md#selected-execution). |

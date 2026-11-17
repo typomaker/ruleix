@@ -9,8 +9,8 @@ printf 'Retaining comparison files in %s\n' "$scratch"
 
 for version in v082 current; do
     case "$version" in
-        v082) revision=v0.8.2 ;;
-        current) revision=086a91b ;;
+        v082) revision=${RULEIX_BASELINE_REVISION:-v0.8.2} ;;
+        current) revision=${RULEIX_CURRENT_REVISION:-086a91b} ;;
     esac
     mkdir "$scratch/$version"
     git archive "$revision" | tar -x -C "$scratch/$version"

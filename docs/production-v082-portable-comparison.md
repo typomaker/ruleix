@@ -150,8 +150,9 @@ For 1–3 candidates, mean improves 2.06x and p99.9 improves 1.53x.
 The zero-candidate mean regresses 13.1% and p99.9 regresses 10.8%.
 Zero mean samples span 10.271–10.422 µs on v0.8.2 and
 11.564–11.703 µs on current. This is a reproduced release-to-release
-regression whose cause remains unlocalized; this report does not
-accept it as a trade-off or introduce a search implementation change.
+regression in the measured 086a91b revision. A subsequent
+[empty-plan investigation and correction](local-zero-plan.md) restored
+parity; the original comparison values above remain unchanged.
 Both versions additionally verified empty results for 6,400
 missing-customer offers through Local and Index. The existing
 12,800-offer result digest remains identical across versions.

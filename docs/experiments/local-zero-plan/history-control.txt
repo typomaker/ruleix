@@ -1,0 +1,60 @@
+parent
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	  120000	     11415 ns/op	       114.1 ns/offer	       100.0 offers/op	     12458 p99-ns/request	     28750 p99.9-ns/request	      32 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+added
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	  120000	     11749 ns/op	       117.5 ns/offer	       100.0 offers/op	     12959 p99-ns/request	     27416 p99.9-ns/request	      32 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+added
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	  120000	     11797 ns/op	       118.0 ns/offer	       100.0 offers/op	     12917 p99-ns/request	     27833 p99.9-ns/request	      32 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+parent
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	  120000	     11302 ns/op	       113.0 ns/offer	       100.0 offers/op	     12333 p99-ns/request	     26916 p99.9-ns/request	      32 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+parent
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	  120000	     11294 ns/op	       112.9 ns/offer	       100.0 offers/op	     12375 p99-ns/request	     27084 p99.9-ns/request	      32 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+added
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	  120000	     11783 ns/op	       117.8 ns/offer	       100.0 offers/op	     13000 p99-ns/request	     28042 p99.9-ns/request	      32 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS

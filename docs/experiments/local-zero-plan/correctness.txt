@@ -1,0 +1,11 @@
+=== RUN   TestProductionVersionDigest
+    production_comparison_digest_test.go:50: verified 6,400 zero-candidate offers against Local and Index
+    production_comparison_digest_test.go:85: {"Rows":96630,"Requests":128,"Offers":12800,"Matches":1248,"SHA256":"0ef4f277cac13b64449e69d6880f0b5a8a7d421670438ec141a20667d9784376"}
+--- PASS: TestProductionVersionDigest (1.07s)
+=== RUN   TestProductionDumpLocalMatchesIndex
+=== RUN   TestProductionDumpLocalMatchesIndex/Grouped
+=== RUN   TestProductionDumpLocalMatchesIndex/Rotating
+--- PASS: TestProductionDumpLocalMatchesIndex (1.05s)
+    --- PASS: TestProductionDumpLocalMatchesIndex/Grouped (0.01s)
+    --- PASS: TestProductionDumpLocalMatchesIndex/Rotating (0.01s)
+PASS

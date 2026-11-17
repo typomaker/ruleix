@@ -1,0 +1,12 @@
+Go 1.27.3, GOMAXPROCS=2:
+ok  	github.com/typomaker/ruleix	7.593s	coverage: 91.9% of statements
+	github.com/typomaker/ruleix/examples/between_and_gt		coverage: 0.0% of statements
+	github.com/typomaker/ruleix/examples/local_search		coverage: 0.0% of statements
+	github.com/typomaker/ruleix/examples/multiple_columns		coverage: 0.0% of statements
+
+Changed production executable lines all_planning.go:52 and :312 are both covered (2/2, 100%).
+
+Go 1.26.9, golangci-lint v2.12.2, --new-from-rev=bf89413:
+0 issues.
+
+Full lint: 40 pre-existing findings, all in unchanged baseline files.

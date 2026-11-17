@@ -48,7 +48,8 @@ func (r *allRule[T]) rankChildren(
 	rankedChildren []rankedBitmap,
 ) bool {
 	refreshLocalPlan := false
-	if pool.local != nil {
+	// Before any group creates a plan, both reuse lookups can only miss.
+	if pool.local != nil && pool.allPlans != nil {
 		if result, reused := r.reuseLocalPlan(v, pool, rankedChildren); reused {
 			return result
 		}
@@ -308,7 +309,7 @@ func (r *allRule[T]) loadLocalResult(
 }
 
 func (r *allRule[T]) loadLocalQueryResult(pool *bitmapPool, value T) *localAllResult {
-	if pool.local == nil || pool.observeRuntime {
+	if pool.local == nil || pool.observeRuntime || pool.allPlans == nil {
 		return nil
 	}
 	plan := pool.allPlans[r]
