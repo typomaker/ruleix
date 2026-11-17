@@ -145,6 +145,11 @@ func searchAllMatches[C any, ID comparable](
 			*dst = result
 			return
 		}
+		if mask := pool.candidateMask; mask != nil && mask.source != nil && !pool.observeRuntime {
+			if appendCandidateMaskMatches(root, value, mask, values, dst) {
+				return
+			}
+		}
 	}
 	var inline [8]rankedBitmap
 	var inlineChecked [1]uint64
@@ -162,6 +167,9 @@ func searchAllMatches[C any, ID comparable](
 		}
 		*dst = result
 		return
+	}
+	if len(exclusions) == 0 && rankedChildren[0].card > allCandidateScanLimit && pool.candidateMask != nil {
+		root.rememberCandidateMask(pool, value, rankedChildren[0])
 	}
 	// Dense identity lookup pays for itself while operands are cold. Once the
 	// first ranked Local operand is cached, let the ordinary child caches admit

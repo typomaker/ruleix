@@ -12,6 +12,7 @@ a design conclusion or hypothesis.
 
 | Date | Name | Area | Decision and evidence |
 | --- | --- | --- | --- |
+| 2026-11-17 | Local Candidate Mask and Between Positions | All execution | Reuse a verified leading posting of 9–16 IDs and filter it in a word-sized mask. Resolve Between endpoint positions once per offer against the existing build dictionary. Full-dump p99.9 moved from 119.58 to 97.42 µs and allocations from 17 to 12 per request. See [measurements](local-candidate-structural-trials.md). |
 | 2026-11-17 | Duplicate Ordered Inserts and Small Between Interning | Build | Skip redundant aggregate updates for existing IDs and trim only newly interned endpoint postings. The full-dump Build improved by 8.5% with roughly 92 fewer transient allocations. See [experiment results](build-and-local-lookup.md). |
 | 2026-11-17 | Local Candidate Preparation | All execution | Resolve reached Include postings once and defer child cache lookups after a small ready leading posting. The dump p99 improved from 97.04 to 88.88 µs with 17 allocations per request. See [measurements](local-candidate-validation.md). |
 | 2026-11-17 | Small Between Endpoint Dictionary | Compound ranges | Compile one byte per ID for bound pairs in eligible exact All operands. On the full dump, p99 fell from 139.38 to 97.13 µs with 17 allocations per request, comparable Build time, and a smaller retained index. See [measurements](between-small-bounds.md). |
@@ -71,6 +72,7 @@ a design conclusion or hypothesis.
 These are hypotheses, not performance claims:
 
 - Revisit within-block cardinality prefixes if workload profiles identify range estimation as a bottleneck. The [first trials](between-small-bounds.md#within-block-cardinality-prefixes) improved a focused estimator and showed mixed-request timings comparable to the baseline.
+- Revisit [dense Include columns](local-candidate-structural-trials.md#combined-and-memory-controls) if their retained index cost can be removed and they improve the whole request beyond projecting Between positions. The widest columns materially helped the 9–16 ID control. Packing them down to four bits approached the no-column result on the mixed workload and introduced more work during Build.
 - Revisit [last Include planning keys](build-and-local-lookup.md#include-planning-lookup) if a design preserves fresh Local allocations and the dump p99.9. The eight-slot prototype improved mean latency but its tail gate regressed. The one-slot follow-up also slowed mixed and rotating requests.
 - Improve `All` plan refresh for short-lived Locals. The [plan refresh trials](performance-history.md#all-plan-refresh-experiment) expose a tradeoff between lookup time on the production dump and direct candidate validation on the cold joined workload.
 - Define one stable aggregate release benchmark before publishing benchmark

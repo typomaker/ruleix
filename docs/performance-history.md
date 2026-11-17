@@ -349,6 +349,12 @@ The [ordered Build and Local planning experiments](build-and-local-lookup.md)
 record the duplicate insertion, small Between interning, and Include memo
 measurements against `2f913e2`.
 
+## Local candidate masks and Build columns
+
+The [structural Local trials](local-candidate-structural-trials.md) compare
+reusing small candidate lists, building dense predicate columns, and
+projecting the existing Between endpoint dictionary against `409a51b`.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint

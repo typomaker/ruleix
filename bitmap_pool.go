@@ -13,11 +13,23 @@ type bitmapPool struct {
 	allPlans       map[any]*localAllPlan
 	cacheEpoch     uint64
 	partial        localAllIntersection
-	inspectors     localInspectorRuntimeChunk
+	candidateMask  *localCandidateMask
+	inspectors     *localInspectorRuntimeChunk
 	nodeObservers  []cacheObservers
 	rootRuntime    *inspectorRuntime
 	rootObserver   inspectorRuntimeObserver
 	observeRuntime bool
+}
+
+// Both layouts allocate the context and its mode-specific storage together.
+type plainLocalBitmapPool struct {
+	pool bitmapPool
+	mask localCandidateMask
+}
+
+type observedLocalBitmapPool struct {
+	pool       bitmapPool
+	inspectors localInspectorRuntimeChunk
 }
 
 type localInspectorRuntime struct {
@@ -35,7 +47,10 @@ func (p *bitmapPool) inspectorObserver(shared *inspectorRuntime) inspectorRuntim
 	if p.local == nil {
 		return inspectorRuntimeObserver{shared: shared}
 	}
-	chunk := &p.inspectors
+	if p.inspectors == nil {
+		p.inspectors = &localInspectorRuntimeChunk{}
+	}
+	chunk := p.inspectors
 	for {
 		for i := range int(chunk.n) {
 			if chunk.items[i].shared == shared {
@@ -56,7 +71,7 @@ func (p *bitmapPool) inspectorObserver(shared *inspectorRuntime) inspectorRuntim
 }
 
 func (p *bitmapPool) flushInspectorMetrics() {
-	for chunk := &p.inspectors; chunk != nil; chunk = chunk.next {
+	for chunk := p.inspectors; chunk != nil; chunk = chunk.next {
 		for i := range int(chunk.n) {
 			entry := &chunk.items[i]
 			v, dst := &entry.values, entry.shared
@@ -98,21 +113,32 @@ type rankedBitmapBuffer struct {
 
 func newBitmapPool() *bitmapPool {
 	p := &bitmapPool{observeRuntime: true}
+	p.initScratchPools()
+	return p
+}
+
+func (p *bitmapPool) initScratchPools() {
 	p.pool.New = func() interface{} { return roaring.New() }
 	p.rankedPool.New = func() interface{} {
 		return &rankedBitmapBuffer{items: make([]rankedBitmap, 0, 16)}
 	}
-	return p
 }
 
 func newLocalBitmapPool(nodes int, configured ...[][]*inspectorRuntime) *bitmapPool {
-	p := newBitmapPool()
-	p.observeRuntime = false
-	p.local = make([]localNodeCache, nodes)
+	var p *bitmapPool
 	var inspectors [][]*inspectorRuntime
-	if len(configured) != 0 {
+	if len(configured) == 0 {
+		plain := &plainLocalBitmapPool{}
+		p = &plain.pool
+		p.candidateMask = &plain.mask
+	} else {
+		observed := &observedLocalBitmapPool{}
+		p = &observed.pool
+		p.inspectors = &observed.inspectors
 		inspectors = configured[0]
 	}
+	p.initScratchPools()
+	p.local = make([]localNodeCache, nodes)
 	if inspectors != nil {
 		p.observeRuntime = true
 		p.nodeObservers = make([]cacheObservers, nodes)
@@ -150,6 +176,9 @@ func (p *bitmapPool) rootInspectorObserver(runtime *inspectorRuntime) inspectorR
 }
 func (p *bitmapPool) resetLocal() {
 	p.partial = localAllIntersection{}
+	if p.candidateMask != nil {
+		*p.candidateMask = localCandidateMask{}
+	}
 	p.flushInspectorMetrics()
 	for _, plan := range p.allPlans {
 		plan.resetResults(p)

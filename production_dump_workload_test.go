@@ -166,9 +166,9 @@ func TestProductionDumpLocalRequest(t *testing.T) {
 	})
 }
 
-// Apple M1 Max, macOS 26.6.2, Go 1.27.3, GOMAXPROCS=1,
-// 96,630 constraints and 45,000 requests per run: about 56.5 µs/request,
-// 921 B/request and 17 allocs/request. See docs/build-and-local-lookup.md.
+// Apple M1 Max, macOS 26.6.2, Go 1.27.3, GOMAXPROCS=1, 96,630 constraints,
+// 60,000 requests per run: 50.64 µs mean, 97.42 µs p99.9, 845 B and 12
+// allocs per request. See docs/local-candidate-structural-trials.md.
 func BenchmarkProductionDumpLocalRequest100(b *testing.B) {
 	rows, ids := loadProductionDumpBenchmark(b)
 	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
@@ -190,6 +190,9 @@ func BenchmarkProductionDumpLocalRequest100(b *testing.B) {
 	}
 	b.Logf("loaded %d constraints and generated %d requests", len(rows), len(requests))
 
+	if cohort := os.Getenv("RULEIX_PLANNER_BUCKET"); cohort != "" {
+		requests = productionDumpCohort(b, rows, ids, requests, cohort)
+	}
 	b.ReportAllocs()
 	samples := make([]time.Duration, 0, 100_000)
 	run := 0
@@ -206,17 +209,63 @@ func BenchmarkProductionDumpLocalRequest100(b *testing.B) {
 	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*productionDumpOffersPerRequest), "ns/offer")
 }
 
+func productionDumpCohort(
+	b *testing.B,
+	rows []productionDumpConstraint,
+	ids []uuid.UUID,
+	requests [][]productionDumpConstraint,
+	cohort string,
+) [][]productionDumpConstraint {
+	b.Helper()
+	require.Contains(b, []string{"narrow", "broad"}, cohort)
+	candidates := make(map[uuid.UUID]map[uuid.UUID]struct{}, len(requests))
+	for _, request := range requests {
+		candidates[request[0].CustomerUUID] = make(map[uuid.UUID]struct{})
+	}
+	for i, row := range rows {
+		if buyerIDs := candidates[row.CustomerUUID]; buyerIDs != nil {
+			buyerIDs[ids[i]] = struct{}{}
+		}
+	}
+	selected := make([][]productionDumpConstraint, 0, len(requests))
+	for _, request := range requests {
+		size := len(candidates[request[0].CustomerUUID])
+		if (cohort == "narrow" && size <= 8) || (cohort == "broad" && size >= 9 && size <= 16) {
+			selected = append(selected, request)
+		}
+	}
+	require.NotEmpty(b, selected)
+	b.Logf("selected %d requests for the %s cohort", len(selected), cohort)
+	return selected
+}
+
 // Keep each Local live until measurement ends so every request acquires fresh
-// storage. Use a fixed count such as -benchtime=5000x. The baseline on
-// Apple M1 Max, Go 1.27.3, GOMAXPROCS=1 measured 57.3 µs, 4,844 B, and
-// 31 allocs per request across three runs.
+// storage. On Apple M1 Max, Go 1.27.3, GOMAXPROCS=1, two 1000x samples
+// measured 51.89 µs, 3,829 B, and 26 allocs per request.
 func BenchmarkProductionDumpFreshLocal100(b *testing.B) {
+	benchmarkProductionDumpFreshLocal(b, false)
+}
+
+// Keep the search contexts alive over the final heap sample. The 409a51b
+// baseline and the candidate measured 4,355 and 3,427 B per Local at
+// 1000x on Apple M1 Max, Go 1.27.3, GOMAXPROCS=1.
+func BenchmarkProductionDumpLocalRetainedProbe(b *testing.B) {
+	benchmarkProductionDumpFreshLocal(b, true)
+}
+
+func benchmarkProductionDumpFreshLocal(b *testing.B, retained bool) {
 	rows, ids := loadProductionDumpBenchmark(b)
 	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
 	require.NoError(b, err)
 	requests := productionDumpRequests(rows, 64)
 	require.Len(b, requests, 64)
 	locals := make([]*ruleix.Local[productionDumpConstraint, uuid.UUID], b.N)
+	var before uint64
+	if retained {
+		runtime.GC()
+		runtime.GC()
+		before = heapAlloc()
+	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := range locals {
@@ -225,6 +274,14 @@ func BenchmarkProductionDumpFreshLocal100(b *testing.B) {
 		locals[i] = local
 	}
 	b.StopTimer()
+	if retained {
+		runtime.GC()
+		runtime.GC()
+		after := heapAlloc()
+		runtime.KeepAlive(index)
+		runtime.KeepAlive(requests)
+		b.ReportMetric(float64(int64(after)-int64(before))/float64(b.N), "retained-B/Local")
+	}
 	for _, local := range locals {
 		local.Close()
 	}
