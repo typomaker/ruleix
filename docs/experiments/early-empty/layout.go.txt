@@ -1,0 +1,10 @@
+package ruleix
+
+import (
+	"testing"
+	"unsafe"
+)
+
+func TestExperimentLayout(t *testing.T) {
+	t.Logf("all=%d equality=%d pool=%d plain=%d mask=%d", unsafe.Sizeof(allRule[int]{}), unsafe.Sizeof(eqRule[int, int, int]{}), unsafe.Sizeof(bitmapPool{}), unsafe.Sizeof(plainLocalBitmapPool{}), unsafe.Sizeof(localCandidateMask{}))
+}

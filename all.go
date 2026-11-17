@@ -36,8 +36,10 @@ type allRule[T any] struct {
 	directIDComplete        bool
 	narrowMaskPrepared      bool
 	maskEqualityOrder       uint8
+	emptyKeys               uint8
 	equalityClassCount      uint32
 	compiledEqualityClasses bool
+	emptyOrder              uint32
 	// sharedWildcardGroups is allocated only when Build finds equality children
 	// whose interned, non-empty wildcard bitmap is identical. Ordinary All
 	// searches therefore do not pay for duplicate-result tracking.
@@ -160,6 +162,8 @@ func (r *allRule[T]) prepareSearch() {
 	if !r.compiledEqualityClasses {
 		r.prepareDuplicateEqualityResults()
 	}
+	r.prepareEmptyOrder()
+	r.prepareEmptyKeys()
 	r.planningPrepared = true
 }
 

@@ -165,7 +165,15 @@ func searchAllMatches[C any, ID comparable](
 	} else {
 		rankedChildren = inline[:len(root.children)]
 	}
-	if !root.rankChildren(value, pool, rankedChildren) || len(rankedChildren) == 0 {
+	if mask := pool.candidateMask; mask != nil && pool.allPlans == nil &&
+		len(exclusions) == 0 && !pool.observeRuntime && root.executionCounters == nil {
+		mask.first = emptyRankInProgress
+	}
+	ranked := root.rankChildren(value, pool, rankedChildren)
+	if m := pool.candidateMask; m != nil && m.first == emptyRankInProgress {
+		m.first = 0
+	}
+	if !ranked || len(rankedChildren) == 0 {
 		if buffer != nil {
 			pool.putRanked(buffer)
 		}

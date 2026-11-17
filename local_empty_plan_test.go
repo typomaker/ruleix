@@ -26,7 +26,9 @@ func TestLocalEmptyPlanTransitions(t *testing.T) {
 			require.Equal(t, want, got)
 			if i < 2 {
 				require.Nil(t, local.pool.allPlans, "misses must not create plans")
-				require.Nil(t, root.loadLocalQueryResult(local.pool, value))
+				if cached := root.loadLocalQueryResult(local.pool, value); cached != nil {
+					require.Empty(t, cached.ids)
+				}
 			} else {
 				require.NotNil(t, local.pool.allPlans[root], "a subsequent hit must still prepare its plan")
 			}

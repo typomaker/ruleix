@@ -194,7 +194,7 @@ Roaring iteration. Local scratch bitmaps are also reusable regardless of size.
 The result is addressed by a collision-safe tuple of original query-side values;
 physical keys are intentionally not cache keys because rehashing them costs more
 than comparing their semantic values. Ordinary and grouped query-key validation
-use separate lookup loops. [Empty-plan guards](local-zero-plan.md) skip reuse and result-cache lookups until any `All` plan exists. Once an `All` result plan exists, ordinary validation
+use separate lookup loops. [Empty-plan guards](local-zero-plan.md) skip impossible plan lookups. [Early empty checks](local-early-empty.md) prepare cheap traversal and key-absence probes, then recheck a rejecting root operand through the cold result path using existing Local scratch. Once an `All` result plan exists, ordinary validation
 reads the immutable prepared execution slots directly instead of rechecking their
 availability for every child of every cache slot. See [Local candidate masks](local-candidate-structural-trials.md#implementation), [narrow execution](local-interval-and-narrow-trials.md), and [Include projection](local-predicate-projection-trials.md#selected-projection) for small exact candidate sets. [Portable prepared ranges](local-between-go.md) reuse existing scratch for prepared sets of 9–16 IDs.
 

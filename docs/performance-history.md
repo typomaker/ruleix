@@ -366,10 +366,10 @@ records the same dump harness on the tag and on `4de8383`.
 
 ## Portable prepared Between bounds
 
-Three paired 80,000-request controls against db3ae77 measured broad mean
-49.145 → 44.170 µs and mixed mean 31.867 → 31.005 µs on Apple M1 Max.
+Three paired 80,000-request controls against db3ae77 measured broad mean 49.145 → 44.170 µs and mixed mean 31.867 → 31.005 µs on Apple M1 Max.
 The [portable study](local-between-go.md) records p99.9 controls. Against
 [v0.8.2](production-v082-portable-comparison.md), mixed mean/p99.9 improved 2.42x/2.54x; [empty-plan guards](local-zero-plan.md) subsequently restored zero-candidate parity.
+[Prepared early empty checks](local-early-empty.md) then reduced missing-customer/store/slot means 12.411/20.133/24.325 → 6.323/6.037/4.670 µs against 5f6e63e.
 
 ## ARM64 packed Between masks
 

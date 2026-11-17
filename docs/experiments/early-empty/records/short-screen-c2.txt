@@ -1,0 +1,28 @@
+variant c2
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkEmptyPublicControls/Index         	   40000	    104979 ns/op	    6207 B/op	     341 allocs/op
+BenchmarkEmptyPublicControls/WarmLocal     	   40000	     30493 ns/op	       7 B/op	       0 allocs/op
+BenchmarkEmptyShort/zero/1                 	   40000	       243.8 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/4                 	   40000	       425.5 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/16                	   40000	      1128 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/mixed/1                	   40000	      2261 ns/op	     832 B/op	      12 allocs/op
+BenchmarkEmptyShort/mixed/4                	   40000	      4035 ns/op	     835 B/op	      12 allocs/op
+BenchmarkEmptyShort/mixed/16               	   40000	      7760 ns/op	     836 B/op	      12 allocs/op
+PASS
+variant c2
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkEmptyPublicControls/Index         	   40000	    104670 ns/op	    6207 B/op	     341 allocs/op
+BenchmarkEmptyPublicControls/WarmLocal     	   40000	     30499 ns/op	       7 B/op	       0 allocs/op
+BenchmarkEmptyShort/zero/1                 	   40000	       248.2 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/4                 	   40000	       427.2 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/16                	   40000	      1148 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/mixed/1                	   40000	      2306 ns/op	     832 B/op	      12 allocs/op
+BenchmarkEmptyShort/mixed/4                	   40000	      3947 ns/op	     835 B/op	      12 allocs/op
+BenchmarkEmptyShort/mixed/16               	   40000	      8048 ns/op	     836 B/op	      12 allocs/op
+PASS

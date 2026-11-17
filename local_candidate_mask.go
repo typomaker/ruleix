@@ -10,8 +10,9 @@ type localCandidateMask struct {
 	// against every offer before reusing the candidate slots.
 	source *equalitySet
 	ids    [2 * allCandidateScanLimit]uint32
-	first  int
-	count  uint8
+	// Negative indices record a rejected root operand while source is nil.
+	first int
+	count uint8
 }
 
 type candidateMaskOperand[T any] interface {
@@ -87,6 +88,8 @@ func (r *allRule[T]) rememberCandidateMask(pool *bitmapPool, v T, first rankedBi
 	}
 }
 
+// After a nonnil source is admitted, immutable eligibility cannot change:
+// a later nil posting proves that this operand has no matches for the query.
 func (r *eqRule[T, V, K]) candidateMaskPosting(v T) *equalitySet {
 	if r.coarsen != nil || !r.wildcard.IsEmpty() {
 		return nil
@@ -100,6 +103,9 @@ func (r *eqRule[T, V, K]) candidateMaskPosting(v T) *equalitySet {
 func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, pool *bitmapPool, values []ID, dst *[]ID) bool {
 	m := pool.candidateMask
 	posting := r.children[m.first].(candidateMaskSource[T]).candidateMaskPosting(v)
+	if posting == nil {
+		return true
+	}
 	if posting != m.source {
 		m.source = nil
 		return false
@@ -130,6 +136,9 @@ func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, pool *
 
 func appendNarrowCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *localCandidateMask, state *localAllIntersection, values []ID, dst *[]ID) bool {
 	posting := r.children[m.first].(candidateMaskSource[T]).candidateMaskPosting(v)
+	if posting == nil {
+		return true
+	}
 	if posting != m.source {
 		m.source = nil
 		return false

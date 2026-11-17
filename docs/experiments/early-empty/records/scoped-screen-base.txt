@@ -1,0 +1,76 @@
+variant base
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkEmptyMatrix/zero    	   40000	     12667 ns/op	     14542 p99-ns/request	     34792 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/zero
+    production_empty_matrix_test.go:28: zero candidates: 64 requests with absent customer
+BenchmarkEmptyMatrix/storezero         	   40000	     20081 ns/op	     22042 p99-ns/request	     37625 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/storezero
+    production_empty_matrix_test.go:28: zero candidates: 64 requests with absent customer
+BenchmarkEmptyMatrix/slotzero          	   40000	     24267 ns/op	     29125 p99-ns/request	     51333 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/slotzero
+    production_empty_matrix_test.go:28: zero candidates: 64 requests with absent customer
+BenchmarkEmptyMatrix/intersectzero     	   40000	     19610 ns/op	     44041 p99-ns/request	     59208 p99.9-ns/request	     786 B/op	      10 allocs/op
+BenchmarkEmptyMatrix/alternating       	   40000	     41050 ns/op	     63584 p99-ns/request	     79792 p99.9-ns/request	     864 B/op	      14 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/alternating
+    production_empty_matrix_test.go:28: zero candidates: 64 requests with absent customer
+BenchmarkEmptyMatrix/mixed             	   40000	     32066 ns/op	     57375 p99-ns/request	     73417 p99.9-ns/request	     845 B/op	      12 allocs/op
+BenchmarkEmptyMatrix/tiny              	   40000	     19206 ns/op	     24459 p99-ns/request	     43542 p99.9-ns/request	     776 B/op	      10 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/tiny
+    production_empty_matrix_test.go:28: selected 16 requests for the tiny cohort
+BenchmarkEmptyMatrix/medium            	   40000	     31701 ns/op	     44667 p99-ns/request	     61958 p99.9-ns/request	     819 B/op	      11 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/medium
+    production_empty_matrix_test.go:28: selected 28 requests for the medium cohort
+BenchmarkEmptyMatrix/broad             	   40000	     46307 ns/op	     59625 p99-ns/request	     81333 p99.9-ns/request	    1015 B/op	      19 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/broad
+    production_empty_matrix_test.go:28: selected 13 requests for the broad cohort
+BenchmarkEmptyMatrix/rotate            	   40000	     36439 ns/op	     67833 p99-ns/request	     86125 p99.9-ns/request	     845 B/op	      12 allocs/op
+BenchmarkEmptyPublicControls/Index     	   40000	    104954 ns/op	    6207 B/op	     341 allocs/op
+BenchmarkEmptyPublicControls/WarmLocal 	   40000	     30368 ns/op	       7 B/op	       0 allocs/op
+BenchmarkEmptyShort/zero/1             	   40000	       307.4 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/4             	   40000	       672.7 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/16            	   40000	      2111 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/mixed/1            	   40000	      2169 ns/op	     832 B/op	      12 allocs/op
+BenchmarkEmptyShort/mixed/4            	   40000	      3821 ns/op	     835 B/op	      12 allocs/op
+BenchmarkEmptyShort/mixed/16           	   40000	      7582 ns/op	     836 B/op	      12 allocs/op
+PASS
+variant base
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkEmptyMatrix/zero    	   40000	     12365 ns/op	     13417 p99-ns/request	     26000 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/zero
+    production_empty_matrix_test.go:28: zero candidates: 64 requests with absent customer
+BenchmarkEmptyMatrix/storezero         	   40000	     20128 ns/op	     23083 p99-ns/request	     37791 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/storezero
+    production_empty_matrix_test.go:28: zero candidates: 64 requests with absent customer
+BenchmarkEmptyMatrix/slotzero          	   40000	     24150 ns/op	     28166 p99-ns/request	     45375 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/slotzero
+    production_empty_matrix_test.go:28: zero candidates: 64 requests with absent customer
+BenchmarkEmptyMatrix/intersectzero     	   40000	     19704 ns/op	     44625 p99-ns/request	     68125 p99.9-ns/request	     786 B/op	      10 allocs/op
+BenchmarkEmptyMatrix/alternating       	   40000	     40527 ns/op	     61625 p99-ns/request	     81584 p99.9-ns/request	     864 B/op	      14 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/alternating
+    production_empty_matrix_test.go:28: zero candidates: 64 requests with absent customer
+BenchmarkEmptyMatrix/mixed             	   40000	     31806 ns/op	     56875 p99-ns/request	     71417 p99.9-ns/request	     845 B/op	      12 allocs/op
+BenchmarkEmptyMatrix/tiny              	   40000	     19293 ns/op	     25209 p99-ns/request	     48083 p99.9-ns/request	     776 B/op	      10 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/tiny
+    production_empty_matrix_test.go:28: selected 16 requests for the tiny cohort
+BenchmarkEmptyMatrix/medium            	   40000	     31917 ns/op	     45709 p99-ns/request	     68167 p99.9-ns/request	     819 B/op	      11 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/medium
+    production_empty_matrix_test.go:28: selected 28 requests for the medium cohort
+BenchmarkEmptyMatrix/broad             	   40000	     46522 ns/op	     61833 p99-ns/request	     89125 p99.9-ns/request	    1015 B/op	      19 allocs/op
+--- BENCH: BenchmarkEmptyMatrix/broad
+    production_empty_matrix_test.go:28: selected 13 requests for the broad cohort
+BenchmarkEmptyMatrix/rotate            	   40000	     35986 ns/op	     57750 p99-ns/request	     74208 p99.9-ns/request	     845 B/op	      12 allocs/op
+BenchmarkEmptyPublicControls/Index     	   40000	    105160 ns/op	    6207 B/op	     341 allocs/op
+BenchmarkEmptyPublicControls/WarmLocal 	   40000	     30387 ns/op	       7 B/op	       0 allocs/op
+BenchmarkEmptyShort/zero/1             	   40000	       310.9 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/4             	   40000	       684.0 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/zero/16            	   40000	      2156 ns/op	      24 B/op	       1 allocs/op
+BenchmarkEmptyShort/mixed/1            	   40000	      2197 ns/op	     832 B/op	      12 allocs/op
+BenchmarkEmptyShort/mixed/4            	   40000	      3869 ns/op	     835 B/op	      12 allocs/op
+BenchmarkEmptyShort/mixed/16           	   40000	      7714 ns/op	     836 B/op	      12 allocs/op
+PASS

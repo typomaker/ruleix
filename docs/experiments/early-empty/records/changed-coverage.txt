@@ -1,0 +1,9 @@
+uncovered all_empty_ranking.go:78
+uncovered all_empty_ranking.go:82
+uncovered all_empty_ranking.go:81
+uncovered all_empty_ranking.go:71
+uncovered local_empty_operand.go:13
+uncovered local_empty_operand.go:15
+uncovered local_empty_operand.go:12
+uncovered local_empty_operand.go:16
+Changed executable statement-start lines: 130/138 (94.20%)

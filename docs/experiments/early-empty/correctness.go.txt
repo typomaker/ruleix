@@ -1,0 +1,38 @@
+package ruleix_test
+
+import (
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"github.com/typomaker/ruleix"
+	"os"
+	"slices"
+	"testing"
+)
+
+func TestProductionEmptyControls(t *testing.T) {
+	path := os.Getenv("RULEIX_PRODUCTION_DUMP")
+	if path == "" {
+		t.Skip("set dump path")
+	}
+	input, err := os.Open(path)
+	require.NoError(t, err)
+	defer input.Close()
+	rows, ids := readProductionDump(t, input)
+	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
+	require.NoError(t, err)
+	for _, mode := range []string{"zero", "storezero", "slotzero", "intersectzero", "alternating"} {
+		t.Run(mode, func(t *testing.T) {
+			requests := productionDumpCohort(t, rows, ids, productionDumpRequests(rows, 64), mode)
+			for _, request := range requests {
+				searchProductionDumpRequest(index, request, func(i int, got []uuid.UUID) {
+					var want []uuid.UUID
+					index.Search(request[i], &want)
+					require.True(t, slices.Equal(want, got))
+					if mode != "alternating" || i%2 == 0 {
+						require.Empty(t, got)
+					}
+				})
+			}
+		})
+	}
+}

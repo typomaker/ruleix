@@ -1,0 +1,1 @@
+ok  	github.com/typomaker/ruleix	2.900s

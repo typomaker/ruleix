@@ -1,0 +1,131 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"os/exec"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+type block struct{ first, last, count int }
+
+// Count changed statement-start lines, excluding comments and structural braces.
+func main() {
+	if len(os.Args) < 2 || len(os.Args) > 3 {
+		panic("pass a Go coverage profile and optional baseline revision")
+	}
+	baseline := "5f6e63e"
+	if len(os.Args) == 3 {
+		baseline = os.Args[2]
+	}
+	diff, err := exec.Command("git", "diff", baseline, "--unified=0", "--", "*.go").Output()
+	if err != nil {
+		panic(err)
+	}
+	changed := make(map[string]map[int]bool)
+	hunk := regexp.MustCompile(`\+(\d+)(?:,(\d+))?`)
+	name := ""
+	for _, line := range strings.Split(string(diff), "\n") {
+		if strings.HasPrefix(line, "+++ b/") {
+			name = strings.TrimPrefix(line, "+++ b/")
+		}
+		if !strings.HasPrefix(line, "@@") {
+			continue
+		}
+		match := hunk.FindStringSubmatch(line)
+		start, _ := strconv.Atoi(match[1])
+		count := 1
+		if match[2] != "" {
+			count, _ = strconv.Atoi(match[2])
+		}
+		if changed[name] == nil {
+			changed[name] = make(map[int]bool)
+		}
+		for n := start; n < start+count; n++ {
+			changed[name][n] = true
+		}
+	}
+	input, err := os.Open(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	defer input.Close()
+	blocks := make(map[string][]block)
+	scanner := bufio.NewScanner(input)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) != 3 {
+			continue
+		}
+		location, _, ok := strings.Cut(fields[0], ":")
+		if !ok {
+			continue
+		}
+		span := strings.TrimPrefix(fields[0], location+":")
+		a, b, _ := strings.Cut(span, ",")
+		first, _ := strconv.Atoi(strings.Split(a, ".")[0])
+		last, _ := strconv.Atoi(strings.Split(b, ".")[0])
+		count, _ := strconv.Atoi(fields[2])
+		name = strings.TrimPrefix(location, "github.com/typomaker/ruleix/")
+		blocks[name] = append(blocks[name], block{first, last, count})
+	}
+	if err := scanner.Err(); err != nil {
+		panic(err)
+	}
+	covered, total := 0, 0
+	for name, lines := range changed {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		set := token.NewFileSet()
+		file, err := parser.ParseFile(set, name, nil, parser.SkipObjectResolution)
+		if err != nil {
+			panic(err)
+		}
+		executable := make(map[int]bool)
+		ast.Inspect(file, func(node ast.Node) bool {
+			statement, ok := node.(ast.Stmt)
+			if !ok {
+				return true
+			}
+			if _, brace := statement.(*ast.BlockStmt); brace {
+				return true
+			}
+			if _, empty := statement.(*ast.EmptyStmt); !empty {
+				executable[set.Position(statement.Pos()).Line] = true
+			}
+			return true
+		})
+		for line := range executable {
+			if !lines[line] {
+				continue
+			}
+			known, hit := false, false
+			for _, b := range blocks[name] {
+				if b.first <= line && line <= b.last {
+					known = true
+					hit = hit || b.count > 0
+				}
+			}
+			if !known {
+				continue
+			}
+			total++
+			if hit {
+				covered++
+			} else {
+				fmt.Printf("uncovered %s:%d\n", name, line)
+			}
+		}
+	}
+	fmt.Printf("Changed executable statement-start lines: %d/%d (%.2f%%)\n", covered, total, 100*float64(covered)/float64(total))
+	if total == 0 || float64(covered)/float64(total) < 0.9 {
+		os.Exit(1)
+	}
+}

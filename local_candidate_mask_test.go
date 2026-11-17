@@ -47,8 +47,9 @@ func TestLocalCandidateMaskChecksSourceAndClearsOnClose(t *testing.T) {
 	require.Equal(t, uint32(40), mask.ids[0])
 	check(offer{group: 4, slot: 0})
 	require.Equal(t, uint8(1), mask.count)
+	lastSource := mask.source
 	check(offer{group: 5, slot: 0})
-	require.Nil(t, mask.source)
+	require.Same(t, lastSource, mask.source)
 	check(offer{group: 1, slot: -1})
 	check(offer{group: 1, slot: 1})
 	require.NotNil(t, mask.source)

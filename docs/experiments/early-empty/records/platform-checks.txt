@@ -1,0 +1,5 @@
+Exact accepted production snapshot compiled successfully for:
+- darwin/arm64 (native)
+- linux/amd64, CGO_ENABLED=0
+- linux/386, CGO_ENABLED=0
+Foreign-target binaries were not executed.

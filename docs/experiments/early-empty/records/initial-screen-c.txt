@@ -1,0 +1,156 @@
+c zero
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     12595 ns/op	       126.0 ns/offer	       100.0 offers/op	     13709 p99-ns/request	     31458 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+c storezero
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     20176 ns/op	       201.8 ns/offer	       100.0 offers/op	     23250 p99-ns/request	     39542 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+c slotzero
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     24270 ns/op	       242.7 ns/offer	       100.0 offers/op	     28458 p99-ns/request	     47375 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+c intersectzero
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     19367 ns/op	       193.7 ns/offer	       100.0 offers/op	     43833 p99-ns/request	     65125 p99.9-ns/request	     786 B/op	      10 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+c alternating
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     40287 ns/op	       402.9 ns/offer	       100.0 offers/op	     61792 p99-ns/request	     88875 p99.9-ns/request	     864 B/op	      14 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+c mixed
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     31617 ns/op	       316.2 ns/offer	       100.0 offers/op	     55875 p99-ns/request	     81250 p99.9-ns/request	     845 B/op	      12 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+c tiny
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     18952 ns/op	       189.5 ns/offer	       100.0 offers/op	     25167 p99-ns/request	     53791 p99.9-ns/request	     776 B/op	      10 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 16 requests for the tiny cohort
+PASS
+c broad
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     45807 ns/op	       458.1 ns/offer	       100.0 offers/op	     60750 p99-ns/request	     96125 p99.9-ns/request	    1015 B/op	      19 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 13 requests for the broad cohort
+PASS
+c zero
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     12980 ns/op	       129.8 ns/offer	       100.0 offers/op	     14333 p99-ns/request	     27791 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+c storezero
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     20040 ns/op	       200.4 ns/offer	       100.0 offers/op	     21917 p99-ns/request	     38125 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+c slotzero
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     24177 ns/op	       241.8 ns/offer	       100.0 offers/op	     28834 p99-ns/request	     43958 p99.9-ns/request	      24 B/op	       1 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+c intersectzero
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     19510 ns/op	       195.1 ns/offer	       100.0 offers/op	     44416 p99-ns/request	     65042 p99.9-ns/request	     786 B/op	      10 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+c alternating
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     40349 ns/op	       403.5 ns/offer	       100.0 offers/op	     62000 p99-ns/request	     87417 p99.9-ns/request	     864 B/op	      14 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: zero candidates: 64 requests with absent customer
+PASS
+c mixed
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     31432 ns/op	       314.3 ns/offer	       100.0 offers/op	     55750 p99-ns/request	     75667 p99.9-ns/request	     845 B/op	      12 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+PASS
+c tiny
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     19029 ns/op	       190.3 ns/offer	       100.0 offers/op	     25666 p99-ns/request	     57250 p99.9-ns/request	     776 B/op	      10 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 16 requests for the tiny cohort
+PASS
+c broad
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionDumpLocalRequest100 	   40000	     45891 ns/op	       458.9 ns/offer	       100.0 offers/op	     60042 p99-ns/request	     93250 p99.9-ns/request	    1015 B/op	      19 allocs/op
+--- BENCH: BenchmarkProductionDumpLocalRequest100
+    production_dump_workload_test.go:194: loaded 96630 constraints and generated 64 requests
+    production_dump_workload_test.go:197: selected 13 requests for the broad cohort
+PASS

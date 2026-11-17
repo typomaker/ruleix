@@ -131,6 +131,9 @@ findings, all in files byte-for-byte unchanged from bf89413; these
 pre-existing findings were verified against Git and left outside
 this correction. Tests and performance measurements use Go 1.27.3.
 
+A subsequent [early-empty study](local-early-empty.md) evaluates all three
+follow-up ideas and accepts prepared checks with a per-Local rejection hint.
+
 ## Reproduction
 
 The shared runner now accepts baseline and current revisions. After
