@@ -338,6 +338,11 @@ The [small Between endpoint dictionary](between-small-bounds.md) records
 the dump-based evaluation of build-time endpoint lookup and within-block
 cardinality prefixes.
 
+## Local candidate preparation
+
+The [Local candidate validation trials](local-candidate-validation.md)
+record the Include lookup, saved-plan lookup and cached-intersection trials.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint

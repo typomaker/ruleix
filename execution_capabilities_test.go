@@ -180,3 +180,67 @@ func TestLocalReusesSelectivePostingPairUntilClose(t *testing.T) {
 	pool.resetLocal()
 	require.Nil(t, pool.partial.candidates(first, []rankedBitmap{disjoint}))
 }
+
+func TestLocalResolvesCompactIncludeOncePerCandidateBatch(t *testing.T) {
+	type constraint struct {
+		key     int
+		present bool
+	}
+	var getterCalls int
+	schema := Include(func(c constraint) (int, bool) {
+		getterCalls++
+		return c.key, c.present
+	})
+	rows := []constraint{{2, true}, {3, true}, {0, false}, {2, true}}
+	index, err := New[constraint, int](schema).Build(Zip(rows, []int{0, 1, 2, 3}))
+	require.NoError(t, err)
+	root := &allRule[constraint]{children: []Rule[constraint]{index.root}}
+	root.prepareSearch()
+	pool := newLocalBitmapPool(0)
+	source := roaring.BitmapOf(0, 1, 2, 3)
+	remaining := []rankedBitmap{{card: 4}}
+
+	for _, tc := range []struct {
+		query constraint
+		want  []uint32
+	}{
+		{constraint{2, true}, []uint32{0, 2, 3}},
+		{constraint{99, true}, []uint32{2}},
+		{constraint{}, []uint32{2}},
+	} {
+		getterCalls = 0
+		result := roaring.New()
+		root.collectValidatedCandidates(tc.query, source, result, nil, pool, remaining)
+		require.Equal(t, tc.want, result.ToArray())
+		require.Equal(t, 1, getterCalls)
+	}
+}
+
+type localPlanCacheProbe struct {
+	*countingRule
+	calls int
+}
+
+func (p *localPlanCacheProbe) lookupCachedBitmap(int, *bitmapPool) (*roaring.Bitmap, bool) {
+	p.calls++
+	return nil, false
+}
+
+func TestLocalDefersCacheLookupsAfterReadySmallCandidatePosting(t *testing.T) {
+	first := &planningCountingRule{countingRule: &countingRule{}, bits: roaring.BitmapOf(2, 3)}
+	other := &localPlanCacheProbe{countingRule: &countingRule{}}
+	root := &allRule[int]{children: []Rule[int]{first, other}}
+	root.prepareSearch()
+	pool := newLocalBitmapPool(0)
+	plan := &localAllPlan{order: []int{0, 1}, firstCard: 2}
+	ranked := make([]rankedBitmap, 2)
+
+	require.True(t, root.populatePlanningLocalPlan(0, pool, plan, ranked))
+	require.Same(t, first.bits, ranked[0].bits)
+	require.Equal(t, 1, ranked[1].childIdx)
+	require.Zero(t, other.calls)
+
+	pool.observeRuntime = true
+	require.True(t, root.populatePlanningLocalPlan(0, pool, plan, ranked))
+	require.Equal(t, 1, other.calls)
+}

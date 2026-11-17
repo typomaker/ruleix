@@ -44,6 +44,75 @@ func prepareRankedAllCandidates[C any](
 	return materializeRankedAfterFirst(root, value, pool, rankedChildren, metrics)
 }
 
+// collectValidatedCandidates appends accepted candidates to a separate bitmap.
+// The source may belong to an immutable posting or to a Local child cache.
+func (r *allRule[T]) collectValidatedCandidates(
+	v T,
+	source, accepted *roaring.Bitmap,
+	ids []uint32,
+	pool *bitmapPool,
+	remaining []rankedBitmap,
+) {
+	count := source.GetCardinality()
+	if ids != nil {
+		count = uint64(len(ids))
+	}
+	type candidatePosting struct {
+		set      *equalitySet
+		wildcard *roaring.Bitmap
+		checked  bool
+	}
+	type candidatePostingResolver interface {
+		resolveCandidatePosting(T) (*equalitySet, *roaring.Bitmap)
+	}
+	// Resolve compact postings only if an ID survives to that operand.
+	var resolved [8]candidatePosting
+	resolve := pool.local != nil && !pool.observeRuntime && r.executionCounters == nil &&
+		count <= 2*allCandidateScanLimit && len(remaining) <= len(resolved)
+	r.orderCandidateValidation(count, remaining)
+	add := func(id uint32) bool {
+		for i, ranked := range remaining {
+			if ranked.bits != nil {
+				if r.executionCounters != nil {
+					r.executionCounters.containsChecks++
+				}
+				observeCandidateCheck(r.children[ranked.childIdx], pool)
+				if !ranked.bits.Contains(id) {
+					return true
+				}
+				continue
+			}
+			if resolve {
+				posting := &resolved[i]
+				if !posting.checked {
+					posting.checked = true
+					if equality, ok := r.childExecution(ranked.childIdx).directID.(candidatePostingResolver); ok {
+						posting.set, posting.wildcard = equality.resolveCandidatePosting(v)
+					}
+				}
+				if posting.wildcard != nil {
+					if !posting.wildcard.Contains(id) && (posting.set == nil || !posting.set.contains(id)) {
+						return true
+					}
+					continue
+				}
+			}
+			if !r.matchesChildID(ranked.childIdx, v, id, pool) {
+				return true
+			}
+		}
+		accepted.Add(id)
+		return true
+	}
+	if ids == nil {
+		source.Iterate(add)
+	} else {
+		for _, id := range ids {
+			add(id)
+		}
+	}
+}
+
 func materializeRankedAfterFirst[C any](
 	root *allRule[C],
 	value C,

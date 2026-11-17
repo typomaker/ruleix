@@ -204,14 +204,21 @@ func (r *allRule[T]) populatePlanningLocalPlan(
 	plan *localAllPlan,
 	rankedChildren []rankedBitmap,
 ) bool {
+	deferCached := false
 	for rank, childIdx := range plan.order {
 		ranked := rankedBitmap{card: ^uint64(0), childIdx: childIdx}
 		bits, found := r.lookupPlanningBitmap(childIdx, r.children[childIdx], v)
 		if found {
 			ranked.bits = bits
 			ranked.card = bits.GetCardinality()
-		} else {
+		} else if !deferCached {
 			ranked = r.cachedLocalPlanChild(v, pool, childIdx)
+		}
+		// A ready small posting can drive direct validation of the later
+		// operands even when their cached bitmaps have not been loaded.
+		if rank == 0 && ranked.bits != nil && ranked.card <= allCandidateScanLimit &&
+			plan.firstCard <= allCandidateScanLimit && r.directIDComplete && !pool.observeRuntime && r.executionCounters == nil {
+			deferCached = true
 		}
 		if ranked.card == 0 {
 			return false

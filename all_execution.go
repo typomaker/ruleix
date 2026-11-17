@@ -178,48 +178,6 @@ func (r *allRule[T]) validateCandidateBitmap(
 	return !dst.IsEmpty()
 }
 
-// collectValidatedCandidates appends accepted candidates to a separate bitmap.
-// The source may belong to an immutable posting or to a Local child cache.
-func (r *allRule[T]) collectValidatedCandidates(
-	v T,
-	source, accepted *roaring.Bitmap,
-	ids []uint32,
-	pool *bitmapPool,
-	remaining []rankedBitmap,
-) {
-	count := source.GetCardinality()
-	if ids != nil {
-		count = uint64(len(ids))
-	}
-	r.orderCandidateValidation(count, remaining)
-	add := func(id uint32) bool {
-		for _, ranked := range remaining {
-			if ranked.bits != nil {
-				if r.executionCounters != nil {
-					r.executionCounters.containsChecks++
-				}
-				observeCandidateCheck(r.children[ranked.childIdx], pool)
-				if !ranked.bits.Contains(id) {
-					return true
-				}
-				continue
-			}
-			if !r.matchesChildID(ranked.childIdx, v, id, pool) {
-				return true
-			}
-		}
-		accepted.Add(id)
-		return true
-	}
-	if ids == nil {
-		source.Iterate(add)
-	} else {
-		for _, id := range ids {
-			add(id)
-		}
-	}
-}
-
 // materializeUnsupportedRemaining is shared by bitmap-returning and direct
 // result assembly. It guarantees that an unsupported child is acquired once
 // for the whole candidate batch, never once per candidate ID.

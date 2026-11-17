@@ -12,6 +12,7 @@ a design conclusion or hypothesis.
 
 | Date | Name | Area | Decision and evidence |
 | --- | --- | --- | --- |
+| 2026-11-17 | Local Candidate Preparation | All execution | Resolve reached Include postings once and defer child cache lookups after a small ready leading posting. The dump p99 improved from 97.04 to 88.88 µs with 17 allocations per request. See [measurements](local-candidate-validation.md). |
 | 2026-11-17 | Small Between Endpoint Dictionary | Compound ranges | Compile one byte per ID for bound pairs in eligible exact All operands. On the full dump, p99 fell from 139.38 to 97.13 µs with 17 allocations per request, comparable Build time, and a smaller retained index. See [measurements](between-small-bounds.md). |
 | 2026-11-17 | Local Posting Pair Reuse | All execution | Keep one selective pair of ready postings in the reusable Local pool. The full dump p99 improved from 151.42 to 139.42 µs with 17 allocations and 921 B per request on both revisions. See [measurements](performance-history.md#reusing-one-intersection-across-local-searches). |
 | 2026-11-17 | Direct Validation of Ready Local Candidates | All execution | Validate 9–16 candidate IDs into the result bitmap when the leading posting already exists and all operands support direct validation. The full dump p99.9 improved from 255.46 to 168.25 µs and allocations fell from 63 to 17 per request. See [measurements](performance-history.md#direct-validation-of-ready-local-candidates). |

@@ -31,6 +31,11 @@ candidate list. Reuse keys are bitmap identities and the entry is cleared
 with the Local, so its validity does not depend on field names or a new
 query API. See [the intersection reuse experiment](performance-history.md#reusing-one-intersection-across-local-searches).
 
+Small unobserved Local validations resolve reached Include postings once
+per offer. A reused plan with a ready leading posting of at most eight
+IDs can defer subsequent child cache lookups when every operand supports
+direct checks. See [Local candidate validation](local-candidate-validation.md).
+
 ## `Between` search sides and cache identity
 
 A `betweenSearchSide` keeps an ordered rule and its already extracted query

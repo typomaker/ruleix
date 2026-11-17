@@ -343,6 +343,14 @@ func (r *eqRule[T, V, K]) matchesID(v T, id uint32) bool {
 	set := r.values.get(r.equalityKey(value))
 	return set != nil && set.contains(id)
 }
+func (r *eqRule[T, V, K]) resolveCandidatePosting(v T) (*equalitySet, *roaring.Bitmap) {
+	value, present := r.get(v)
+	if !present {
+		return nil, r.wildcard
+	}
+	return r.values.get(r.equalityKey(value)), r.wildcard
+}
+
 func (*eqRule[T, V, K]) directIDWork() uint64 { return allEqualityDirectIDWork }
 func (r *eqRule[T, V, K]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 	value := getOptional(r.get, v)
