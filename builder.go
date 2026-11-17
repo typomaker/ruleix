@@ -119,6 +119,7 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	if err := validateLossyPolicies(state, "Lossy"); err != nil {
 		return nil, buildStatistics{}, err
 	}
+	_, _, hasMemoryLimit, accountingErr := lossyBuildPressure(state)
 	uniqueIDCapacity := 0
 	if hints != nil {
 		uniqueIDCapacity = capacityHint(hints.uniqueIDs)
@@ -213,6 +214,9 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	if observed, ok := ix.root.(*inspectedRuntimeRule[C]); ok {
 		ix.rootMetrics = observed.metrics
 		ix.root = observed.child
+	}
+	if root, ok := ix.root.(*allRule[C]); ok && !hasMemoryLimit && accountingErr == nil {
+		prepareSmallBetweenChildren(root)
 	}
 	ix.observedRoot, ix.observedExclusions = ix.root, ix.exclusions
 	if len(inspections) != 0 {

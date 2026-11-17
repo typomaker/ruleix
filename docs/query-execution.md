@@ -47,6 +47,13 @@ bound presence and comparator value. Short overflow lookups use a linear scan,
 and longer ones use binary search. Insertion moves pointers and preserves the
 cached bitmaps and the Local lifetime of every entry.
 
+For eligible exact All operands with small endpoint dictionaries, Build
+also prepares a direct-ID matcher. It resolves the earliest lower and
+latest upper endpoint positions for each ID, and search compares the
+resulting bounds with the existing comparator. The bitmap operations
+remain available for queries using the general execution path. See
+[the endpoint dictionary experiment](between-small-bounds.md).
+
 ## `CompareBy` operator metadata
 
 `compareByOperatorTable` is the single table for direction and inclusion.

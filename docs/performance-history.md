@@ -332,6 +332,12 @@ rejection by remaining rules, immutable source bitmaps, and Local
 reset. The full suite and `go vet ./...` passed. Changed executable
 line coverage was 55 of 55.
 
+## Build-time range lookup
+
+The [small Between endpoint dictionary](between-small-bounds.md) records
+the dump-based evaluation of build-time endpoint lookup and within-block
+cardinality prefixes.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint

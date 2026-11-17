@@ -12,6 +12,7 @@ a design conclusion or hypothesis.
 
 | Date | Name | Area | Decision and evidence |
 | --- | --- | --- | --- |
+| 2026-11-17 | Small Between Endpoint Dictionary | Compound ranges | Compile one byte per ID for bound pairs in eligible exact All operands. On the full dump, p99 fell from 139.38 to 97.13 µs with 17 allocations per request, comparable Build time, and a smaller retained index. See [measurements](between-small-bounds.md). |
 | 2026-11-17 | Local Posting Pair Reuse | All execution | Keep one selective pair of ready postings in the reusable Local pool. The full dump p99 improved from 151.42 to 139.42 µs with 17 allocations and 921 B per request on both revisions. See [measurements](performance-history.md#reusing-one-intersection-across-local-searches). |
 | 2026-11-17 | Direct Validation of Ready Local Candidates | All execution | Validate 9–16 candidate IDs into the result bitmap when the leading posting already exists and all operands support direct validation. The full dump p99.9 improved from 255.46 to 168.25 µs and allocations fell from 63 to 17 per request. See [measurements](performance-history.md#direct-validation-of-ready-local-candidates). |
 | 2026-11-17 | Ordered Between Cache Overflow | Local cache | Keep two inline range entries and search long overflow by comparator order. A fixed 1,024-range working set improved from 1,274 to 127 ns/op with equal allocations, while short Local and complete dump request gates remained comparable. See [measurements](performance-history.md#comparator-ordered-between-cache-overflow). |
@@ -67,6 +68,7 @@ a design conclusion or hypothesis.
 
 These are hypotheses, not performance claims:
 
+- Revisit within-block cardinality prefixes if workload profiles identify range estimation as a bottleneck. The [first trials](between-small-bounds.md#within-block-cardinality-prefixes) improved a focused estimator and showed mixed-request timings comparable to the baseline.
 - Improve `All` plan refresh for short-lived Locals. The [plan refresh trials](performance-history.md#all-plan-refresh-experiment) expose a tradeoff between lookup time on the production dump and direct candidate validation on the cold joined workload.
 - Define one stable aggregate release benchmark before publishing benchmark
   results in every changelog entry. It must cover production-shaped Index and

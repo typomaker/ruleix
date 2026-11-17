@@ -89,8 +89,11 @@ func buildBetweenIDFixture(tb testing.TB, stored []betweenIDFixture, ids []int, 
 	}
 	root := index.root.(*allRule[betweenIDFixture])
 	for i, child := range root.children {
-		if rule, ok := unwrapExecutionRule(child).(*betweenRule[betweenIDFixture, int]); ok {
+		switch rule := unwrapExecutionRule(child).(type) {
+		case *betweenRule[betweenIDFixture, int]:
 			return index, root, rule, i
+		case *smallBetweenRule[betweenIDFixture, int]:
+			return index, root, rule.betweenRule, i
 		}
 	}
 	tb.Fatal("Between operand not found")
