@@ -16,6 +16,7 @@ type localCandidateMask struct {
 
 type candidateMaskOperand[T any] interface {
 	applyCandidateMask(T, []uint32, uint64) uint64
+	applyPackedEqualityMask(T, []uint32, uint64, int, *localAllIntersection) uint64
 }
 
 func (r *allRule[T]) prepareNarrowMaskOperands() {
@@ -66,6 +67,9 @@ func (r *allRule[T]) rememberCandidateMask(pool *bitmapPool, v T, first rankedBi
 		return
 	}
 	m := pool.candidateMask
+	if pool.partial.projecting {
+		pool.partial = localAllIntersection{}
+	}
 	m.source, m.first, m.count = posting, first.childIdx, uint8(card)
 	if posting.bits == nil {
 		if posting.small == nil {
@@ -119,7 +123,7 @@ func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *loc
 	return true
 }
 
-func appendNarrowCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *localCandidateMask, values []ID, dst *[]ID) bool {
+func appendNarrowCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *localCandidateMask, state *localAllIntersection, values []ID, dst *[]ID) bool {
 	posting := r.children[m.first].(candidateMaskSource[T]).candidateMaskPosting(v)
 	if posting != m.source {
 		m.source = nil
@@ -130,8 +134,8 @@ func appendNarrowCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, 
 	active := uint8(1)<<len(r.children) - 1
 	active &^= uint8(1) << m.first
 	equality := active & r.maskEqualityOrder
-	if mask = r.applyPreparedCandidateMask(v, ids, mask, equality); mask != 0 {
-		mask = r.applyPreparedCandidateMask(v, ids, mask, active&^equality)
+	if mask = r.applyPreparedCandidateMask(v, ids, mask, state, equality); mask != 0 {
+		mask = r.applyPreparedCandidateMask(v, ids, mask, state, active&^equality)
 	}
 	result := *dst
 	for mask != 0 {
@@ -143,11 +147,11 @@ func appendNarrowCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, 
 	return true
 }
 
-func (r *allRule[T]) applyPreparedCandidateMask(v T, ids []uint32, mask uint64, pending uint8) uint64 {
+func (r *allRule[T]) applyPreparedCandidateMask(v T, ids []uint32, mask uint64, state *localAllIntersection, pending uint8) uint64 {
 	for pending != 0 && mask != 0 {
-		child := r.children[bits.TrailingZeros8(pending)]
+		i := bits.TrailingZeros8(pending)
 		pending &= pending - 1
-		mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
+		mask = r.children[i].(candidateMaskOperand[T]).applyPackedEqualityMask(v, ids, mask, i, state)
 	}
 	return mask
 }

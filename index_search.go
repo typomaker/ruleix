@@ -147,7 +147,7 @@ func searchAllMatches[C any, ID comparable](
 		}
 		if mask := pool.candidateMask; mask != nil && mask.source != nil && !pool.observeRuntime {
 			if mask.count <= allCandidateScanLimit && root.narrowMaskPrepared {
-				if appendNarrowCandidateMaskMatches(root, value, mask, values, dst) {
+				if appendNarrowCandidateMaskMatches(root, value, mask, &pool.partial, values, dst) {
 					return
 				}
 			} else if appendCandidateMaskMatches(root, value, mask, values, dst) {

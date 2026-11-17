@@ -12,6 +12,7 @@ a design conclusion or hypothesis.
 
 | Date | Name | Area | Decision and evidence |
 | --- | --- | --- | --- |
+| 2026-11-17 | Narrow Include Projection | All execution | Prepare a mask on a repeated exact posting. Reuse the existing intersection scratch and bypass projection for unstable keys. Full-dump mean and p99.9 moved from 35.59 to 31.92 µs and 85.79 to 80.38 µs. See [measurements](local-predicate-projection-trials.md#selected-projection). |
 | 2026-11-17 | Prepared Narrow Candidate Masks | All execution | Compile support and equality order at Build for masks of up to eight candidates. Use separate dispatch for the narrow path. Mixed p99.9 improved from 99.83 to 85.38 µs and narrow p99.9 from 97.88 to 74.79 µs. See [measurements](local-interval-and-narrow-trials.md#selected-execution). |
 | 2026-11-17 | Local Candidate Mask and Between Positions | All execution | Reuse a verified leading posting of 9–16 IDs and filter it in a word-sized mask. Resolve Between endpoint positions once per offer against the existing build dictionary. Full-dump p99.9 moved from 119.58 to 97.42 µs and allocations from 17 to 12 per request. See [measurements](local-candidate-structural-trials.md). |
 | 2026-11-17 | Duplicate Ordered Inserts and Small Between Interning | Build | Skip redundant aggregate updates for existing IDs and trim only newly interned endpoint postings. The full-dump Build improved by 8.5% with roughly 92 fewer transient allocations. See [experiment results](build-and-local-lookup.md). |

@@ -364,6 +364,12 @@ against `a4ac2fd`.
 The [v0.8.2 comparison](local-interval-and-narrow-trials.md#comparison-with-v082)
 records the same dump harness on the tag and on `4de8383`.
 
+## Local predicate projection
+
+The [predicate projection trials](local-predicate-projection-trials.md)
+record the exact ID census, projected equality and range controls, and
+the selected narrow Include path against `4de8383`.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint

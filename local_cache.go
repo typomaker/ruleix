@@ -28,9 +28,13 @@ type localAllIntersection struct {
 	count       uint8
 	checked     bool
 	narrowed    bool
+	projecting  bool
 }
 
 func (p *localAllIntersection) candidates(first rankedBitmap, remaining []rankedBitmap) []uint32 {
+	if p.projecting {
+		*p = localAllIntersection{}
+	}
 	var right *roaring.Bitmap
 	best := ^uint64(0)
 	for _, child := range remaining {
