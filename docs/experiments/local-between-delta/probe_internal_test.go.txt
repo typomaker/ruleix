@@ -1,0 +1,58 @@
+package ruleix
+
+import "sort"
+
+type BetweenDeltaObservation struct {
+	Child        int
+	Reached      bool
+	Lower, Upper int
+	Mask         uint16
+}
+
+func (r *smallBetweenRule[T, V]) observeDelta(v T, ids []uint32) (lower, upper int) {
+	var maxLower uint16
+	minUpper := uint16(256)
+	if query, ok := r.from.get(v); ok {
+		items := r.from.index.blocks[0].items
+		maxLower = uint16(sort.Search(len(items), func(i int) bool { return r.from.compare(items[i].value, query) > 0 }))
+	}
+	if query, ok := r.until.get(v); ok {
+		items := r.until.index.blocks[0].items
+		minUpper = uint16(sort.Search(len(items), func(i int) bool { return r.until.compare(items[i].value, query) >= 0 }) + 1)
+	}
+	var lowerSeen, upperSeen [256]bool
+	for _, id := range ids {
+		if int(id) >= len(r.bounds.keys) {
+			continue
+		}
+		pair := r.bounds.values[r.bounds.keys[id]]
+		lo, hi := uint16(uint8(pair)), pair>>8
+		if lo != 0 && lo <= maxLower && !r.from.wildcard.Contains(id) && !lowerSeen[lo] {
+			lowerSeen[lo] = true
+			lower++
+		}
+		if hi != 0 && hi < minUpper && !r.until.wildcard.Contains(id) && !upperSeen[hi] {
+			upperSeen[hi] = true
+			upper++
+		}
+	}
+	return
+}
+func ProbeBetweenDelta[T any, ID comparable](l *Local[T, ID], v T, source any, roster CombinationProbeRoster, masks []uint16) []BetweenDeltaObservation {
+	r := l.index.root.(*allRule[T])
+	m := l.pool.candidateMask
+	fast := m.source != nil && m.source == source && m.first == roster.Source
+	active := uint16(1<<len(roster.IDs) - 1)
+	var observations []BetweenDeltaObservation
+	for i, c := range r.children {
+		if i == roster.Source {
+			continue
+		}
+		if delta, ok := c.(interface{ observeDelta(T, []uint32) (int, int) }); ok {
+			from, until := delta.observeDelta(v, roster.IDs)
+			observations = append(observations, BetweenDeltaObservation{i, fast && active != 0, from, until, masks[i]})
+		}
+		active &= masks[i]
+	}
+	return observations
+}

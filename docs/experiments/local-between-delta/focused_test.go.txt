@@ -1,0 +1,48 @@
+package ruleix
+
+import (
+	"cmp"
+	"testing"
+)
+
+func TestBetweenDeltaMaskDifferential(t *testing.T) {
+	type row struct{ a, b int }
+	getA := func(v row) (int, bool) { return v.a, v.a >= 0 }
+	getB := func(v row) (int, bool) { return v.b, v.b >= 0 }
+	schema := All(Between(getA, getB, cmp.Compare[int]), Include(getA))
+	var rows []row
+	var ids []int
+	for i := range 400 {
+		rows = append(rows, row{i % 16, 20 + i%12})
+		ids = append(ids, i)
+	}
+	rows = append(rows, row{-1, 17}, row{13, -1}, row{-1, -1})
+	ids = append(ids, 10, 11, 12)
+	idx, err := New[row, int](schema).Build(Zip(rows, ids))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := idx.root.(*allRule[row])
+	var rule *smallBetweenRule[row, int]
+	for _, child := range root.children {
+		if r, ok := child.(*smallBetweenRule[row, int]); ok {
+			rule = r
+		}
+	}
+	if rule == nil {
+		t.Fatal("expected compact Between")
+	}
+	candidates := []uint32{0, 1, 7, 10, 11, 12, 13, 14, 15, 33, 40, 100, 200, 300, 399, 500}
+	for _, child := range []int{0, 1, 7} {
+		state := &localAllIntersection{}
+		for step := range 20000 {
+			q := row{(step*17)%40 - 2, (step*23)%38 - 2}
+			active := uint64(uint16(step * 137))
+			got := rule.applyDeltaBetweenMask(q, candidates, active, child, state)
+			want := rule.applyCandidateMask(q, candidates, active)
+			if got != want {
+				t.Fatalf("child %d step %d got %x want %x", child, step, got, want)
+			}
+		}
+	}
+}

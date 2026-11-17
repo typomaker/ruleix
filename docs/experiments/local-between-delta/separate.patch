@@ -1,0 +1,27 @@
+--- a/local_candidate_mask.go
++++ b/local_candidate_mask.go
+@@ -18,0 +19 @@
++	applyBroadProjectedMask(T, []uint32, uint64, int, *localAllIntersection) uint64
+@@ -111 +112 @@
+-				mask = child.(candidateMaskOperand[T]).applyPackedEqualityMask(v, ids, mask, i, state)
++				mask = child.(candidateMaskOperand[T]).applyBroadProjectedMask(v, ids, mask, i, state)
+--- a/local_predicate_projection.go
++++ b/local_predicate_projection.go
+@@ -7,4 +7 @@
+-func (r *smallBetweenRule[T, V]) applyPackedEqualityMask(v T, ids []uint32, mask uint64, child int, state *localAllIntersection) uint64 {
+-	if len(ids) > allCandidateScanLimit {
+-		return r.applyDeltaBetweenMask(v, ids, mask, child, state)
+-	}
++func (r *smallBetweenRule[T, V]) applyPackedEqualityMask(v T, ids []uint32, mask uint64, _ int, _ *localAllIntersection) uint64 {
+@@ -15,3 +11,0 @@
+-	if len(ids) > allCandidateScanLimit {
+-		return r.applyCandidateMask(v, ids, mask)
+-	}
+@@ -73,0 +68,7 @@
++
++func (r *eqRule[T, V, K]) applyBroadProjectedMask(v T, ids []uint32, mask uint64, _ int, _ *localAllIntersection) uint64 {
++	return r.applyCandidateMask(v, ids, mask)
++}
++func (r *smallBetweenRule[T, V]) applyBroadProjectedMask(v T, ids []uint32, mask uint64, child int, state *localAllIntersection) uint64 {
++	return r.applyDeltaBetweenMask(v, ids, mask, child, state)
++}

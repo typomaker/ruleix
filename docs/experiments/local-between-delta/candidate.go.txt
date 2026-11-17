@@ -1,0 +1,57 @@
+package ruleix
+
+import (
+	"math/bits"
+	"sort"
+)
+
+func (r *smallBetweenRule[T, V]) applyDeltaBetweenMask(v T, ids []uint32, active uint64, child int, state *localAllIntersection) uint64 {
+	var lower, upper uint8
+	if q, ok := r.from.get(v); ok {
+		items := r.from.index.blocks[0].items
+		lower = uint8(sort.Search(len(items), func(i int) bool { return r.from.compare(items[i].value, q) > 0 }))
+	}
+	upper = 255
+	if q, ok := r.until.get(v); ok {
+		items := r.until.index.blocks[0].items
+		upper = uint8(sort.Search(len(items), func(i int) bool { return r.until.compare(items[i].value, q) >= 0 }))
+	}
+	if !state.projecting {
+		*state = localAllIntersection{projecting: true}
+	}
+	previous := state.ids[child]
+	ready := state.count&(1<<child) != 0
+	if ready && uint8(previous>>16) == lower && uint8(previous>>24) == upper {
+		return active & uint64(uint16(previous))
+	}
+	full := uint16(1)<<len(ids) - 1
+	matches := uint16(previous)
+	if !ready {
+		matches = full
+	}
+	for pending := full; pending != 0; pending &= pending - 1 {
+		slot := bits.TrailingZeros16(pending)
+		id := ids[slot]
+		var pair uint16
+		if uint64(id) < uint64(len(r.bounds.keys)) {
+			pair = r.bounds.values[r.bounds.keys[id]]
+		}
+		lo, hi := uint8(pair), uint8(pair>>8)
+		oldLower := lo != 0 && lo <= uint8(previous>>16) || r.from.wildcard.Contains(id)
+		oldUpper := hi > uint8(previous>>24) || r.until.wildcard.Contains(id)
+		newLower := lo != 0 && lo <= lower || r.from.wildcard.Contains(id)
+		newUpper := hi > upper || r.until.wildcard.Contains(id)
+		if ready && oldLower == newLower && oldUpper == newUpper {
+			continue
+		}
+		bit := uint16(1) << slot
+		if newLower && newUpper {
+			matches |= bit
+		} else {
+			matches &^= bit
+		}
+	}
+	state.ids[child] = uint32(matches) | uint32(lower)<<16 | uint32(upper)<<24
+	state.count |= 1 << child
+	return active & uint64(matches)
+}

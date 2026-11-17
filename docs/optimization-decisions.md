@@ -73,6 +73,13 @@ a design conclusion or hypothesis.
 
 These are hypotheses, not performance claims:
 
+- Incremental Between masks over 9–16 candidates have a measured
+  [opportunity and prototype study](local-between-delta-trials.md).
+  Direct event updates slowed the broad path. Rebuild-on-change improved
+  broad mean by about 5% after dispatcher isolation, but repeated p99.9
+  samples overlapped. The cursor added work on distant jumps. Simplified
+  variants remain open pending repeatable tail-latency benefit.
+
 - Build-time Local combination tables stopped at the feasibility gate on
   `3e0fe2c`. The held-out buyer split shared no leading postings. At an
   optimistic 128 KiB the best index-only full table covered about a quarter

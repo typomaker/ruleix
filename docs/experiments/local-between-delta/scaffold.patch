@@ -1,0 +1,29 @@
+--- a/index_search.go
++++ b/index_search.go
+@@ -153 +153 @@
+-			} else if appendCandidateMaskMatches(root, value, mask, values, dst) {
++			} else if appendCandidateMaskMatches(root, value, mask, &pool.partial, values, dst) {
+--- a/local_candidate_mask.go
++++ b/local_candidate_mask.go
+@@ -100 +100 @@
+-func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *localCandidateMask, values []ID, dst *[]ID) bool {
++func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *localCandidateMask, state *localAllIntersection, values []ID, dst *[]ID) bool {
+@@ -110 +110,5 @@
+-			mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
++			if r.narrowMaskPrepared {
++				mask = child.(candidateMaskOperand[T]).applyPackedEqualityMask(v, ids, mask, i, state)
++			} else {
++				mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
++			}
+--- a/local_predicate_projection.go
++++ b/local_predicate_projection.go
+@@ -7 +7,4 @@
+-func (r *smallBetweenRule[T, V]) applyPackedEqualityMask(v T, ids []uint32, mask uint64, _ int, _ *localAllIntersection) uint64 {
++func (r *smallBetweenRule[T, V]) applyPackedEqualityMask(v T, ids []uint32, mask uint64, child int, state *localAllIntersection) uint64 {
++	if len(ids) > allCandidateScanLimit {
++		return r.applyDeltaBetweenMask(v, ids, mask, child, state)
++	}
+@@ -11,0 +15,3 @@
++	if len(ids) > allCandidateScanLimit {
++		return r.applyCandidateMask(v, ids, mask)
++	}

@@ -1,0 +1,74 @@
+package ruleix
+
+import (
+	"math/bits"
+	"sort"
+)
+
+func (r *smallBetweenRule[T, V]) applyDeltaBetweenMask(v T, ids []uint32, active uint64, child int, state *localAllIntersection) uint64 {
+
+	if !state.projecting {
+		*state = localAllIntersection{projecting: true}
+	}
+	previous := state.ids[child]
+	ready := state.count&(1<<child) != 0
+	lower := betweenDeltaRank(r.from, v, int(uint8(previous>>16)), ready, true)
+	upper := betweenDeltaRank(r.until, v, int(uint8(previous>>24)), ready, false)
+	if ready && uint8(previous>>16) == lower && uint8(previous>>24) == upper {
+		return active & uint64(uint16(previous))
+	}
+
+	// Rebuild the full projected mask when the endpoint cell changes.
+	// Stable cells use the already complete mask above.
+	full := uint16(1)<<len(ids) - 1
+	matches := uint16(0)
+	for pending := full; pending != 0; pending &= pending - 1 {
+		slot := bits.TrailingZeros16(pending)
+		id := ids[slot]
+		var pair uint16
+		if uint64(id) < uint64(len(r.bounds.keys)) {
+			pair = r.bounds.values[r.bounds.keys[id]]
+		}
+		lo, hi := uint8(pair), uint8(pair>>8)
+		if (lo != 0 && lo <= lower || r.from.wildcard.Contains(id)) &&
+			(hi > upper || r.until.wildcard.Contains(id)) {
+			matches |= uint16(1) << slot
+		}
+	}
+	state.ids[child] = uint32(matches) | uint32(lower)<<16 | uint32(upper)<<24
+	state.count |= 1 << child
+	return active & uint64(matches)
+}
+
+func betweenDeltaRank[T, V any](r *orderedRule[T, V], v T, previous int, ready, lower bool) uint8 {
+	q, ok := r.get(v)
+	if !ok {
+		if lower {
+			return 0
+		}
+		return 255
+	}
+	items := r.index.blocks[0].items
+	passes := func(i int) bool {
+		order := r.compare(items[i].value, q)
+		if lower {
+			return order <= 0
+		}
+		return order < 0
+	}
+	if ready && previous <= len(items) {
+		rank := previous
+		for step := 0; step < 3; step++ {
+			if rank > 0 && !passes(rank-1) {
+				rank--
+				continue
+			}
+			if rank < len(items) && passes(rank) {
+				rank++
+				continue
+			}
+			return uint8(rank)
+		}
+	}
+	return uint8(sort.Search(len(items), func(i int) bool { return !passes(i) }))
+}
