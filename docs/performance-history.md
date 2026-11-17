@@ -364,12 +364,18 @@ against `a4ac2fd`.
 The [v0.8.2 comparison](local-interval-and-narrow-trials.md#comparison-with-v082)
 records the same dump harness on the tag and on `4de8383`.
 
+## Portable prepared Between bounds
+
+Three paired 80,000-request controls against db3ae77 measured broad mean
+49.145 → 44.170 µs and mixed mean 31.867 → 31.005 µs on Apple M1 Max.
+The [portable study](local-between-go.md) records p99.9 variation and
+comparisons with the owner-retired 46d315f assembly implementation.
+
 ## ARM64 packed Between masks
 
-At db3ae77, three paired 50,000-request controls measured broad mean
-49.186 → 43.985 µs and mixed mean 31.991 → 30.971 µs with the selected
-ARM64 kernels. The [complete study](local-neon-trials.md) records
-p99.9 variation, narrow controls, storage, profiles and all prototypes.
+The retired 46d315f ARM64 kernels measured broad mean 43.985 µs and
+mixed mean 30.971 µs in paired 50,000-request controls against db3ae77.
+The [historical study](local-neon-trials.md) records all controls and profiles.
 
 ## Local predicate projection
 

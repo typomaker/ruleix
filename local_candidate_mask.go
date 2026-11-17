@@ -8,11 +8,10 @@ import (
 type localCandidateMask struct {
 	// The published equality set is immutable. Its identity is checked
 	// against every offer before reusing the candidate slots.
-	source   *equalitySet
-	ids      [2 * allCandidateScanLimit]uint32
-	first    uint32
-	count    uint8
-	platform localCandidatePlatform
+	source *equalitySet
+	ids    [2 * allCandidateScanLimit]uint32
+	first  int
+	count  uint8
 }
 
 type candidateMaskOperand[T any] interface {
@@ -42,7 +41,7 @@ type candidateMaskSource[T any] interface {
 }
 
 func (r *allRule[T]) rememberCandidateMask(pool *bitmapPool, v T, first rankedBitmap) {
-	if uint64(first.childIdx) > uint64(^uint32(0)) || pool.observeRuntime || r.executionCounters != nil || first.card > uint64(len(pool.candidateMask.ids)) || (first.card <= allCandidateScanLimit && !r.narrowMaskPrepared) {
+	if pool.observeRuntime || r.executionCounters != nil || first.card > uint64(len(pool.candidateMask.ids)) || (first.card <= allCandidateScanLimit && !r.narrowMaskPrepared) {
 		return
 	}
 	source, ok := r.children[first.childIdx].(candidateMaskSource[T])
@@ -71,11 +70,7 @@ func (r *allRule[T]) rememberCandidateMask(pool *bitmapPool, v T, first rankedBi
 	if pool.partial.projecting {
 		pool.partial = localAllIntersection{}
 	}
-	m.source, m.first, m.count = posting, uint32(first.childIdx), uint8(card)
-	if packedBetweenAvailable && card > allCandidateScanLimit && r.narrowMaskPrepared &&
-		r.maskEqualityOrder != uint8(1)<<len(r.children)-1 {
-		m.rememberPackedState(pool)
-	}
+	m.source, m.first, m.count = posting, first.childIdx, uint8(card)
 	if posting.bits == nil {
 		if posting.small == nil {
 			m.ids[0] = posting.single
@@ -102,7 +97,8 @@ func (r *eqRule[T, V, K]) candidateMaskPosting(v T) *equalitySet {
 	return nil
 }
 
-func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *localCandidateMask, values []ID, dst *[]ID) bool {
+func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, pool *bitmapPool, values []ID, dst *[]ID) bool {
+	m := pool.candidateMask
 	posting := r.children[m.first].(candidateMaskSource[T]).candidateMaskPosting(v)
 	if posting != m.source {
 		m.source = nil
@@ -111,9 +107,9 @@ func appendCandidateMaskMatches[T any, ID comparable](r *allRule[T], v T, m *loc
 	ids := m.ids[:m.count]
 	mask := (uint64(1) << m.count) - 1
 	for i, child := range r.children {
-		if i != int(m.first) {
-			if r.narrowMaskPrepared && packedBetweenAvailable && r.maskEqualityOrder&(uint8(1)<<i) == 0 {
-				mask = child.(cachedVectorOperand[T]).applyCachedVectorMask(v, ids, mask, i, m.packedState())
+		if i != m.first {
+			if r.narrowMaskPrepared && r.maskEqualityOrder&(uint8(1)<<i) == 0 {
+				mask = child.(cachedBetweenOperand[T]).applyCachedBetweenMask(v, ids, mask, i, &pool.partial)
 			} else {
 				mask = child.(candidateMaskOperand[T]).applyCandidateMask(v, ids, mask)
 			}

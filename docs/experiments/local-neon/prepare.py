@@ -13,6 +13,8 @@ scratch.mkdir(parents=True, exist_ok=True)
 empty = scratch / "empty.go"
 empty.write_text("package ruleix\n")
 hidden = [
+    "local_between_packed.go",
+    "local_between_packed_test.go",
     "between_mask_arm64.go",
     "between_mask_generic.go",
     "neon_cached.go",
@@ -63,12 +65,36 @@ for version in variants:
     overlay[str(root / probe.name)] = str(probe)
     (scratch / f"{version}.json").write_text(json.dumps({"Replace": overlay}))
 
-probe = scratch / "selected_probe_test.go"
-shutil.copyfile(fixtures / "probe_test.go.txt", probe)
-(scratch / "selected.json").write_text(
-    json.dumps(
-        {
-            "Replace": {str(root / probe.name): str(probe)},
-        }
-    )
+# The selected historical variant is frozen at the assembly commit.
+selected = scratch / "selected"
+selected.mkdir(exist_ok=True)
+selected_overlay = {str(root / name): str(empty) for name in hidden}
+selected_names = (
+    "index_search.go",
+    "local_candidate_mask.go",
+    "local_predicate_projection.go",
+    "production_dump_workload_test.go",
+    "between_mask_arm64.go",
+    "between_mask_generic.go",
+    "neon_cached.go",
+    "neon_cached_test.go",
+    "neon_kernel.go",
+    "neon_kernel_arm64.go",
+    "neon_kernel_arm64.s",
+    "neon_kernel_other.go",
+    "neon_kernel_test.go",
 )
+for name in selected_names:
+    target = selected / name
+    target.write_text(
+        subprocess.check_output(
+            ["git", "show", f"46d315f:{name}"],
+            cwd=root,
+            text=True,
+        )
+    )
+    selected_overlay[str(root / name)] = str(target)
+probe = selected / "selected_probe_test.go"
+shutil.copyfile(fixtures / "probe_test.go.txt", probe)
+selected_overlay[str(root / probe.name)] = str(probe)
+(scratch / "selected.json").write_text(json.dumps({"Replace": selected_overlay}))

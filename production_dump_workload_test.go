@@ -167,9 +167,9 @@ func TestProductionDumpLocalRequest(t *testing.T) {
 }
 
 // Apple M1 Max, macOS 26.6.2, Go 1.27.3, GOMAXPROCS=1, 96,630 rows.
-// Three 50,000-request samples with packed ARM64 bounds measured 30.97 µs
-// mean, 78.88 µs p99.9, 845 B and 12 allocations per mixed 100-offer request.
-// See docs/local-neon-trials.md for narrow, broad, rotated and baseline controls.
+// Three 80,000-request samples with portable prepared bounds measured 31.01 µs
+// mean, 77.81 µs p99.9, 845 B and 12 allocations per mixed 100-offer request.
+// See docs/local-between-go.md for cohort, rotated and pre-assembly controls.
 func BenchmarkProductionDumpLocalRequest100(b *testing.B) {
 	rows, ids := loadProductionDumpBenchmark(b)
 	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))

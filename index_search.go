@@ -150,7 +150,7 @@ func searchAllMatches[C any, ID comparable](
 				if appendNarrowCandidateMaskMatches(root, value, mask, &pool.partial, values, dst) {
 					return
 				}
-			} else if appendCandidateMaskMatches(root, value, mask, values, dst) {
+			} else if appendCandidateMaskMatches(root, value, pool, values, dst) {
 				return
 			}
 		}

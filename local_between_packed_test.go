@@ -22,30 +22,30 @@ func TestPackedBetweenCacheMatchesScalar(t *testing.T) {
 			query := betweenIDFixture{from: step%40 - 4, until: step*7%45 - 3, missingFrom: step%7 == 0, missingUntil: step%11 == 0}
 			active := uint64(uint16(step * 137))
 			want := operand.applyCandidateMask(query, candidates, active)
-			got := operand.applyCachedVectorMask(query, candidates, active, owner, state)
+			got := operand.applyCachedBetweenMask(query, candidates, active, owner, state)
 			if got != want {
 				t.Fatalf("owner %d step %d got %x want %x", owner, step, got, want)
 			}
-			// Another operand uses the ordinary packed kernel while the first owns scratch.
-			got = operand.applyCachedVectorMask(query, candidates, active, (owner+1)%8, state)
+			// Another operand uses the ordinary scalar matcher while the first owns scratch.
+			got = operand.applyCachedBetweenMask(query, candidates, active, (owner+1)%8, state)
 			if got != want {
 				t.Fatalf("different owner step %d got %x want %x", step, got, want)
 			}
 		}
 	}
-	// Wildcard operands retain ordinary per-offer preparation.
+	// Wildcard operands retain ordinary scalar matching.
 	rows[0].missingFrom = true
 	rows[1].missingUntil = true
 	_, wildRoot, _, wildChild := buildBetweenIDFixture(t, rows, ids, false, 0, false)
 	wild := wildRoot.execution[wildChild].directID.(*smallBetweenRule[betweenIDFixture, int])
 	state := &localAllIntersection{}
 	query := betweenIDFixture{from: 12, until: 27}
-	if got, want := wild.applyCachedVectorMask(query, candidates, 65535, 0, state), wild.applyCandidateMask(query, candidates, 65535); got != want {
+	if got, want := wild.applyCachedBetweenMask(query, candidates, 65535, 0, state), wild.applyCandidateMask(query, candidates, 65535); got != want {
 		t.Fatalf("wildcard got %x want %x", got, want)
 	}
 }
 
-// Keep the architecture-specific state within the old candidate-mask footprint.
+// Keep the portable prepared path within the original candidate-mask footprint.
 func TestPackedCandidateStorageFootprint(t *testing.T) {
 	type originalMask struct {
 		source *equalitySet
@@ -55,18 +55,5 @@ func TestPackedCandidateStorageFootprint(t *testing.T) {
 	}
 	if got, limit := unsafe.Sizeof(localCandidateMask{}), unsafe.Sizeof(originalMask{}); got > limit {
 		t.Fatalf("candidate mask grew from %d to %d bytes", limit, got)
-	}
-}
-
-func TestCandidateMaskRejectsUnrepresentableSourceOrdinal(t *testing.T) {
-	if unsafe.Sizeof(int(0)) < 8 {
-		t.Skip("source ordinal fits int only on 64-bit targets")
-	}
-	large := uint64(^uint32(0)) + 1
-	root := &allRule[int]{}
-	pool := newLocalBitmapPool(1)
-	root.rememberCandidateMask(pool, 0, rankedBitmap{childIdx: int(large), card: 10})
-	if pool.candidateMask.source != nil {
-		t.Fatal("unrepresentable source was cached")
 	}
 }

@@ -1,5 +1,9 @@
 # ARM64 packed Between masks
 
+This is the historical study for 46d315f. The owner subsequently chose
+the [portable Go implementation](local-between-go.md) and removal of the
+production assembly path.
+
 ## Selected path
 
 The selected executor uses two ARM64 NEON kernels for prepared exact
@@ -200,8 +204,8 @@ for base and selected search sources.
 
 ## Verification and reproduction
 
-The baseline production sources are db3ae77. The selected sources
-are in this commit. The archive under
+The baseline production sources are db3ae77. The historical selected sources
+are frozen at 46d315f. The archive under
 docs/experiments/local-neon contains the nine intermediate source
 variants, general and fused kernels, kernel tests, short/reopened
 probes and an overlay preparation script. All nine intermediate
@@ -230,7 +234,7 @@ sh docs/experiments/local-neon/run.sh
 ```
 
 The runner retains its temporary directory. It prepares base and all
-intermediate overlays against db3ae77 and selected against the checkout.
+intermediate overlays against db3ae77 and selected against 46d315f.
 For the earliest gather comparisons use base, pack-go and pack-neon at
 40000x in the order above. Narrow fusion comparisons use base, fused,
 cached, then by-value corrections at 40000x or 50000x.
