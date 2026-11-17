@@ -361,6 +361,9 @@ The [interval and narrow trials](local-interval-and-narrow-trials.md)
 compare bounded interval reuse and direct execution for up to eight IDs
 against `a4ac2fd`.
 
+The [v0.8.2 comparison](local-interval-and-narrow-trials.md#comparison-with-v082)
+records the same dump harness on the tag and on `4de8383`.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint

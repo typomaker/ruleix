@@ -203,3 +203,42 @@ the 12,800-offer differential check and focused tests for singleton
 postings, source changes, supported shapes, and Local reset.
 `go vet ./...` and `git diff --check` passed. Changed production
 coverage was 64 of 64 executable lines.
+
+## Comparison with v0.8.2
+
+The benchmark compares tag `v0.8.2` (`7f32ddc`) with `4de8383`
+on the same 96,630-row dump. Both binaries use Go 1.27.3 on Apple
+M1 Max, macOS 26.6.2, with `GOMAXPROCS=1` during measurement. The
+tag checkout uses its original production dependencies. Only the
+three dump test files and their UUID dependency were copied into
+the temporary tag checkout. The test files use a Go 1.24 build
+constraint there for the current benchmark loop.
+
+Median latency and allocation measurements come from three samples
+per binary in old/current/current/old/old/current order. The mixed
+samples use 60,000 requests and each other scenario uses 35,000.
+Every timed request searches 100 offers through one Local.
+
+| Scenario | Metric | v0.8.2 | 4de8383 |
+| --- | --- | ---: | ---: |
+| Mixed | Mean | 74.79 µs | 35.45 µs |
+| Mixed | p99 | 132.17 µs | 61.83 µs |
+| Mixed | p99.9 | 204.63 µs | 83.75 µs |
+| Mixed | Allocated bytes | 3,053 | 845 |
+| Mixed | Allocations | 89 | 12 |
+| At most eight IDs | p99.9 | 140.67 µs | 76.38 µs |
+| 9–16 IDs | p99.9 | 462.58 µs | 97.63 µs |
+| Rotating | p99.9 | 205.58 µs | 90.25 µs |
+
+The three broad p99.9 samples spanned 447.17–576.96 µs on the tag
+and 94.33–111.33 µs on the candidate. The differential test passed
+on both builds for all 12,800 grouped and rotating offers, comparing
+each revision's Local output with its Index output. The latency
+commands are the same as in the reproduction section above.
+
+Two alternating Build samples of ten indexes per binary measured
+158.97 → 151.41 ms, 4,734,814 → 4,782,772 allocated bytes, and
+45,672 → 46,369 allocations per Build. Retained index heap was
+2,585,692 → 2,581,447 B per index. In 1,000-request fresh Local
+samples, allocation traffic was 7,184 → 3,829 B and 106 → 26
+allocations per request. Retained Local heap was 4,711 → 3,427 B.
