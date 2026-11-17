@@ -73,6 +73,13 @@ a design conclusion or hypothesis.
 
 These are hypotheses, not performance claims:
 
+- Build-time Local combination tables stopped at the feasibility gate on
+  `3e0fe2c`. The held-out buyer split shared no leading postings. At an
+  optimistic 128 KiB the best index-only full table covered about a quarter
+  of broad offers and a two-operand version covered about half. Revisit with
+  a cheaper state classifier or a representative repeat-customer trace.
+  See the [coverage and layout study](local-combination-table-trials.md).
+
 - Revisit within-block cardinality prefixes if workload profiles identify range estimation as a bottleneck. The [first trials](between-small-bounds.md#within-block-cardinality-prefixes) improved a focused estimator and showed mixed-request timings comparable to the baseline.
 - Revisit [interval mask reuse](local-interval-and-narrow-trials.md) when an offer sequence has stable non-time keys and interval guard checking costs less than direct candidate validation. The resolved-posting mitigation improved the grouped mean against the cache-disabled variant and increased its rotating p99.9.
 - Revisit [dense Include columns](local-candidate-structural-trials.md#combined-and-memory-controls) if their retained index cost can be removed and they improve the whole request beyond projecting Between positions. The widest columns materially helped the 9–16 ID control. Packing them down to four bits approached the no-column result on the mixed workload and introduced more work during Build.

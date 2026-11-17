@@ -1,0 +1,75 @@
+package ruleix_test
+
+import (
+	"encoding/json"
+	"os"
+	"slices"
+	"strconv"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"github.com/typomaker/ruleix"
+)
+
+func TestProductionCombinationOpportunity(t *testing.T) {
+	input, err := os.Open(os.Getenv("RULEIX_PRODUCTION_DUMP"))
+	require.NoError(t, err)
+	defer input.Close()
+	rows, ids := readProductionDump(t, input)
+	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
+	require.NoError(t, err)
+	catalog, ok := ruleix.CombinationProbeCatalog(index)
+	require.True(t, ok)
+	f, err := os.Create(os.Getenv("RULEIX_COMBINATION_OUTPUT"))
+	require.NoError(t, err)
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	type record struct {
+		Request int
+		Rotate  bool
+		Roster  int
+		Source  int
+		Counts  []int
+		Masks   []uint16
+		Domains [][]uint16
+	}
+	for _, roster := range catalog {
+		require.NoError(t, enc.Encode(record{Request: -1, Roster: roster.Ordinal, Source: roster.Source, Counts: roster.Counts, Domains: roster.Domains}))
+	}
+	size := 64
+	if arg := os.Getenv("RULEIX_COMBINATION_REQUESTS"); arg != "" {
+		size, err = strconv.Atoi(arg)
+		require.NoError(t, err)
+	}
+	requests := productionDumpRequests(rows, size)
+	t.Logf("generated %d requests with a limit of %d", len(requests), size)
+	for _, rot := range []bool{false, true} {
+		for i, request := range requests {
+			local := index.Local()
+			var dst []uuid.UUID
+			for j := range request {
+				at := j
+				if rot {
+					at = j * 37 % len(request)
+				}
+				offer := request[at]
+				source, masks := ruleix.CombinationProbeOffer(local, offer)
+				if source != nil {
+					roster, ok := catalog[source]
+					require.True(t, ok)
+					for i, mask := range masks {
+						require.Contains(t, roster.Domains[i], mask)
+					}
+					require.NoError(t, enc.Encode(record{Request: i, Rotate: rot, Roster: roster.Ordinal, Source: roster.Source, Masks: masks}))
+				}
+				dst = dst[:0]
+				local.Search(offer, &dst)
+				if source != nil {
+					require.True(t, slices.Equal(ruleix.CombinationProbeResult(index, catalog[source], masks), dst))
+				}
+			}
+			local.Close()
+		}
+	}
+}

@@ -1,0 +1,176 @@
+package ruleix
+
+import "slices"
+
+type CombinationProbeRoster struct {
+	Ordinal int
+	Source  int
+	IDs     []uint32
+	Counts  []int
+	Domains [][]uint16
+}
+type combinationProbeOperand[T any] interface {
+	applyCandidateMask(T, []uint32, uint64) uint64
+	allProbeMasks([]uint32) map[uint16]bool
+}
+
+func (r *eqRule[T, V, K]) probeRosters() []*equalitySet {
+	if r.coarsen != nil || !r.wildcard.IsEmpty() {
+		return nil
+	}
+	var sets []*equalitySet
+	for i := range r.values.sets {
+		s := &r.values.sets[i]
+		if s.cardinality() >= 9 && s.cardinality() <= 16 {
+			sets = append(sets, s)
+		}
+	}
+	return sets
+}
+func probeRosterIDs(s *equalitySet) []uint32 {
+	if s.bits != nil {
+		return s.bits.ToArray()
+	}
+	return s.small
+}
+func (r *eqRule[T, V, K]) allProbeMasks(ids []uint32) map[uint16]bool {
+	var wildcard uint16
+	for j, id := range ids {
+		if r.wildcard.Contains(id) {
+			wildcard |= 1 << j
+		}
+	}
+	masks := map[uint16]bool{wildcard: true}
+	for i := range r.values.sets {
+		mask := wildcard
+		for j, id := range ids {
+			if r.values.sets[i].contains(id) {
+				mask |= 1 << j
+			}
+		}
+		masks[mask] = true
+	}
+	return masks
+}
+func (r *smallBetweenRule[T, V]) allProbeMasks(ids []uint32) map[uint16]bool {
+	masks := make(map[uint16]bool)
+	// Missing positions are also visited. Lower is allowed up to k; upper from k upward.
+	var lower, upper [257]uint16
+	var lw, uw uint16
+	for j, id := range ids {
+		if r.from.wildcard.Contains(id) {
+			lw |= 1 << j
+		}
+		if r.until.wildcard.Contains(id) {
+			uw |= 1 << j
+		}
+		if int(id) < len(r.bounds.keys) {
+			pair := r.bounds.values[r.bounds.keys[id]]
+			if n := uint8(pair); n != 0 {
+				lower[n] |= 1 << j
+			}
+			if n := pair >> 8; n != 0 {
+				upper[n] |= 1 << j
+			}
+		}
+	}
+	lowers, uppers := map[uint16]bool{lw: true}, map[uint16]bool{uw: true}
+	for i := 1; i < len(lower); i++ {
+		lw |= lower[i]
+		lowers[lw] = true
+	}
+	for i := len(upper) - 1; i > 0; i-- {
+		uw |= upper[i]
+		uppers[uw] = true
+	}
+	for a := range lowers {
+		for b := range uppers {
+			masks[a&b] = true
+		}
+	}
+	return masks
+}
+func CombinationProbeCatalog[T any, ID comparable](idx *Index[T, ID]) (map[any]CombinationProbeRoster, bool) {
+	r, ok := idx.root.(*allRule[T])
+	if !ok || len(idx.exclusions) != 0 {
+		return nil, false
+	}
+	result := make(map[any]CombinationProbeRoster)
+	next := 0
+	for i, c := range r.children {
+		source, ok := c.(interface{ probeRosters() []*equalitySet })
+		if !ok {
+			continue
+		}
+		for _, s := range source.probeRosters() {
+			ids := probeRosterIDs(s)
+			counts := make([]int, len(r.children))
+			domains := make([][]uint16, len(r.children))
+			for j, child := range r.children {
+				if i == j {
+					counts[j] = 1
+					domains[j] = []uint16{uint16(1<<len(ids) - 1)}
+					continue
+				}
+				op, ok := child.(combinationProbeOperand[T])
+				if !ok {
+					return nil, false
+				}
+				for mask := range op.allProbeMasks(ids) {
+					domains[j] = append(domains[j], mask)
+				}
+				slices.Sort(domains[j])
+				counts[j] = len(domains[j])
+			}
+			result[s] = CombinationProbeRoster{next, i, ids, counts, domains}
+			next++
+		}
+	}
+	return result, true
+}
+func CombinationProbeOffer[T any, ID comparable](l *Local[T, ID], v T) (any, []uint16) {
+	r := l.index.root.(*allRule[T])
+	var source *equalitySet
+	var first int
+	if m := l.pool.candidateMask; m.source != nil && r.children[m.first].(candidateMaskSource[T]).candidateMaskPosting(v) == m.source {
+		source, first = m.source, m.first
+	} else {
+		ranked := make([]rankedBitmap, len(r.children))
+		if !r.rankChildren(v, l.pool, ranked) || len(ranked) == 0 {
+			return nil, nil
+		}
+		first = ranked[0].childIdx
+		if c, ok := r.children[first].(candidateMaskSource[T]); ok {
+			source = c.candidateMaskPosting(v)
+		}
+	}
+	if source == nil || source.cardinality() < 9 || source.cardinality() > 16 {
+		return nil, nil
+	}
+	ids := probeRosterIDs(source)
+	full := uint64(1)<<len(ids) - 1
+	masks := make([]uint16, len(r.children))
+	for i, c := range r.children {
+		if i == first {
+			masks[i] = uint16(full)
+			continue
+		}
+		masks[i] = uint16(c.(combinationProbeOperand[T]).applyCandidateMask(v, ids, full))
+	}
+	return source, masks
+}
+
+// CombinationProbeResult expands the measured masks in original index order.
+func CombinationProbeResult[T any, ID comparable](idx *Index[T, ID], roster CombinationProbeRoster, masks []uint16) []ID {
+	keep := uint16(1<<len(roster.IDs) - 1)
+	for _, mask := range masks {
+		keep &= mask
+	}
+	var result []ID
+	for j, id := range roster.IDs {
+		if keep&(1<<j) != 0 {
+			result = append(result, idx.values[id])
+		}
+	}
+	return result
+}
