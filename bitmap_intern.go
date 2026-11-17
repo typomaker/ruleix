@@ -11,9 +11,10 @@ import (
 // bitmap. Checksum narrows candidates cheaply; Equals preserves correctness in
 // the event of a collision.
 type bitmapInterner struct {
-	canonical  map[bitmapFingerprint]internedBitmap
-	collisions map[bitmapFingerprint][]internedBitmap
-	nextID     physicalSourceID
+	canonical     map[bitmapFingerprint]internedBitmap
+	collisions    map[bitmapFingerprint][]internedBitmap
+	nextID        physicalSourceID
+	singletonRefs []uint32
 }
 
 // physicalSourceID names one collision-checked immutable bitmap within a
@@ -52,6 +53,9 @@ func (i *bitmapInterner) internSourceWithFingerprint(
 	fingerprint bitmapFingerprint,
 ) physicalSourceID {
 	bits := *target
+	if i.singletonRefs != nil && fingerprint.cardinality == 1 {
+		i.singletonRefs[bits.Minimum()]++
+	}
 	canonical := i.canonical[fingerprint]
 	if canonical.bits == nil {
 		id := i.allocateSourceID()

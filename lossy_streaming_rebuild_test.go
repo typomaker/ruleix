@@ -358,7 +358,7 @@ func TestEveryStreamingRepresentationPreparesAndAppliesOneDowngrade(t *testing.T
 	})
 	t.Run("between", func(t *testing.T) {
 		rule := &betweenRule[streamingOrderedFixture, int]{
-			from: orderedSide(greaterThan), until: orderedSide(lessThan), compare: cmp.Compare[int],
+			from: orderedSide(greaterThan), until: orderedSide(lessThan),
 		}
 		require.IsType(t, rule, rule.newState(&nodeIDAllocator{}, &buildStatistics{}))
 		require.Equal(t, canonicalBetween, rule.canonicalDescriptor().representation)

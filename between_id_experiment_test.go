@@ -65,18 +65,25 @@ func matchesBetweenIDBound(side *orderedRule[betweenIDFixture, int], position ui
 
 func buildBetweenIDExperiment(tb testing.TB, stored []betweenIDFixture, ids []int, lossy bool) (*Index[betweenIDFixture, int], *allRule[betweenIDFixture], *betweenRule[betweenIDFixture, int], int) {
 	tb.Helper()
+	return buildBetweenIDFixture(tb, stored, ids, lossy, 64*1024, false)
+}
+
+func buildBetweenIDFixture(tb testing.TB, stored []betweenIDFixture, ids []int, lossy bool, limit uint64, compact bool) (*Index[betweenIDFixture, int], *allRule[betweenIDFixture], *betweenRule[betweenIDFixture, int], int) {
+	tb.Helper()
 	var between Rule[betweenIDFixture] = Between(
 		func(v betweenIDFixture) (int, bool) { return v.from, !v.missingFrom },
 		func(v betweenIDFixture) (int, bool) { return v.until, !v.missingUntil },
 		cmp.Compare[int],
 	)
 	if lossy {
-		between = Lossy(between, MemoryLimit(64*1024))
+		between = Lossy(between, MemoryLimit(limit))
 	}
-	index, err := New[betweenIDFixture, int](All(
+	index, _, err := buildIndexPhysicalAliases(All(
 		Include(func(v betweenIDFixture) (int, bool) { return v.category, true }),
 		between,
-	)).Build(Zip(stored, ids))
+	), Zip(stored, ids), false, nil, buildOptions{
+		compilePhysicalAliases: true, compileStrictAntonyms: true, enableStreaming: true, disableBetweenCompaction: !compact,
+	})
 	if err != nil {
 		tb.Fatal(err)
 	}

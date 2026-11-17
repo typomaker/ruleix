@@ -39,3 +39,6 @@ The selected tests passed. The mixed equality and Between case checks
 search results with 1,000 distinct intervals against a scanning reference
 for both Index and Local. The execution-order findings come from code
 inspection. Latency and bitmap visits were not measured.
+
+The later [compact Between layout](between-compact-bounds.md) can replace
+bitmap group walks in the direct ID path while retaining this plan.

@@ -64,7 +64,8 @@ The profiled searches both reported 48 B/op and three allocs/op.
 
 ## Status
 
-The prototype remains under investigation. Production integration would
-need a way to recover its added retained bytes and to account for the table
-within existing lossiness budgets. The focused workload only establishes
-the performance of queries that go through the direct ID path.
+The subsequent [compact layout](between-compact-bounds.md) combines the table
+with removal of singleton bitmaps; this document records the table-only trial.
+
+The table-only trial measured queries that use the direct ID path. Its
+added retained bytes motivated the subsequent compact layout.

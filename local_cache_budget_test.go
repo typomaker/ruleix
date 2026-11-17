@@ -77,9 +77,8 @@ func TestLocalQueryKeysUseOperationEquality(t *testing.T) {
 			get: func(value query) (int, bool) { return value.ordered, true }, compare: cmp.Compare[int],
 		},
 		&betweenRule[query, int]{
-			from:    &orderedRule[query, int]{get: func(value query) (int, bool) { return value.from, true }},
-			until:   &orderedRule[query, int]{get: func(value query) (int, bool) { return value.until, true }},
-			compare: cmp.Compare[int],
+			from:  &orderedRule[query, int]{get: func(value query) (int, bool) { return value.from, true }, compare: cmp.Compare[int]},
+			until: &orderedRule[query, int]{get: func(value query) (int, bool) { return value.until, true }},
 		},
 		&compareByRule[query, int]{
 			value:    func(value query) (int, bool) { return value.value, true },

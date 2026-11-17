@@ -131,6 +131,7 @@ map-backed представление: строковый miss уже не да�
 `stored.from <= query.from`, верхняя — `query.until <= stored.until`. Итогом
 является пересечение результатов обеих сторон. Каждая отсутствующая
 сохранённая граница является wildcard только для своей стороны.
+See [compact Between bounds](between-compact-bounds.md) for the optional layout.
 
 ### `CompareBy`
 

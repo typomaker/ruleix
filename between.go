@@ -20,9 +20,8 @@ import (
 //	)
 func Between[T any, V any](from, until Getter[T, V], compare Compare[V]) Rule[T] {
 	return &betweenRule[T, V]{
-		from:    newOrderedRule(from, compare, greaterThan, true),
-		until:   newOrderedRule(until, compare, lessThan, true),
-		compare: compare,
+		from:  newOrderedRule(from, compare, greaterThan, true),
+		until: newOrderedRule(until, compare, lessThan, true),
 	}
 }
 
@@ -30,7 +29,7 @@ type betweenRule[T any, V any] struct {
 	nodeID  nodeID
 	from    *orderedRule[T, V]
 	until   *orderedRule[T, V]
-	compare Compare[V]
+	compact *betweenCompact
 }
 
 type betweenLocalQueryKey[V any] struct {
@@ -82,10 +81,9 @@ func (r *betweenRule[T, V]) newState(ids *nodeIDAllocator, hints *buildStatistic
 	id := ids.allocate()
 	hint := hints.node(id)
 	return &betweenRule[T, V]{
-		nodeID:  id,
-		from:    r.from.newStateWithID(id, hint.between[0]),
-		until:   r.until.newStateWithID(id, hint.between[1]),
-		compare: r.compare,
+		nodeID: id,
+		from:   r.from.newStateWithID(id, hint.between[0]),
+		until:  r.until.newStateWithID(id, hint.between[1]),
 	}
 }
 func (*betweenRule[T, V]) validate(T) error { return nil }
@@ -97,8 +95,8 @@ func (r *betweenRule[T, V]) cardinality(v T, pool *bitmapPool) uint64 {
 	return measuredCardinality[T](r, v, pool)
 }
 func (r *betweenRule[T, V]) estimateCardinality(v T) uint64 {
-	from := r.from.estimateCardinality(v)
-	until := r.until.estimateCardinality(v)
+	from := r.estimateSide(r.from, v)
+	until := r.estimateSide(r.until, v)
 	if from < until {
 		return from
 	}
@@ -138,7 +136,7 @@ func (r *betweenRule[T, V]) findCachedEntry(
 	if cache == nil {
 		return nil, nil
 	}
-	return cache, cache.find(from, until, r.compare)
+	return cache, cache.find(from, until, r.from.compare)
 }
 func (r *betweenRule[T, V]) localQueryKey(v T) (any, uint64) {
 	from, hasFrom := r.from.get(v)
@@ -154,8 +152,8 @@ func (r *betweenRule[T, V]) localQueryKeyMatches(v T, key any) bool {
 	from, hasFrom := r.from.get(v)
 	until, hasUntil := r.until.get(v)
 	return want.hasFrom == hasFrom && want.hasUntil == hasUntil &&
-		(!hasFrom || r.compare(want.from, from) == 0) &&
-		(!hasUntil || r.compare(want.until, until) == 0)
+		(!hasFrom || r.from.compare(want.from, from) == 0) &&
+		(!hasUntil || r.from.compare(want.until, until) == 0)
 }
 func (r *betweenRule[T, V]) isCardinalityZero(v T) bool {
 	return r.from.isCardinalityZero(v) || r.until.isCardinalityZero(v)
@@ -228,6 +226,10 @@ func (c *betweenCache[V]) entry(index int) *betweenCacheEntry[V] {
 	return c.overflow[index-int(c.count)]
 }
 func (r *betweenRule[T, V]) matchesID(v T, id uint32) bool {
+	if r.compact != nil {
+		return compactMatches(r.from, r.compact.from.positions, v, id) &&
+			compactMatches(r.until, r.compact.until.positions, v, id)
+	}
 	return r.from.matchesID(v, id) && r.until.matchesID(v, id)
 }
 
@@ -235,12 +237,7 @@ func (r *betweenRule[T, V]) filterCandidates(v T, dst *roaring.Bitmap, _ *bitmap
 	first, second := r.rankedSearchSides(v)
 	var inline [16]*roaring.Bitmap
 	for _, side := range [...]betweenSearchSide[T, V]{first, second} {
-		postings := side.rule.appendMatchingBitmaps(side.value, inline[:0])
-		if len(postings) == 0 {
-			dst.Clear()
-			return
-		}
-		dst.AndAny(postings...)
+		r.intersectSide(side, dst, inline[:0])
 		if dst.IsEmpty() {
 			return
 		}
@@ -263,8 +260,10 @@ func (r *betweenRule[T, V]) collectBuildStatistics(stats []nodeBuildStatistics) 
 	statistics.between[1] = r.until.index.buildStatistics()
 }
 func (r *betweenRule[T, V]) prepareSearch() {
-	r.from.prepareSearch()
-	r.until.prepareSearch()
+	if r.compact == nil {
+		r.from.prepareSearch()
+		r.until.prepareSearch()
+	}
 }
 func (r *betweenRule[T, V]) internBitmaps(interner *bitmapInterner) {
 	r.from.internBitmaps(interner)
@@ -275,12 +274,12 @@ func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmap
 	base, other := r.rankedSearchSides(v)
 
 	candidates := pool.get()
-	base.rule.addMatches(base.value, candidates)
+	r.addSide(base, candidates)
 	if candidates.GetCardinality() <= allCandidateScanLimit {
 		iterator := candidates.Iterator()
 		for iterator.HasNext() {
 			id := iterator.Next()
-			if other.rule.matchesID(v, id) {
+			if r.matchesSide(other.rule, v, id) {
 				dst.Add(id)
 			}
 		}
@@ -288,12 +287,7 @@ func (r *betweenRule[T, V]) searchBitmaps(v T, dst *roaring.Bitmap, pool *bitmap
 		return
 	}
 	var inline [16]*roaring.Bitmap
-	postings := other.rule.appendMatchingBitmaps(other.value, inline[:0])
-	if len(postings) == 0 {
-		candidates.Clear()
-	} else {
-		candidates.AndAny(postings...)
-	}
+	r.intersectSide(other, candidates, inline[:0])
 	dst.Or(candidates)
 	pool.put(candidates)
 }
@@ -304,7 +298,7 @@ func (r *betweenRule[T, V]) rankedSearchSides(v T) (
 ) {
 	from := betweenSearchSide[T, V]{rule: r.from, value: getOptional(r.from.get, v)}
 	until := betweenSearchSide[T, V]{rule: r.until, value: getOptional(r.until.get, v)}
-	if r.until.estimateCardinality(v) < r.from.estimateCardinality(v) {
+	if r.estimateSide(r.until, v) < r.estimateSide(r.from, v) {
 		return until, from
 	}
 	return from, until

@@ -98,8 +98,9 @@ type buildOptions struct {
 	// identityLossy selects the exact-key head of every Lossy representation
 	// ladder after normal policy analysis. It is a test/benchmark control, not
 	// a public memory-limit mode.
-	identityLossy       bool
-	observeWorkingUsage func(usage, target uint64)
+	identityLossy            bool
+	observeWorkingUsage      func(usage, target uint64)
+	disableBetweenCompaction bool
 }
 
 //nolint:gocognit // The build pipeline is intentionally kept in one linear ownership scope.
@@ -220,6 +221,10 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 	}
 	ix.pool.observeRuntime = false
 	interner := newBitmapInterner()
+	var betweenCompactors []betweenBoundsCompactor
+	if !options.disableBetweenCompaction {
+		betweenCompactors = prepareBetweenCompaction(ix.observedRoot, len(ix.values), interner)
+	}
 	internRuleWith(interner, ix.observedRoot)
 	if options.compilePhysicalAliases {
 		compileAllEqualityClasses(ix.observedRoot)
@@ -235,6 +240,12 @@ func buildIndexPhysicalAliases[C any, ID comparable](
 		}
 		if preparer, ok := exclusion.(ruleSearchPreparer); ok {
 			preparer.prepareSearch()
+		}
+	}
+	if len(betweenCompactors) != 0 {
+		work := make([]uint32, len(ix.values))
+		for _, compact := range betweenCompactors {
+			compact.compactBounds(interner.singletonRefs, work)
 		}
 	}
 	prepareRuleSearch(ix.observedRoot)
