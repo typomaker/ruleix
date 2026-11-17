@@ -12,6 +12,7 @@ a design conclusion or hypothesis.
 
 | Date | Name | Area | Decision and evidence |
 | --- | --- | --- | --- |
+| 2026-11-17 | Ordered Between Cache Overflow | Local cache | Keep two inline range entries and search long overflow by comparator order. A fixed 1,024-range working set improved from 1,274 to 127 ns/op with equal allocations, while short Local and complete dump request gates remained comparable. See [measurements](performance-history.md#comparator-ordered-between-cache-overflow). |
 | 2026-11-17 | Compact Between Bounds | Compound ranges | Use direct endpoint positions for eligible All operands after compacting singleton postings. The [checkpoint measurements](between-compact-bounds.md) record more than 20x faster narrow Index searches and lower retained heap, with broad search controls. |
 | 2026-09-12 | Unbounded Immediate Local Cache | Local cache | Cache every cacheable miss immediately and retain all distinct child and exact `All` results until `Local.Close`; keep two inline entries as a fast physical layout and use unbounded overflow plus hash lookup for comparable keys. `Index.Search` remains the one-off controlled-memory path. Against `d0e6daa` on Apple M1 Max with Go 1.26, exact production cache hits remained allocation-free and comparable at about 190-192 ns/op, while a 1,024-value `Between` Local working set remained faster than Index search (about 1.22 versus 2.53 us/op). The maintained 100-query reflected Cartesian benchmark measured warm batches at 237 us versus 1.156 ms on `d0e6daa` and 1.186 ms on `v0.8.4`; retained memory intentionally rose from 151 to 241 KiB/Local. |
 | 2026-09-08 | Prepared-Key Fast Path | Local cache | Split grouped query validation from ordinary prepared-slot lookup (`a89b6de`). Against `v0.8.3`, warm production `Local.Search` recovered from 230.1 to 220.4 ns/op; the `v0.8.2` control was 221.1 ns/op. |
@@ -64,6 +65,7 @@ a design conclusion or hypothesis.
 
 These are hypotheses, not performance claims:
 
+- Improve `All` plan refresh for short-lived Locals. The [plan refresh trials](performance-history.md#all-plan-refresh-experiment) expose a tradeoff between lookup time on the production dump and direct candidate validation on the cold joined workload.
 - Define one stable aggregate release benchmark before publishing benchmark
   results in every changelog entry. It must cover production-shaped Index and
   Local search, parallel Local search, Build, allocations, retained index

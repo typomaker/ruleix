@@ -65,6 +65,93 @@ On Apple M1 Max, macOS 26.6.2/arm64, Go 1.27.3, the three samples were
 introduced on top of `f8536c9`. This is the first measurement for this
 workload. Verified with `go test ./...` and `git diff --check`.
 
+### Comparator-ordered `Between` cache overflow
+
+The baseline was `9884d08` and the candidate was its working tree with
+comparator-ordered `Between` overflow. Runs used Apple M1 Max, macOS 26.6.2,
+Go 1.27.3, and `GOMAXPROCS=1`. Both binaries use the same snapshot and harness
+described above. For quantiles, record elapsed time around each complete
+request into a preallocated slice and compute nearest-rank percentiles after
+the benchmark timer stops.
+
+Three interleaved runs of 50,000 requests each gave these per-request medians:
+
+| Metric | Baseline | Ordered overflow |
+| --- | ---: | ---: |
+| Mean latency | 83.92 µs | 83.71 µs |
+| p99 | 194.58 µs | 194.50 µs |
+| p99.9 | 258.83 µs | 260.04 µs |
+| Bytes allocated | 2,391 | 2,391 |
+| Allocations | 63 | 63 |
+
+p99.9 varied from 256.50 to 273.83 µs across the baseline runs and from
+258.08 to 343.29 µs across the candidate runs. The complete request shows
+no consistent tail-latency improvement. The 70,000-request CPU and
+allocation profiles also showed that bitmap planning and candidate
+validation remain substantial parts of request processing.
+
+In a separate alternating 30,000-request comparison with `v0.8.2`
+(`7f32ddc`), median p99.9 was 187.56 µs on the tag and 246.79 µs on ordered
+overflow. The same harness was built against the tag's dependencies and
+Go 1.23 module language version, with a Go 1.24 build constraint on the
+benchmark file for `testing.B.Loop`.
+
+In `BenchmarkLocalBetweenReuse`, interleaved 250 ms Repeat, Alternate,
+Cycle3, and Cycle4 Local controls stayed within 1 ns/op of their baseline
+medians (60.7, 68.5, 71.6, and 74.0 ns/op), with 16 B/op and one allocation
+each. A separate `WorkingSet1024/Local` profile run with
+`-benchtime=3000000x -cpuprofile -memprofile` moved from 1,274 to 127 ns/op
+with 18 B/op and one allocation in both samples. Cumulative CPU samples
+inside cache lookup fell from 3.08 s in the linear scan to 0.10 s in the
+binary search. The fixed iteration count avoids different warmup
+amortization in the allocation metrics.
+
+The retained-Local gate used `BenchmarkProductionShapeLocalRetainedMemory`
+with `-benchtime=100x` and two runs per binary in alternating order. Cold,
+warm, adaptive, and adversarial shapes held about 2,968, 94,192, 112,928, and
+2,221,721 retained bytes per Local on both binaries. The index build uses the
+same representation in both revisions.
+
+Broad controls used `BenchmarkProductionJoinLocal` and
+`BenchmarkProductionShapeLocalClose` at 200 ms and
+`BenchmarkProductionShapeLossySearch` at 400 ms. Cold joined batches
+remained near 1.20 ms with approximately 629,570 B/op, and the close
+control remained near 247 µs with approximately 155,930 B/op. Lossy Local
+search stayed near 431–435 ns/op with zero allocations.
+
+The test suite covers comparator-equivalent timestamps, missing bounds, and
+insertion and lookup across the overflow cutover. The changed executable
+lines had 100% coverage (31 of 31) from `go test -covermode=count ./...`.
+
+#### `All` plan refresh experiment
+
+The first trial removed the second saved-plan lookup after ranking fresh
+operands. `TestCompactBetweenMatchesBaseline` found extra matches because the
+failed saved plan had left bitmaps in slots with a different operand order.
+Overwriting the bitmap on every freshly ranked operand corrected all
+differential tests. With that correction, removing the refresh reduced
+dump p99 from 191.17 to 177.54 µs and p99.9 from 263.08 to 223.13 µs in
+interleaved runs of 50,000 requests, with 2,391 to 2,159 B/request and
+63 allocations on both variants.
+
+The unrestricted omission increased `ProductionShapeLocalClose` from
+246.45 to 412.97 µs and from approximately 155,908 to 157,694 B/op in
+5,000-iteration profile runs. Cumulative CPU in
+`intersectRankedInOrderObserved` grew from 0.12 to 0.44 s. Candidate
+validation within that path grew from 0.03 to 0.26 s as broad searches
+lost the cheaper validation that the refreshed plan made available.
+The interleaved 200 ms cold joined-batch control also slowed from about
+1.21 to 1.42 ms. Scope checks included warm joined batches, exact cache
+hits, lossy searches, and skewed equality.
+
+Skipping refresh only when the first ranked bitmap was already available
+with at most eight candidates and all operands supported direct validation
+preserved the cold controls. That variant and ordered overflow alone had
+similar request times. In three 30,000-request interleaved runs, their
+p99.9 ranges were 246.58–275.38 and 254.88–257.04 µs, respectively. In
+70,000-request profiles they measured 254.00 and 253.29 µs. Neither refresh
+variant is included in the candidate. Improving plan refresh remains open.
+
 ## Release measurements
 
 ### Immediate unbounded Local cache checkpoint

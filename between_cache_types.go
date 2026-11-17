@@ -5,7 +5,7 @@ import "github.com/RoaringBitmap/roaring/v2"
 type betweenCache[V any] struct {
 	entries   [2]betweenCacheEntry[V]
 	count     uint8
-	overflow  []*betweenCacheEntry[V]
+	overflow  []*betweenCacheEntry[V] // Sorted by bound presence and comparator order.
 	observers *cacheObservers
 }
 
@@ -35,12 +35,53 @@ func (c *betweenCache[V]) find(
 			return entry
 		}
 	}
-	for _, entry := range c.overflow {
-		if entry.matches(from, until, compare) {
-			return entry
+	if len(c.overflow) <= 4 {
+		for _, entry := range c.overflow {
+			if entry.matches(from, until, compare) {
+				return entry
+			}
 		}
+	} else if index, found := c.findOverflow(from, until, compare); found {
+		return c.overflow[index]
 	}
 	return nil
+}
+
+func (c *betweenCache[V]) findOverflow(
+	from, until optionalValue[V],
+	compare Compare[V],
+) (int, bool) {
+	low, high := 0, len(c.overflow)
+	for low < high {
+		mid := low + (high-low)/2
+		entry := c.overflow[mid]
+		order := compareBetweenCacheBound(entry.from, entry.hasFrom, from, compare)
+		if order == 0 {
+			order = compareBetweenCacheBound(entry.until, entry.hasUntil, until, compare)
+		}
+		switch {
+		case order < 0:
+			low = mid + 1
+		case order > 0:
+			high = mid
+		default:
+			return mid, true
+		}
+	}
+	return low, false
+}
+
+func compareBetweenCacheBound[V any](stored V, present bool, query optionalValue[V], compare Compare[V]) int {
+	if present != query.ok {
+		if present {
+			return 1
+		}
+		return -1
+	}
+	if present {
+		return compare(stored, query.value)
+	}
+	return 0
 }
 
 func (e *betweenCacheEntry[V]) matches(

@@ -28,6 +28,10 @@ The Local cache delegates key comparison to `betweenCache.find` and
 `betweenCacheEntry.matches`. Cardinality peeks and bitmap hits therefore share
 one definition of missing-bound and comparator equality. The search path passes
 its already extracted bounds into the lookup, avoiding duplicate getter calls.
+The first two entries stay inline. Overflow stores entry pointers in order by
+bound presence and comparator value. Short overflow lookups use a linear scan,
+and longer ones use binary search. Insertion moves pointers and preserves the
+cached bitmaps and the Local lifetime of every entry.
 
 ## `CompareBy` operator metadata
 

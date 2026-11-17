@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -337,6 +338,59 @@ func TestBetweenCacheRetainsUnboundedWorkingSet(t *testing.T) {
 		}
 		require.True(t, found)
 	}
+}
+
+func TestBetweenCacheOrdersOverflowByComparatorAndPresence(t *testing.T) {
+	type interval struct{ from, until *time.Time }
+	at := func(hour int) *time.Time {
+		value := time.Date(2026, time.November, 17, hour, 0, 0, 0, time.UTC)
+		return &value
+	}
+	schema := Between(
+		GetterFromPointer(func(value interval) *time.Time { return value.from }),
+		GetterFromPointer(func(value interval) *time.Time { return value.until }),
+		time.Time.Compare,
+	)
+	index, err := New[interval, int](schema).Build(Zip(
+		[]interval{{at(1), at(23)}, {nil, at(23)}, {at(1), nil}, {}},
+		[]int{1, 2, 3, 4},
+	))
+	require.NoError(t, err)
+	local := index.Local()
+	defer local.Close()
+
+	queries := []interval{
+		{at(7), at(8)}, {at(8), at(9)}, {at(5), at(9)}, {at(4), at(6)},
+		{nil, at(6)}, {at(5), nil}, {at(5), at(7)}, {}, {at(5), at(8)},
+	}
+	assertMatches := func(query interval) {
+		t.Helper()
+		var expected, actual []int
+		index.Search(query, &expected)
+		local.Search(query, &actual)
+		require.Equal(t, expected, actual)
+	}
+	for _, query := range queries {
+		assertMatches(query)
+	}
+	rule := index.root.(*betweenRule[interval, time.Time])
+	cache := local.pool.local[rule.nodeID].between.(*betweenCache[time.Time])
+	require.Equal(t, len(queries), cache.entryCount())
+
+	zone := time.FixedZone("UTC+03", 3*60*60)
+	for i := len(queries) - 1; i >= 0; i-- {
+		query := queries[i]
+		if query.from != nil {
+			from := query.from.In(zone)
+			query.from = &from
+		}
+		if query.until != nil {
+			until := query.until.In(zone)
+			query.until = &until
+		}
+		assertMatches(query)
+	}
+	require.Equal(t, len(queries), cache.entryCount())
 }
 
 func TestValueBitmapCacheRetainsUnboundedWorkingSet(t *testing.T) {

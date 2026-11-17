@@ -1,6 +1,7 @@
 package ruleix
 
 import (
+	"slices"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -185,7 +186,8 @@ func (r *betweenRule[T, V]) search(v T, dst *roaring.Bitmap, pool *bitmapPool) {
 		cached.bits = pool.get()
 	} else {
 		cached = &betweenCacheEntry[V]{bits: pool.get()}
-		cache.overflow = append(cache.overflow, cached)
+		index, _ := cache.findOverflow(from, until, r.from.compare)
+		cache.overflow = slices.Insert(cache.overflow, index, cached)
 	}
 	cache.observers.admission()
 	cached.bits.SetCopyOnWrite(true)
