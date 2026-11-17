@@ -1,0 +1,70 @@
+//go:build go1.24
+
+package ruleix_test
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"slices"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"github.com/typomaker/ruleix"
+)
+
+func TestProductionVersionDigest(t *testing.T) {
+	path := os.Getenv("RULEIX_PRODUCTION_DUMP")
+	if path == "" {
+		t.Skip("set RULEIX_PRODUCTION_DUMP")
+	}
+	input, err := os.Open(path)
+	require.NoError(t, err)
+	defer input.Close()
+	rows, ids := readProductionDump(t, input)
+	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
+	require.NoError(t, err)
+	requests := productionDumpRequests(rows, 64)
+	require.Len(t, requests, 64)
+	hash := sha256.New()
+	var count [4]byte
+	offers, total := 0, 0
+	for _, rotate := range []bool{false, true} {
+		for _, original := range requests {
+			request := slices.Clone(original)
+			if rotate {
+				for i := range request {
+					request[i] = original[i*37%len(original)]
+				}
+			}
+			searchProductionDumpRequest(index, request, func(_ int, matches []uuid.UUID) {
+				canonical := slices.Clone(matches)
+				slices.SortFunc(canonical, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
+				binary.LittleEndian.PutUint32(count[:], uint32(len(canonical)))
+				hash.Write(count[:])
+				for _, id := range canonical {
+					hash.Write(id[:])
+				}
+				offers++
+				total += len(canonical)
+			})
+		}
+	}
+	result := struct {
+		Rows     int
+		Requests int
+		Offers   int
+		Matches  int
+		SHA256   string
+	}{len(rows), len(requests) * 2, offers, total, hex.EncodeToString(hash.Sum(nil))}
+	encoded, err := json.Marshal(result)
+	require.NoError(t, err)
+	t.Log(string(encoded))
+	if output := os.Getenv("RULEIX_COMPARISON_DIGEST"); output != "" {
+		require.NoError(t, os.WriteFile(output, encoded, 0600))
+	}
+}
