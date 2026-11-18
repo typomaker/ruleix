@@ -1,0 +1,17 @@
+=== RUN   TestBatchReleaseDigest
+    production_batch_cohort_test.go:87: zero: 64 requests with forced absent keys
+    production_batch_cohort_test.go:87: storezero: 64 requests with forced absent keys
+    production_batch_cohort_test.go:87: slotzero: 64 requests with forced absent keys
+    production_batch_cohort_test.go:87: alternating: 64 requests with forced absent keys
+    batch_digest_test.go:34: selected 16 requests for the tiny cohort
+    batch_digest_test.go:34: selected 28 requests for the medium cohort
+    batch_digest_test.go:34: selected 13 requests for the broad cohort
+    production_batch_cohort_test.go:87: zero: 64 requests with forced absent keys
+    production_batch_cohort_test.go:87: storezero: 64 requests with forced absent keys
+    production_batch_cohort_test.go:87: slotzero: 64 requests with forced absent keys
+    production_batch_cohort_test.go:87: alternating: 64 requests with forced absent keys
+    batch_digest_test.go:34: selected 16 requests for the tiny cohort
+    batch_digest_test.go:34: selected 28 requests for the medium cohort
+    batch_digest_test.go:34: selected 13 requests for the broad cohort
+--- PASS: TestBatchReleaseDigest (2.16s)
+PASS

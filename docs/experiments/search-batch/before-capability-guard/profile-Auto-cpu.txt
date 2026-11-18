@@ -1,0 +1,27 @@
+File: ruleix-batch-final-full.test
+Type: cpu
+Time: 2026-11-18 03:10:44 MSK
+Duration: 1.30s, Total samples = 970ms (74.38%)
+Active filters:
+   focus=benchmarkBatchShapeCase
+Showing nodes accounting for 950ms, 97.94% of 970ms total
+Showing top 18 nodes out of 31
+      flat  flat%   sum%        cum   cum%
+     220ms 22.68% 22.68%      220ms 22.68%  github.com/RoaringBitmap/roaring/v2.binarySearch
+     160ms 16.49% 39.18%      390ms 40.21%  github.com/typomaker/ruleix.(*orderedIndex[go.shape.int]).matchesAscending
+      90ms  9.28% 48.45%      400ms 41.24%  github.com/RoaringBitmap/roaring/v2.(*Bitmap).Contains
+      90ms  9.28% 57.73%      280ms 28.87%  github.com/typomaker/ruleix.(*orderedIndex[go.shape.int]).matchesDescending
+      80ms  8.25% 65.98%       80ms  8.25%  github.com/typomaker/ruleix.(*orderedIndex[go.shape.int]).blockFor
+      60ms  6.19% 72.16%       60ms  6.19%  github.com/RoaringBitmap/roaring/v2.(*roaringArray).binarySearch
+      60ms  6.19% 78.35%      950ms 97.94%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]).searchBatchGroup
+      40ms  4.12% 82.47%      850ms 87.63%  github.com/typomaker/ruleix.(*orderedRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]).matchesID
+      30ms  3.09% 85.57%       30ms  3.09%  cmp.Compare[go.shape.int]
+      30ms  3.09% 88.66%      780ms 80.41%  github.com/typomaker/ruleix.(*orderedIndex[go.shape.int]).matches
+      30ms  3.09% 91.75%      890ms 91.75%  github.com/typomaker/ruleix.batchMask[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]
+      10ms  1.03% 92.78%      240ms 24.74%  github.com/RoaringBitmap/roaring/v2.(*arrayContainer).contains
+      10ms  1.03% 93.81%       70ms  7.22%  github.com/RoaringBitmap/roaring/v2.(*roaringArray).getContainer (inline)
+      10ms  1.03% 94.85%      860ms 88.66%  github.com/typomaker/ruleix.(*betweenRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]).matchesID
+      10ms  1.03% 95.88%       10ms  1.03%  github.com/typomaker/ruleix.(*orderedIndex[go.shape.int]).blockRangeContains
+      10ms  1.03% 96.91%       10ms  1.03%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+      10ms  1.03% 97.94%       10ms  1.03%  runtime.asyncPreempt
+         0     0% 97.94%      950ms 97.94%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]).SearchBatch

@@ -1,0 +1,182 @@
+{
+  "BenchmarkBatchShapes/65/common/1": {
+    "Local": {
+      "mean_ns": 1491.5,
+      "B/op": 1128.0,
+      "allocs/op": 9.0
+    },
+    "Auto": {
+      "mean_ns": 1415.5,
+      "B/op": 1104.0,
+      "allocs/op": 8.0
+    }
+  },
+  "BenchmarkBatchShapes/65/common/2": {
+    "Local": {
+      "mean_ns": 3084.5,
+      "B/op": 1896.0,
+      "allocs/op": 13.0
+    },
+    "Auto": {
+      "mean_ns": 3044.5,
+      "B/op": 1872.0,
+      "allocs/op": 12.0
+    }
+  },
+  "BenchmarkBatchShapes/65/common/4": {
+    "Local": {
+      "mean_ns": 6160.0,
+      "B/op": 3520.0,
+      "allocs/op": 25.0
+    },
+    "Auto": {
+      "mean_ns": 6125.0,
+      "B/op": 3496.0,
+      "allocs/op": 24.0
+    }
+  },
+  "BenchmarkBatchShapes/65/common/16": {
+    "Local": {
+      "mean_ns": 25683.0,
+      "B/op": 14355.0,
+      "allocs/op": 111.0
+    },
+    "Auto": {
+      "mean_ns": 25586.0,
+      "B/op": 14331.0,
+      "allocs/op": 110.0
+    }
+  },
+  "BenchmarkBatchShapes/65/common/100": {
+    "Local": {
+      "mean_ns": 42766.0,
+      "B/op": 17783.0,
+      "allocs/op": 140.0
+    },
+    "Auto": {
+      "mean_ns": 42165.5,
+      "B/op": 17759.0,
+      "allocs/op": 139.0
+    }
+  },
+  "BenchmarkBatchShapes/65/diverse/1": {
+    "Local": {
+      "mean_ns": 1449.5,
+      "B/op": 1128.0,
+      "allocs/op": 9.0
+    },
+    "Auto": {
+      "mean_ns": 1374.5,
+      "B/op": 1104.0,
+      "allocs/op": 8.0
+    }
+  },
+  "BenchmarkBatchShapes/65/diverse/2": {
+    "Local": {
+      "mean_ns": 3220.5,
+      "B/op": 1896.0,
+      "allocs/op": 13.0
+    },
+    "Auto": {
+      "mean_ns": 2993.5,
+      "B/op": 1872.0,
+      "allocs/op": 12.0
+    }
+  },
+  "BenchmarkBatchShapes/65/diverse/4": {
+    "Local": {
+      "mean_ns": 6565.0,
+      "B/op": 3520.0,
+      "allocs/op": 25.0
+    },
+    "Auto": {
+      "mean_ns": 6200.0,
+      "B/op": 3496.0,
+      "allocs/op": 24.0
+    }
+  },
+  "BenchmarkBatchShapes/65/diverse/16": {
+    "Local": {
+      "mean_ns": 26149.0,
+      "B/op": 14355.0,
+      "allocs/op": 111.0
+    },
+    "Auto": {
+      "mean_ns": 25759.0,
+      "B/op": 14331.0,
+      "allocs/op": 110.0
+    }
+  },
+  "BenchmarkBatchShapes/65/diverse/100": {
+    "Local": {
+      "mean_ns": 54983.5,
+      "B/op": 26010.0,
+      "allocs/op": 211.0
+    },
+    "Auto": {
+      "mean_ns": 53641.0,
+      "B/op": 25987.0,
+      "allocs/op": 210.0
+    }
+  },
+  "BenchmarkBatchShapes/65/empty/1": {
+    "Local": {
+      "mean_ns": 196.60000000000002,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "Auto": {
+      "mean_ns": 184.25,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/65/empty/2": {
+    "Local": {
+      "mean_ns": 339.8,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "Auto": {
+      "mean_ns": 332.1,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/65/empty/4": {
+    "Local": {
+      "mean_ns": 616.65,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "Auto": {
+      "mean_ns": 601.35,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/65/empty/16": {
+    "Local": {
+      "mean_ns": 2250.0,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "Auto": {
+      "mean_ns": 2230.5,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/65/empty/100": {
+    "Local": {
+      "mean_ns": 13598.5,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "Auto": {
+      "mean_ns": 13265.5,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  }
+}

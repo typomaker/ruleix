@@ -1,0 +1,13 @@
+File: candidate.test
+Type: alloc_space
+Time: 2026-11-18 03:25:33 MSK
+Active filters:
+   focus=searchProductionBatch
+Showing nodes accounting for 67.96MB, 18.82% of 361.15MB total
+      flat  flat%   sum%        cum   cum%
+   67.96MB 18.82% 18.82%    67.96MB 18.82%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).Local
+         0     0% 18.82%    67.96MB 18.82%  github.com/typomaker/ruleix_test.BenchmarkProductionBatch.func1.1.1
+         0     0% 18.82%    67.96MB 18.82%  github.com/typomaker/ruleix_test.benchmarkProductionBatchCase
+         0     0% 18.82%    67.96MB 18.82%  github.com/typomaker/ruleix_test.searchProductionBatch
+         0     0% 18.82%    67.96MB 18.82%  testing.(*B).run1.func1
+         0     0% 18.82%    67.96MB 18.82%  testing.(*B).runN

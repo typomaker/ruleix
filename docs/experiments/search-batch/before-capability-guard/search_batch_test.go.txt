@@ -1,0 +1,283 @@
+package ruleix
+
+import (
+	"cmp"
+	"fmt"
+	"slices"
+	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+type batchFixture struct {
+	group, store, slot int
+	from, until        int
+	missing            uint8
+}
+
+func batchSchema(lossy bool) Rule[batchFixture] {
+	group := Include(func(v batchFixture) (int, bool) { return v.group, v.missing&1 == 0 })
+	if lossy {
+		group = Lossy(group, MemoryLimit(64<<10))
+	}
+	return All(group,
+		All(Include(func(v batchFixture) (int, bool) { return v.store, v.missing&2 == 0 }),
+			Include(func(v batchFixture) (int, bool) { return v.slot, v.missing&4 == 0 })),
+		Between(func(v batchFixture) (int, bool) { return v.from, v.missing&8 == 0 },
+			func(v batchFixture) (int, bool) { return v.until, v.missing&16 == 0 }, cmp.Compare[int]),
+	)
+}
+
+func checkBatchAgainstLocal[T any](t *testing.T, index *Index[T, int], conditions []T) {
+	t.Helper()
+	want := make([][]int, len(conditions))
+	local := index.Local()
+	for i, condition := range conditions {
+		want[i] = []int{-7}
+		local.Search(condition, &want[i])
+	}
+	local.Close()
+	for _, strategy := range []batchStrategy{
+		batchLocal, batchCommon, batchFull, batchStaged, batchLazy, batchSubgroups, batchCandidates, batchTyped,
+	} {
+		got := make([][]int, len(conditions))
+		for i := range got {
+			got[i] = []int{-7}
+		}
+		var work batchWork
+		index.searchBatch(conditions, got, strategy, &work)
+		require.Equal(t, want, got, "strategy %d", strategy)
+	}
+	got := make([][]int, len(conditions))
+	for i := range got {
+		got[i] = []int{-7}
+	}
+	index.SearchBatch(conditions, got)
+	require.Equal(t, want, got)
+}
+
+func TestSearchBatchContract(t *testing.T) {
+	schema := Include(func(v int) (int, bool) { return v, true })
+	index, err := New[int, int](schema).Build(Zip([]int{2, 1, 2}, []int{9, 3, 8}))
+	require.NoError(t, err)
+	index.SearchBatch(nil, nil)
+	found := [][]int{{99}}
+	require.Panics(t, func() { index.SearchBatch([]int{1, 2}, found) })
+	require.Equal(t, [][]int{{99}}, found)
+	checkBatchAgainstLocal(t, index, []int{2, 1, 99, 2})
+}
+
+func TestSearchBatchDifferential(t *testing.T) {
+	for _, lossy := range []bool{false, true} {
+		for _, wildcard := range []bool{false, true} {
+			t.Run(fmt.Sprintf("lossy=%t/wildcard=%t", lossy, wildcard), func(t *testing.T) {
+				rows, ids := make([]batchFixture, 384), make([]int, 384)
+				for i := range rows {
+					rows[i] = batchFixture{group: i / 16, store: i % 4, slot: i % 3, from: i % 11, until: 30 + i%13}
+					if wildcard {
+						rows[i].missing = uint8(i % 32)
+					}
+					ids[i] = (i * 17) % 301
+				}
+				index, err := New[batchFixture, int](batchSchema(lossy)).Build(Zip(rows, ids))
+				require.NoError(t, err)
+				for _, length := range []int{0, 1, 4, 16, 100, 129, 300} {
+					queries := make([]batchFixture, length)
+					for i := range queries {
+						queries[i] = batchFixture{group: i % 29, store: i % 6, slot: i % 4, from: i % 40, until: i % 50}
+						queries[i].missing = uint8(i % 32)
+					}
+					checkBatchAgainstLocal(t, index, queries)
+					for i := range queries {
+						queries[i].group, queries[i].missing = 3, 0
+					}
+					checkBatchAgainstLocal(t, index, queries)
+				}
+			})
+		}
+	}
+}
+
+func TestSearchBatchWideAndExclusions(t *testing.T) {
+	rows, ids := make([]batchFixture, 400), make([]int, 400)
+	for i := range rows {
+		rows[i] = batchFixture{group: 1, store: 2, slot: i % 3, from: i % 10, until: 40}
+		ids[i] = i
+	}
+	schema := All(batchSchema(false), Exclude(func(v batchFixture) (int, bool) { return v.slot, true }))
+	index, err := New[batchFixture, int](schema).Build(Zip(rows, ids))
+	require.NoError(t, err)
+	queries := make([]batchFixture, 100)
+	for i := range queries {
+		queries[i] = batchFixture{group: 1, store: 2, slot: i % 4, from: 20, until: 20}
+	}
+	checkBatchAgainstLocal(t, index, queries)
+}
+
+func TestSearchBatchSixtyFourCandidatesAndWildcards(t *testing.T) {
+	rows, ids := make([]batchFixture, 64), make([]int, 64)
+	for i := range rows {
+		missing := uint8(0)
+		for bit, divisor := range map[uint8]int{2: 7, 4: 9, 8: 5, 16: 11} {
+			if i%divisor == 0 {
+				missing |= bit
+			}
+		}
+		rows[i] = batchFixture{group: 7, store: i % 3, slot: i % 4, from: i % 9, until: 20 + i%11, missing: missing}
+		ids[i] = 1000 - i
+	}
+	index, err := New[batchFixture, int](batchSchema(false)).Build(Zip(rows, ids))
+	require.NoError(t, err)
+	queries := make([]batchFixture, 128)
+	for i := range queries {
+		queries[i] = batchFixture{group: 7, store: i % 5, slot: i % 6, from: i % 40, until: i % 50}
+		queries[i].missing = uint8(i%16) << 1
+	}
+	checkBatchAgainstLocal(t, index, queries)
+	for i := range queries {
+		queries[i].group = 999
+	}
+	checkBatchAgainstLocal(t, index, queries)
+}
+
+func TestSearchBatchComparatorValuesAndRootFallback(t *testing.T) {
+	type query struct {
+		group int
+		value []int
+	}
+	get := func(v query) ([]int, bool) { return v.value, v.value != nil }
+	compare := func(a, b []int) int {
+		if len(a) != len(b) {
+			return cmp.Compare(len(a), len(b))
+		}
+		for i := range a {
+			if order := cmp.Compare(a[i], b[i]); order != 0 {
+				return order
+			}
+		}
+		return 0
+	}
+	rows := []query{{1, []int{1}}, {1, []int{2}}, {1, nil}, {2, []int{4}}}
+	ids := []int{9, 7, 4, 3}
+	for _, schema := range []Rule[query]{
+		All(Include(func(v query) (int, bool) { return v.group, true }), Greater(get, compare)),
+		Greater(get, compare), All[query](),
+	} {
+		index, err := New[query, int](schema).Build(Zip(rows, ids))
+		require.NoError(t, err)
+		queries := []query{{1, []int{1}}, {1, []int{2}}, {1, nil}, {2, []int{4}}}
+		checkBatchAgainstLocal(t, index, queries)
+	}
+}
+
+func TestSearchBatchManyOperands(t *testing.T) {
+	var rules []Rule[batchFixture]
+	for offset := range 10 {
+		rules = append(rules, Include(func(v batchFixture) (int, bool) { return v.group + offset, true }))
+	}
+	rows := []batchFixture{{group: 1}, {group: 2}, {group: 3}}
+	index, err := New[batchFixture, int](All(rules...)).Build(Zip(rows, []int{7, 8, 9}))
+	require.NoError(t, err)
+	queries := make([]batchFixture, 100)
+	for i := range queries {
+		queries[i].group = 2
+	}
+	checkBatchAgainstLocal(t, index, queries)
+}
+
+func TestSearchBatchConcurrent(t *testing.T) {
+	rows, ids := make([]batchFixture, 64), make([]int, 64)
+	for i := range rows {
+		rows[i] = batchFixture{group: i / 8, store: i % 3, slot: i % 4, from: i % 10, until: 30}
+		ids[i] = i
+	}
+	index, err := New[batchFixture, int](batchSchema(false)).Build(Zip(rows, ids))
+	require.NoError(t, err)
+	queries := make([]batchFixture, 100)
+	want := make([][]int, len(queries))
+	local := index.Local()
+	for i := range queries {
+		queries[i] = batchFixture{group: i % 8, store: i % 3, slot: i % 4, from: 15, until: 15}
+		local.Search(queries[i], &want[i])
+	}
+	local.Close()
+	var group sync.WaitGroup
+	failures := make(chan int, 8)
+	for range 8 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			found := make([][]int, len(queries))
+			for range 20 {
+				for i := range found {
+					found[i] = found[i][:0]
+				}
+				index.SearchBatch(queries, found)
+				for i := range found {
+					if !slices.Equal(found[i], want[i]) {
+						failures <- i
+						return
+					}
+				}
+			}
+		}()
+	}
+	group.Wait()
+	close(failures)
+	for row := range failures {
+		t.Errorf("concurrent result changed at row %d", row)
+	}
+}
+
+func TestSearchBatchMixedWideGroupFallback(t *testing.T) {
+	rows, ids := make([]batchFixture, 104), make([]int, 104)
+	for i := range rows {
+		group := 1
+		if i >= 4 {
+			group = 2
+		}
+		rows[i] = batchFixture{group: group, from: i % 5, until: 30, missing: 2 | 4}
+		ids[i] = i
+	}
+	index, err := New[batchFixture, int](batchSchema(false)).Build(Zip(rows, ids))
+	require.NoError(t, err)
+	queries := make([]batchFixture, 100)
+	for i := range queries {
+		queries[i] = batchFixture{group: 1 + i%2, from: 15, until: 15}
+	}
+	checkBatchAgainstLocal(t, index, queries)
+}
+
+type batchOpaqueRule struct{ Rule[batchFixture] }
+
+func (r *batchOpaqueRule) newState(ids *nodeIDAllocator, hints *buildStatistics) Rule[batchFixture] {
+	return &batchOpaqueRule{r.Rule.newState(ids, hints)}
+}
+func (r *batchOpaqueRule) prepareSearch() { prepareRuleSearch(r.Rule) }
+func (r *batchOpaqueRule) matchesID(v batchFixture, id uint32) bool {
+	return r.Rule.(ruleIDMatcher[batchFixture]).matchesID(v, id)
+}
+
+func TestSearchBatchOpaqueQueryKeys(t *testing.T) {
+	rows := []batchFixture{{group: 1, store: 1}, {group: 1, store: 2}, {group: 2, store: 3}}
+	schema := All(Include(func(v batchFixture) (int, bool) { return v.group, true }),
+		&batchOpaqueRule{Include(func(v batchFixture) (int, bool) { return v.store, true })})
+	index, err := New[batchFixture, int](schema).Build(Zip(rows, []int{3, 2, 1}))
+	require.NoError(t, err)
+	queries := []batchFixture{{group: 1, store: 1}, {group: 1, store: 2}, {group: 1, store: 4}}
+	checkBatchAgainstLocal(t, index, queries)
+}
+
+func TestSearchBatchObservedLocalFallback(t *testing.T) {
+	var inspector Inspector
+	schema := Inspect(&inspector, batchSchema(false))
+	rows := []batchFixture{{group: 1, store: 2, slot: 3, from: 0, until: 30}}
+	index, err := New[batchFixture, int](schema).Build(Zip(rows, []int{42}))
+	require.NoError(t, err)
+	query := batchFixture{group: 1, store: 2, slot: 3, from: 15, until: 15}
+	index.localTelemetry.Store(63)
+	found := make([][]int, 4)
+	index.SearchBatch([]batchFixture{query, query, query, query}, found)
+	require.Equal(t, [][]int{{42}, {42}, {42}, {42}}, found)
+}

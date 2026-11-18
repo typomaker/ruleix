@@ -1,0 +1,21 @@
+File: ruleix-batch.test
+Type: alloc_space
+Time: 2026-11-18 02:29:24 MSK
+Active filters:
+   focus=searchProductionBatch
+Showing nodes accounting for 310.78MB, 61.02% of 509.33MB total
+Dropped 1 node (cum <= 2.55MB)
+      flat  flat%   sum%        cum   cum%
+  284.78MB 55.91% 55.91%   311.28MB 61.12%  github.com/typomaker/ruleix.batchLazyMasks[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" }]
+      22MB  4.32% 60.23%       22MB  4.32%  github.com/typomaker/ruleix.(*betweenRule[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.struct { time.wall uint64; time.ext int64; time.loc *time.Location }]).localQueryKey
+    3.50MB  0.69% 60.92%     3.50MB  0.69%  github.com/typomaker/ruleix.(*eqRule[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8,go.shape.[16]uint8]).localQueryKey
+    0.50MB 0.098% 61.02%   311.78MB 61.21%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).searchBatchChunk
+         0     0% 61.02%   311.78MB 61.21%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).SearchBatchVariant
+         0     0% 61.02%   311.78MB 61.21%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).searchBatch
+         0     0% 61.02%    26.50MB  5.20%  github.com/typomaker/ruleix.batchClassify[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" }]
+         0     0% 61.02%   311.28MB 61.12%  github.com/typomaker/ruleix.batchOperandMasks[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" }]
+         0     0% 61.02%   311.78MB 61.21%  github.com/typomaker/ruleix_test.BenchmarkProductionBatch.func1
+         0     0% 61.02%   311.78MB 61.21%  github.com/typomaker/ruleix_test.benchmarkProductionBatchCase
+         0     0% 61.02%   311.78MB 61.21%  github.com/typomaker/ruleix_test.searchProductionBatch
+         0     0% 61.02%   311.78MB 61.21%  testing.(*B).run1.func1
+         0     0% 61.02%   311.78MB 61.21%  testing.(*B).runN

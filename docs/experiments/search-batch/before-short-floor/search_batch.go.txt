@@ -1,0 +1,254 @@
+package ruleix
+
+import (
+	"math/bits"
+	"sync"
+	"unsafe"
+)
+
+// SearchBatch appends the matches for conditions[i] to found[i], preserving
+// first-insertion ID order and existing destination elements. The outer slices
+// must have equal lengths; a mismatch panics before any result is changed.
+// Empty batches do no work. SearchBatch is experimental; Search and Local.Search
+// retain their existing contracts. Callers must not concurrently mutate inputs
+// or destinations, and destination backing arrays must not overlap.
+func (ix *Index[C, ID]) SearchBatch(conditions []C, found [][]ID) {
+	ix.searchBatch(conditions, found, batchTyped, nil)
+}
+
+type batchStrategy uint8
+
+const (
+	batchLocal batchStrategy = iota
+	batchCommon
+	batchFull
+	batchStaged
+	batchLazy
+	batchSubgroups
+	batchCandidates
+	batchTyped
+)
+
+const batchWidth = 128
+const batchCandidateLimit = 64
+
+type batchWork struct {
+	anchorLookups, keyCaptures, keyComparisons uint64
+	maskEvaluations, candidateChecks           uint64
+	groups, fallbackOffers                     uint64
+	peakScratchBytes                           uint64
+}
+
+// Scratch is representation-only and shared across index types. Reset drops all
+// posting references before recycling, so it cannot retain an originating Index.
+type batchScratch struct {
+	postings [batchWidth]*equalitySet
+	used     [batchWidth]bool
+	rows     [batchWidth]int
+	ids      [batchCandidateLimit]uint32
+	masks    [batchWidth]uint64
+}
+
+var batchScratchPool = sync.Pool{New: func() any { return new(batchScratch) }}
+
+type batchPostingSource[T any] interface {
+	candidateMaskSource[T]
+	batchPostings([]T, []*equalitySet, *batchWork)
+}
+
+// Capabilities come from All's existing Build-prepared execution descriptors.
+// No batch-specific state is retained in an Index or a recycled Local.
+func (ix *Index[C, ID]) searchBatch(conditions []C, found [][]ID, strategy batchStrategy, work *batchWork) {
+	if len(conditions) != len(found) {
+		panic("ruleix: batch destination length differs from conditions")
+	}
+	if len(conditions) == 0 {
+		return
+	}
+	context := ix.batchContext()
+	local := &context
+	defer local.Close()
+	// Two-offer empty controls do not amortize anchor selection. The owned
+	// context is open and every destination pointer is known nonnil here.
+	if len(conditions) <= 2 {
+		batchLocalSearch(local, conditions, found, nil, work)
+		return
+	}
+	root, supported := ix.root.(*allRule[C])
+	if strategy == batchLocal || !supported || !root.directIDComplete || local.observed {
+		batchLocalSearch(local, conditions, found, nil, work)
+		return
+	}
+	// Build's mask capability proves bounded native mask operations for every
+	// child. Ordinary ordered/Between ID matchers can be much more expensive
+	// than materializing once and reusing Local caches (notably at 32 IDs).
+	if strategy == batchTyped && !root.narrowMaskPrepared {
+		batchLocalSearch(local, conditions, found, nil, work)
+		return
+	}
+	for start := 0; start < len(conditions); start += batchWidth {
+		end := min(start+batchWidth, len(conditions))
+		ix.searchBatchChunk(root, local, conditions[start:end], found[start:end], strategy, work)
+	}
+}
+
+func batchLocalSearch[C any, ID comparable](
+	local *Local[C, ID], values []C, found [][]ID, rows []int, work *batchWork,
+) {
+	if rows == nil {
+		for i, value := range values {
+			local.index.search(value, &found[i], local.pool)
+		}
+		if work != nil {
+			work.fallbackOffers += uint64(len(values))
+		}
+		return
+	}
+	for _, row := range rows {
+		local.index.search(values[row], &found[row], local.pool)
+	}
+	if work != nil {
+		work.fallbackOffers += uint64(len(rows))
+	}
+}
+
+func (ix *Index[C, ID]) searchBatchChunk(
+	root *allRule[C], local *Local[C, ID], values []C, found [][]ID, strategy batchStrategy, work *batchWork,
+) {
+	anchor, source, card := batchAnchor(root, values[0], work)
+	if anchor < 0 || card > batchCandidateLimit {
+		batchLocalSearch(local, values, found, nil, work)
+		return
+	}
+	scratch := batchScratchPool.Get().(*batchScratch)
+	defer func() {
+		clear(scratch.postings[:])
+		batchScratchPool.Put(scratch)
+	}()
+	clear(scratch.used[:])
+	postings := scratch.postings[:len(values)]
+	source.batchPostings(values, postings, work)
+	if work != nil {
+		work.peakScratchBytes = max(work.peakScratchBytes, uint64(unsafe.Sizeof(batchScratch{})))
+	}
+	if strategy != batchSubgroups && strategy != batchCandidates && strategy != batchTyped {
+		for _, posting := range postings[1:len(values)] {
+			if posting != postings[0] {
+				batchLocalSearch(local, values, found, nil, work)
+				return
+			}
+		}
+	}
+	used, rows := scratch.used[:], scratch.rows[:]
+	for first := range values {
+		if used[first] || postings[first] == nil {
+			continue
+		}
+		n := 0
+		for i := first; i < len(values); i++ {
+			if !used[i] && postings[i] == postings[first] {
+				used[i], rows[n] = true, i
+				n++
+			}
+		}
+		ix.searchBatchGroup(root, local, values, found, rows[:n], postings[first], anchor, strategy, scratch, work)
+	}
+}
+
+// Only exact equality without wildcard rows proves that a missing posting is
+// empty. The capability is established from immutable Build-prepared rules.
+func batchAnchor[T any](root *allRule[T], value T, work *batchWork) (int, batchPostingSource[T], uint64) {
+	best, size := -1, ^uint64(0)
+	var source batchPostingSource[T]
+	for i, child := range root.children {
+		proof, ok := child.(emptyKeyOperand[T])
+		if !ok || !proof.supportsEmptyKeyCheck() {
+			continue
+		}
+		operand, ok := child.(batchPostingSource[T])
+		if !ok {
+			continue
+		}
+		if work != nil {
+			work.anchorLookups++
+		}
+		posting := operand.candidateMaskPosting(value)
+		card := uint64(0)
+		if posting != nil {
+			card = posting.cardinality()
+		}
+		if card < size {
+			best, size, source = i, card, operand
+		}
+		if card == 0 {
+			break
+		}
+	}
+	return best, source, size
+}
+
+func batchPostingIDs(posting *equalitySet, dst []uint32) []uint32 {
+	if posting.bits != nil {
+		posting.bits.Iterate(func(id uint32) bool {
+			dst = append(dst, id)
+			return true
+		})
+		return dst
+	}
+	if posting.small != nil {
+		return append(dst, posting.small...)
+	}
+	return append(dst, posting.single)
+}
+
+func batchAllBits(count int) uint64 { return ^uint64(0) >> (64 - count) }
+
+func (ix *Index[C, ID]) searchBatchGroup(
+	root *allRule[C], local *Local[C, ID], values []C, found [][]ID, rows []int,
+	posting *equalitySet, anchor int, strategy batchStrategy, scratch *batchScratch, work *batchWork,
+) {
+	card := posting.cardinality()
+	if card > batchCandidateLimit {
+		batchLocalSearch(local, values, found, rows, work)
+		return
+	}
+	// For a short group, a global empty proof can cost less than decoding a
+	// wide candidate posting and preparing its bound/wildcard masks.
+	if strategy == batchTyped && card > 2*allCandidateScanLimit && len(rows) <= 4 &&
+		batchEveryEmpty(root, values, rows) {
+		return
+	}
+	ids := batchPostingIDs(posting, scratch.ids[:0])
+	if work != nil {
+		work.groups++
+	}
+	masks := scratch.masks[:len(rows)]
+	for i := range len(rows) {
+		masks[i] = batchAllBits(len(ids))
+	}
+	switch strategy {
+	case batchTyped:
+		batchTypedMasks(root, values, rows, ids, masks, anchor, work)
+	case batchCandidates:
+		batchCandidateMasks(root, values, rows, ids, masks, anchor, work)
+	default:
+		batchOperandMasks(root, values, rows, ids, masks, anchor, strategy, work)
+	}
+	for i, row := range rows {
+		for mask := masks[i]; mask != 0; mask &= mask - 1 {
+			id := ids[bits.TrailingZeros64(mask)]
+			if !isExcluded(ix.exclusions, values[row], id, local.pool) {
+				found[row] = append(found[row], ix.values[id])
+			}
+		}
+	}
+}
+
+func batchEveryEmpty[T any](root *allRule[T], values []T, rows []int) bool {
+	for _, row := range rows {
+		if !root.isCardinalityZero(values[row]) {
+			return false
+		}
+	}
+	return true
+}

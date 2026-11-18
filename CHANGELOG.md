@@ -2,11 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Added experimental `Index.SearchBatch(conditions, found)` with per-condition append results; see [batch search](docs/search-batch.md).
 ## [0.9.0] - 2026-11-18
 
 ### Changed
@@ -18,8 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   result caches. `Index.Search` remains the controlled-memory path for one-off
   queries.
 - Prepared candidate masks, portable Go `Between` matching, and early empty
-  checks accelerate related offers through one `Local`, with no API changes.
-  The [release report](docs/release-0.9.0.md) links the complete measurements.
+  checks accelerate related offers through one `Local`, with no API changes; see the [release report](docs/release-0.9.0.md).
 
 - Removed the unused `Visit` API; use `Search` with caller-owned buffers.
 

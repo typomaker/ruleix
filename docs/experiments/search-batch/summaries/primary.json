@@ -1,0 +1,236 @@
+{
+  "BenchmarkProductionBatch/mixed/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 31841.0,
+    "p99-ns/request": 56125.0,
+    "p99.9-ns/request": 69792.0,
+    "B/op": 807.0,
+    "allocs/op": 11.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/zero/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 6158.0,
+    "p99-ns/request": 6667.0,
+    "p99.9-ns/request": 13625.0,
+    "B/op": 24.0,
+    "allocs/op": 1.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/storezero/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 6028.0,
+    "p99-ns/request": 6542.0,
+    "p99.9-ns/request": 14084.0,
+    "B/op": 24.0,
+    "allocs/op": 1.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/slotzero/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 4696.0,
+    "p99-ns/request": 5083.0,
+    "p99.9-ns/request": 11792.0,
+    "B/op": 24.0,
+    "allocs/op": 1.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/intersectzero/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 19174.0,
+    "p99-ns/request": 43500.0,
+    "p99.9-ns/request": 59792.0,
+    "B/op": 786.0,
+    "allocs/op": 10.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/alternating/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 23414.0,
+    "p99-ns/request": 35500.0,
+    "p99.9-ns/request": 55833.0,
+    "B/op": 794.0,
+    "allocs/op": 10.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/tiny/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 19090.0,
+    "p99-ns/request": 24917.0,
+    "p99.9-ns/request": 46000.0,
+    "B/op": 760.0,
+    "allocs/op": 9.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/medium/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 32141.0,
+    "p99-ns/request": 46333.0,
+    "p99.9-ns/request": 65666.0,
+    "B/op": 776.0,
+    "allocs/op": 10.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/broad/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 46263.0,
+    "p99-ns/request": 59041.0,
+    "p99.9-ns/request": 81417.0,
+    "B/op": 957.0,
+    "allocs/op": 17.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/rotate/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 36165.0,
+    "p99-ns/request": 57125.0,
+    "p99.9-ns/request": 79625.0,
+    "B/op": 807.0,
+    "allocs/op": 11.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/identical/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 39719.0,
+    "p99-ns/request": 60750.0,
+    "p99.9-ns/request": 77667.0,
+    "B/op": 807.0,
+    "allocs/op": 11.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/unrelated/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 174262.0,
+    "p99-ns/request": 249916.0,
+    "p99.9-ns/request": 345375.0,
+    "B/op": 17125.0,
+    "allocs/op": 302.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/partial/100/Local": {
+    "iterations": 40000,
+    "mean_ns": 114505.0,
+    "p99-ns/request": 161166.0,
+    "p99.9-ns/request": 189708.0,
+    "B/op": 1171.0,
+    "allocs/op": 30.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/mixed/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 12385.0,
+    "p99-ns/request": 22959.0,
+    "p99.9-ns/request": 29709.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/zero/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 1493.0,
+    "p99-ns/request": 1541.0,
+    "p99.9-ns/request": 1708.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/storezero/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 1553.0,
+    "p99-ns/request": 1625.0,
+    "p99.9-ns/request": 2041.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/slotzero/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 1422.0,
+    "p99-ns/request": 1459.0,
+    "p99.9-ns/request": 1625.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/intersectzero/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 4268.0,
+    "p99-ns/request": 4667.0,
+    "p99.9-ns/request": 13583.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/alternating/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 10768.0,
+    "p99-ns/request": 19209.0,
+    "p99.9-ns/request": 25375.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/tiny/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 7163.0,
+    "p99-ns/request": 9250.0,
+    "p99.9-ns/request": 20917.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/medium/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 13374.0,
+    "p99-ns/request": 16958.0,
+    "p99.9-ns/request": 28500.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/broad/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 15898.0,
+    "p99-ns/request": 22541.0,
+    "p99.9-ns/request": 34125.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/rotate/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 14164.0,
+    "p99-ns/request": 25375.0,
+    "p99.9-ns/request": 34000.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/identical/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 16993.0,
+    "p99-ns/request": 20709.0,
+    "p99.9-ns/request": 35792.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/unrelated/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 60939.0,
+    "p99-ns/request": 76959.0,
+    "p99.9-ns/request": 103042.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  },
+  "BenchmarkProductionBatch/partial/100/Auto": {
+    "iterations": 40000,
+    "mean_ns": 25513.0,
+    "p99-ns/request": 36625.0,
+    "p99.9-ns/request": 57708.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0,
+    "samples": 3
+  }
+}

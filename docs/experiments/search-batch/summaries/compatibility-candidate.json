@@ -1,0 +1,29 @@
+{
+  "BenchmarkProductionBatch/mixed/100/Local": {
+    "iterations": 20000.0,
+    "mean_ns": 31649.5,
+    "p99-ns/request": 55854.5,
+    "p99.9-ns/request": 67667.0,
+    "B/op": 807.0,
+    "allocs/op": 11.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/zero/100/Local": {
+    "iterations": 20000.0,
+    "mean_ns": 6236.0,
+    "p99-ns/request": 6771.0,
+    "p99.9-ns/request": 17062.5,
+    "B/op": 24.0,
+    "allocs/op": 1.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/unrelated/100/Local": {
+    "iterations": 20000.0,
+    "mean_ns": 174351.0,
+    "p99-ns/request": 247978.5,
+    "p99.9-ns/request": 349708.0,
+    "B/op": 17126.0,
+    "allocs/op": 302.0,
+    "samples": 2
+  }
+}

@@ -1,0 +1,27 @@
+File: candidate.test
+Type: cpu
+Time: 2026-11-18 03:03:14 MSK
+Duration: 2.22s, Total samples = 1.91s (85.88%)
+Active filters:
+   focus=searchProductionBatch
+Showing nodes accounting for 0.29s, 15.18% of 1.91s total
+Showing top 18 nodes out of 45
+      flat  flat%   sum%        cum   cum%
+     0.05s  2.62%  2.62%      0.25s 13.09%  github.com/typomaker/ruleix.batchClassify[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" }]
+     0.03s  1.57%  4.19%      0.03s  1.57%  github.com/typomaker/ruleix_test.productionDumpSchema.func2
+     0.03s  1.57%  5.76%      0.03s  1.57%  time.div
+     0.02s  1.05%  6.81%      0.02s  1.05%  github.com/RoaringBitmap/roaring/v2.binarySearch
+     0.02s  1.05%  7.85%      0.07s  3.66%  github.com/typomaker/ruleix_test.productionDumpBetween.func1
+     0.02s  1.05%  8.90%      0.08s  4.19%  github.com/typomaker/ruleix_test.productionDumpBetween.func2
+     0.02s  1.05%  9.95%      0.02s  1.05%  time.(*Time).sec (inline)
+     0.02s  1.05% 10.99%      0.03s  1.57%  time.Time.Add
+     0.01s  0.52% 11.52%      0.03s  1.57%  github.com/RoaringBitmap/roaring/v2.(*Bitmap).Contains
+     0.01s  0.52% 12.04%      0.01s  0.52%  github.com/typomaker/ruleix_test.productionDumpSchema.func1
+     0.01s  0.52% 12.57%      0.01s  0.52%  github.com/typomaker/ruleix_test.productionDumpSchema.func4
+     0.01s  0.52% 13.09%      0.01s  0.52%  runtime.getitab
+     0.01s  0.52% 13.61%      0.01s  0.52%  runtime.tracebackPCs
+     0.01s  0.52% 14.14%      0.01s  0.52%  time.(*Time).addSec
+     0.01s  0.52% 14.66%      0.03s  1.57%  time.Time.Compare
+     0.01s  0.52% 15.18%      0.07s  3.66%  time.Time.Truncate
+         0     0% 15.18%      0.02s  1.05%  github.com/RoaringBitmap/roaring/v2.(*arrayContainer).contains
+         0     0% 15.18%      0.29s 15.18%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).SearchBatchVariant

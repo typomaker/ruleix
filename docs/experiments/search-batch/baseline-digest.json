@@ -1,0 +1,16 @@
+{
+  "Auto": {
+    "Rows": 96630,
+    "Requests": 697,
+    "Offers": 69700,
+    "Matches": 11470,
+    "SHA256": "d3b9ad65d45b8d15577575f445011a672c480c21cf7431a67fb884be3d17c7f6"
+  },
+  "Local": {
+    "Rows": 96630,
+    "Requests": 697,
+    "Offers": 69700,
+    "Matches": 11470,
+    "SHA256": "d3b9ad65d45b8d15577575f445011a672c480c21cf7431a67fb884be3d17c7f6"
+  }
+}

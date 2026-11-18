@@ -1,0 +1,27 @@
+File: candidate.test
+Type: cpu
+Time: 2026-11-18 04:29:26 MSK
+Duration: 2.43s, Total samples = 2.02s (82.98%)
+Active filters:
+   focus=searchProductionBatch
+Showing nodes accounting for 0.61s, 30.20% of 2.02s total
+Showing top 18 nodes out of 56
+      flat  flat%   sum%        cum   cum%
+     0.19s  9.41%  9.41%      0.19s  9.41%  github.com/typomaker/ruleix.(*localNodeCache).reset
+     0.08s  3.96% 13.37%      0.67s 33.17%  github.com/typomaker/ruleix_test.searchProductionBatch
+     0.06s  2.97% 16.34%      0.14s  6.93%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" }]).loadLocalQueryResult
+     0.04s  1.98% 18.32%      0.24s 11.88%  github.com/typomaker/ruleix.(*bitmapPool).resetLocal
+     0.04s  1.98% 20.30%      0.23s 11.39%  github.com/typomaker/ruleix.searchAllMatches[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]
+     0.03s  1.49% 21.78%      0.27s 13.37%  github.com/typomaker/ruleix.(*Local[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).Search
+     0.02s  0.99% 22.77%      0.03s  1.49%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" }]).lookupPlanningBitmap
+     0.02s  0.99% 23.76%      0.05s  2.48%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" }]).rankChildren
+     0.02s  0.99% 24.75%      0.03s  1.49%  github.com/typomaker/ruleix.(*equalityIndex[go.shape.[16]uint8]).get (inline)
+     0.02s  0.99% 25.74%      0.02s  0.99%  runtime.(*itabTableType).find
+     0.02s  0.99% 26.73%      0.03s  1.49%  runtime.(*mspan).refillAllocCache
+     0.01s   0.5% 27.23%      0.24s 11.88%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).search
+     0.01s   0.5% 27.72%      0.08s  3.96%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" }]).loadEmptyOperandResult
+     0.01s   0.5% 28.22%      0.04s  1.98%  github.com/typomaker/ruleix.(*eqRule[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8,go.shape.[16]uint8]).isEmptyKey
+     0.01s   0.5% 28.71%      0.01s   0.5%  github.com/typomaker/ruleix_test.productionDumpSchema.func3
+     0.01s   0.5% 29.21%      0.01s   0.5%  internal/runtime/atomic.(*Uint32).Load (inline)
+     0.01s   0.5% 29.70%      0.01s   0.5%  internal/runtime/atomic.(*UnsafePointer).StoreNoWB (inline)
+     0.01s   0.5% 30.20%      0.01s   0.5%  internal/runtime/maps.(*Iter).Init

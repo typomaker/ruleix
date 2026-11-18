@@ -1,0 +1,16 @@
+File: candidate.test
+Type: alloc_space
+Time: 2026-11-18 03:03:30 MSK
+Active filters:
+   focus=searchProductionBatch
+Showing nodes accounting for 362.13kB, 0.22% of 161021.12kB total
+      flat  flat%   sum%        cum   cum%
+  357.04kB  0.22%  0.22%   362.13kB  0.22%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).Local
+    5.08kB 0.0032%  0.22%     5.08kB 0.0032%  github.com/typomaker/ruleix.newLocalBitmapPool
+         0     0%  0.22%   362.13kB  0.22%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).SearchBatch (inline)
+         0     0%  0.22%   362.13kB  0.22%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).searchBatch
+         0     0%  0.22%   362.13kB  0.22%  github.com/typomaker/ruleix_test.BenchmarkProductionBatch.func1.1.1
+         0     0%  0.22%   362.13kB  0.22%  github.com/typomaker/ruleix_test.benchmarkProductionBatchCase
+         0     0%  0.22%   362.13kB  0.22%  github.com/typomaker/ruleix_test.searchProductionBatch
+         0     0%  0.22%   362.13kB  0.22%  testing.(*B).run1.func1
+         0     0%  0.22%   362.13kB  0.22%  testing.(*B).runN

@@ -1,0 +1,35 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionBatch/mixed/0/Auto  	   20000	        60.31 ns/op	        42.00 p99-ns/request	        42.00 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/mixed/1/Auto  	   20000	      2120 ns/op	      4458 p99-ns/request	     10084 p99.9-ns/request	     783 B/op	      10 allocs/op
+BenchmarkProductionBatch/mixed/2/Auto  	   20000	      2776 ns/op	      4917 p99-ns/request	     11166 p99.9-ns/request	     783 B/op	      10 allocs/op
+BenchmarkProductionBatch/mixed/3/Auto  	   20000	      3554 ns/op	      5750 p99-ns/request	     10125 p99.9-ns/request	     783 B/op	      10 allocs/op
+BenchmarkProductionBatch/mixed/4/Auto  	   20000	      3859 ns/op	      6167 p99-ns/request	     12083 p99.9-ns/request	     783 B/op	      10 allocs/op
+BenchmarkProductionBatch/mixed/16/Auto 	   20000	      4131 ns/op	      7042 p99-ns/request	     11084 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/zero/0/Auto   	   20000	        58.71 ns/op	        42.00 p99-ns/request	        42.00 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/zero/1/Auto   	   20000	       294.2 ns/op	       292.0 p99-ns/request	       375.0 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/zero/2/Auto   	   20000	       357.4 ns/op	       375.0 p99-ns/request	       459.0 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/zero/3/Auto   	   20000	       410.5 ns/op	       417.0 p99-ns/request	       541.0 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/zero/4/Auto   	   20000	       473.0 ns/op	       500.0 p99-ns/request	       625.0 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/zero/16/Auto  	   20000	       506.5 ns/op	       500.0 p99-ns/request	       625.0 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/identical/0/Auto         	   20000	        58.30 ns/op	        42.00 p99-ns/request	        42.00 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/identical/1/Auto         	   20000	      2119 ns/op	      4458 p99-ns/request	      8250 p99.9-ns/request	     783 B/op	      10 allocs/op
+BenchmarkProductionBatch/identical/2/Auto         	   20000	      2829 ns/op	      4750 p99-ns/request	      8334 p99.9-ns/request	     783 B/op	      10 allocs/op
+BenchmarkProductionBatch/identical/3/Auto         	   20000	      3785 ns/op	      6084 p99-ns/request	     11459 p99.9-ns/request	     783 B/op	      10 allocs/op
+BenchmarkProductionBatch/identical/4/Auto         	   20000	      4150 ns/op	      6292 p99-ns/request	     10709 p99.9-ns/request	     783 B/op	      10 allocs/op
+BenchmarkProductionBatch/identical/16/Auto        	   20000	      4458 ns/op	      5792 p99-ns/request	     18625 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/unrelated/0/Auto         	   20000	        58.28 ns/op	        42.00 p99-ns/request	        42.00 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/unrelated/1/Auto         	   20000	      2176 ns/op	      5542 p99-ns/request	      9625 p99.9-ns/request	     783 B/op	      10 allocs/op
+BenchmarkProductionBatch/unrelated/2/Auto         	   20000	      3896 ns/op	      6583 p99-ns/request	     13541 p99.9-ns/request	     843 B/op	      13 allocs/op
+BenchmarkProductionBatch/unrelated/3/Auto         	   20000	      5975 ns/op	     10167 p99-ns/request	     33833 p99.9-ns/request	     951 B/op	      18 allocs/op
+BenchmarkProductionBatch/unrelated/4/Auto         	   20000	      8218 ns/op	     15625 p99-ns/request	     38125 p99.9-ns/request	    1058 B/op	      24 allocs/op
+BenchmarkProductionBatch/unrelated/16/Auto        	   20000	     10918 ns/op	     15250 p99-ns/request	     22833 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/partial/0/Auto           	   20000	        58.29 ns/op	        42.00 p99-ns/request	        42.00 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkProductionBatch/partial/1/Auto           	   20000	      2110 ns/op	      4292 p99-ns/request	      9709 p99.9-ns/request	     783 B/op	      10 allocs/op
+BenchmarkProductionBatch/partial/2/Auto           	   20000	      4179 ns/op	      8459 p99-ns/request	     31875 p99.9-ns/request	     843 B/op	      13 allocs/op
+BenchmarkProductionBatch/partial/3/Auto           	   20000	      6062 ns/op	      9750 p99-ns/request	     31833 p99.9-ns/request	     951 B/op	      18 allocs/op
+BenchmarkProductionBatch/partial/4/Auto           	   20000	      8165 ns/op	     13667 p99-ns/request	     37750 p99.9-ns/request	    1058 B/op	      24 allocs/op
+BenchmarkProductionBatch/partial/16/Auto          	   20000	      7500 ns/op	     12209 p99-ns/request	     24542 p99.9-ns/request	       0 B/op	       0 allocs/op
+PASS

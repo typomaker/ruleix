@@ -1,0 +1,18 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionBatch/mixed/100/Subgroups         	    3000	     28787 ns/op	     58250 p99-ns/request	     66958 p99.9-ns/request	    1375 B/op	      35 allocs/op
+BenchmarkProductionBatch/zero/100/Subgroups          	    3000	      1488 ns/op	      1583 p99-ns/request	      1708 p99.9-ns/request	       2 B/op	       0 allocs/op
+BenchmarkProductionBatch/storezero/100/Subgroups     	    3000	      1554 ns/op	      1625 p99-ns/request	      1833 p99.9-ns/request	       2 B/op	       0 allocs/op
+BenchmarkProductionBatch/slotzero/100/Subgroups      	    3000	      1475 ns/op	      1583 p99-ns/request	     10291 p99.9-ns/request	       2 B/op	       0 allocs/op
+BenchmarkProductionBatch/intersectzero/100/Subgroups 	    3000	      4114 ns/op	      4458 p99-ns/request	     11125 p99.9-ns/request	      26 B/op	       1 allocs/op
+BenchmarkProductionBatch/alternating/100/Subgroups   	    3000	     19433 ns/op	     37000 p99-ns/request	     47167 p99.9-ns/request	    1014 B/op	      29 allocs/op
+BenchmarkProductionBatch/tiny/100/Subgroups          	    3000	     14359 ns/op	     21625 p99-ns/request	     34667 p99.9-ns/request	     915 B/op	      28 allocs/op
+BenchmarkProductionBatch/medium/100/Subgroups        	    3000	     33135 ns/op	     55459 p99-ns/request	     58625 p99.9-ns/request	    1566 B/op	      38 allocs/op
+BenchmarkProductionBatch/broad/100/Subgroups         	    3000	     39492 ns/op	     59125 p99-ns/request	     74959 p99.9-ns/request	    1662 B/op	      40 allocs/op
+BenchmarkProductionBatch/rotate/100/Subgroups        	    3000	     44945 ns/op	     75333 p99-ns/request	    101292 p99.9-ns/request	    1375 B/op	      35 allocs/op
+BenchmarkProductionBatch/identical/100/Subgroups     	    3000	     24479 ns/op	     29792 p99-ns/request	     65917 p99.9-ns/request	     205 B/op	       5 allocs/op
+BenchmarkProductionBatch/unrelated/100/Subgroups     	    3000	     81377 ns/op	    107916 p99-ns/request	    143750 p99.9-ns/request	    5509 B/op	     177 allocs/op
+BenchmarkProductionBatch/partial/100/Subgroups       	    3000	     46511 ns/op	     65958 p99-ns/request	    101666 p99.9-ns/request	    2885 B/op	      90 allocs/op
+PASS

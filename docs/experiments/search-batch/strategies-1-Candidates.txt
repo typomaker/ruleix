@@ -1,0 +1,18 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionBatch/mixed/100/Candidates         	    3000	     32121 ns/op	     74083 p99-ns/request	     79208 p99.9-ns/request	    1375 B/op	      35 allocs/op
+BenchmarkProductionBatch/zero/100/Candidates          	    3000	      1493 ns/op	      1500 p99-ns/request	      1666 p99.9-ns/request	       2 B/op	       0 allocs/op
+BenchmarkProductionBatch/storezero/100/Candidates     	    3000	      1558 ns/op	      1708 p99-ns/request	      1958 p99.9-ns/request	       2 B/op	       0 allocs/op
+BenchmarkProductionBatch/slotzero/100/Candidates      	    3000	      1425 ns/op	      1500 p99-ns/request	      1792 p99.9-ns/request	       2 B/op	       0 allocs/op
+BenchmarkProductionBatch/intersectzero/100/Candidates 	    3000	      4338 ns/op	      4750 p99-ns/request	      5208 p99.9-ns/request	      26 B/op	       1 allocs/op
+BenchmarkProductionBatch/alternating/100/Candidates   	    3000	     25251 ns/op	     56791 p99-ns/request	    241500 p99.9-ns/request	    1014 B/op	      29 allocs/op
+BenchmarkProductionBatch/tiny/100/Candidates          	    3000	     14074 ns/op	     21000 p99-ns/request	     31417 p99.9-ns/request	     915 B/op	      28 allocs/op
+BenchmarkProductionBatch/medium/100/Candidates        	    3000	     36476 ns/op	     57709 p99-ns/request	     71791 p99.9-ns/request	    1566 B/op	      38 allocs/op
+BenchmarkProductionBatch/broad/100/Candidates         	    3000	     48287 ns/op	     74834 p99-ns/request	     83334 p99.9-ns/request	    1662 B/op	      40 allocs/op
+BenchmarkProductionBatch/rotate/100/Candidates        	    3000	     48472 ns/op	     91125 p99-ns/request	    123959 p99.9-ns/request	    1375 B/op	      35 allocs/op
+BenchmarkProductionBatch/identical/100/Candidates     	    3000	     21135 ns/op	     25042 p99-ns/request	     39250 p99.9-ns/request	     205 B/op	       5 allocs/op
+BenchmarkProductionBatch/unrelated/100/Candidates     	    3000	    119536 ns/op	    146875 p99-ns/request	    196625 p99.9-ns/request	    5509 B/op	     177 allocs/op
+BenchmarkProductionBatch/partial/100/Candidates       	    3000	     62858 ns/op	     94625 p99-ns/request	    114542 p99.9-ns/request	    2885 B/op	      90 allocs/op
+PASS

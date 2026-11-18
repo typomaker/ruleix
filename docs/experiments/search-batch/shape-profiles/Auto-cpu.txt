@@ -1,0 +1,27 @@
+File: ruleix-batch-final-capability.test
+Type: cpu
+Time: 2026-11-18 03:26:22 MSK
+Duration: 1.35s, Total samples = 1.07s (79.06%)
+Active filters:
+   focus=benchmarkBatchShapeCase
+Showing nodes accounting for 0.34s, 31.78% of 1.07s total
+Showing top 18 nodes out of 95
+      flat  flat%   sum%        cum   cum%
+     0.06s  5.61%  5.61%      0.14s 13.08%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).loadLocalQueryResult
+     0.05s  4.67% 10.28%      0.06s  5.61%  github.com/typomaker/ruleix.(*betweenRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]).localQueryKeyMatches
+     0.04s  3.74% 14.02%      0.04s  3.74%  runtime.pcvalue
+     0.02s  1.87% 15.89%      0.02s  1.87%  cmp.Compare[go.shape.int]
+     0.02s  1.87% 17.76%      0.03s  2.80%  github.com/RoaringBitmap/roaring/v2.(*Bitmap).GetCardinality (inline)
+     0.02s  1.87% 19.63%      0.02s  1.87%  github.com/RoaringBitmap/roaring/v2.(*roaringArray).resize (inline)
+     0.02s  1.87% 21.50%      0.36s 33.64%  github.com/typomaker/ruleix.searchAllMatches[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]
+     0.01s  0.93% 22.43%      0.01s  0.93%  github.com/RoaringBitmap/roaring/v2.(*arrayContainer).getCardinality
+     0.01s  0.93% 23.36%      0.03s  2.80%  github.com/RoaringBitmap/roaring/v2.(*arrayContainer).iorArray
+     0.01s  0.93% 24.30%      0.01s  0.93%  github.com/RoaringBitmap/roaring/v2.localintersect2by2
+     0.01s  0.93% 25.23%      0.01s  0.93%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).lookupPlanningBitmap
+     0.01s  0.93% 26.17%      0.01s  0.93%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).storeLocalResult.func1
+     0.01s  0.93% 27.10%      0.01s  0.93%  github.com/typomaker/ruleix.(*eqRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int,go.shape.int]).localQueryKeyMatches
+     0.01s  0.93% 28.04%      0.37s 34.58%  github.com/typomaker/ruleix.batchLocalSearch[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]
+     0.01s  0.93% 28.97%      0.01s  0.93%  internal/abi.(*MapType).IndirectKey (inline)
+     0.01s  0.93% 29.91%      0.01s  0.93%  internal/runtime/atomic.(*UnsafePointer).Load (inline)
+     0.01s  0.93% 30.84%      0.01s  0.93%  internal/runtime/maps.(*Iter).Next
+     0.01s  0.93% 31.78%      0.03s  2.80%  runtime.mallocgcSmallNoscan

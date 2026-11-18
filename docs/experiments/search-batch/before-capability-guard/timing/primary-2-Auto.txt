@@ -1,0 +1,18 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionBatch/mixed/100/Auto         	   80000	     12739 ns/op	     23583 p99-ns/request	     31375 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/zero/100/Auto          	   80000	      1526 ns/op	      1584 p99-ns/request	      3083 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/storezero/100/Auto     	   80000	      1588 ns/op	      1667 p99-ns/request	      2833 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/slotzero/100/Auto      	   80000	      1462 ns/op	      1541 p99-ns/request	      2583 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/intersectzero/100/Auto 	   80000	      4310 ns/op	      4625 p99-ns/request	     10417 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/alternating/100/Auto   	   80000	     10935 ns/op	     19625 p99-ns/request	     27833 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/tiny/100/Auto          	   80000	      7337 ns/op	      9250 p99-ns/request	     18167 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/medium/100/Auto        	   80000	     13692 ns/op	     17792 p99-ns/request	     33167 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/broad/100/Auto         	   80000	     16121 ns/op	     22750 p99-ns/request	     34834 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/rotate/100/Auto        	   80000	     14636 ns/op	     26166 p99-ns/request	     35292 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/identical/100/Auto     	   80000	     17293 ns/op	     21000 p99-ns/request	     35667 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/unrelated/100/Auto     	   80000	     62545 ns/op	     78583 p99-ns/request	    108000 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/partial/100/Auto       	   80000	     26055 ns/op	     37625 p99-ns/request	     54167 p99.9-ns/request	      24 B/op	       1 allocs/op
+PASS

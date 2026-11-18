@@ -1,0 +1,74 @@
+{
+  "BenchmarkProductionBatch/tiny/100/Candidates": {
+    "iterations": 3000.0,
+    "mean_ns": 15341.5,
+    "p99-ns/request": 22354.0,
+    "p99.9-ns/request": 35562.5,
+    "B/op": 915.0,
+    "allocs/op": 28.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/tiny/100/Common": {
+    "iterations": 3000.0,
+    "mean_ns": 21457.5,
+    "p99-ns/request": 30166.5,
+    "p99.9-ns/request": 43792.0,
+    "B/op": 915.0,
+    "allocs/op": 28.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/tiny/100/Full": {
+    "iterations": 3000.0,
+    "mean_ns": 98641.0,
+    "p99-ns/request": 120562.5,
+    "p99.9-ns/request": 138833.5,
+    "B/op": 2497.0,
+    "allocs/op": 53.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/tiny/100/Lazy": {
+    "iterations": 3000.0,
+    "mean_ns": 19199.0,
+    "p99-ns/request": 24500.0,
+    "p99.9-ns/request": 41896.0,
+    "B/op": 955.0,
+    "allocs/op": 29.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/tiny/100/Local": {
+    "iterations": 3000.0,
+    "mean_ns": 18852.5,
+    "p99-ns/request": 24291.5,
+    "p99.9-ns/request": 46188.0,
+    "B/op": 761.0,
+    "allocs/op": 9.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/tiny/100/Staged": {
+    "iterations": 3000.0,
+    "mean_ns": 13922.5,
+    "p99-ns/request": 20458.5,
+    "p99.9-ns/request": 33646.0,
+    "B/op": 915.0,
+    "allocs/op": 28.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/tiny/100/Subgroups": {
+    "iterations": 3000.0,
+    "mean_ns": 13884.0,
+    "p99-ns/request": 20229.0,
+    "p99.9-ns/request": 33125.0,
+    "B/op": 915.0,
+    "allocs/op": 28.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/tiny/100/Typed": {
+    "iterations": 3000.0,
+    "mean_ns": 7304.0,
+    "p99-ns/request": 9667.0,
+    "p99.9-ns/request": 18500.0,
+    "B/op": 2.0,
+    "allocs/op": 0.0,
+    "samples": 2
+  }
+}

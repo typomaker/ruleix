@@ -1,0 +1,3 @@
+package ruleix_test
+import "runtime"
+func heapAlloc() uint64 {var s runtime.MemStats; runtime.ReadMemStats(&s); return s.HeapAlloc}

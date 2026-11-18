@@ -1,0 +1,15 @@
+File: ruleix-batch-typed.test
+Type: alloc_space
+Time: 2026-11-18 02:32:26 MSK
+Active filters:
+   focus=searchProductionBatch
+Showing nodes accounting for 1.06GB, 83.48% of 1.27GB total
+      flat  flat%   sum%        cum   cum%
+    1.06GB 83.48% 83.48%     1.06GB 83.48%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).searchBatchChunk
+         0     0% 83.48%     1.06GB 83.48%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).SearchBatchVariant
+         0     0% 83.48%     1.06GB 83.48%  github.com/typomaker/ruleix.(*Index[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).searchBatch
+         0     0% 83.48%     1.06GB 83.48%  github.com/typomaker/ruleix_test.BenchmarkProductionBatch.func1
+         0     0% 83.48%     1.06GB 83.48%  github.com/typomaker/ruleix_test.benchmarkProductionBatchCase
+         0     0% 83.48%     1.06GB 83.48%  github.com/typomaker/ruleix_test.searchProductionBatch
+         0     0% 83.48%     1.06GB 83.48%  testing.(*B).run1.func1
+         0     0% 83.48%     1.06GB 83.48%  testing.(*B).runN

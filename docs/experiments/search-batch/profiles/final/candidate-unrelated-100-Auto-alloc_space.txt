@@ -1,0 +1,8 @@
+Focus expression matched no samples
+File: candidate.test
+Type: alloc_space
+Time: 2026-11-18 04:29:26 MSK
+Active filters:
+   focus=searchProductionBatch
+Showing nodes accounting for 0, 0% of 156.13MB total
+      flat  flat%   sum%        cum   cum%

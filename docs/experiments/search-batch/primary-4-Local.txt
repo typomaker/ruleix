@@ -1,0 +1,18 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionBatch/mixed/100/Local         	   40000	     31841 ns/op	     56125 p99-ns/request	     69792 p99.9-ns/request	     807 B/op	      11 allocs/op
+BenchmarkProductionBatch/zero/100/Local          	   40000	      6145 ns/op	      6625 p99-ns/request	     13625 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/storezero/100/Local     	   40000	      6039 ns/op	      6583 p99-ns/request	     14333 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/slotzero/100/Local      	   40000	      4696 ns/op	      5083 p99-ns/request	     11792 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/intersectzero/100/Local 	   40000	     19270 ns/op	     44167 p99-ns/request	     61292 p99.9-ns/request	     786 B/op	      10 allocs/op
+BenchmarkProductionBatch/alternating/100/Local   	   40000	     23354 ns/op	     34625 p99-ns/request	     52458 p99.9-ns/request	     794 B/op	      10 allocs/op
+BenchmarkProductionBatch/tiny/100/Local          	   40000	     19074 ns/op	     24500 p99-ns/request	     42917 p99.9-ns/request	     760 B/op	       9 allocs/op
+BenchmarkProductionBatch/medium/100/Local        	   40000	     32253 ns/op	     45584 p99-ns/request	     62875 p99.9-ns/request	     776 B/op	      10 allocs/op
+BenchmarkProductionBatch/broad/100/Local         	   40000	     46438 ns/op	     59917 p99-ns/request	     86750 p99.9-ns/request	     957 B/op	      17 allocs/op
+BenchmarkProductionBatch/rotate/100/Local        	   40000	     36165 ns/op	     57125 p99-ns/request	     79625 p99.9-ns/request	     807 B/op	      11 allocs/op
+BenchmarkProductionBatch/identical/100/Local     	   40000	     39719 ns/op	     60750 p99-ns/request	     79333 p99.9-ns/request	     807 B/op	      11 allocs/op
+BenchmarkProductionBatch/unrelated/100/Local     	   40000	    174616 ns/op	    249916 p99-ns/request	    337541 p99.9-ns/request	   17125 B/op	     302 allocs/op
+BenchmarkProductionBatch/partial/100/Local       	   40000	    114661 ns/op	    162916 p99-ns/request	    189708 p99.9-ns/request	    1171 B/op	      30 allocs/op
+PASS

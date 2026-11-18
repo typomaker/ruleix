@@ -1,0 +1,27 @@
+File: ruleix-batch-final-capability.test
+Type: cpu
+Time: 2026-11-18 03:26:20 MSK
+Duration: 1.41s, Total samples = 1.06s (75.34%)
+Active filters:
+   focus=benchmarkBatchShapeCase
+Showing nodes accounting for 0.30s, 28.30% of 1.06s total
+Showing top 18 nodes out of 122
+      flat  flat%   sum%        cum   cum%
+     0.06s  5.66%  5.66%      0.06s  5.66%  github.com/typomaker/ruleix.(*betweenRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]).localQueryKeyMatches
+     0.04s  3.77%  9.43%      0.10s  9.43%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).loadLocalQueryResult
+     0.03s  2.83% 12.26%      0.42s 39.62%  github.com/typomaker/ruleix.searchAllMatches[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]
+     0.02s  1.89% 14.15%      0.02s  1.89%  github.com/typomaker/ruleix.(*betweenCacheEntry[go.shape.int]).matches (inline)
+     0.02s  1.89% 16.04%      0.02s  1.89%  runtime.mallocgcSmallScanSlowPath
+     0.01s  0.94% 16.98%      0.02s  1.89%  github.com/RoaringBitmap/roaring/v2.(*Bitmap).Iterate
+     0.01s  0.94% 17.92%      0.03s  2.83%  github.com/RoaringBitmap/roaring/v2.(*arrayContainer).clone
+     0.01s  0.94% 18.87%      0.02s  1.89%  github.com/RoaringBitmap/roaring/v2.(*arrayContainer).ior
+     0.01s  0.94% 19.81%      0.01s  0.94%  github.com/RoaringBitmap/roaring/v2.(*roaringArray).needsCopyOnWrite (inline)
+     0.01s  0.94% 20.75%      0.01s  0.94%  github.com/RoaringBitmap/roaring/v2.(*roaringArray).resize (inline)
+     0.01s  0.94% 21.70%      0.01s  0.94%  github.com/RoaringBitmap/roaring/v2.localintersect2by2
+     0.01s  0.94% 22.64%      0.01s  0.94%  github.com/RoaringBitmap/roaring/v2.union2by2
+     0.01s  0.94% 23.58%      0.01s  0.94%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).loadLocalResult
+     0.01s  0.94% 24.53%      0.01s  0.94%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).lookupPlanningBitmap
+     0.01s  0.94% 25.47%      0.03s  2.83%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).populatePlanningLocalPlan
+     0.01s  0.94% 26.42%      0.07s  6.60%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).rankChildren
+     0.01s  0.94% 27.36%      0.04s  3.77%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).reuseLocalPlan
+     0.01s  0.94% 28.30%      0.01s  0.94%  github.com/typomaker/ruleix.appendBitmapValues[go.shape.int].func1

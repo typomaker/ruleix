@@ -1,0 +1,27 @@
+File: ruleix-batch-final-capability.test
+Type: alloc_space
+Time: 2026-11-18 03:26:22 MSK
+Active filters:
+   focus=benchmarkBatchShapeCase
+Showing nodes accounting for 323.61MB, 98.75% of 327.71MB total
+Dropped 27 nodes (cum <= 1.64MB)
+Showing top 18 nodes out of 41
+      flat  flat%   sum%        cum   cum%
+  119.89MB 36.58% 36.58%   139.99MB 42.72%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).storeLocalResult
+   97.61MB 29.78% 66.37%    97.61MB 29.78%  github.com/RoaringBitmap/roaring/v2.(*arrayContainer).clone
+   46.51MB 14.19% 80.56%    46.51MB 14.19%  github.com/RoaringBitmap/roaring/v2.(*arrayContainer).iorArray
+    9.71MB  2.96% 83.52%     9.71MB  2.96%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).rememberLocalPlan
+    9.04MB  2.76% 86.28%    20.09MB  6.13%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 }]).captureLocalQueryKeys
+    7.96MB  2.43% 88.71%     7.96MB  2.43%  github.com/RoaringBitmap/roaring/v2.newArrayContainerCapacity (inline)
+    7.42MB  2.27% 90.98%   113.34MB 34.59%  github.com/typomaker/ruleix.(*betweenRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]).search
+    7.19MB  2.19% 93.17%     7.19MB  2.19%  github.com/typomaker/ruleix.comparableValueCacheReplace[go.shape.int]
+    6.54MB  2.00% 95.17%     6.54MB  2.00%  github.com/typomaker/ruleix.(*betweenRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]).localQueryKey
+    4.51MB  1.38% 96.54%     4.51MB  1.38%  github.com/typomaker/ruleix.(*eqRule[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int,go.shape.int]).localQueryKey
+    3.60MB  1.10% 97.64%     3.60MB  1.10%  slices.Insert[go.shape.[]*github.com/typomaker/ruleix.betweenCacheEntry[go.shape.int],go.shape.*uint8]
+    3.51MB  1.07% 98.71%     3.51MB  1.07%  github.com/RoaringBitmap/roaring/v2.(*arrayContainer).iaddReturnMinimized
+    0.10MB  0.03% 98.74%   324.31MB 98.96%  github.com/typomaker/ruleix.searchAllMatches[go.shape.struct { github.com/typomaker/ruleix.group int; github.com/typomaker/ruleix.store int; github.com/typomaker/ruleix.slot int; github.com/typomaker/ruleix.from int; github.com/typomaker/ruleix.until int; github.com/typomaker/ruleix.missing uint8 },go.shape.int]
+    0.01MB 0.0037% 98.75%   325.22MB 99.24%  github.com/typomaker/ruleix.benchmarkBatchShapeCase
+         0     0% 98.75%     4.18MB  1.28%  github.com/RoaringBitmap/roaring/v2.(*Bitmap).Add
+         0     0% 98.75%    97.61MB 29.78%  github.com/RoaringBitmap/roaring/v2.(*Bitmap).And
+         0     0% 98.75%    47.84MB 14.60%  github.com/RoaringBitmap/roaring/v2.(*Bitmap).AndAny
+         0     0% 98.75%    54.47MB 16.62%  github.com/RoaringBitmap/roaring/v2.(*Bitmap).Or

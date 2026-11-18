@@ -179,6 +179,15 @@ explicit memory-for-speed path and may retain wide cached results. Always call
 `Close` so its state can be cleared and reused. A closed `Local` cannot be used
 again.
 
+### Experimental batch search
+
+`Index.SearchBatch(conditions, found)` searches related conditions together.
+Prepare `found := make([][]ID, len(conditions))`; matches for condition `i` are
+appended to `found[i]`. Reset each inner slice to length zero before reusing it
+for a new request. Inner destination buffers must not overlap. Existing Search
+methods remain available. See [batch search](docs/search-batch.md) for the
+experimental contract, analysis strategies, measurements and fallback behavior.
+
 ## Memory-bounded indexes
 
 `Lossy` puts a retained-memory limit around one supported rule or a complete

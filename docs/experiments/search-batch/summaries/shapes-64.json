@@ -1,0 +1,182 @@
+{
+  "BenchmarkBatchShapes/64/common/1": {
+    "Local": {
+      "mean_ns": 1443.5,
+      "B/op": 1048.0,
+      "allocs/op": 9.0
+    },
+    "Auto": {
+      "mean_ns": 1377.5,
+      "B/op": 1024.0,
+      "allocs/op": 8.0
+    }
+  },
+  "BenchmarkBatchShapes/64/common/2": {
+    "Local": {
+      "mean_ns": 2978.0,
+      "B/op": 1736.0,
+      "allocs/op": 13.0
+    },
+    "Auto": {
+      "mean_ns": 2883.5,
+      "B/op": 1712.0,
+      "allocs/op": 12.0
+    }
+  },
+  "BenchmarkBatchShapes/64/common/4": {
+    "Local": {
+      "mean_ns": 6149.0,
+      "B/op": 3200.0,
+      "allocs/op": 25.0
+    },
+    "Auto": {
+      "mean_ns": 5963.0,
+      "B/op": 3176.0,
+      "allocs/op": 24.0
+    }
+  },
+  "BenchmarkBatchShapes/64/common/16": {
+    "Local": {
+      "mean_ns": 25892.0,
+      "B/op": 13523.0,
+      "allocs/op": 111.0
+    },
+    "Auto": {
+      "mean_ns": 6254.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/64/common/100": {
+    "Local": {
+      "mean_ns": 42276.0,
+      "B/op": 16869.5,
+      "allocs/op": 140.0
+    },
+    "Auto": {
+      "mean_ns": 31389.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/64/diverse/1": {
+    "Local": {
+      "mean_ns": 1404.0,
+      "B/op": 1048.0,
+      "allocs/op": 9.0
+    },
+    "Auto": {
+      "mean_ns": 1369.5,
+      "B/op": 1024.0,
+      "allocs/op": 8.0
+    }
+  },
+  "BenchmarkBatchShapes/64/diverse/2": {
+    "Local": {
+      "mean_ns": 2940.0,
+      "B/op": 1736.0,
+      "allocs/op": 13.0
+    },
+    "Auto": {
+      "mean_ns": 2894.5,
+      "B/op": 1712.0,
+      "allocs/op": 12.0
+    }
+  },
+  "BenchmarkBatchShapes/64/diverse/4": {
+    "Local": {
+      "mean_ns": 6289.5,
+      "B/op": 3200.0,
+      "allocs/op": 25.0
+    },
+    "Auto": {
+      "mean_ns": 6077.5,
+      "B/op": 3176.0,
+      "allocs/op": 24.0
+    }
+  },
+  "BenchmarkBatchShapes/64/diverse/16": {
+    "Local": {
+      "mean_ns": 26186.5,
+      "B/op": 13523.0,
+      "allocs/op": 111.0
+    },
+    "Auto": {
+      "mean_ns": 8971.5,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/64/diverse/100": {
+    "Local": {
+      "mean_ns": 54118.5,
+      "B/op": 24730.0,
+      "allocs/op": 211.0
+    },
+    "Auto": {
+      "mean_ns": 34478.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/64/empty/1": {
+    "Local": {
+      "mean_ns": 197.8,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "Auto": {
+      "mean_ns": 185.4,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/64/empty/2": {
+    "Local": {
+      "mean_ns": 350.20000000000005,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "Auto": {
+      "mean_ns": 330.85,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/64/empty/4": {
+    "Local": {
+      "mean_ns": 625.5,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "Auto": {
+      "mean_ns": 603.15,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/64/empty/16": {
+    "Local": {
+      "mean_ns": 2261.0,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "Auto": {
+      "mean_ns": 1143.5,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "BenchmarkBatchShapes/64/empty/100": {
+    "Local": {
+      "mean_ns": 13545.5,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "Auto": {
+      "mean_ns": 2485.5,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  }
+}

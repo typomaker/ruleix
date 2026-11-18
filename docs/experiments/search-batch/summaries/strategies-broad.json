@@ -1,0 +1,74 @@
+{
+  "BenchmarkProductionBatch/broad/100/Candidates": {
+    "iterations": 3000.0,
+    "mean_ns": 49821.5,
+    "p99-ns/request": 76500.5,
+    "p99.9-ns/request": 89771.0,
+    "B/op": 1662.0,
+    "allocs/op": 40.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/broad/100/Common": {
+    "iterations": 3000.0,
+    "mean_ns": 59552.0,
+    "p99-ns/request": 89271.0,
+    "p99.9-ns/request": 106896.0,
+    "B/op": 1662.0,
+    "allocs/op": 40.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/broad/100/Full": {
+    "iterations": 3000.0,
+    "mean_ns": 108363.5,
+    "p99-ns/request": 129021.0,
+    "p99.9-ns/request": 145771.0,
+    "B/op": 2549.0,
+    "allocs/op": 54.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/broad/100/Lazy": {
+    "iterations": 3000.0,
+    "mean_ns": 35017.5,
+    "p99-ns/request": 50688.0,
+    "p99.9-ns/request": 67167.0,
+    "B/op": 2299.0,
+    "allocs/op": 53.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/broad/100/Local": {
+    "iterations": 3000.0,
+    "mean_ns": 45810.5,
+    "p99-ns/request": 58291.5,
+    "p99.9-ns/request": 78208.0,
+    "B/op": 959.0,
+    "allocs/op": 17.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/broad/100/Staged": {
+    "iterations": 3000.0,
+    "mean_ns": 36703.0,
+    "p99-ns/request": 55625.0,
+    "p99.9-ns/request": 73979.0,
+    "B/op": 1662.0,
+    "allocs/op": 40.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/broad/100/Subgroups": {
+    "iterations": 3000.0,
+    "mean_ns": 36602.5,
+    "p99-ns/request": 54958.0,
+    "p99.9-ns/request": 69625.0,
+    "B/op": 1662.0,
+    "allocs/op": 40.0,
+    "samples": 2
+  },
+  "BenchmarkProductionBatch/broad/100/Typed": {
+    "iterations": 3000.0,
+    "mean_ns": 16124.0,
+    "p99-ns/request": 23000.5,
+    "p99.9-ns/request": 36416.5,
+    "B/op": 3.0,
+    "allocs/op": 0.0,
+    "samples": 2
+  }
+}

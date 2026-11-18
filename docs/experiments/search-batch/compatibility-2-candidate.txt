@@ -1,0 +1,8 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionBatch/mixed/100/Local         	   20000	     31599 ns/op	     55709 p99-ns/request	     66917 p99.9-ns/request	     807 B/op	      11 allocs/op
+BenchmarkProductionBatch/zero/100/Local          	   20000	      6294 ns/op	      6834 p99-ns/request	     15542 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkProductionBatch/unrelated/100/Local     	   20000	    174084 ns/op	    245416 p99-ns/request	    349000 p99.9-ns/request	   17126 B/op	     302 allocs/op
+PASS

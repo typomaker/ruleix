@@ -1,0 +1,56 @@
+package ruleix_test
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"github.com/typomaker/ruleix"
+)
+
+func TestBatchReleaseDigest(t *testing.T) {
+	rows, ids := loadProductionDumpBenchmarkTB(t)
+	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
+	require.NoError(t, err)
+	type result struct { Rows, Requests, Offers, Matches int; SHA256 string }
+	results := make(map[string]result)
+	for _, strategy := range []string{"Local", "Auto"} {
+		hash := sha256.New()
+		summary := result{Rows: len(rows)}
+		for _, mode := range []string{
+			"mixed", "zero", "storezero", "slotzero", "intersectzero", "alternating",
+			"tiny", "medium", "broad", "rotate", "identical", "unrelated", "partial",
+		} {
+			_, err := hash.Write([]byte(mode))
+			require.NoError(t, err)
+			for _, request := range productionBatchRequests(t, rows, ids, mode) {
+				found := make([][]uuid.UUID, len(request))
+				searchProductionBatch(index, request, found, strategy)
+				summary.Requests++
+				for _, matches := range found {
+					summary.Offers++
+					summary.Matches += len(matches)
+					var count [8]byte
+					binary.LittleEndian.PutUint64(count[:], uint64(len(matches)))
+					_, err := hash.Write(count[:])
+					require.NoError(t, err)
+					for _, id := range matches {
+						_, err := hash.Write(id[:])
+						require.NoError(t, err)
+					}
+				}
+			}
+		}
+		summary.SHA256 = hex.EncodeToString(hash.Sum(nil))
+		results[strategy] = summary
+	}
+	require.Equal(t, results["Local"], results["Auto"])
+	data, err := json.MarshalIndent(results, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(os.Getenv("RULEIX_BATCH_DIGEST"), data, 0600))
+}

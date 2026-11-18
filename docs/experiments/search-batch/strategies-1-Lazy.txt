@@ -1,0 +1,18 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkProductionBatch/mixed/100/Lazy         	    3000	     27984 ns/op	     51292 p99-ns/request	     78375 p99.9-ns/request	    1717 B/op	      42 allocs/op
+BenchmarkProductionBatch/zero/100/Lazy          	    3000	      1531 ns/op	      1625 p99-ns/request	      1791 p99.9-ns/request	       2 B/op	       0 allocs/op
+BenchmarkProductionBatch/storezero/100/Lazy     	    3000	      1573 ns/op	      1625 p99-ns/request	      1834 p99.9-ns/request	       2 B/op	       0 allocs/op
+BenchmarkProductionBatch/slotzero/100/Lazy      	    3000	      1460 ns/op	      1583 p99-ns/request	      1750 p99.9-ns/request	       2 B/op	       0 allocs/op
+BenchmarkProductionBatch/intersectzero/100/Lazy 	    3000	     13710 ns/op	     15500 p99-ns/request	     34209 p99.9-ns/request	      26 B/op	       1 allocs/op
+BenchmarkProductionBatch/alternating/100/Lazy   	    3000	     25547 ns/op	     37291 p99-ns/request	     59250 p99.9-ns/request	     773 B/op	       9 allocs/op
+BenchmarkProductionBatch/tiny/100/Lazy          	    3000	     18597 ns/op	     23375 p99-ns/request	     40083 p99.9-ns/request	     955 B/op	      29 allocs/op
+BenchmarkProductionBatch/medium/100/Lazy        	    3000	     29157 ns/op	     38500 p99-ns/request	     54708 p99.9-ns/request	    1995 B/op	      47 allocs/op
+BenchmarkProductionBatch/broad/100/Lazy         	    3000	     33893 ns/op	     49584 p99-ns/request	     65084 p99.9-ns/request	    2299 B/op	      53 allocs/op
+BenchmarkProductionBatch/rotate/100/Lazy        	    3000	     46194 ns/op	     90750 p99-ns/request	    115834 p99.9-ns/request	    3907 B/op	     135 allocs/op
+BenchmarkProductionBatch/identical/100/Lazy     	    3000	     31291 ns/op	     38167 p99-ns/request	     67000 p99.9-ns/request	     205 B/op	       5 allocs/op
+BenchmarkProductionBatch/unrelated/100/Lazy     	    3000	    176066 ns/op	    242333 p99-ns/request	    324708 p99.9-ns/request	   17108 B/op	     301 allocs/op
+BenchmarkProductionBatch/partial/100/Lazy       	    3000	    117531 ns/op	    164375 p99-ns/request	    215667 p99.9-ns/request	    1150 B/op	      29 allocs/op
+PASS

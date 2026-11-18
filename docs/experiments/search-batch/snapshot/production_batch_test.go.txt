@@ -1,0 +1,161 @@
+package ruleix_test
+
+import (
+	"fmt"
+	"os"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"github.com/typomaker/ruleix"
+)
+
+var batchStrategies = []string{"Local", "Common", "Full", "Staged", "Lazy", "Subgroups", "Candidates", "Typed", "Auto"}
+
+func productionBatchRequests(
+	t testing.TB, rows []productionDumpConstraint, ids []uuid.UUID, mode string,
+) [][]productionDumpConstraint {
+	t.Helper()
+	requests := productionDumpRequests(rows, 64)
+	switch mode {
+	case "mixed":
+	case "identical":
+		for _, request := range requests {
+			for i := range request {
+				request[i] = request[0]
+			}
+		}
+	case "rotate":
+		for _, request := range requests {
+			original := slices.Clone(request)
+			for i := range request {
+				request[i] = original[i*37%len(original)]
+			}
+		}
+	case "unrelated", "partial":
+		original := make([][]productionDumpConstraint, len(requests))
+		for i := range requests {
+			original[i] = slices.Clone(requests[i])
+		}
+		for r, request := range requests {
+			for i := range request {
+				buyer := (r + i) % len(original)
+				if mode == "partial" {
+					buyer = (r + i%4) % len(original)
+				}
+				request[i] = original[buyer][i*37%len(request)]
+			}
+		}
+	default:
+		requests = productionBatchCohort(t, rows, ids, requests, mode)
+	}
+	return requests
+}
+
+func searchProductionBatch(
+	index *ruleix.Index[productionDumpConstraint, uuid.UUID], conditions []productionDumpConstraint,
+	found [][]uuid.UUID, strategy string,
+) {
+	switch strategy {
+	case "Auto":
+		index.SearchBatch(conditions, found)
+	case "Local":
+		local := index.Local()
+		for i, value := range conditions {
+			local.Search(value, &found[i])
+		}
+		local.Close()
+	default:
+		index.SearchBatchVariant(conditions, found, strategy)
+	}
+}
+
+func TestProductionBatchMatchesLocal(t *testing.T) {
+	if os.Getenv("RULEIX_PRODUCTION_DUMP") == "" {
+		t.Skip("set RULEIX_PRODUCTION_DUMP to compare the supplied full index")
+	}
+	rows, ids := loadProductionDumpBenchmarkTB(t)
+	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
+	require.NoError(t, err)
+	for _, mode := range []string{
+		"mixed", "zero", "storezero", "slotzero", "intersectzero", "alternating",
+		"tiny", "medium", "broad", "rotate", "identical", "unrelated", "partial",
+	} {
+		requests := productionBatchRequests(t, rows, ids, mode)
+		for _, request := range requests {
+			want := make([][]uuid.UUID, len(request))
+			searchProductionBatch(index, request, want, "Local")
+			for _, strategy := range batchStrategies[1:] {
+				got := make([][]uuid.UUID, len(request))
+				searchProductionBatch(index, request, got, strategy)
+				require.Equal(t, want, got, "mode=%s strategy=%s", mode, strategy)
+			}
+		}
+	}
+}
+
+func loadProductionDumpBenchmarkTB(t testing.TB) ([]productionDumpConstraint, []uuid.UUID) {
+	t.Helper()
+	input, err := os.Open(os.Getenv("RULEIX_PRODUCTION_DUMP"))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, input.Close()) }()
+	return readProductionDump(t, input)
+}
+
+// M1 Max, Go 1.27.3, GOMAXPROCS=1, full 96,630-row index, 3 x 80,000x:
+// mixed Local/Auto mean 32.891/12.566 us and p99.9 89.500/30.667 us;
+// 807 B/11 allocations versus 24 B/1 allocation per 100-offer request.
+// Analysis and lifecycle are timed; independent per-offer outputs are reused.
+// See docs/search-batch.md and its pinned fixtures for all parameters/results.
+func BenchmarkProductionBatch(b *testing.B) {
+	rows, ids := loadProductionDumpBenchmark(b)
+	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
+	require.NoError(b, err)
+	for _, mode := range []string{
+		"mixed", "zero", "storezero", "slotzero", "intersectzero", "alternating",
+		"tiny", "medium", "broad", "rotate", "identical", "unrelated", "partial",
+	} {
+		b.Run(mode, func(b *testing.B) {
+			requests := productionBatchRequests(b, rows, ids, mode)
+			for _, length := range []int{0, 1, 2, 3, 4, 16, 100} {
+				b.Run(fmt.Sprint(length), func(b *testing.B) {
+					for _, strategy := range batchStrategies {
+						b.Run(strategy, func(b *testing.B) {
+							benchmarkProductionBatchCase(b, index, requests, length, strategy)
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+func benchmarkProductionBatchCase(
+	b *testing.B, index *ruleix.Index[productionDumpConstraint, uuid.UUID],
+	requests [][]productionDumpConstraint, length int, strategy string,
+) {
+	found := make([][]uuid.UUID, length)
+	turn := 0
+	samples := make([]time.Duration, 0, 100000)
+	b.ReportAllocs()
+	for b.Loop() {
+		for i := range found {
+			found[i] = found[i][:0]
+		}
+		start := time.Now()
+		searchProductionBatch(index, requests[turn%len(requests)][:length], found, strategy)
+		samples = append(samples, time.Since(start))
+		turn++
+	}
+	slices.Sort(samples)
+	b.ReportMetric(float64(samples[(99*len(samples)+99)/100-1].Nanoseconds()), "p99-ns/request")
+	b.ReportMetric(float64(samples[(999*len(samples)+999)/1000-1].Nanoseconds()), "p99.9-ns/request")
+	if os.Getenv("RULEIX_BATCH_WORK") == "1" {
+		work := index.SearchBatchExperiment(requests[0][:length], make([][]uuid.UUID, length), strategy)
+		for name, value := range work {
+			b.ReportMetric(float64(value), name)
+		}
+	}
+}

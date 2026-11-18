@@ -1,0 +1,205 @@
+package ruleix
+
+import (
+	"sort"
+	"unsafe"
+)
+
+type batchMaskOperand[T any] interface {
+	applyBatchMasks([]T, []int, []uint32, []uint64, *batchWork)
+}
+
+func batchTypedMasks[T any](
+	root *allRule[T], values []T, rows []int, ids []uint32, masks []uint64, anchor int, work *batchWork,
+) {
+	for pass := range 2 {
+		for child, rule := range root.children {
+			_, cheap := rule.(candidateMaskSource[T])
+			if child == anchor || cheap != (pass == 0) {
+				continue
+			}
+			if operand, ok := rule.(batchMaskOperand[T]); ok {
+				operand.applyBatchMasks(values, rows, ids, masks, work)
+			} else {
+				for i, row := range rows {
+					if masks[i] != 0 {
+						masks[i] = batchMask(root, child, values[row], ids, masks[i], work)
+					}
+				}
+			}
+			alive := false
+			for _, mask := range masks {
+				alive = alive || mask != 0
+			}
+			if !alive {
+				return
+			}
+		}
+	}
+}
+
+// Posting identity is an exact operation-result key, including for Lossy
+// equality: equal pointers refer to the same immutable concrete result.
+func (r *eqRule[T, V, K]) applyBatchMasks(
+	values []T, rows []int, ids []uint32, masks []uint64, work *batchWork,
+) {
+	var postings [batchWidth]*equalitySet
+	var results [batchWidth]uint64
+	if work != nil {
+		work.peakScratchBytes = max(work.peakScratchBytes,
+			uint64(unsafe.Sizeof(batchScratch{})+unsafe.Sizeof(postings)+unsafe.Sizeof(results)))
+	}
+	count := 0
+	var wildcard uint64
+	for slot, id := range ids {
+		if r.wildcard.Contains(id) {
+			wildcard |= uint64(1) << slot
+		}
+	}
+	for i, row := range rows {
+		if masks[i] == 0 {
+			continue
+		}
+		var posting *equalitySet
+		if value, present := r.get(values[row]); present {
+			posting = r.values.get(r.equalityKey(value))
+		}
+		class := count - 1
+		for ; class >= 0; class-- {
+			if postings[class] == posting {
+				break
+			}
+		}
+		if class < 0 {
+			class = count
+			count++
+			postings[class] = posting
+			results[class] = batchEqualityMask(posting, ids, wildcard)
+			if work != nil {
+				work.maskEvaluations++
+			}
+		}
+		masks[i] &= results[class]
+	}
+}
+
+// A compiled Between dictionary turns arbitrary comparator values into exact
+// boundary positions. Position pairs are compact, collision-free result keys;
+// no raw query value is boxed or retained by this batch operation.
+func (r *smallBetweenRule[T, V]) applyBatchMasks(
+	values []T, rows []int, ids []uint32, masks []uint64, work *batchWork,
+) {
+	var pairs [batchCandidateLimit]uint16
+	var fromWild, untilWild uint64
+	for slot, id := range ids {
+		if uint64(id) < uint64(len(r.bounds.keys)) {
+			pairs[slot] = r.bounds.values[r.bounds.keys[id]]
+		}
+		if r.from.wildcard.Contains(id) {
+			fromWild |= uint64(1) << slot
+		}
+		if r.until.wildcard.Contains(id) {
+			untilWild |= uint64(1) << slot
+		}
+	}
+	var keys [batchWidth]uint32
+	var results [batchWidth]uint64
+	var previous betweenLocalQueryKey[V]
+	if work != nil {
+		work.peakScratchBytes = max(work.peakScratchBytes,
+			uint64(unsafe.Sizeof(batchScratch{})+unsafe.Sizeof(pairs)+unsafe.Sizeof(keys)+
+				unsafe.Sizeof(results)+unsafe.Sizeof(previous)))
+	}
+	var key uint32
+	count := 0
+	for i, row := range rows {
+		if masks[i] == 0 {
+			continue
+		}
+		from, hasFrom := r.from.get(values[row])
+		until, hasUntil := r.until.get(values[row])
+		same := count != 0 && previous.hasFrom == hasFrom && previous.hasUntil == hasUntil &&
+			(!hasFrom || r.from.compare(from, previous.from) == 0) &&
+			(!hasUntil || r.from.compare(until, previous.until) == 0)
+		if !same {
+			key = r.batchBoundaryKey(from, until, hasFrom, hasUntil)
+			previous = betweenLocalQueryKey[V]{from: from, until: until, hasFrom: hasFrom, hasUntil: hasUntil}
+		}
+		class := count - 1
+		for ; class >= 0; class-- {
+			if keys[class] == key {
+				break
+			}
+		}
+		if class < 0 {
+			class = count
+			count++
+			keys[class] = key
+			results[class] = batchBoundMask(pairs[:len(ids)], key, fromWild, untilWild)
+			if work != nil {
+				work.maskEvaluations++
+			}
+		}
+		masks[i] &= results[class]
+	}
+}
+
+func (r *smallBetweenRule[T, V]) batchBoundaryKey(from, until V, hasFrom, hasUntil bool) uint32 {
+	var upper uint32
+	lower := uint32(1 << 8)
+	if hasFrom {
+		items := r.from.index.blocks[0].items
+		upper = uint32(sort.Search(len(items), func(i int) bool { return r.from.compare(items[i].value, from) > 0 }))
+	}
+	if hasUntil {
+		items := r.until.index.blocks[0].items
+		lower = uint32(sort.Search(len(items), func(i int) bool { return r.until.compare(items[i].value, until) >= 0 }) + 1)
+	}
+	return upper<<16 | lower
+}
+
+func batchBoundMask(pairs []uint16, key uint32, fromWild, untilWild uint64) uint64 {
+	var matches uint64
+	upper, lower := uint16(key>>16), uint16(key)
+	for slot, pair := range pairs {
+		bit := uint64(1) << slot
+		from, until := uint16(uint8(pair)), pair>>8
+		if (fromWild&bit != 0 || from != 0 && from <= upper) && (untilWild&bit != 0 || until >= lower) {
+			matches |= bit
+		}
+	}
+	return matches
+}
+
+// Repeated exact query values share one map lookup without boxed keys. Values
+// are compared using the equality operator's own comparable input type.
+func (r *eqRule[T, V, K]) batchPostings(values []T, postings []*equalitySet, work *batchWork) {
+	var previous optionalValue[V]
+	var posting *equalitySet
+	for i, value := range values {
+		key := getOptional(r.get, value)
+		if i == 0 || key != previous {
+			posting = nil
+			if key.ok {
+				if work != nil {
+					work.anchorLookups++
+				}
+				posting = r.values.get(r.equalityKey(key.value))
+			}
+			previous = key
+		}
+		postings[i] = posting
+	}
+}
+
+func batchEqualityMask(posting *equalitySet, ids []uint32, wildcard uint64) uint64 {
+	if posting == nil {
+		return wildcard
+	}
+	for slot, id := range ids {
+		if posting.contains(id) {
+			wildcard |= uint64(1) << slot
+		}
+	}
+	return wildcard
+}
