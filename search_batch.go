@@ -9,11 +9,12 @@ import (
 // Search appends the matches for conditions[i] to found[i], preserving
 // first-insertion ID order and existing destination elements. The outer slices
 // must have equal lengths; a mismatch panics before any result is changed.
-// Empty batches do no work. Each call owns and releases its internal context.
+// Search returns whether this call appended any matches. Existing destination
+// contents do not count. Empty batches return false. Each call owns its context.
 // Callers must not concurrently mutate inputs
 // or destinations, and destination backing arrays must not overlap.
-func (ix *Index[C, ID]) Search(conditions []C, found [][]ID) {
-	ix.searchBatch(conditions, found, batchTyped, nil)
+func (ix *Index[C, ID]) Search(conditions []C, found [][]ID) bool {
+	return ix.searchBatch(conditions, found, batchTyped, nil)
 }
 
 type batchStrategy uint8
@@ -58,12 +59,12 @@ type batchPostingSource[T any] interface {
 
 // Capabilities come from All's existing Build-prepared execution descriptors.
 // No batch-specific state is retained in an Index or a recycled Local.
-func (ix *Index[C, ID]) searchBatch(conditions []C, found [][]ID, strategy batchStrategy, work *batchWork) {
+func (ix *Index[C, ID]) searchBatch(conditions []C, found [][]ID, strategy batchStrategy, work *batchWork) bool {
 	if len(conditions) != len(found) {
 		panic("ruleix: batch destination length differs from conditions")
 	}
 	if len(conditions) == 0 {
-		return
+		return false
 	}
 	context := ix.batchContext()
 	local := &context
@@ -74,59 +75,58 @@ func (ix *Index[C, ID]) searchBatch(conditions []C, found [][]ID, strategy batch
 	if len(conditions) < 16 {
 		if len(conditions) >= 5 && strategy == batchTyped {
 			if root, ok := ix.root.(*allRule[C]); ok && root.shortBatchAnchor != 0 && !local.observed {
-				ix.searchShortBatch(root, local, conditions, found, work)
-				return
+				return ix.searchShortBatch(root, local, conditions, found, work)
 			}
 		}
 
-		batchLocalSearch(local, conditions, found, nil, work)
-		return
+		return batchLocalSearch(local, conditions, found, nil, work)
 	}
 	root, supported := ix.root.(*allRule[C])
 	if strategy == batchLocal || !supported || !root.directIDComplete || local.observed {
-		batchLocalSearch(local, conditions, found, nil, work)
-		return
+		return batchLocalSearch(local, conditions, found, nil, work)
 	}
 	// Build's mask capability proves bounded native mask operations for every
 	// child. Ordinary ordered/Between ID matchers can be much more expensive
 	// than materializing once and reusing Local caches (notably at 32 IDs).
 	if strategy == batchTyped && !root.narrowMaskPrepared {
-		batchLocalSearch(local, conditions, found, nil, work)
-		return
+		return batchLocalSearch(local, conditions, found, nil, work)
 	}
+	matched := false
 	for start := 0; start < len(conditions); start += batchWidth {
 		end := min(start+batchWidth, len(conditions))
-		ix.searchBatchChunk(root, local, conditions[start:end], found[start:end], strategy, work)
+		matched = ix.searchBatchChunk(root, local, conditions[start:end], found[start:end], strategy, work) || matched
 	}
+	return matched
 }
 
 func batchLocalSearch[C any, ID comparable](
 	local *localContext[C, ID], values []C, found [][]ID, rows []int, work *batchWork,
-) {
+) bool {
+	matched := false
 	if rows == nil {
 		for i, value := range values {
-			local.index.search(value, &found[i], local.pool)
+			matched = local.index.search(value, &found[i], local.pool) || matched
 		}
 		if work != nil {
 			work.fallbackOffers += uint64(len(values))
 		}
-		return
+		return matched
 	}
 	for _, row := range rows {
-		local.index.search(values[row], &found[row], local.pool)
+		matched = local.index.search(values[row], &found[row], local.pool) || matched
 	}
 	if work != nil {
 		work.fallbackOffers += uint64(len(rows))
 	}
+	return matched
 }
 
 func (ix *Index[C, ID]) searchBatchChunk(
 	root *allRule[C], local *localContext[C, ID], values []C, found [][]ID, strategy batchStrategy, work *batchWork,
-) {
+) bool {
 	anchor, source, card := batchAnchor(root, values[0], work)
 	if anchor < 0 || card > batchCandidateLimit {
-		batchLocalSearch(local, values, found, nil, work)
-		return
+		return batchLocalSearch(local, values, found, nil, work)
 	}
 	scratch := batchScratchPool.Get().(*batchScratch)
 	defer func() {
@@ -142,11 +142,11 @@ func (ix *Index[C, ID]) searchBatchChunk(
 	if strategy != batchSubgroups && strategy != batchCandidates && strategy != batchTyped {
 		for _, posting := range postings[1:len(values)] {
 			if posting != postings[0] {
-				batchLocalSearch(local, values, found, nil, work)
-				return
+				return batchLocalSearch(local, values, found, nil, work)
 			}
 		}
 	}
+	matched := false
 	used, rows := scratch.used[:], scratch.rows[:]
 	for first := range values {
 		if used[first] || postings[first] == nil {
@@ -159,8 +159,11 @@ func (ix *Index[C, ID]) searchBatchChunk(
 				n++
 			}
 		}
-		ix.searchBatchGroup(root, local, values, found, rows[:n], postings[first], anchor, strategy, scratch, work)
+		matched = ix.searchBatchGroup(
+			root, local, values, found, rows[:n], postings[first], anchor, strategy, scratch, work,
+		) || matched
 	}
+	return matched
 }
 
 // Only exact equality without wildcard rows proves that a missing posting is
@@ -214,17 +217,16 @@ func batchAllBits(count int) uint64 { return ^uint64(0) >> (64 - count) }
 func (ix *Index[C, ID]) searchBatchGroup(
 	root *allRule[C], local *localContext[C, ID], values []C, found [][]ID, rows []int,
 	posting *equalitySet, anchor int, strategy batchStrategy, scratch *batchScratch, work *batchWork,
-) {
+) bool {
 	card := posting.cardinality()
 	if card > batchCandidateLimit {
-		batchLocalSearch(local, values, found, rows, work)
-		return
+		return batchLocalSearch(local, values, found, rows, work)
 	}
 	// For a short group, a global empty proof can cost less than decoding a
 	// wide candidate posting and preparing its bound/wildcard masks.
 	if strategy == batchTyped && card > 2*allCandidateScanLimit && len(rows) <= 4 &&
 		batchEveryEmpty(root, values, rows) {
-		return
+		return false
 	}
 	ids := batchPostingIDs(posting, scratch.ids[:0])
 	if work != nil {
@@ -242,14 +244,17 @@ func (ix *Index[C, ID]) searchBatchGroup(
 	default:
 		batchOperandMasks(root, values, rows, ids, masks, anchor, strategy, work)
 	}
+	matched := false
 	for i, row := range rows {
 		for mask := masks[i]; mask != 0; mask &= mask - 1 {
 			id := ids[bits.TrailingZeros64(mask)]
 			if !isExcluded(ix.exclusions, values[row], id, local.pool) {
 				found[row] = append(found[row], ix.values[id])
+				matched = true
 			}
 		}
 	}
+	return matched
 }
 
 func batchEveryEmpty[T any](root *allRule[T], values []T, rows []int) bool {

@@ -27,7 +27,7 @@ func (r *eqRule[T, V, K]) batchShortBound() uint64 {
 // Short calls therefore skip speculative anchor selection and wide fallback.
 func (ix *Index[C, ID]) searchShortBatch(root *allRule[C], local *localContext[C, ID],
 	values []C, found [][]ID, work *batchWork,
-) {
+) bool {
 	anchor := int(root.shortBatchAnchor) - 1
 	source := root.children[anchor].(batchPostingSource[C])
 	scratch := batchScratchPool.Get().(*batchScratch)
@@ -41,15 +41,16 @@ func (ix *Index[C, ID]) searchShortBatch(root *allRule[C], local *localContext[C
 			allEmpty = allEmpty && posting == nil
 		}
 		if allEmpty {
-			return
+			return false
 		}
 	} else if shortBatchAllEmpty(root, values, anchor) {
-		return
+		return false
 	}
 
 	if work != nil {
 		work.peakScratchBytes = max(work.peakScratchBytes, uint64(unsafe.Sizeof(batchScratch{})))
 	}
+	matched := false
 	used, rows := scratch.used[:], scratch.rows[:]
 	for first := range values {
 		if used[first] || postings[first] == nil {
@@ -62,8 +63,11 @@ func (ix *Index[C, ID]) searchShortBatch(root *allRule[C], local *localContext[C
 				n++
 			}
 		}
-		ix.searchBatchGroup(root, local, values, found, rows[:n], postings[first], anchor, batchTyped, scratch, work)
+		matched = ix.searchBatchGroup(
+			root, local, values, found, rows[:n], postings[first], anchor, batchTyped, scratch, work,
+		) || matched
 	}
+	return matched
 }
 
 // A bounded source does not reveal an absent key in another operand. Check a

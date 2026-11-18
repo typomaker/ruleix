@@ -2,10 +2,12 @@
 
 ## Contract and status
 
-`Index.Search(conditions []T, found [][]ID)` appends each condition's
+`Index.Search(conditions []T, found [][]ID) bool` appends each condition's
 matches to `found[i]`, preserving first-insertion ID order and existing results.
 Outer lengths must agree; a mismatch panics before any result changes. Empty
-batches do nothing. Inner destinations must have independent backing storage
+batches return false. The result is true iff this call appends any match;
+existing destination contents do not count and all conditions are processed.
+Inner destinations must have independent backing storage
 and must not overlap input storage. Getters and comparators must be stable;
 callers must not concurrently mutate inputs or destinations.
 

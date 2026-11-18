@@ -2,7 +2,7 @@
 
 ## Contract and migration
 
-`Index.Search(conditions []C, found [][]ID)` is the sole public search method.
+`Index.Search(conditions []C, found [][]ID) bool` is the sole public search method.
 It replaces experimental `SearchBatch` without changing its execution strategy.
 The single-condition `Index.Search`, public `Local` type, `Index.Local`, and
 `Local.Search`/`Close` have been removed. This source-breaking change ships in [v0.10.0](release-0.10.0.md)
@@ -22,8 +22,9 @@ slice when reusing buffers for another request. Backing arrays must not overlap.
 Different calls may run concurrently with independent destinations.
 
 An empty batch does no work. Unequal outer lengths panic before any result
-mutation. There is no boolean return; inspect each output or compare its length
-before and after the call to detect newly appended results. For one query, use
+mutation. Search now returns `true` if this call appends at least one match
+across the batch; existing destination elements do not count. Empty batches
+return `false`. Every condition is processed even after a hit. For one query, use
 `[]Condition{query}` and a one-element `[][]ID` destination. Replace calls to
 `SearchBatch(conditions, found)` directly with `Search(conditions, found)`.
 Replace a Local loop with one Search call over the complete request.
@@ -138,3 +139,12 @@ The two modified preexisting oversized test files were split into focused
 modules; all changed files meet the 500-line limit. Raw measurements, coverage,
 API listing and diagnostic profile summaries are in
 [the evidence directory](experiments/batch-api-migration/README.md).
+
+## Boolean result extension (unreleased)
+
+The boolean is propagated from the existing private single-condition result
+and native append sites through short groups, fallback groups and batch chunks.
+No result-length snapshots, additional scans or shared mutable flags are added.
+Ordinary calls that ignore the result still compile. Method values and
+interfaces declaring the old void signature must be updated to return bool.
+See [verification](search-bool-result.md) for the extension's checks.

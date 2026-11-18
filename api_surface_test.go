@@ -16,5 +16,5 @@ func TestBatchOnlyPublicSearchMethods(t *testing.T) {
 	}
 	method, exists := kind.MethodByName("Search")
 	require.True(t, exists)
-	require.Equal(t, reflect.TypeOf(func(*ruleix.Index[int, int], []int, [][]int) {}), method.Type)
+	require.Equal(t, reflect.TypeOf(func(*ruleix.Index[int, int], []int, [][]int) bool { return false }), method.Type)
 }

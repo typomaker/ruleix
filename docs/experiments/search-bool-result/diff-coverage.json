@@ -1,0 +1,181 @@
+{
+  "covered": 38,
+  "statements": 38,
+  "percent": 100.0,
+  "blocks": [
+    {
+      "file": "batch_short.go",
+      "span": "44.4,45.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "batch_short.go",
+      "span": "47.3,48.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "batch_short.go",
+      "span": "53.2,55.28",
+      "statements": 3,
+      "covered": true
+    },
+    {
+      "file": "batch_short.go",
+      "span": "66.3,68.15",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "batch_short.go",
+      "span": "70.2,70.16",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "17.2,18.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "67.3,68.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "78.5,79.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "82.3,82.63",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "86.3,87.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "92.3,93.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "94.2,95.63",
+      "statements": 2,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "96.3,98.1",
+      "statements": 2,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "99.2,99.16",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "105.2,106.17",
+      "statements": 2,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "108.4,109.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "113.3,113.17",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "116.3,117.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "121.2,121.16",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "129.3,130.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "145.5,146.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "149.2,151.28",
+      "statements": 3,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "162.3,164.15",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "166.2,166.16",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "223.3,224.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "229.3,230.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "247.2,248.27",
+      "statements": 2,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "252.5,254.1",
+      "statements": 2,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "257.2,257.16",
+      "statements": 1,
+      "covered": true
+    }
+  ]
+}

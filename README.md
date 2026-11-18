@@ -162,9 +162,10 @@ for i := range found {
 index.Search(conditions, found)
 ```
 
-For one condition, pass a one-element slice. Search returns no value: inspect
-`found[i]` for results, or compare its length before and after appending. Empty
-batches do no work. Inner destination backing arrays must not overlap.
+For one condition, pass a one-element slice. Search returns `true` if this call
+appends at least one match across the batch, and `false` otherwise, including
+empty batches. Existing destination contents do not count. Every condition is
+processed even after a match. Inner destination backing arrays must not overlap.
 
 An `Index` is immutable and safe for concurrent calls with independent outputs.
 Each call acquires one private cache context and releases it on return; there is

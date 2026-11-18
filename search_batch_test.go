@@ -31,11 +31,12 @@ func batchSchema(lossy bool) Rule[batchFixture] {
 
 func checkBatchAgainstLocal[T any](t *testing.T, index *Index[T, int], conditions []T) {
 	t.Helper()
+	matched := false
 	want := make([][]int, len(conditions))
 	local := index.TestLocal()
 	for i, condition := range conditions {
 		want[i] = []int{-7}
-		local.SearchOne(condition, &want[i])
+		matched = local.SearchOne(condition, &want[i]) || matched
 	}
 	local.Close()
 	for _, strategy := range []batchStrategy{
@@ -46,14 +47,14 @@ func checkBatchAgainstLocal[T any](t *testing.T, index *Index[T, int], condition
 			got[i] = []int{-7}
 		}
 		var work batchWork
-		index.searchBatch(conditions, got, strategy, &work)
+		require.Equal(t, matched, index.searchBatch(conditions, got, strategy, &work), "strategy %d", strategy)
 		require.Equal(t, want, got, "strategy %d", strategy)
 	}
 	got := make([][]int, len(conditions))
 	for i := range got {
 		got[i] = []int{-7}
 	}
-	index.Search(conditions, got)
+	require.Equal(t, matched, index.Search(conditions, got))
 	require.Equal(t, want, got)
 }
 
@@ -61,7 +62,7 @@ func TestSearchBatchContract(t *testing.T) {
 	schema := Include(func(v int) (int, bool) { return v, true })
 	index, err := New[int, int](schema).Build(Zip([]int{2, 1, 2}, []int{9, 3, 8}))
 	require.NoError(t, err)
-	index.Search(nil, nil)
+	require.False(t, index.Search(nil, nil))
 	found := [][]int{{99}}
 	require.Panics(t, func() { index.Search([]int{1, 2}, found) })
 	require.Equal(t, [][]int{{99}}, found)

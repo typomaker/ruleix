@@ -175,7 +175,7 @@ so there are no added or modified executable lines requiring diff coverage.
 
 ## Temporary memory and batch contexts
 
-`Index.Search(conditions, found)` is the sole public search entry point. It
+`Index.Search(conditions, found) bool` is the sole public search entry point. Its return value reports whether this call appended any match, excluding preexisting results; flags propagate through all chunks without early termination. It
 validates equal outer lengths, then owns one private `localContext` for the
 whole request. The former single-condition kernel remains private for short
 batches and fallback. See [API migration](batch-api-migration.md).
