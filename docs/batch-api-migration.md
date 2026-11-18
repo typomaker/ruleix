@@ -5,8 +5,8 @@
 `Index.Search(conditions []C, found [][]ID)` is the sole public search method.
 It replaces experimental `SearchBatch` without changing its execution strategy.
 The single-condition `Index.Search`, public `Local` type, `Index.Local`, and
-`Local.Search`/`Close` have been removed. This is a source-breaking unreleased
-change relative to v0.9.0 and acaa3db; no release or remote push is part of it.
+`Local.Search`/`Close` have been removed. This source-breaking change ships in [v0.10.0](release-0.10.0.md)
+and replaces the API from v0.9.0 and acaa3db.
 
 Allocate exactly one destination slot per condition:
 

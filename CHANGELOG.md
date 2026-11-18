@@ -1,10 +1,9 @@
 # Changelog
-
 All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.0] - 2026-11-18
 
 - Breaking: replaced single-condition `Index.Search`, public `Local` and experimental `SearchBatch` with `Index.Search(conditions, found)`; one private context per call. See [migration](docs/batch-api-migration.md).
 - Accelerated eligible 5–15-condition searches with a Build-prepared bounded source and early exact-key miss proofs; see [planning experiments](docs/batch-planner.md).
@@ -479,7 +478,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/typomaker/ruleix/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/typomaker/ruleix/compare/v0.8.4...v0.9.0
 [0.8.4]: https://github.com/typomaker/ruleix/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/typomaker/ruleix/compare/v0.8.2...v0.8.3
