@@ -14,8 +14,8 @@ does not skip later offers or chunks. There are no output snapshots, additional
 output scans, new buffers or shared flags. No speedup claim is made.
 
 Calls that discard the result still compile. Method values and interfaces
-with the old void signature must change to include the bool result. This is
-an unreleased extension of v0.10.0; no tag or remote push is part of this task.
+with the old void signature must change to include the bool result. This extension
+ships in [v0.10.1](release-0.10.1.md), following v0.10.0.
 
 ## Verification
 

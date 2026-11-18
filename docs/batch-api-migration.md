@@ -140,7 +140,7 @@ modules; all changed files meet the 500-line limit. Raw measurements, coverage,
 API listing and diagnostic profile summaries are in
 [the evidence directory](experiments/batch-api-migration/README.md).
 
-## Boolean result extension (unreleased)
+## Boolean result extension (v0.10.1)
 
 The boolean is propagated from the existing private single-condition result
 and native append sites through short groups, fallback groups and batch chunks.

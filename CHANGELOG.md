@@ -3,6 +3,10 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-11-18
+
+- `Index.Search` now returns whether this call appended any matches; empty batches and misses return false. Existing results do not count. See [release notes](docs/release-0.10.1.md).
+
 ## [0.10.0] - 2026-11-18
 
 - Breaking: replaced single-condition `Index.Search`, public `Local` and experimental `SearchBatch` with `Index.Search(conditions, found)`; one private context per call. See [migration](docs/batch-api-migration.md).
@@ -11,14 +15,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
-- `Local.Search` now caches every cacheable query on its first miss and retains
-  an unbounded distinct working set until `Local.Close`. Slot admission, LRU
-  eviction, and adaptive two-to-four-entry limits were removed from equality,
-  ordered, `CompareBy`, `Between`, exclusion, strict-antonym, and exact `All`
-  result caches. `Index.Search` remains the controlled-memory path for one-off
-  queries.
-- Prepared candidate masks, portable Go `Between` matching, and early empty
-  checks accelerate related offers through one `Local`, with no API changes; see the [release report](docs/release-0.9.0.md).
+- `Local.Search` now caches every cacheable query on its first miss and retains an unbounded distinct working set until `Local.Close`. Slot admission, LRU eviction, and adaptive two-to-four-entry limits were removed from equality, ordered, `CompareBy`, `Between`, exclusion, strict-antonym, and exact `All` result caches. `Index.Search` remains the controlled-memory path for one-off queries.
+
+- Prepared candidate masks, portable Go `Between` matching, and early empty checks accelerate related offers through one `Local`, with no API changes; see the [release report](docs/release-0.9.0.md).
 
 - Removed the unused `Visit` API; use `Search` with caller-owned buffers.
 
@@ -478,7 +477,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   handles wildcards directly.
 - Nested rule wrappers in favor of typed getter composition with `Path`.
 
-[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/typomaker/ruleix/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/typomaker/ruleix/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/typomaker/ruleix/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/typomaker/ruleix/compare/v0.8.4...v0.9.0
 [0.8.4]: https://github.com/typomaker/ruleix/compare/v0.8.3...v0.8.4
