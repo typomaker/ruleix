@@ -1,0 +1,282 @@
+{
+  "mixed/1": {
+    "ns/op": 2237.0,
+    "p99-ns/request": 5042.0,
+    "p99.9-ns/request": 28083.0,
+    "B/op": 783.0,
+    "allocs/op": 10.0
+  },
+  "mixed/4": {
+    "ns/op": 3911.0,
+    "p99-ns/request": 6500.0,
+    "p99.9-ns/request": 27958.0,
+    "B/op": 783.0,
+    "allocs/op": 10.0
+  },
+  "mixed/5": {
+    "ns/op": 4334.0,
+    "p99-ns/request": 7292.0,
+    "p99.9-ns/request": 18958.0,
+    "B/op": 783.0,
+    "allocs/op": 10.0
+  },
+  "mixed/6": {
+    "ns/op": 4748.0,
+    "p99-ns/request": 8667.0,
+    "p99.9-ns/request": 31500.0,
+    "B/op": 783.0,
+    "allocs/op": 10.0
+  },
+  "mixed/8": {
+    "ns/op": 5341.0,
+    "p99-ns/request": 8959.0,
+    "p99.9-ns/request": 29125.0,
+    "B/op": 783.0,
+    "allocs/op": 10.0
+  },
+  "mixed/10": {
+    "ns/op": 5964.0,
+    "p99-ns/request": 10291.0,
+    "p99.9-ns/request": 31416.0,
+    "B/op": 783.0,
+    "allocs/op": 10.0
+  },
+  "mixed/12": {
+    "ns/op": 6583.0,
+    "p99-ns/request": 11084.0,
+    "p99.9-ns/request": 33083.0,
+    "B/op": 783.0,
+    "allocs/op": 10.0
+  },
+  "mixed/15": {
+    "ns/op": 7476.0,
+    "p99-ns/request": 13125.0,
+    "p99.9-ns/request": 32375.0,
+    "B/op": 783.0,
+    "allocs/op": 10.0
+  },
+  "mixed/16": {
+    "ns/op": 4089.0,
+    "p99-ns/request": 6959.0,
+    "p99.9-ns/request": 10750.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/1": {
+    "ns/op": 295.5,
+    "p99-ns/request": 292.0,
+    "p99.9-ns/request": 416.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/4": {
+    "ns/op": 474.3,
+    "p99-ns/request": 500.0,
+    "p99.9-ns/request": 584.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/5": {
+    "ns/op": 533.3,
+    "p99-ns/request": 583.0,
+    "p99.9-ns/request": 667.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/6": {
+    "ns/op": 588.1,
+    "p99-ns/request": 625.0,
+    "p99.9-ns/request": 709.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/8": {
+    "ns/op": 699.8,
+    "p99-ns/request": 750.0,
+    "p99.9-ns/request": 833.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/10": {
+    "ns/op": 812.8,
+    "p99-ns/request": 875.0,
+    "p99.9-ns/request": 959.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/12": {
+    "ns/op": 918.5,
+    "p99-ns/request": 1000.0,
+    "p99.9-ns/request": 1084.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/15": {
+    "ns/op": 1082.0,
+    "p99-ns/request": 1167.0,
+    "p99.9-ns/request": 1291.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/16": {
+    "ns/op": 508.7,
+    "p99-ns/request": 541.0,
+    "p99.9-ns/request": 625.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/1": {
+    "ns/op": 385.5,
+    "p99-ns/request": 417.0,
+    "p99.9-ns/request": 500.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/4": {
+    "ns/op": 561.7,
+    "p99-ns/request": 584.0,
+    "p99.9-ns/request": 709.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/5": {
+    "ns/op": 616.7,
+    "p99-ns/request": 666.0,
+    "p99.9-ns/request": 750.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/6": {
+    "ns/op": 670.6,
+    "p99-ns/request": 709.0,
+    "p99.9-ns/request": 833.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/8": {
+    "ns/op": 775.3,
+    "p99-ns/request": 833.0,
+    "p99.9-ns/request": 917.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/10": {
+    "ns/op": 905.5,
+    "p99-ns/request": 958.0,
+    "p99.9-ns/request": 1083.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/12": {
+    "ns/op": 995.8,
+    "p99-ns/request": 1083.0,
+    "p99.9-ns/request": 1209.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/15": {
+    "ns/op": 1152.0,
+    "p99-ns/request": 1291.0,
+    "p99.9-ns/request": 1417.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/16": {
+    "ns/op": 560.5,
+    "p99-ns/request": 583.0,
+    "p99.9-ns/request": 667.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/1": {
+    "ns/op": 419.2,
+    "p99-ns/request": 459.0,
+    "p99.9-ns/request": 542.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/4": {
+    "ns/op": 556.3,
+    "p99-ns/request": 625.0,
+    "p99.9-ns/request": 708.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/5": {
+    "ns/op": 596.8,
+    "p99-ns/request": 625.0,
+    "p99.9-ns/request": 834.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/6": {
+    "ns/op": 642.3,
+    "p99-ns/request": 667.0,
+    "p99.9-ns/request": 792.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/8": {
+    "ns/op": 721.0,
+    "p99-ns/request": 791.0,
+    "p99.9-ns/request": 875.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/10": {
+    "ns/op": 801.3,
+    "p99-ns/request": 875.0,
+    "p99.9-ns/request": 959.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/12": {
+    "ns/op": 874.4,
+    "p99-ns/request": 917.0,
+    "p99.9-ns/request": 1042.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/15": {
+    "ns/op": 994.2,
+    "p99-ns/request": 1083.0,
+    "p99.9-ns/request": 1208.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/16": {
+    "ns/op": 562.3,
+    "p99-ns/request": 584.0,
+    "p99.9-ns/request": 708.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "intersectzero/1": {
+    "ns/op": 1852.0,
+    "p99-ns/request": 4625.0,
+    "p99.9-ns/request": 27375.0,
+    "B/op": 762.0,
+    "allocs/op": 9.0
+  },
+  "intersectzero/4": {
+    "ns/op": 2615.0,
+    "p99-ns/request": 5208.0,
+    "p99.9-ns/request": 27708.0,
+    "B/op": 762.0,
+    "allocs/op": 9.0
+  },
+  "intersectzero/5": {
+    "ns/op": 2783.0,
+    "p99-ns/request": 6208.0,
+    "p99.9-ns/request": 28583.0,
+    "B/op": 762.0,
+    "allocs/op": 9.0
+  },
+  "intersectzero/6": {
+    "ns/op": 2943.0,
+    "p99-ns/request": 5958.0,
+    "p99.9-ns/request": 28625.0,
+    "B/op": 762.0,
+    "allocs/op": 9.0
+  }
+}

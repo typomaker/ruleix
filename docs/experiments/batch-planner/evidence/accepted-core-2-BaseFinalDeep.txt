@@ -1,0 +1,18 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkPlannerProduction/mixed/100     	   40000	     13288 ns/op	     24958 p99-ns/request	     36791 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/tiny/100      	   40000	      7540 ns/op	     10250 p99-ns/request	     24667 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/medium/100    	   40000	     14281 ns/op	     18792 p99-ns/request	     35041 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/broad/100     	   40000	     16960 ns/op	     24750 p99-ns/request	     44167 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/zero/100      	   40000	      1552 ns/op	      1666 p99-ns/request	      2958 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/storezero/100 	   40000	      1599 ns/op	      1667 p99-ns/request	      2042 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/slotzero/100  	   40000	      1480 ns/op	      1583 p99-ns/request	      2209 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/intersectzero/100         	   40000	      4426 ns/op	      4792 p99-ns/request	      8250 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/predicatezero/100         	   40000	     21301 ns/op	     28666 p99-ns/request	     45458 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/unrelated/100             	   40000	     64634 ns/op	     86500 p99-ns/request	    121541 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/identical/100             	   40000	     18215 ns/op	     25500 p99-ns/request	     43958 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/rotate/100                	   40000	     15034 ns/op	     27083 p99-ns/request	     41583 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/partial/100               	   40000	     27090 ns/op	     39375 p99-ns/request	     58167 p99.9-ns/request	       0 B/op	       0 allocs/op
+PASS

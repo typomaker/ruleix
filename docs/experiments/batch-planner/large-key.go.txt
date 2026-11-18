@@ -1,0 +1,43 @@
+package ruleix_test
+
+import (
+ "fmt"
+ "testing"
+ "github.com/stretchr/testify/require"
+ "github.com/typomaker/ruleix"
+)
+
+type plannerLarge struct { group int; key [2048]byte }
+
+func plannerLargeIndex(t testing.TB) *ruleix.Index[plannerLarge,int] {
+ rows,ids:=make([]plannerLarge,32),make([]int,32)
+ for i:=range rows {rows[i].group=i/8;rows[i].key[0]=byte(i%2);ids[i]=i}
+ index,err:=ruleix.New[plannerLarge,int](ruleix.All(
+  ruleix.Include(func(v plannerLarge)(int,bool){return v.group,true}),
+  ruleix.Include(func(v plannerLarge)([2048]byte,bool){return v.key,true}),
+ )).Build(ruleix.Zip(rows,ids));require.NoError(t,err)
+ return index
+}
+
+func TestPlannerLargeKey(t *testing.T) {
+ index:=plannerLargeIndex(t)
+ conditions:=make([]plannerLarge,100);found:=make([][]int,100)
+ for i:=range conditions {conditions[i].group=1;conditions[i].key[0]=byte(i%2)}
+ index.Search(conditions,found)
+ for i:=range found {want:=[]int{8,10,12,14};if i%2!=0 {want=[]int{9,11,13,15}};require.Equal(t,want,found[i])}
+}
+
+// The 2-KiB comparable property catches raw-key cache copying/heap growth.
+// Run with the other synthetic controls; results belong to batch-planner.md.
+func BenchmarkPlannerLargeKey(b *testing.B) {
+ index:=plannerLargeIndex(b)
+ for _,length:=range []int{5,15,16,100} {
+  b.Run(fmt.Sprint(length),func(b *testing.B){
+   conditions:=make([]plannerLarge,length);found:=make([][]int,length)
+   for i:=range conditions {conditions[i].group=1;conditions[i].key[0]=byte(i%2)}
+   for range 2 {index.Search(conditions,found);for i:=range found {found[i]=found[i][:0]}}
+   b.ReportAllocs()
+   for b.Loop(){index.Search(conditions,found);for i:=range found {found[i]=found[i][:0]}}
+  })
+ }
+}

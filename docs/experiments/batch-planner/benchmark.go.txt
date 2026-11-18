@@ -1,0 +1,74 @@
+package ruleix_test
+
+import (
+ "encoding/json"
+ "fmt"
+ "os"
+ "slices"
+ "strconv"
+ "strings"
+ "testing"
+ "time"
+
+ "github.com/google/uuid"
+ "github.com/stretchr/testify/require"
+ "github.com/typomaker/ruleix"
+)
+
+func plannerModes() []string {
+ if modes:=os.Getenv("RULEIX_TRIAL_MODES");modes!="" {return strings.Split(modes,",")}
+ return comparisonModes
+}
+
+func plannerLengths() []int {
+ if sizes:=os.Getenv("RULEIX_TRIAL_LENGTHS");sizes!="" {
+  var lengths []int
+  for _,size:=range strings.Split(sizes,",") {n,err:=strconv.Atoi(size);if err!=nil {panic(err)};lengths=append(lengths,n)}
+  return lengths
+ }
+ return []int{100}
+}
+
+func TestPlannerProbe(t *testing.T) {
+ rows,ids:=loadComparison(t)
+ index,err:=ruleix.New[productionDumpConstraint,uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows,ids))
+ require.NoError(t,err)
+ result:=make(map[string]map[string]uint64)
+ for _,mode:=range comparisonModes {result[mode]=index.PlannerProbe(comparisonRequests(t,rows,ids,mode)[0])}
+ data,err:=json.MarshalIndent(result,"","  ");require.NoError(t,err)
+ require.NoError(t,os.WriteFile(os.Getenv("RULEIX_TRIAL_PROBE"),data,0600))
+}
+
+// M1 Max, Go 1.27.3, GOMAXPROCS=1, full 96,630-row dump. Screens use
+// interleaved 5,000x; confirmations use 3 x 40,000x. Latest results are in
+// docs/batch-planner.md. Context lifecycle, planning and appends remain timed.
+func BenchmarkPlannerProduction(b *testing.B) {
+ rows,ids:=loadComparison(b)
+ index,err:=ruleix.New[productionDumpConstraint,uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows,ids))
+ require.NoError(b,err)
+ for _,mode:=range plannerModes() {
+  b.Run(mode,func(b *testing.B){
+   requests:=comparisonRequests(b,rows,ids,mode)
+   for _,length:=range plannerLengths() {
+    b.Run(fmt.Sprint(length),func(b *testing.B){
+     found:=make([][]uuid.UUID,length)
+     reset:=func(){for i:=range found {found[i]=found[i][:0]}}
+     for range 2 {for _,request:=range requests {reset();searchComparison(index,request[:length],found)}}
+     capacity:=100000
+     if os.Getenv("RULEIX_TRIAL_PROFILE")=="1" {capacity=300000}
+     samples:=make([]time.Duration,0,capacity)
+     turn:=0
+     b.ReportAllocs()
+     for b.Loop(){
+      reset();request:=requests[turn%len(requests)][:length]
+      start:=time.Now();searchComparison(index,request,found)
+      samples=append(samples,time.Since(start));turn++
+     }
+     slices.Sort(samples)
+     b.ReportMetric(float64(samples[(99*len(samples)+99)/100-1].Nanoseconds()),"p99-ns/request")
+     b.ReportMetric(float64(samples[(999*len(samples)+999)/1000-1].Nanoseconds()),"p99.9-ns/request")
+    })
+   }
+  })
+ }
+}

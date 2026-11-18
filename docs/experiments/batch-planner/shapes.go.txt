@@ -1,0 +1,72 @@
+package ruleix_test
+
+import (
+ "cmp"
+ "fmt"
+ "slices"
+ "testing"
+
+ "github.com/stretchr/testify/require"
+ "github.com/typomaker/ruleix"
+)
+
+type plannerShape struct { group,store,from,until int }
+
+func plannerShapeIndex(t testing.TB,count int,mode string) (*ruleix.Index[plannerShape,int],[]plannerShape,[]int) {
+ t.Helper()
+ rows,ids:=make([]plannerShape,4*count),make([]int,4*count)
+ for i:=range rows {rows[i]=plannerShape{i/count,i%7,i%11,20+i%13};ids[i]=i*17}
+ schema:=ruleix.All(
+  ruleix.Include(func(v plannerShape)(int,bool){return v.group,true}),
+  ruleix.Include(func(v plannerShape)(int,bool){return v.store,true}),
+  ruleix.Between(func(v plannerShape)(int,bool){return v.from,true},func(v plannerShape)(int,bool){return v.until,true},cmp.Compare[int]),
+ )
+ var inspector ruleix.Inspector
+ var rule ruleix.Rule[plannerShape]=schema
+ if mode=="observed" {rule=ruleix.Inspect(&inspector,rule)}
+ if mode=="lossy" {rule=ruleix.Lossy(rule,ruleix.MemoryLimit(1<<25))}
+ index,err:=ruleix.New[plannerShape,int](rule).Build(ruleix.Zip(rows,ids));require.NoError(t,err)
+ return index,rows,ids
+}
+
+func TestPlannerShapes(t *testing.T) {
+ for _,count:=range []int{1,8,16,32,64,65,256} {
+  for _,mode:=range []string{"native","observed","lossy"} {
+   t.Run(fmt.Sprintf("%d/%s",count,mode),func(t *testing.T){
+    index,rows,ids:=plannerShapeIndex(t,count,mode)
+    for turn:=range 128 {
+     length:=[]int{0,1,4,5,8,15,16,100,129,300}[turn%10]
+     conditions:=make([]plannerShape,length);found:=make([][]int,length)
+     for i:=range conditions {point:=(i+turn)%40;conditions[i]=plannerShape{(i+turn)%5,i%8,point,point};found[i]=[]int{-1}}
+     index.Search(conditions,found)
+     for i,q:=range conditions {
+      want:=[]int{-1}
+      for j,row:=range rows {if row.group==q.group&&row.store==q.store&&row.from<=q.from&&row.until>=q.until {want=append(want,ids[j])}}
+      require.True(t,slices.Equal(want,found[i]))
+     }
+    }
+   })
+  }
+ }
+}
+
+// Screening includes unsupported ordinary Between/fallback and observed shapes.
+// M1 Max, Go 1.27.3, GOMAXPROCS=1; results are maintained in batch-planner.md.
+func BenchmarkPlannerShapes(b *testing.B) {
+ for _,count:=range []int{8,16,32,64,256} {
+  for _,mode:=range []string{"native","observed"} {
+   b.Run(fmt.Sprintf("%d/%s",count,mode),func(b *testing.B){
+    index,_,_:=plannerShapeIndex(b,count,mode)
+    for _,length:=range []int{5,8,15,16,100} {
+     b.Run(fmt.Sprint(length),func(b *testing.B){
+      conditions:=make([]plannerShape,length);found:=make([][]int,length)
+      for i:=range conditions {conditions[i]=plannerShape{1,i%7,15+i%9,15+i%9}}
+      for range 2 {index.Search(conditions,found);for i:=range found {found[i]=found[i][:0]}}
+      b.ReportAllocs()
+      for b.Loop(){index.Search(conditions,found);for i:=range found {found[i]=found[i][:0]}}
+     })
+    }
+   })
+  }
+ }
+}

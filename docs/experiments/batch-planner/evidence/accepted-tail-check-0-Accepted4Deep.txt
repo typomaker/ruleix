@@ -1,0 +1,13 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkPlannerProduction/mixed/100     	   80000	     11663 ns/op	     22083 p99-ns/request	     27375 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/medium/100    	   80000	     12423 ns/op	     15708 p99-ns/request	     26417 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/broad/100     	   80000	     15436 ns/op	     23209 p99-ns/request	     41750 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/predicatezero/100         	   80000	     20297 ns/op	     26250 p99-ns/request	     59084 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/partial/100               	   80000	     29058 ns/op	     71375 p99-ns/request	    209542 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/zero/100                  	   80000	      1567 ns/op	      1625 p99-ns/request	      2792 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/storezero/100             	   80000	      1612 ns/op	      1667 p99-ns/request	      3333 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkPlannerProduction/slotzero/100              	   80000	      1493 ns/op	      1542 p99-ns/request	      2875 p99.9-ns/request	       0 B/op	       0 allocs/op
+PASS

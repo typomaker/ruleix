@@ -21,6 +21,7 @@ type candidateMaskOperand[T any] interface {
 }
 
 func (r *allRule[T]) prepareNarrowMaskOperands() {
+	r.shortBatchAnchor = 0
 	if len(r.children) < 2 || len(r.children) > 8 {
 		return
 	}
@@ -34,6 +35,16 @@ func (r *allRule[T]) prepareNarrowMaskOperands() {
 		}
 	}
 	r.narrowMaskPrepared = equality != 0
+	best := uint64(batchCandidateLimit + 1)
+	for child, rule := range r.children {
+		if source, ok := rule.(batchShortSource[T]); ok {
+			if bound := source.batchShortBound(); bound < best {
+				best = bound
+				r.shortBatchAnchor = uint8(child + 1)
+			}
+		}
+	}
+
 	r.maskEqualityOrder = equality
 }
 

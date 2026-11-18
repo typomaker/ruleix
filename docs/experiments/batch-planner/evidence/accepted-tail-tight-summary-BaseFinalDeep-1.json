@@ -1,0 +1,30 @@
+{
+  "partial/100": {
+    "ns/op": 25539.0,
+    "p99-ns/request": 36750.0,
+    "p99.9-ns/request": 52458.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/100": {
+    "ns/op": 1492.0,
+    "p99-ns/request": 1541.0,
+    "p99.9-ns/request": 1709.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/100": {
+    "ns/op": 1547.0,
+    "p99-ns/request": 1584.0,
+    "p99.9-ns/request": 1792.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/100": {
+    "ns/op": 1426.0,
+    "p99-ns/request": 1500.0,
+    "p99.9-ns/request": 1958.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  }
+}

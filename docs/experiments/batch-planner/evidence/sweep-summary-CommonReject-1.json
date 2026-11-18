@@ -1,0 +1,93 @@
+{
+  "mixed/100": {
+    "ns/op": 13694.5,
+    "p99-ns/request": 25978.5,
+    "p99.9-ns/request": 35083.5,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "tiny/100": {
+    "ns/op": 7710.5,
+    "p99-ns/request": 9667.0,
+    "p99.9-ns/request": 16291.5,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "medium/100": {
+    "ns/op": 14671.5,
+    "p99-ns/request": 18938.0,
+    "p99.9-ns/request": 32250.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "broad/100": {
+    "ns/op": 17417.5,
+    "p99-ns/request": 24979.0,
+    "p99.9-ns/request": 35479.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/100": {
+    "ns/op": 1488.5,
+    "p99-ns/request": 1521.0,
+    "p99.9-ns/request": 2063.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/100": {
+    "ns/op": 1541.5,
+    "p99-ns/request": 1563.0,
+    "p99.9-ns/request": 1729.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/100": {
+    "ns/op": 1428.5,
+    "p99-ns/request": 1500.0,
+    "p99.9-ns/request": 3354.5,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "intersectzero/100": {
+    "ns/op": 3201.0,
+    "p99-ns/request": 3479.5,
+    "p99.9-ns/request": 6083.5,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "predicatezero/100": {
+    "ns/op": 21442.0,
+    "p99-ns/request": 25333.0,
+    "p99.9-ns/request": 41396.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "unrelated/100": {
+    "ns/op": 59609.0,
+    "p99-ns/request": 77146.0,
+    "p99.9-ns/request": 104146.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "identical/100": {
+    "ns/op": 18026.5,
+    "p99-ns/request": 21604.0,
+    "p99.9-ns/request": 35458.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "rotate/100": {
+    "ns/op": 15375.0,
+    "p99-ns/request": 28041.0,
+    "p99.9-ns/request": 33458.5,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "partial/100": {
+    "ns/op": 24950.5,
+    "p99-ns/request": 35291.5,
+    "p99.9-ns/request": 52125.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  }
+}

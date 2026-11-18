@@ -1,0 +1,58 @@
+{
+  "mixed/100": {
+    "ns/op": 12034.0,
+    "p99-ns/request": 22875.0,
+    "p99.9-ns/request": 36125.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "medium/100": {
+    "ns/op": 12664.0,
+    "p99-ns/request": 16209.0,
+    "p99.9-ns/request": 29625.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "broad/100": {
+    "ns/op": 15436.0,
+    "p99-ns/request": 22958.0,
+    "p99.9-ns/request": 41750.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "predicatezero/100": {
+    "ns/op": 19466.0,
+    "p99-ns/request": 22667.0,
+    "p99.9-ns/request": 52541.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "partial/100": {
+    "ns/op": 26300.0,
+    "p99-ns/request": 38125.0,
+    "p99.9-ns/request": 78167.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "zero/100": {
+    "ns/op": 1560.0,
+    "p99-ns/request": 1583.0,
+    "p99.9-ns/request": 2666.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/100": {
+    "ns/op": 1597.0,
+    "p99-ns/request": 1625.0,
+    "p99.9-ns/request": 3333.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/100": {
+    "ns/op": 1450.0,
+    "p99-ns/request": 1459.0,
+    "p99.9-ns/request": 2875.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  }
+}

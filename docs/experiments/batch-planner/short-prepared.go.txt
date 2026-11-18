@@ -1,0 +1,13 @@
+package ruleix
+
+type trialShortSource interface { trialShortBound() uint64 }
+
+func (r *eqRule[T,V,K]) trialShortBound() uint64 {
+ if !r.supportsEmptyKeyCheck() {return batchCandidateLimit+1}
+ var maximum uint64
+ for i:=range r.values.sets {
+  maximum=max(maximum,r.values.sets[i].cardinality())
+  if maximum>batchCandidateLimit {return maximum}
+ }
+ return maximum
+}

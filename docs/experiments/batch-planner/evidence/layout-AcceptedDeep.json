@@ -1,0 +1,6 @@
+{
+  "index-bytes": 240,
+  "root-bytes": 160,
+  "short-anchor-max-candidates": 20,
+  "short-anchor-plus-one": 3
+}

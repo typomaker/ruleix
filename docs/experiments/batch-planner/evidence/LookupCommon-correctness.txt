@@ -1,0 +1,61 @@
+=== RUN   TestPlannerProbe
+    benchmark_test.go:46: selected 16 requests for the tiny cohort
+    benchmark_test.go:46: selected 28 requests for the medium cohort
+    benchmark_test.go:46: selected 13 requests for the broad cohort
+    production_batch_cohort_test.go:87: zero: 64 requests with forced absent keys
+    production_batch_cohort_test.go:87: storezero: 64 requests with forced absent keys
+    production_batch_cohort_test.go:87: slotzero: 64 requests with forced absent keys
+--- PASS: TestPlannerProbe (1.29s)
+=== RUN   TestReleaseComparison
+    comparison_test.go:163: selected 16 requests for the tiny cohort
+    comparison_test.go:163: selected 28 requests for the medium cohort
+    comparison_test.go:163: selected 13 requests for the broad cohort
+    production_batch_cohort_test.go:87: zero: 64 requests with forced absent keys
+    production_batch_cohort_test.go:87: storezero: 64 requests with forced absent keys
+    production_batch_cohort_test.go:87: slotzero: 64 requests with forced absent keys
+--- PASS: TestReleaseComparison (1.70s)
+=== RUN   TestPlannerShapes
+=== RUN   TestPlannerShapes/1/native
+=== RUN   TestPlannerShapes/1/observed
+=== RUN   TestPlannerShapes/1/lossy
+=== RUN   TestPlannerShapes/8/native
+=== RUN   TestPlannerShapes/8/observed
+=== RUN   TestPlannerShapes/8/lossy
+=== RUN   TestPlannerShapes/16/native
+=== RUN   TestPlannerShapes/16/observed
+=== RUN   TestPlannerShapes/16/lossy
+=== RUN   TestPlannerShapes/32/native
+=== RUN   TestPlannerShapes/32/observed
+=== RUN   TestPlannerShapes/32/lossy
+=== RUN   TestPlannerShapes/64/native
+=== RUN   TestPlannerShapes/64/observed
+=== RUN   TestPlannerShapes/64/lossy
+=== RUN   TestPlannerShapes/65/native
+=== RUN   TestPlannerShapes/65/observed
+=== RUN   TestPlannerShapes/65/lossy
+=== RUN   TestPlannerShapes/256/native
+=== RUN   TestPlannerShapes/256/observed
+=== RUN   TestPlannerShapes/256/lossy
+--- PASS: TestPlannerShapes (0.15s)
+    --- PASS: TestPlannerShapes/1/native (0.00s)
+    --- PASS: TestPlannerShapes/1/observed (0.00s)
+    --- PASS: TestPlannerShapes/1/lossy (0.00s)
+    --- PASS: TestPlannerShapes/8/native (0.00s)
+    --- PASS: TestPlannerShapes/8/observed (0.00s)
+    --- PASS: TestPlannerShapes/8/lossy (0.00s)
+    --- PASS: TestPlannerShapes/16/native (0.01s)
+    --- PASS: TestPlannerShapes/16/observed (0.01s)
+    --- PASS: TestPlannerShapes/16/lossy (0.01s)
+    --- PASS: TestPlannerShapes/32/native (0.01s)
+    --- PASS: TestPlannerShapes/32/observed (0.01s)
+    --- PASS: TestPlannerShapes/32/lossy (0.01s)
+    --- PASS: TestPlannerShapes/64/native (0.01s)
+    --- PASS: TestPlannerShapes/64/observed (0.01s)
+    --- PASS: TestPlannerShapes/64/lossy (0.01s)
+    --- PASS: TestPlannerShapes/65/native (0.01s)
+    --- PASS: TestPlannerShapes/65/observed (0.01s)
+    --- PASS: TestPlannerShapes/65/lossy (0.01s)
+    --- PASS: TestPlannerShapes/256/native (0.02s)
+    --- PASS: TestPlannerShapes/256/observed (0.02s)
+    --- PASS: TestPlannerShapes/256/lossy (0.02s)
+PASS

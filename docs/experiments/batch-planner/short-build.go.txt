@@ -1,0 +1,11 @@
+package ruleix
+
+type trialShortSource interface { trialShortBounded() bool }
+
+// A safe exact anchor whose every posting fits a native mask proves that
+// short requests cannot unexpectedly enter the wide-candidate fallback.
+func (r *eqRule[T,V,K]) trialShortBounded() bool {
+ if !r.supportsEmptyKeyCheck() {return false}
+ for i:=range r.values.sets {if r.values.sets[i].cardinality()>batchCandidateLimit {return false}}
+ return true
+}

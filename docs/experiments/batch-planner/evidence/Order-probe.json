@@ -1,0 +1,93 @@
+{
+  "broad": {
+    "anchor-lookups": 5,
+    "equality-encodes": 158,
+    "fallback-offers": 0,
+    "groups": 1,
+    "mask-evaluations": 52
+  },
+  "identical": {
+    "anchor-lookups": 5,
+    "equality-encodes": 311,
+    "fallback-offers": 0,
+    "groups": 1,
+    "mask-evaluations": 15
+  },
+  "intersectzero": {
+    "anchor-lookups": 5,
+    "equality-encodes": 111,
+    "fallback-offers": 0,
+    "groups": 1,
+    "mask-evaluations": 11
+  },
+  "medium": {
+    "anchor-lookups": 5,
+    "equality-encodes": 147,
+    "fallback-offers": 0,
+    "groups": 1,
+    "mask-evaluations": 50
+  },
+  "mixed": {
+    "anchor-lookups": 5,
+    "equality-encodes": 115,
+    "fallback-offers": 0,
+    "groups": 1,
+    "mask-evaluations": 35
+  },
+  "partial": {
+    "anchor-lookups": 104,
+    "equality-encodes": 236,
+    "fallback-offers": 0,
+    "groups": 4,
+    "mask-evaluations": 113
+  },
+  "predicatezero": {
+    "anchor-lookups": 5,
+    "equality-encodes": 11,
+    "fallback-offers": 0,
+    "groups": 1,
+    "mask-evaluations": 12
+  },
+  "rotate": {
+    "anchor-lookups": 5,
+    "equality-encodes": 117,
+    "fallback-offers": 0,
+    "groups": 1,
+    "mask-evaluations": 35
+  },
+  "slotzero": {
+    "anchor-lookups": 4,
+    "equality-encodes": 4,
+    "fallback-offers": 0,
+    "groups": 0,
+    "mask-evaluations": 0
+  },
+  "storezero": {
+    "anchor-lookups": 3,
+    "equality-encodes": 3,
+    "fallback-offers": 0,
+    "groups": 0,
+    "mask-evaluations": 0
+  },
+  "tiny": {
+    "anchor-lookups": 5,
+    "equality-encodes": 115,
+    "fallback-offers": 0,
+    "groups": 1,
+    "mask-evaluations": 35
+  },
+  "unrelated": {
+    "anchor-lookups": 104,
+    "equality-encodes": 626,
+    "fallback-offers": 0,
+    "groups": 64,
+    "mask-evaluations": 807
+  },
+  "zero": {
+    "anchor-lookups": 2,
+    "equality-encodes": 2,
+    "fallback-offers": 0,
+    "groups": 0,
+    "mask-evaluations": 0
+  }
+}

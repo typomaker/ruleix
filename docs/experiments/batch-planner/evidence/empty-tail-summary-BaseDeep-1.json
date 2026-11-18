@@ -1,0 +1,23 @@
+{
+  "zero/100": {
+    "ns/op": 1492.0,
+    "p99-ns/request": 1542.0,
+    "p99.9-ns/request": 1750.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "storezero/100": {
+    "ns/op": 1545.0,
+    "p99-ns/request": 1583.0,
+    "p99.9-ns/request": 1791.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  },
+  "slotzero/100": {
+    "ns/op": 1425.0,
+    "p99-ns/request": 1459.0,
+    "p99.9-ns/request": 1667.0,
+    "B/op": 0.0,
+    "allocs/op": 0.0
+  }
+}

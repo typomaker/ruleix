@@ -39,6 +39,7 @@ type allRule[T any] struct {
 	emptyKeys               uint8
 	equalityClassCount      uint32
 	compiledEqualityClasses bool
+	shortBatchAnchor        uint8
 	emptyOrder              uint32
 	// sharedWildcardGroups is allocated only when Build finds equality children
 	// whose interned, non-empty wildcard bitmap is identical. Ordinary All

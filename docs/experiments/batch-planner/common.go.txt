@@ -1,0 +1,46 @@
+package ruleix
+
+import "math/bits"
+
+type trialCommonOperand[T any] interface {
+ trialCommonMask([]T,[]int,[]uint32) (uint64,bool)
+}
+
+func (r *eqRule[T,V,K]) trialCommonMask(values []T,rows []int,ids []uint32) (uint64,bool) {
+ key:=getOptional(r.get,values[rows[0]])
+ if getOptional(r.get,values[rows[len(rows)-1]])!=key {return 0,false}
+ for _,row:=range rows[1:len(rows)-1] {if getOptional(r.get,values[row])!=key {return 0,false}}
+ return r.applyCandidateMask(values[rows[0]],ids,batchAllBits(len(ids))),true
+}
+
+func (r *smallBetweenRule[T,V]) trialCommonMask(values []T,rows []int,ids []uint32) (uint64,bool) {
+ first:=values[rows[0]]
+ from,until:=getOptional(r.from.get,first),getOptional(r.until.get,first)
+ for _,row:=range rows[1:] {
+  a,b:=getOptional(r.from.get,values[row]),getOptional(r.until.get,values[row])
+  if from.ok!=a.ok||until.ok!=b.ok||from.ok&&r.from.compare(from.value,a.value)!=0||until.ok&&r.until.compare(until.value,b.value)!=0 {return 0,false}
+ }
+ return r.applyCandidateMask(first,ids,batchAllBits(len(ids))),true
+}
+
+func trialCommonCandidates[T any](root *allRule[T],values []T,rows []int,ids []uint32,anchor int) ([]uint32,uint8) {
+ if len(rows)<8 {return ids,0}
+ mask,skip:=batchAllBits(len(ids)),uint8(0)
+ for child,rule:=range root.children {
+  if child==anchor {continue}
+  if operand,ok:=rule.(trialCommonOperand[T]);ok {
+   if common,ok:=operand.trialCommonMask(values,rows,ids);ok {
+    mask &= common
+    skip |= uint8(1)<<child
+    if mask==0 {return ids[:0],skip}
+   }
+  }
+ }
+ count:=0
+ for mask!=0 {
+  slot:=bits.TrailingZeros64(mask)
+  ids[count]=ids[slot];count++
+  mask &= mask-1
+ }
+ return ids[:count],skip
+}

@@ -1,0 +1,25 @@
+package ruleix
+
+import (
+ "reflect"
+ "unsafe"
+)
+
+func (ix *Index[C,ID]) PlannerLayout() map[string]uint64 {
+ info:=map[string]uint64{"index-bytes":uint64(unsafe.Sizeof(*ix))}
+ if root,ok:=ix.root.(*allRule[C]);ok {
+  info["root-bytes"]=uint64(unsafe.Sizeof(*root))
+  field:=reflect.ValueOf(root).Elem().FieldByName("shortBatchAnchor")
+  if field.IsValid(){info["short-anchor-plus-one"]=field.Uint()}
+  if field.IsValid()&&field.Uint()!=0 {
+   if source,ok:=root.children[field.Uint()-1].(interface{batchShortBound()uint64});ok {info["short-anchor-max-candidates"]=source.batchShortBound()}
+  }
+ }
+ return info
+}
+
+func (ix *Index[C,ID]) PlannerPrepareProof() {
+ if root,ok:=ix.root.(*allRule[C]);ok {root.prepareNarrowMaskOperands()}
+}
+
+func (ix *Index[C,ID]) PlannerNative() bool {root,ok:=ix.root.(*allRule[C]);return ok&&root.narrowMaskPrepared}

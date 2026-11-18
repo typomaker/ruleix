@@ -1,0 +1,27 @@
+package ruleix
+
+// The sampled objective combines capped candidate work and number of groups.
+// It is a heuristic only; semantic proofs still come from exact postings.
+func trialAnchor[T any](root *allRule[T], values []T, work *batchWork) (int,batchPostingSource[T],uint64) {
+ best,source,card:=batchAnchor(root,values[0],work)
+ if best<0 || card==0 {return best,source,card}
+ score:=^uint64(0)
+ var chosen uint64
+ for child,rule:=range root.children {
+  proof,ok:=rule.(emptyKeyOperand[T]);if !ok||!proof.supportsEmptyKeyCheck(){continue}
+  operand,ok:=rule.(batchPostingSource[T]);if !ok {continue}
+  var previous *equalitySet
+  var total,first uint64
+  for sample,slot:=range []int{0,len(values)/2,len(values)-1} {
+   posting:=operand.candidateMaskPosting(values[slot])
+   size:=uint64(0);if posting!=nil {size=posting.cardinality()}
+   if sample==0 {first=size}
+   total+=min(size,65)
+   if sample==0||posting!=previous {total+=8}
+   previous=posting
+   if work!=nil {work.anchorLookups++}
+  }
+  if total<score {best,source,score,chosen=child,operand,total,first}
+ }
+ return best,source,chosen
+}

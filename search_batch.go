@@ -68,10 +68,17 @@ func (ix *Index[C, ID]) searchBatch(conditions []C, found [][]ID, strategy batch
 	context := ix.batchContext()
 	local := &context
 	defer local.close()
-	// Small empty/fallback calls do not reliably amortize anchor selection.
-	// Sixteen-offer controls amortize it across the measured native shapes.
-	// The owned context is open and destination pointers are known nonnil.
+	// Build-proved sources avoid speculative planning for 5–15 conditions.
+	// Other short shapes keep the established kernel; context and destinations
+	// are already valid for the complete request.
 	if len(conditions) < 16 {
+		if len(conditions) >= 5 && strategy == batchTyped {
+			if root, ok := ix.root.(*allRule[C]); ok && root.shortBatchAnchor != 0 && !local.observed {
+				ix.searchShortBatch(root, local, conditions, found, work)
+				return
+			}
+		}
+
 		batchLocalSearch(local, conditions, found, nil, work)
 		return
 	}

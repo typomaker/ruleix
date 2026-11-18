@@ -1,0 +1,7 @@
+/private/var/folders/6y/ymdxft5d3bq_9ljm0xb8hszc0000gn/T/ruleix-batch-planner-a3yjncfi
+accepted-core-0-BaseFinalDeep.txt
+accepted-core-0-Accepted4Deep.txt
+accepted-core-1-Accepted4Deep.txt
+accepted-core-1-BaseFinalDeep.txt
+accepted-core-2-BaseFinalDeep.txt
+accepted-core-2-Accepted4Deep.txt

@@ -1,0 +1,168 @@
+package ruleix
+
+import (
+	"github.com/stretchr/testify/require"
+	"testing"
+)
+
+type batchReuseValue struct {
+	group, store, slot, tag int
+	hasStore                bool
+}
+
+func TestBatchRepeatedValuesPreserveWildcardsAndDeadRows(t *testing.T) {
+	rows, ids := make([]batchReuseValue, 64), make([]int, 64)
+	for i := range rows {
+		rows[i] = batchReuseValue{i / 16, i % 5, i % 4, i % 7, i%7 != 0}
+		ids[i] = i
+	}
+	schema := All(
+		Include(func(v batchReuseValue) (int, bool) { return v.group, true }),
+		Include(func(v batchReuseValue) (int, bool) { return v.store, v.hasStore }),
+		Include(func(v batchReuseValue) (int, bool) { return v.slot, true }),
+		Include(func(v batchReuseValue) (int, bool) { return v.tag, v.hasStore }),
+	)
+	index, err := New[batchReuseValue, int](schema).Build(Zip(rows, ids))
+	require.NoError(t, err)
+	conditions := make([]batchReuseValue, 100)
+	for i := range conditions {
+		conditions[i] = batchReuseValue{1, []int{0, 1, 99, 0, 0}[i/20], (i / 25) % 2, (i / 30) % 3, i/20 != 3}
+		if i >= 80 {
+			conditions[i].slot = 99
+		}
+	}
+	root := index.root.(*allRule[batchReuseValue])
+	encodes := 0
+	for _, child := range root.children {
+		if equality, ok := child.(*eqRule[batchReuseValue, int, int]); ok {
+			original := equality.encode
+			equality.encode = func(v int, q equalityQuantizer) int { encodes++; return original(v, q) }
+			defer func() { equality.encode = original }()
+		}
+	}
+	for _, length := range []int{63, 64, 100} {
+		found, want := make([][]int, length), make([][]int, length)
+		for i, q := range conditions[:length] {
+			found[i], want[i] = []int{-7}, []int{-7}
+			for j, row := range rows {
+				if row.group == q.group && row.slot == q.slot && (!row.hasStore || q.hasStore && row.tag == q.tag) &&
+					(!row.hasStore || q.hasStore && row.store == q.store) {
+					want[i] = append(want[i], ids[j])
+				}
+			}
+		}
+		encodes = 0
+		index.Search(conditions[:length], found)
+		require.Equal(t, want, found)
+		if length == 100 {
+			require.Less(t, encodes, 40)
+		}
+		for i := range found {
+			found[i] = found[i][:1]
+		}
+		var work batchWork
+		index.searchBatch(conditions[:length], found, batchTyped, &work)
+		require.Equal(t, want, found)
+		require.Positive(t, work.maskEvaluations)
+	}
+}
+
+func TestBatchLargeComparableValuesKeepOriginalLoop(t *testing.T) {
+	type value struct {
+		group int
+		key   [64]byte
+	}
+	rows, ids := make([]value, 32), make([]int, 32)
+	for i := range rows {
+		rows[i].group = i / 8
+		rows[i].key[0] = byte(i % 2)
+		ids[i] = i
+	}
+	index, err := New[value, int](All(
+		Include(func(v value) (int, bool) { return v.group, true }),
+		Include(func(v value) ([64]byte, bool) { return v.key, true }),
+	)).Build(Zip(rows, ids))
+	require.NoError(t, err)
+	conditions := make([]value, 100)
+	found := make([][]int, 100)
+	for i := range conditions {
+		conditions[i].group = 1
+		conditions[i].key[0] = byte(i % 2)
+	}
+	index.Search(conditions, found)
+	for i := range found {
+		want := []int{8, 10, 12, 14}
+		if i%2 != 0 {
+			want = []int{9, 11, 13, 15}
+		}
+		require.Equal(t, want, found[i])
+	}
+}
+
+func TestBatchLargeConditionsAvoidExtraGetterCopies(t *testing.T) {
+	type value struct {
+		group, store int
+		padding      [2048]byte
+	}
+	rows, ids := make([]value, 32), make([]int, 32)
+	for i := range rows {
+		rows[i].group = i / 8
+		rows[i].store = i % 2
+		ids[i] = i
+	}
+	index, err := New[value, int](All(
+		Include(func(v value) (int, bool) { return v.group, true }),
+		Include(func(v value) (int, bool) { return v.store, true }),
+	)).Build(Zip(rows, ids))
+	require.NoError(t, err)
+	encodes := 0
+	for _, child := range index.root.(*allRule[value]).children {
+		equality := child.(*eqRule[value, int, int])
+		original := equality.encode
+		equality.encode = func(v int, q equalityQuantizer) int { encodes++; return original(v, q) }
+		defer func() { equality.encode = original }()
+	}
+	values := make([]value, 100)
+	found := make([][]int, 100)
+	for i := range values {
+		values[i].group = 1
+	}
+	index.Search(values, found)
+	for _, matches := range found {
+		require.Equal(t, []int{8, 10, 12, 14}, matches)
+	}
+	require.GreaterOrEqual(t, encodes, 100)
+}
+
+func TestBatchLinearEqualityKeepsPostingLoop(t *testing.T) {
+	type value struct {
+		group int
+		kind  string
+	}
+	rows, ids := make([]value, 32), make([]int, 32)
+	for i := range rows {
+		rows[i] = value{i / 8, []string{"a", "b"}[i%2]}
+		ids[i] = i
+	}
+	index, err := New[value, int](All(Include(func(v value) (int, bool) { return v.group, true }),
+		Include(func(v value) (string, bool) { return v.kind, true }))).Build(Zip(rows, ids))
+	require.NoError(t, err)
+	encodes := 0
+	for _, child := range index.root.(*allRule[value]).children {
+		if r, ok := child.(*eqRule[value, string, string]); ok {
+			original := r.encode
+			r.encode = func(v string, q equalityQuantizer) string { encodes++; return original(v, q) }
+			defer func() { r.encode = original }()
+		}
+	}
+	values := make([]value, 100)
+	found := make([][]int, 100)
+	for i := range values {
+		values[i] = value{1, "a"}
+	}
+	index.Search(values, found)
+	for _, matches := range found {
+		require.Equal(t, []int{8, 10, 12, 14}, matches)
+	}
+	require.GreaterOrEqual(t, encodes, 100)
+}

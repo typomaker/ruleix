@@ -1,0 +1,122 @@
+{
+  "64/observed/8": {
+    "ns/op": 14485.5,
+    "B/op": 6547.0,
+    "allocs/op": 50.0
+  },
+  "64/observed/15": {
+    "ns/op": 24972.0,
+    "B/op": 11691.0,
+    "allocs/op": 156.0
+  },
+  "64/observed/16": {
+    "ns/op": 11331.5,
+    "B/op": 144.0,
+    "allocs/op": 1.0
+  },
+  "64/observed/100": {
+    "ns/op": 20256.0,
+    "B/op": 433.0,
+    "allocs/op": 11.0
+  },
+  "256/original/5": {
+    "ns/op": 15030.0,
+    "B/op": 12577.0,
+    "allocs/op": 30.0
+  },
+  "256/original/8": {
+    "ns/op": 30918.0,
+    "B/op": 23189.0,
+    "allocs/op": 50.0
+  },
+  "256/original/15": {
+    "ns/op": 54179.5,
+    "B/op": 35273.0,
+    "allocs/op": 169.0
+  },
+  "256/original/16": {
+    "ns/op": 57712.0,
+    "B/op": 36369.0,
+    "allocs/op": 187.0
+  },
+  "256/original/100": {
+    "ns/op": 252429.0,
+    "B/op": 106429.5,
+    "allocs/op": 1184.0
+  },
+  "256/compiled/5": {
+    "ns/op": 15027.0,
+    "B/op": 12577.0,
+    "allocs/op": 30.0
+  },
+  "256/compiled/8": {
+    "ns/op": 31135.0,
+    "B/op": 23189.0,
+    "allocs/op": 50.0
+  },
+  "256/compiled/15": {
+    "ns/op": 54547.0,
+    "B/op": 35273.0,
+    "allocs/op": 169.0
+  },
+  "256/compiled/16": {
+    "ns/op": 57070.5,
+    "B/op": 36369.0,
+    "allocs/op": 187.0
+  },
+  "256/compiled/100": {
+    "ns/op": 253543.0,
+    "B/op": 106431.0,
+    "allocs/op": 1184.0
+  },
+  "256/compiledexclusion/5": {
+    "ns/op": 15842.0,
+    "B/op": 12963.0,
+    "allocs/op": 38.0
+  },
+  "256/compiledexclusion/8": {
+    "ns/op": 32526.0,
+    "B/op": 23713.5,
+    "allocs/op": 62.0
+  },
+  "256/compiledexclusion/15": {
+    "ns/op": 57439.5,
+    "B/op": 36280.0,
+    "allocs/op": 185.0
+  },
+  "256/compiledexclusion/16": {
+    "ns/op": 61355.0,
+    "B/op": 37376.0,
+    "allocs/op": 203.0
+  },
+  "256/compiledexclusion/100": {
+    "ns/op": 232432.0,
+    "B/op": 108585.5,
+    "allocs/op": 1224.0
+  },
+  "256/observed/5": {
+    "ns/op": 14760.0,
+    "B/op": 12579.5,
+    "allocs/op": 30.0
+  },
+  "256/observed/8": {
+    "ns/op": 30826.5,
+    "B/op": 23194.5,
+    "allocs/op": 50.0
+  },
+  "256/observed/15": {
+    "ns/op": 54404.0,
+    "B/op": 35224.0,
+    "allocs/op": 168.0
+  },
+  "256/observed/16": {
+    "ns/op": 57742.5,
+    "B/op": 36314.0,
+    "allocs/op": 186.0
+  },
+  "256/observed/100": {
+    "ns/op": 251478.0,
+    "B/op": 106242.5,
+    "allocs/op": 1181.0
+  }
+}

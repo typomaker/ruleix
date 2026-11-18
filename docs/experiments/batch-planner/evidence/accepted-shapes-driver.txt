@@ -1,0 +1,5 @@
+/private/var/folders/6y/ymdxft5d3bq_9ljm0xb8hszc0000gn/T/ruleix-batch-planner-a3yjncfi
+accepted-shapes-0-BaseFinalDeep.txt
+accepted-shapes-0-Accepted4Deep.txt
+accepted-shapes-1-Accepted4Deep.txt
+accepted-shapes-1-BaseFinalDeep.txt

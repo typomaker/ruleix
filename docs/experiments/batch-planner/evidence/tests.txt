@@ -1,0 +1,4 @@
+ok  	github.com/typomaker/ruleix	9.544s	coverage: 92.9% of statements
+ok  	github.com/typomaker/ruleix/examples/between_and_gt	2.957s	coverage: 93.5% of statements
+ok  	github.com/typomaker/ruleix/examples/local_search	1.224s	coverage: 94.4% of statements
+ok  	github.com/typomaker/ruleix/examples/multiple_columns	3.499s	coverage: 95.5% of statements

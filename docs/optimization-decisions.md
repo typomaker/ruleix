@@ -12,6 +12,7 @@ a design conclusion or hypothesis.
 
 | Date | Name | Area | Decision and evidence |
 | --- | --- | --- | --- |
+| 2026-11-18 | Bounded Short-Batch Source | Build and Search | Prepare an exact source whose postings fit native masks, store its one-based index in existing All padding, and use that source for 5–15 conditions. Preserve early exact-key miss proofs. See [planning study](batch-planner.md) for comparisons and capacity tests. |
 | 2026-11-18 | Batch Masks | Batch Search | Initially add a separately named batch API using Build-prepared native-mask eligibility, exact posting/boundary identities, staged subgroup pruning and a stack-owned Local context. The [API migration](batch-api-migration.md) makes it the sole public Search entry point and keeps fallback private. Full semantic preanalysis and candidate-first alternatives remain internal controls; profiles and mitigations are in [the batch study](search-batch.md). |
 | 2026-11-18 | Prepared Early Empty Checks | Build and Local | Prepare cheap traversal and exact key-absence support; remember a rejecting operand in existing Local scratch and recheck its value. Versus 5f6e63e, 100-offer missing-customer/store/slot means improved 12.411/20.133/24.325 → 6.323/6.037/4.670 µs; nonempty means stayed within about 0.6%, with unchanged traffic. See [all three experiments and combinations](local-early-empty.md). |
 | 2026-11-17 | Empty Local Plan Guards | All planning | Skip impossible reuse and result-cache lookups while the plan map is nil. Missing-customer mean improved 11.612 → 10.514 µs versus bf89413, matching v0.8.2 at 10.552 µs. Quiet nonempty means stayed within about 1%, with unchanged allocation traffic and layouts. See [cause and controls](local-zero-plan.md). |
@@ -59,6 +60,7 @@ a design conclusion or hypothesis.
 
 | Date | Area | Rejection and evidence |
 | --- | --- | --- |
+| 2026-11-18 | Batch sampling and common-property preanalysis | Sampled operand order, sampled anchor choice and common intersections were not selected on the supplied workload. Paired profiles locate duplicated mask/key preparation and getter scans; empty-proof/group guards and lookup combinations did not remove the ordinary-workload cost. These implementation-specific decisions are in the [planning study](batch-planner.md). |
 | 2026-11-17 | ARM64 NEON execution | Retired 46d315f at the owner’s explicit request to simplify maintenance. Portable prepared ranges retain most of the end-to-end benefit. The [assembly study](local-neon-trials.md) preserves the historical measurements. |
 | 2026-09-14 | Local value cache | Reject sharing `lookup` and observational `peek` through one generic `find` helper. On Apple M1 Max, Go `darwin/arm64`, baseline `6a3dbb8` and the working-tree candidate were measured with focused `go test -run '^$' -bench ... -benchmem -count=5` runs. Candidate medians were within noise (`LocalOrderedReuse/Repeat/Local` 17,967 to 18,167 ns/op, `LocalCompareByReuse/Repeat/Local` 18,525 to 18,134 ns/op, and `LocalEqualityReuse/Local` 43.21 to 43.55 ns/op) with unchanged allocations. Compiler diagnostics from `go test -run '^$' -gcflags='all=-m=2'` conclusively identified the added work: the generic-shape `find` cost 121 against the inlining budget of 80, so every non-comparable Local hit gained a call. Splitting entry matching did inline but could not make the traversal helper inline. The candidate was removed; the two small specialized loops remain to protect the search path. |
 | 2026-09-07 | ID chunking | Remove global contiguous ID chunks (`a78b647`). They saved at most 15.8% posting memory, amplified candidates up to 9.9x, slowed search up to 3.4x, and introduced a separate 36.3% warm Local regression through per-ID slice copying. |
@@ -162,3 +164,12 @@ audit. Verification for this documentation-only change: Markdown links,
 
 Each accepted entry received a unique, mechanism-focused name on 2026-09-09.
 The names are labels only and do not alter the recorded decisions or evidence.
+
+## Batch value reuse under investigation
+
+The [planning study](batch-planner.md) tested raw-value lookup reuse and multiple
+size/order/dispatch guards. Mean gains on the main workload were repeatable,
+but the partial-group p99.9 difference was not localized conclusively. The
+experiment remains unselected; no new value-reuse code is shipped. This is not
+a conclusive rejection of all implementations of that idea. Frozen candidates,
+paired profiles and the failed mitigations remain available for investigation.

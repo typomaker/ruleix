@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 - Breaking: replaced single-condition `Index.Search`, public `Local` and experimental `SearchBatch` with `Index.Search(conditions, found)`; one private context per call. See [migration](docs/batch-api-migration.md).
+- Accelerated eligible 5–15-condition searches with a Build-prepared bounded source and early exact-key miss proofs; see [planning experiments](docs/batch-planner.md).
 ## [0.9.0] - 2026-11-18
 
 ### Changed

@@ -1,0 +1,22 @@
+package ruleix
+
+// Test-only encode instrumentation measures equality-map key resolutions.
+// It is installed only during the diagnostic test and restored before timing.
+type plannerCountedEquality interface { plannerCountEncode(*uint64) func() }
+func (r *eqRule[T,V,K]) plannerCountEncode(count *uint64) func() {
+ original:=r.encode
+ r.encode=func(v V,q equalityQuantizer) K {*count++;return original(v,q)}
+ return func(){r.encode=original}
+}
+func (ix *Index[C,ID]) PlannerProbe(values []C) map[string]uint64 {
+ var encodes uint64
+ if root,ok:=ix.root.(*allRule[C]);ok {
+  for _,rule:=range root.children {
+   if counter,ok:=rule.(plannerCountedEquality);ok {defer counter.plannerCountEncode(&encodes)()}
+  }
+ }
+ var work batchWork
+ ix.searchBatch(values,make([][]ID,len(values)),batchTyped,&work)
+ return map[string]uint64{"equality-encodes":encodes,"anchor-lookups":work.anchorLookups,
+  "mask-evaluations":work.maskEvaluations,"groups":work.groups,"fallback-offers":work.fallbackOffers}
+}

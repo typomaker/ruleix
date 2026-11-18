@@ -1,0 +1,28 @@
+Baseline: 053c15c87abdfaf86156d5b2b484531dfab3623e.
+Shipped source: AcceptedShortDeep, pinned by source-AcceptedShortDeep.json.
+
+All five ideas were implemented and screened in isolation; mitigations and
+combinations were investigated. Only the prepared short-batch source is shipped.
+Lookup reuse remains unselected with unresolved partial-group tail attribution.
+Sampled ordering/anchors and common-intersection variants were not selected.
+
+Verification:
+- Full 96,630-row dump; source and result/query SHA256 manifests retained.
+- Independent ordered scalar oracle, append checks and miss-stage assertions.
+- Synthetic native capability assertions, exclusions, observed/ordinary/Lossy
+  paths, large values, chunk boundaries and concurrent short calls.
+- Original batch_typed.go/equality execution source matches baseline exactly.
+- Shipped source hashes match the final workspace production files.
+- Three interleaved 40,000-operation samples per shipped production/short case.
+- Separate synthetic, noisy-tail, observed, Build and retained-index controls.
+- Full go test ./... passed; root aggregate coverage 92.9%.
+- Changed production coverage: 67/67 statements, 100%.
+- Full go test -race ./... passed on the shipped short-only source.
+- golangci-lint 2.12.2 under Go 1.26.0: 0 issues.
+- Normal go build ./... passed; Python scripts parse.
+- Whitespace and changed-file <=500-line checks passed before commit.
+- No release or push.
+
+Measurements use Go 1.27.3 / M1 Max / GOMAXPROCS=1. Other host VM/Spotlight
+load was observed during some sessions; the report distinguishes repeats and
+limits tail attribution. No external process was stopped.

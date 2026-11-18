@@ -1,0 +1,7 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkPlannerBuild         	      10	 157295662 ns/op	 4782732 B/op	   46368 allocs/op
+BenchmarkPlannerIndexRetained 	      10	 152859217 ns/op	   2581450 retained-B/index	 4782708 B/op	   46368 allocs/op
+PASS

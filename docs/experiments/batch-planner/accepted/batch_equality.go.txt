@@ -1,0 +1,100 @@
+package ruleix
+
+import "unsafe"
+
+func (r *eqRule[T, V, K]) applyPostingBatchMasks(
+	values []T, rows []int, ids []uint32, masks []uint64, work *batchWork,
+) {
+	var postings [batchWidth]*equalitySet
+	var results [batchWidth]uint64
+	if work != nil {
+		work.peakScratchBytes = max(work.peakScratchBytes,
+			uint64(unsafe.Sizeof(batchScratch{})+unsafe.Sizeof(postings)+unsafe.Sizeof(results)))
+	}
+	count := 0
+	var wildcard uint64
+	for slot, id := range ids {
+		if r.wildcard.Contains(id) {
+			wildcard |= uint64(1) << slot
+		}
+	}
+	for i, row := range rows {
+		if masks[i] == 0 {
+			continue
+		}
+		var posting *equalitySet
+		if value, present := r.get(values[row]); present {
+			posting = r.values.get(r.equalityKey(value))
+		}
+		class := count - 1
+		for ; class >= 0; class-- {
+			if postings[class] == posting {
+				break
+			}
+		}
+		if class < 0 {
+			class = count
+			count++
+			postings[class] = posting
+			results[class] = batchEqualityMask(posting, ids, wildcard)
+			if work != nil {
+				work.maskEvaluations++
+			}
+		}
+		masks[i] &= results[class]
+	}
+}
+
+// applyRepeatedBatchMasks resolves consecutive equal values before map lookup.
+// Physical posting identities still share masks across nonconsecutive values.
+func (r *eqRule[T, V, K]) applyRepeatedBatchMasks(
+	values []T, rows []int, ids []uint32, masks []uint64, work *batchWork,
+) {
+	var postings [batchWidth]*equalitySet
+	var results [batchWidth]uint64
+	var previous optionalValue[V]
+	var previousResult uint64
+	havePrevious := false
+	if work != nil {
+		work.peakScratchBytes = max(work.peakScratchBytes,
+			uint64(unsafe.Sizeof(batchScratch{})+unsafe.Sizeof(postings)+unsafe.Sizeof(results)))
+	}
+	count := 0
+	var wildcard uint64
+	for slot, id := range ids {
+		if r.wildcard.Contains(id) {
+			wildcard |= uint64(1) << slot
+		}
+	}
+	for i, row := range rows {
+		if masks[i] == 0 {
+			continue
+		}
+		key := getOptional(r.get, values[row])
+		if havePrevious && key == previous {
+			masks[i] &= previousResult
+			continue
+		}
+		var posting *equalitySet
+		if value, present := key.value, key.ok; present {
+			posting = r.values.get(r.equalityKey(value))
+		}
+		class := count - 1
+		for ; class >= 0; class-- {
+			if postings[class] == posting {
+				break
+			}
+		}
+		if class < 0 {
+			class = count
+			count++
+			postings[class] = posting
+			results[class] = batchEqualityMask(posting, ids, wildcard)
+			if work != nil {
+				work.maskEvaluations++
+			}
+		}
+		previous, previousResult, havePrevious = key, results[class], true
+		masks[i] &= previousResult
+	}
+}

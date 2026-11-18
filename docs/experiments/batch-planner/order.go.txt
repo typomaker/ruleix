@@ -1,0 +1,37 @@
+package ruleix
+
+import "math/bits"
+
+func trialOrderedMasks[T any](root *allRule[T], values []T, rows []int,
+ ids []uint32, masks []uint64, anchor int, work *batchWork,
+) {
+ var order [8]int
+ var scores [8]int
+ count:=0
+ for child,rule:=range root.children {
+  if child==anchor {continue}
+  cost:=3
+  if _,ok:=rule.(candidateMaskSource[T]);ok {cost=1}
+  rejected:=0
+  for _,slot:=range []int{0,len(rows)-1} {
+   mask:=batchMask(root,child,values[rows[slot]],ids,batchAllBits(len(ids)),work)
+   rejected+=len(ids)-bits.OnesCount64(mask)
+  }
+  score:=rejected*12/cost
+  at:=count
+  for at>0 && score>scores[at-1] {order[at],scores[at]=order[at-1],scores[at-1];at--}
+  order[at],scores[at]=child,score
+  count++
+ }
+ for _,child:=range order[:count] {
+  rule:=root.children[child]
+  if operand,ok:=rule.(batchMaskOperand[T]);ok {
+   operand.applyBatchMasks(values,rows,ids,masks,work)
+  } else {
+   for i,row:=range rows {if masks[i]!=0 {masks[i]=batchMask(root,child,values[row],ids,masks[i],work)}}
+  }
+  alive:=false
+  for _,mask:=range masks {alive=alive||mask!=0}
+  if !alive {return}
+ }
+}

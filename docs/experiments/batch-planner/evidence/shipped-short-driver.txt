@@ -1,0 +1,7 @@
+/private/var/folders/6y/ymdxft5d3bq_9ljm0xb8hszc0000gn/T/ruleix-batch-planner-a3yjncfi
+shipped-short-0-BaseFinalDeep.txt
+shipped-short-0-AcceptedShortDeep.txt
+shipped-short-1-AcceptedShortDeep.txt
+shipped-short-1-BaseFinalDeep.txt
+shipped-short-2-BaseFinalDeep.txt
+shipped-short-2-AcceptedShortDeep.txt

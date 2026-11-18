@@ -1,0 +1,3 @@
+=== RUN   TestPlannerLayout
+--- PASS: TestPlannerLayout (1.03s)
+PASS

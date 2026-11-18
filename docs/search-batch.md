@@ -29,7 +29,7 @@ own optional getter values and comparator semantics define its query keys.
 
 1. Validate outer lengths. The call owns a stack-allocated private context using
    the established pool acquisition, observation and release protocol.
-   Calls with fewer than 16 conditions use it directly, avoiding batch analysis. The owned context and destination pointers
+   Calls with fewer than five conditions use it directly. Build-proved bounded sources also enable native masks for 5–15 conditions; other short shapes keep the kernel. The owned context and destination pointers
    are valid, so this path invokes the same internal search core without
    repeating per-condition open-context and nil-pointer checks.
 2. Require Build's existing native-mask capability for the All root. This
@@ -98,9 +98,9 @@ comparisons below used the former public Local lifecycle as a control.
 Cold pool/state acquisition and caller output growth can still allocate.
 
 Short controls exposed anchor-selection overhead: a two-offer missing key
-and a four-offer wide fallback could cost more than the Local loop. The final
-conservative dispatch floor is 16 offers, where the measured native shapes
-amortize preparation. This leaves some possible wins for three/four positive
+and a four-offer wide fallback could cost more than the Local loop. The original
+conservative dispatch floor was 16 offers, where the measured native shapes
+amortized preparation. The later [planning study](batch-planner.md) adds a Build-proved short source; value-reuse candidates remain experimental. This leaves some possible wins for three/four positive
 offers unused. Short subgroups inside a larger batch still use native masks
 and exact empty proofs. The floor is a workload-derived policy, not a universal
 optimality claim.
