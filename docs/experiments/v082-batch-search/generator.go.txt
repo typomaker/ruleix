@@ -1,0 +1,95 @@
+package ruleix_test
+
+import (
+	"bytes"
+	"cmp"
+	"github.com/google/uuid"
+	"slices"
+	"time"
+)
+
+const productionDumpOffersPerRequest = 100
+
+type productionDumpSlot struct {
+	productionDumpOffer
+	at time.Time
+}
+
+func (slot productionDumpSlot) changes(other productionDumpSlot) int {
+	count := 0
+	for _, changed := range [...]bool{
+		slot.StoreUUID != other.StoreUUID,
+		slot.SlotDay != other.SlotDay,
+		slot.SlotType != other.SlotType,
+		!slot.at.Equal(other.at),
+	} {
+		if changed {
+			count++
+		}
+	}
+	return count
+}
+
+func productionDumpSlotFor(row productionDumpConstraint) productionDumpSlot {
+	at := row.SlotTime.since.Add(row.SlotTime.until.Sub(row.SlotTime.since) / 2)
+	return productionDumpSlot{row.productionDumpOffer, at.Truncate(time.Second).UTC()}
+}
+
+func productionDumpRequests(rows []productionDumpConstraint, limit int) [][]productionDumpConstraint {
+	var activity time.Time
+	unique := make(map[productionDumpSlot]struct{})
+	var slots []productionDumpSlot
+	for _, row := range rows {
+		if row.Activity.since.After(activity) {
+			activity = row.Activity.since
+		}
+		slot := productionDumpSlotFor(row)
+		if _, exists := unique[slot]; !exists {
+			unique[slot] = struct{}{}
+			slots = append(slots, slot)
+		}
+	}
+	slices.SortFunc(slots, func(a, b productionDumpSlot) int {
+		return cmp.Or(bytes.Compare(a.StoreUUID[:], b.StoreUUID[:]),
+			cmp.Compare(a.SlotDay, b.SlotDay), cmp.Compare(a.SlotType, b.SlotType), a.at.Compare(b.at))
+	})
+	activity = activity.Truncate(time.Second)
+
+	positions := make(map[productionDumpSlot]int, len(slots))
+	for i, slot := range slots {
+		positions[slot] = i
+	}
+
+	// Spread request seeds across the input and skip repeated customers.
+	stride := max(1, len(rows)/limit)
+	seen := make(map[uuid.UUID]bool)
+	var requests [][]productionDumpConstraint
+	for i := 0; i < len(rows) && len(requests) < limit; i += stride {
+		row := rows[i]
+		if seen[row.CustomerUUID] {
+			continue
+		}
+		seen[row.CustomerUUID] = true
+		start := positions[productionDumpSlotFor(row)]
+		var request []productionDumpConstraint
+		var previous productionDumpSlot
+		for offset := range slots {
+			slot := slots[(start+offset)%len(slots)]
+			if offset != 0 && previous.changes(slot) > 3 {
+				continue
+			}
+			request = append(request, productionDumpConstraint{
+				productionDumpOffer: slot.productionDumpOffer,
+				CustomerUUID:        row.CustomerUUID,
+				Activity:            productionDumpRange{activity, activity},
+				SlotTime:            productionDumpRange{slot.at, slot.at},
+			})
+			previous = slot
+			if len(request) == productionDumpOffersPerRequest {
+				break
+			}
+		}
+		requests = append(requests, request)
+	}
+	return requests
+}

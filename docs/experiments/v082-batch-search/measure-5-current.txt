@@ -1,0 +1,26 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkReleaseComparison/mixed         	   80000	     12331 ns/op	     22875 p99-ns/request	     29209 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkReleaseComparison/tiny          	   80000	      7647 ns/op	     21208 p99-ns/request	     29458 p99.9-ns/request	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkReleaseComparison/tiny
+    comparison_test.go:208: selected 16 requests for the tiny cohort
+BenchmarkReleaseComparison/medium        	   80000	     13252 ns/op	     16916 p99-ns/request	     29209 p99.9-ns/request	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkReleaseComparison/medium
+    comparison_test.go:208: selected 28 requests for the medium cohort
+BenchmarkReleaseComparison/broad         	   80000	     15772 ns/op	     22583 p99-ns/request	     35458 p99.9-ns/request	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkReleaseComparison/broad
+    comparison_test.go:208: selected 13 requests for the broad cohort
+BenchmarkReleaseComparison/zero          	   80000	      1495 ns/op	      1542 p99-ns/request	      1959 p99.9-ns/request	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkReleaseComparison/zero
+    cohort_test.go:89: zero: 64 requests with forced absent keys
+BenchmarkReleaseComparison/storezero     	   80000	      1551 ns/op	      1584 p99-ns/request	      1750 p99.9-ns/request	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkReleaseComparison/storezero
+    cohort_test.go:89: storezero: 64 requests with forced absent keys
+BenchmarkReleaseComparison/slotzero      	   80000	      1427 ns/op	      1458 p99-ns/request	      1625 p99.9-ns/request	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkReleaseComparison/slotzero
+    cohort_test.go:89: slotzero: 64 requests with forced absent keys
+BenchmarkReleaseComparison/intersectzero 	   80000	      4243 ns/op	      4542 p99-ns/request	     10625 p99.9-ns/request	       0 B/op	       0 allocs/op
+BenchmarkReleaseComparison/predicatezero 	   80000	     19923 ns/op	     23292 p99-ns/request	     40041 p99.9-ns/request	       0 B/op	       0 allocs/op
+PASS

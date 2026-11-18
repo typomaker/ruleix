@@ -1,0 +1,62 @@
+{
+  "go": "go version go1.27.3 darwin/arm64",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "gomaxprocs": 1,
+  "iterations": 80000,
+  "samples_per_revision": 3,
+  "dump_sha256": "ad126179e389201fdacc5b2ab5ff202e76506340ee2d9b3f5207a96d14ec9472",
+  "v082": {
+    "revision": "7f32ddc6ccf6b12419a1efb5af1424ff64353cc0",
+    "fixtures_sha256": {
+      "schema_test.go": "ed251f54847f9dc8465c58136a63b34430298c5e5df88867b4375a75139c3cec",
+      "predicate-miss_test.go": "1ac4fe3d795321986b929565e562ef5d4cc19ae4eb67aad937ffe0dd4311aac2",
+      "adapter_test.go": "d4b33099ffe60f1ddf4708c40c2d8052a122fcda8da0962e4176fe9adbacba10",
+      "generator_test.go": "ef34dbc76e8b616a0daf9983543f25512f3e39663ecb71c615b96d57a2e142fe",
+      "cohort_test.go": "9d68d5356a0f489109510f97227392caf9589cff0fd6bd8364f9cd128576e1fa",
+      "comparison_test.go": "35b7676dbbe0f558d29b1291ec51b88be4fae3f3f689e4c4bbab947622d14e85"
+    },
+    "dependencies": [
+      "github.com/typomaker/ruleix",
+      "github.com/RoaringBitmap/roaring/v2 v2.4.4",
+      "github.com/bits-and-blooms/bitset v1.12.0",
+      "github.com/davecgh/go-spew v1.1.0",
+      "github.com/google/uuid v1.6.0",
+      "github.com/mschoch/smat v0.2.0",
+      "github.com/pmezard/go-difflib v1.0.0",
+      "github.com/stretchr/objx v0.1.0",
+      "github.com/stretchr/testify v1.7.0",
+      "gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405",
+      "gopkg.in/yaml.v3 v3.0.0"
+    ]
+  },
+  "current": {
+    "revision": "8ec5e054014ed945e1871350b4d9c4e5c6f64f37",
+    "fixtures_sha256": {
+      "schema_test.go": "ed251f54847f9dc8465c58136a63b34430298c5e5df88867b4375a75139c3cec",
+      "predicate-miss_test.go": "1ac4fe3d795321986b929565e562ef5d4cc19ae4eb67aad937ffe0dd4311aac2",
+      "adapter_test.go": "e80656a0aab9dc496ead8627e349fde481d529e0d69cad318d5354da7c0a5f36",
+      "generator_test.go": "ef34dbc76e8b616a0daf9983543f25512f3e39663ecb71c615b96d57a2e142fe",
+      "cohort_test.go": "9d68d5356a0f489109510f97227392caf9589cff0fd6bd8364f9cd128576e1fa",
+      "comparison_test.go": "35b7676dbbe0f558d29b1291ec51b88be4fae3f3f689e4c4bbab947622d14e85"
+    },
+    "dependencies": [
+      "github.com/typomaker/ruleix",
+      "github.com/RoaringBitmap/roaring/v2 v2.26.0",
+      "github.com/bits-and-blooms/bitset v1.24.4",
+      "github.com/davecgh/go-spew v1.1.1",
+      "github.com/google/uuid v1.6.0",
+      "github.com/mdempsky/unconvert v0.0.0-20250216222326-4a038b3d31f5",
+      "github.com/mschoch/smat v0.2.0",
+      "github.com/pmezard/go-difflib v1.0.0",
+      "github.com/stretchr/objx v0.5.2",
+      "github.com/stretchr/testify v1.11.1",
+      "golang.org/x/mod v0.23.0",
+      "golang.org/x/sync v0.11.0",
+      "golang.org/x/sys v0.30.0",
+      "golang.org/x/text v0.22.0",
+      "golang.org/x/tools v0.30.0",
+      "gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405",
+      "gopkg.in/yaml.v3 v3.0.1"
+    ]
+  }
+}

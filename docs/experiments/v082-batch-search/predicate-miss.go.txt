@@ -1,0 +1,81 @@
+package ruleix_test
+
+import (
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+)
+
+func covers(stored, query productionDumpRange) bool {
+	return !stored.since.After(query.since) && !stored.until.Before(query.until)
+}
+
+func equalOffer(a, b productionDumpConstraint) bool {
+	return a.CustomerUUID == b.CustomerUUID && a.productionDumpOffer == b.productionDumpOffer
+}
+
+// Keep real equality matches and an activity match, but reject every one by
+// slot time. Each chosen time still matches a real row elsewhere in the index.
+// This demonstrates a semantic rejection stage, not a fixed internal plan order.
+func predicateMissRequests(t testing.TB, rows []productionDumpConstraint,
+	base [][]productionDumpConstraint,
+) [][]productionDumpConstraint {
+	t.Helper()
+	unique := make(map[time.Time]bool)
+	var times []time.Time
+	for _, row := range rows {
+		at := productionDumpSlotFor(row).at
+		if !unique[at] {
+			unique[at] = true
+			times = append(times, at)
+		}
+	}
+	var requests [][]productionDumpConstraint
+	for _, original := range base {
+		var query productionDumpConstraint
+		var candidates []productionDumpConstraint
+		for _, row := range rows {
+			if row.CustomerUUID == original[0].CustomerUUID && covers(row.Activity, original[0].Activity) {
+				query = original[0]
+				query.productionDumpOffer = row.productionDumpOffer
+				break
+			}
+		}
+		if query.CustomerUUID == uuid.Nil {
+			continue
+		}
+		for _, row := range rows {
+			if equalOffer(row, query) && covers(row.Activity, query.Activity) {
+				candidates = append(candidates, row)
+			}
+		}
+		require.NotEmpty(t, candidates)
+		var rejected []time.Time
+		for _, at := range times {
+			point := productionDumpRange{at, at}
+			passes := false
+			for _, row := range candidates {
+				passes = passes || covers(row.SlotTime, point)
+			}
+			if !passes {
+				rejected = append(rejected, at)
+			}
+			if len(rejected) == 2 {
+				break
+			}
+		}
+		if len(rejected) < 2 {
+			continue
+		}
+		request := make([]productionDumpConstraint, productionDumpOffersPerRequest)
+		for i := range request {
+			request[i] = query
+			request[i].SlotTime = productionDumpRange{rejected[i%2], rejected[i%2]}
+		}
+		requests = append(requests, request)
+	}
+	require.NotEmpty(t, requests)
+	return requests
+}

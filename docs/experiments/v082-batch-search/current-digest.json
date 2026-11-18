@@ -1,0 +1,101 @@
+{
+  "broad": {
+    "Rows": 96630,
+    "Requests": 13,
+    "Offers": 1300,
+    "Matches": 205,
+    "EmptyOffers": 1135,
+    "MinEqualityCandidates": 0,
+    "MaxEqualityCandidates": 3,
+    "WorkloadSHA256": "8fbf3e265a7e857a66527a0e0ef5b1e108ed9f0017770734073b95265a2e3a02",
+    "ResultsSHA256": "a17c43d0564c2a0bffca945ff7400de08f9a282e4767fd29962ada3d20b981fc"
+  },
+  "intersectzero": {
+    "Rows": 96630,
+    "Requests": 64,
+    "Offers": 6400,
+    "Matches": 0,
+    "EmptyOffers": 6400,
+    "MinEqualityCandidates": 0,
+    "MaxEqualityCandidates": 0,
+    "WorkloadSHA256": "d64f32152931b9ea6238f0a7c0284e7ca6d9c328f82a9d84bb58c9072277a24d",
+    "ResultsSHA256": "16fa66a7dc98d93f2a4c5d20baf5177f59c4c37fc62face65690c11c15fe6ff9"
+  },
+  "medium": {
+    "Rows": 96630,
+    "Requests": 28,
+    "Offers": 2800,
+    "Matches": 322,
+    "EmptyOffers": 2531,
+    "MinEqualityCandidates": 0,
+    "MaxEqualityCandidates": 5,
+    "WorkloadSHA256": "2b7d72ab19780fc2fc9a9ce01b1e276aea84b77f0d4b5c6da6e85d5ef22daf3e",
+    "ResultsSHA256": "c506ddb61fa50c99076b134dcf80ba45de1f288b073c84a5765cd265d29be242"
+  },
+  "mixed": {
+    "Rows": 96630,
+    "Requests": 64,
+    "Offers": 6400,
+    "Matches": 624,
+    "EmptyOffers": 5874,
+    "MinEqualityCandidates": 0,
+    "MaxEqualityCandidates": 5,
+    "WorkloadSHA256": "9c824cadd9f66c24d33702f9dd3379c40a1c233d2c2ed14f97e9e2b75dc86b48",
+    "ResultsSHA256": "229c89af5ee549a860564bb3540b7a19ae028d0210e5548428bd9eb35650c9eb"
+  },
+  "predicatezero": {
+    "Rows": 96630,
+    "Requests": 64,
+    "Offers": 6400,
+    "Matches": 0,
+    "EmptyOffers": 6400,
+    "MinEqualityCandidates": 1,
+    "MaxEqualityCandidates": 4,
+    "WorkloadSHA256": "26554c28f70504e9c7d1e4c303751fa4af90b34171ac05297a3867c72d8462a1",
+    "ResultsSHA256": "16fa66a7dc98d93f2a4c5d20baf5177f59c4c37fc62face65690c11c15fe6ff9"
+  },
+  "slotzero": {
+    "Rows": 96630,
+    "Requests": 64,
+    "Offers": 6400,
+    "Matches": 0,
+    "EmptyOffers": 6400,
+    "MinEqualityCandidates": 0,
+    "MaxEqualityCandidates": 0,
+    "WorkloadSHA256": "0e3eed5b227120e111a07e3c437c3594c43d168fe88d3a54da6486f9eab9cb32",
+    "ResultsSHA256": "16fa66a7dc98d93f2a4c5d20baf5177f59c4c37fc62face65690c11c15fe6ff9"
+  },
+  "storezero": {
+    "Rows": 96630,
+    "Requests": 64,
+    "Offers": 6400,
+    "Matches": 0,
+    "EmptyOffers": 6400,
+    "MinEqualityCandidates": 0,
+    "MaxEqualityCandidates": 0,
+    "WorkloadSHA256": "f4e691b0666595f10120d85256c057a0d6d1e92f03108f426fdd8c6df38b29de",
+    "ResultsSHA256": "16fa66a7dc98d93f2a4c5d20baf5177f59c4c37fc62face65690c11c15fe6ff9"
+  },
+  "tiny": {
+    "Rows": 96630,
+    "Requests": 16,
+    "Offers": 1600,
+    "Matches": 53,
+    "EmptyOffers": 1547,
+    "MinEqualityCandidates": 0,
+    "MaxEqualityCandidates": 2,
+    "WorkloadSHA256": "f3035f548ec6e9a83098020da5e7fe84de710dfd9eddb61745ee54a417759fe3",
+    "ResultsSHA256": "abaef6a778323ff4b6f7ee12939e2522a2e7842891d4cec2ac5b4aa1be5807dd"
+  },
+  "zero": {
+    "Rows": 96630,
+    "Requests": 64,
+    "Offers": 6400,
+    "Matches": 0,
+    "EmptyOffers": 6400,
+    "MinEqualityCandidates": 0,
+    "MaxEqualityCandidates": 0,
+    "WorkloadSHA256": "d2d4ecbe9ecc81c344c73cd60968c3da13a415c9b604ae378558360454e4cacf",
+    "ResultsSHA256": "16fa66a7dc98d93f2a4c5d20baf5177f59c4c37fc62face65690c11c15fe6ff9"
+  }
+}

@@ -16,6 +16,10 @@ Test-only strategy and legacy-kernel bridges are absent from ordinary builds.
 Historical measurements below were collected before the API rename at acaa3db:
 the reference was one public Local per request with a loop of Local.Search.
 
+A [fresh direct v0.8.2 Local comparison](production-v082-batch-comparison.md)
+measures the current API with the same full index, including five explicit
+miss cohorts, independent scalar correctness checks and ordered query digests.
+
 ## Selected execution
 
 The planner reuses the execution descriptors and physical representations

@@ -1,0 +1,21 @@
+Compared production revisions:
+  v0.8.2: 7f32ddc6ccf6b12419a1efb5af1424ff64353cc0
+  current: 8ec5e054014ed945e1871350b4d9c4e5c6f64f37
+
+Both temporary packages:
+  gofmt normalized shared fixtures before hashing/building.
+  go test -mod=mod -c succeeded.
+  TestReleaseComparison passed against the independent scalar oracle.
+  Shared fixture SHA256 maps agree, excluding only the API adapter.
+  Query and ordered-result digest JSON files are byte-identical.
+  441 requests / 44,100 offers / 1,204 result IDs per revision.
+  Nine cohorts, three 80,000-request interleaved samples per revision.
+  All mean/p99.9/allocation metrics improve in the measured matrix.
+
+Repository:
+  go test ./... passed (tests.txt).
+  Python scripts parse with compile(..., 'exec').
+  git diff --check passed before commit.
+  Changed/new files have at most 500 lines.
+  Production code unchanged: no new production coverage obligation.
+  No release or push.
