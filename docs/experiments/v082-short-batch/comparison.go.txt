@@ -1,0 +1,197 @@
+package ruleix_test
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"github.com/typomaker/ruleix"
+)
+
+var comparisonModes = []string{"mixed", "tiny", "medium", "broad", "zero", "storezero", "slotzero", "intersectzero", "predicatezero"}
+
+func loadComparison(t testing.TB) ([]productionDumpConstraint, []uuid.UUID) {
+	t.Helper()
+	input, err := os.Open(os.Getenv("RULEIX_PRODUCTION_DUMP"))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, input.Close()) }()
+	rows, ids := readProductionDump(t, input)
+	require.Len(t, rows, 96630)
+	return rows, ids
+}
+
+func comparisonRequests(t testing.TB, rows []productionDumpConstraint, ids []uuid.UUID,
+	mode string,
+) [][]productionDumpConstraint {
+	t.Helper()
+	requests := productionDumpRequests(rows, 64)
+	require.Len(t, requests, 64)
+	if mode == "predicatezero" {
+		return predicateMissRequests(t, rows, requests)
+	}
+	if mode != "mixed" {
+		requests = productionBatchCohort(t, rows, ids, requests, mode)
+	}
+	// Forced absent keys can collapse a formerly different pair. Restore one
+	// store/slot-related change so every request still has 1–3 neighbor changes.
+	for _, request := range requests {
+		for i := 1; i < len(request); i++ {
+			if productionDumpSlotFor(request[i]).changes(productionDumpSlotFor(request[i-1])) == 0 {
+				request[i].SlotTime.since = request[i].SlotTime.since.Add(time.Second)
+				request[i].SlotTime.until = request[i].SlotTime.since
+			}
+		}
+	}
+	return requests
+}
+
+type comparisonOracle struct {
+	rows   []productionDumpConstraint
+	ids    []uuid.UUID
+	buyers map[uuid.UUID][]int
+	ranks  map[uuid.UUID]int
+}
+
+func newComparisonOracle(rows []productionDumpConstraint, ids []uuid.UUID) comparisonOracle {
+	o := comparisonOracle{rows, ids, make(map[uuid.UUID][]int), make(map[uuid.UUID]int)}
+	for i, row := range rows {
+		o.buyers[row.CustomerUUID] = append(o.buyers[row.CustomerUUID], i)
+		if _, ok := o.ranks[ids[i]]; !ok {
+			o.ranks[ids[i]] = i
+		}
+	}
+	return o
+}
+
+func (o comparisonOracle) matches(query productionDumpConstraint) ([]uuid.UUID, int) {
+	var found []uuid.UUID
+	seen := make(map[uuid.UUID]bool)
+	equalityCandidates := 0
+	for _, i := range o.buyers[query.CustomerUUID] {
+		row := o.rows[i]
+		if !equalOffer(row, query) || !covers(row.Activity, query.Activity) {
+			continue
+		}
+		equalityCandidates++
+		if covers(row.SlotTime, query.SlotTime) && !seen[o.ids[i]] {
+			seen[o.ids[i]] = true
+			found = append(found, o.ids[i])
+		}
+	}
+	slices.SortFunc(found, func(a, b uuid.UUID) int { return o.ranks[a] - o.ranks[b] })
+	return found, equalityCandidates
+}
+
+func checkRequest(t testing.TB, request []productionDumpConstraint) {
+	t.Helper()
+	require.Len(t, request, 100)
+	for i, query := range request {
+		require.Equal(t, request[0].CustomerUUID, query.CustomerUUID)
+		require.Equal(t, request[0].Activity, query.Activity)
+		if i > 0 {
+			changes := productionDumpSlotFor(query).changes(productionDumpSlotFor(request[i-1]))
+			require.GreaterOrEqual(t, changes, 1)
+			require.LessOrEqual(t, changes, 3)
+		}
+	}
+}
+
+type comparisonSummary struct {
+	Rows, Requests, Offers, Matches, EmptyOffers int
+	MinEqualityCandidates, MaxEqualityCandidates int
+	WorkloadSHA256, ResultsSHA256                string
+}
+
+func TestReleaseComparison(t *testing.T) {
+	rows, ids := loadComparison(t)
+	index, err := ruleix.New[productionDumpConstraint, uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows, ids))
+	require.NoError(t, err)
+	oracle := newComparisonOracle(rows, ids)
+	absent := uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
+	stores, slots := make(map[uuid.UUID]bool), make(map[string]bool)
+	for _, row := range rows {
+		require.NotEqual(t, absent, row.CustomerUUID)
+		require.NotEqual(t, absent, row.StoreUUID)
+		require.NotEqual(t, "__absent_slot_type__", row.SlotType)
+		stores[row.StoreUUID] = true
+		slots[row.SlotType] = true
+	}
+	results := make(map[string]comparisonSummary)
+	for _, mode := range comparisonModes {
+ for _, length := range []int{5,8,15,16,100} {
+		requests := comparisonRequests(t, rows, ids, mode)
+		summary := comparisonSummary{Rows: len(rows), MinEqualityCandidates: len(rows)}
+		inputHash, outputHash := sha256.New(), sha256.New()
+		for _, request := range requests {
+			checkRequest(t, request)
+ request=request[:length]
+			summary.Requests++
+			found := make([][]uuid.UUID, len(request))
+			// Verify append semantics and preservation of unrelated existing elements.
+			for i := range found {
+				found[i] = []uuid.UUID{uuid.Nil}
+			}
+			searchComparison(index, request, found)
+			for i, query := range request {
+				summary.Offers++
+				if mode == "intersectzero" || mode == "predicatezero" {
+					require.NotEmpty(t, oracle.buyers[query.CustomerUUID])
+					require.True(t, stores[query.StoreUUID])
+					require.True(t, slots[query.SlotType])
+				}
+				_, err := fmt.Fprintf(inputHash, "%s/%s/%s/%s/%d/%d/%d/%d;", query.CustomerUUID, query.StoreUUID,
+					query.SlotDay, query.SlotType, query.Activity.since.UnixNano(), query.Activity.until.UnixNano(),
+					query.SlotTime.since.UnixNano(), query.SlotTime.until.UnixNano())
+				require.NoError(t, err)
+				want, candidates := oracle.matches(query)
+				require.Equal(t, uuid.Nil, found[i][0])
+				require.True(t, slices.Equal(want, found[i][1:]), "mode=%s query=%d", mode, i)
+				summary.MinEqualityCandidates = min(summary.MinEqualityCandidates, candidates)
+				summary.MaxEqualityCandidates = max(summary.MaxEqualityCandidates, candidates)
+				summary.Matches += len(want)
+				if len(want) == 0 {
+					summary.EmptyOffers++
+				}
+				if strings.HasSuffix(mode, "zero") {
+					require.Empty(t, want)
+				}
+				if mode == "predicatezero" {
+					require.Positive(t, candidates)
+					// A global slot interval really covers the query point: no globally empty posting.
+					present := false
+					for _, row := range rows {
+						if covers(row.SlotTime, query.SlotTime) {
+							present = true
+							break
+						}
+					}
+					require.True(t, present)
+				}
+				var size [8]byte
+				binary.LittleEndian.PutUint64(size[:], uint64(len(want)))
+				_, err = outputHash.Write(size[:])
+				require.NoError(t, err)
+				for _, id := range want {
+					_, err = outputHash.Write(id[:])
+					require.NoError(t, err)
+				}
+			}
+		}
+		summary.WorkloadSHA256 = hex.EncodeToString(inputHash.Sum(nil))
+		summary.ResultsSHA256 = hex.EncodeToString(outputHash.Sum(nil))
+		results[fmt.Sprintf("%s/%d",mode,length)] = summary
+	}
+ }
+	data, err := json.MarshalIndent(results, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(os.Getenv("RULEIX_COMPARISON_DIGEST"), data, 0600))
+}

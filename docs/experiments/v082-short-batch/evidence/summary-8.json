@@ -1,0 +1,146 @@
+{
+  "mixed/8": {
+    "v082": {
+      "ns/op": 11583.0,
+      "p99-ns/request": 23375.0,
+      "p99.9-ns/request": 45667.0,
+      "B/op": 1137.0,
+      "allocs/op": 18.0
+    },
+    "current": {
+      "ns/op": 2996.0,
+      "p99-ns/request": 4750.0,
+      "p99.9-ns/request": 7958.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "tiny/8": {
+    "v082": {
+      "ns/op": 6041.0,
+      "p99-ns/request": 10375.0,
+      "p99.9-ns/request": 33041.0,
+      "B/op": 936.0,
+      "allocs/op": 10.0
+    },
+    "current": {
+      "ns/op": 1874.0,
+      "p99-ns/request": 2375.0,
+      "p99.9-ns/request": 3125.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "medium/8": {
+    "v082": {
+      "ns/op": 12251.0,
+      "p99-ns/request": 21167.0,
+      "p99.9-ns/request": 41916.0,
+      "B/op": 968.0,
+      "allocs/op": 12.0
+    },
+    "current": {
+      "ns/op": 2805.0,
+      "p99-ns/request": 3584.0,
+      "p99.9-ns/request": 7375.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "broad/8": {
+    "v082": {
+      "ns/op": 13417.0,
+      "p99-ns/request": 23000.0,
+      "p99.9-ns/request": 47292.0,
+      "B/op": 1857.0,
+      "allocs/op": 48.0
+    },
+    "current": {
+      "ns/op": 3109.0,
+      "p99-ns/request": 3959.0,
+      "p99.9-ns/request": 9417.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "zero/8": {
+    "v082": {
+      "ns/op": 1049.0,
+      "p99-ns/request": 1125.0,
+      "p99.9-ns/request": 1500.0,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "current": {
+      "ns/op": 360.5,
+      "p99-ns/request": 375.0,
+      "p99.9-ns/request": 459.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "storezero/8": {
+    "v082": {
+      "ns/op": 1394.0,
+      "p99-ns/request": 1541.0,
+      "p99.9-ns/request": 1917.0,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "current": {
+      "ns/op": 596.0,
+      "p99-ns/request": 625.0,
+      "p99.9-ns/request": 709.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "slotzero/8": {
+    "v082": {
+      "ns/op": 1629.0,
+      "p99-ns/request": 1792.0,
+      "p99.9-ns/request": 2125.0,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "current": {
+      "ns/op": 562.7,
+      "p99-ns/request": 583.0,
+      "p99.9-ns/request": 667.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "intersectzero/8": {
+    "v082": {
+      "ns/op": 5747.0,
+      "p99-ns/request": 9791.0,
+      "p99.9-ns/request": 34417.0,
+      "B/op": 1070.0,
+      "allocs/op": 15.0
+    },
+    "current": {
+      "ns/op": 906.8,
+      "p99-ns/request": 1000.0,
+      "p99.9-ns/request": 1167.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "predicatezero/8": {
+    "v082": {
+      "ns/op": 11491.0,
+      "p99-ns/request": 19084.0,
+      "p99.9-ns/request": 41375.0,
+      "B/op": 1061.0,
+      "allocs/op": 15.0
+    },
+    "current": {
+      "ns/op": 3024.0,
+      "p99-ns/request": 4042.0,
+      "p99.9-ns/request": 7208.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  }
+}

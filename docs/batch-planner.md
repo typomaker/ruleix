@@ -232,3 +232,7 @@ variant lists, order, counts, raw results and profile commands used in the
 maintained conclusions. Per-variant source manifests pin generated production
 and fixture files. Historical exploratory variants remain reproducible without
 adding flags or public methods to ordinary builds.
+
+A [fresh direct v0.8.2 comparison](production-v082-short-batch-comparison.md)
+covers 5/8/15/16/100 conditions, candidate-count controls and all five misses
+on the full dump, with shared ordered-result and append checks.

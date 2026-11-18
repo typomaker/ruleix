@@ -1,0 +1,50 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/typomaker/ruleix
+cpu: Apple M1 Max
+BenchmarkReleaseComparison/mixed/5       	   40000	      8658 ns/op	     18292 p99-ns/request	     40500 p99.9-ns/request	    1087 B/op	      16 allocs/op
+BenchmarkReleaseComparison/mixed/8       	   40000	     11541 ns/op	     23375 p99-ns/request	     45667 p99.9-ns/request	    1137 B/op	      18 allocs/op
+BenchmarkReleaseComparison/mixed/15      	   40000	     16773 ns/op	     35459 p99-ns/request	     57417 p99.9-ns/request	    1309 B/op	      24 allocs/op
+BenchmarkReleaseComparison/mixed/16      	   40000	     17247 ns/op	     36083 p99-ns/request	     52584 p99.9-ns/request	    1324 B/op	      25 allocs/op
+BenchmarkReleaseComparison/mixed/100     	   40000	     74333 ns/op	    122083 p99-ns/request	    165708 p99.9-ns/request	    3014 B/op	      87 allocs/op
+BenchmarkReleaseComparison/tiny/5        	   40000	      4822 ns/op	      8709 p99-ns/request	     32292 p99.9-ns/request	     936 B/op	      10 allocs/op
+BenchmarkReleaseComparison/tiny/8        	   40000	      6074 ns/op	     11042 p99-ns/request	     35584 p99.9-ns/request	     936 B/op	      10 allocs/op
+BenchmarkReleaseComparison/tiny/15       	   40000	      8569 ns/op	     13458 p99-ns/request	     35583 p99.9-ns/request	     936 B/op	      10 allocs/op
+BenchmarkReleaseComparison/tiny/16       	   40000	      9099 ns/op	     14125 p99-ns/request	     40417 p99.9-ns/request	     936 B/op	      10 allocs/op
+BenchmarkReleaseComparison/tiny/100      	   40000	     38753 ns/op	     52833 p99-ns/request	     77917 p99.9-ns/request	     936 B/op	      10 allocs/op
+BenchmarkReleaseComparison/medium/5      	   40000	      8832 ns/op	     16459 p99-ns/request	     36458 p99.9-ns/request	     968 B/op	      12 allocs/op
+BenchmarkReleaseComparison/medium/8      	   40000	     12277 ns/op	     21666 p99-ns/request	     42458 p99.9-ns/request	     968 B/op	      12 allocs/op
+BenchmarkReleaseComparison/medium/15     	   40000	     18589 ns/op	     33834 p99-ns/request	     47708 p99.9-ns/request	     968 B/op	      12 allocs/op
+BenchmarkReleaseComparison/medium/16     	   40000	     20286 ns/op	     43041 p99-ns/request	     90583 p99.9-ns/request	     968 B/op	      12 allocs/op
+BenchmarkReleaseComparison/medium/100    	   40000	     88525 ns/op	    115750 p99-ns/request	    145667 p99.9-ns/request	     968 B/op	      12 allocs/op
+BenchmarkReleaseComparison/broad/5       	   40000	      9827 ns/op	     18625 p99-ns/request	     39917 p99.9-ns/request	    1613 B/op	      38 allocs/op
+BenchmarkReleaseComparison/broad/8       	   40000	     13428 ns/op	     23000 p99-ns/request	     49958 p99.9-ns/request	    1857 B/op	      48 allocs/op
+BenchmarkReleaseComparison/broad/15      	   40000	     19533 ns/op	     33500 p99-ns/request	     58500 p99.9-ns/request	    2706 B/op	      77 allocs/op
+BenchmarkReleaseComparison/broad/16      	   40000	     20527 ns/op	     40875 p99-ns/request	     64375 p99.9-ns/request	    2780 B/op	      80 allocs/op
+BenchmarkReleaseComparison/broad/100     	   40000	     91203 ns/op	    145208 p99-ns/request	    193958 p99.9-ns/request	   11101 B/op	     387 allocs/op
+BenchmarkReleaseComparison/zero/5        	   40000	       739.3 ns/op	       792.0 p99-ns/request	      1209 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/zero/8        	   40000	      1044 ns/op	      1125 p99-ns/request	      1500 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/zero/15       	   40000	      1739 ns/op	      1875 p99-ns/request	      2334 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/zero/16       	   40000	      1840 ns/op	      2000 p99-ns/request	      2667 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/zero/100      	   40000	     10316 ns/op	     11917 p99-ns/request	     26417 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/storezero/5   	   40000	       964.8 ns/op	      1042 p99-ns/request	      1625 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/storezero/8   	   40000	      1396 ns/op	      1542 p99-ns/request	      1917 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/storezero/15  	   40000	      2375 ns/op	      2584 p99-ns/request	      3834 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/storezero/16  	   40000	      2506 ns/op	      2709 p99-ns/request	      3875 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/storezero/100 	   40000	     14321 ns/op	     16833 p99-ns/request	     32458 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/slotzero/5    	   40000	      1108 ns/op	      1209 p99-ns/request	      1834 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/slotzero/8    	   40000	      1664 ns/op	      1916 p99-ns/request	      5250 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/slotzero/15   	   40000	      2851 ns/op	      3833 p99-ns/request	      7000 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/slotzero/16   	   40000	      2996 ns/op	      3291 p99-ns/request	      5416 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/slotzero/100  	   40000	     17454 ns/op	     19750 p99-ns/request	     36250 p99.9-ns/request	      24 B/op	       1 allocs/op
+BenchmarkReleaseComparison/intersectzero/5         	   40000	      4274 ns/op	      7750 p99-ns/request	     31083 p99.9-ns/request	    1040 B/op	      14 allocs/op
+BenchmarkReleaseComparison/intersectzero/8         	   40000	      5747 ns/op	      9791 p99-ns/request	     34417 p99.9-ns/request	    1070 B/op	      15 allocs/op
+BenchmarkReleaseComparison/intersectzero/15        	   40000	      8965 ns/op	     14250 p99-ns/request	     36833 p99.9-ns/request	    1139 B/op	      18 allocs/op
+BenchmarkReleaseComparison/intersectzero/16        	   40000	      9344 ns/op	     14084 p99-ns/request	     37875 p99.9-ns/request	    1149 B/op	      18 allocs/op
+BenchmarkReleaseComparison/intersectzero/100       	   40000	     47401 ns/op	     72875 p99-ns/request	     92000 p99.9-ns/request	    1979 B/op	      52 allocs/op
+BenchmarkReleaseComparison/predicatezero/5         	   40000	      7936 ns/op	     13625 p99-ns/request	     36166 p99.9-ns/request	    1031 B/op	      13 allocs/op
+BenchmarkReleaseComparison/predicatezero/8         	   40000	     11530 ns/op	     19250 p99-ns/request	     42667 p99.9-ns/request	    1061 B/op	      15 allocs/op
+BenchmarkReleaseComparison/predicatezero/15        	   40000	     19046 ns/op	     33041 p99-ns/request	     48666 p99.9-ns/request	    1130 B/op	      17 allocs/op
+BenchmarkReleaseComparison/predicatezero/16        	   40000	     20322 ns/op	     35125 p99-ns/request	     54750 p99.9-ns/request	    1140 B/op	      18 allocs/op
+BenchmarkReleaseComparison/predicatezero/100       	   40000	    110607 ns/op	    202416 p99-ns/request	    231875 p99.9-ns/request	    1970 B/op	      52 allocs/op
+PASS

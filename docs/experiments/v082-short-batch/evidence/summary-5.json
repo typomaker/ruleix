@@ -1,0 +1,146 @@
+{
+  "mixed/5": {
+    "v082": {
+      "ns/op": 8658.0,
+      "p99-ns/request": 18292.0,
+      "p99.9-ns/request": 40500.0,
+      "B/op": 1087.0,
+      "allocs/op": 16.0
+    },
+    "current": {
+      "ns/op": 2607.0,
+      "p99-ns/request": 4000.0,
+      "p99.9-ns/request": 6750.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "tiny/5": {
+    "v082": {
+      "ns/op": 4847.0,
+      "p99-ns/request": 8875.0,
+      "p99.9-ns/request": 32292.0,
+      "B/op": 936.0,
+      "allocs/op": 10.0
+    },
+    "current": {
+      "ns/op": 1678.0,
+      "p99-ns/request": 2125.0,
+      "p99.9-ns/request": 2709.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "medium/5": {
+    "v082": {
+      "ns/op": 8832.0,
+      "p99-ns/request": 16459.0,
+      "p99.9-ns/request": 37292.0,
+      "B/op": 968.0,
+      "allocs/op": 12.0
+    },
+    "current": {
+      "ns/op": 2437.0,
+      "p99-ns/request": 3125.0,
+      "p99.9-ns/request": 4875.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "broad/5": {
+    "v082": {
+      "ns/op": 9897.0,
+      "p99-ns/request": 20667.0,
+      "p99.9-ns/request": 43333.0,
+      "B/op": 1613.0,
+      "allocs/op": 38.0
+    },
+    "current": {
+      "ns/op": 2613.0,
+      "p99-ns/request": 3250.0,
+      "p99.9-ns/request": 6958.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "zero/5": {
+    "v082": {
+      "ns/op": 742.0,
+      "p99-ns/request": 792.0,
+      "p99.9-ns/request": 1250.0,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "current": {
+      "ns/op": 329.2,
+      "p99-ns/request": 334.0,
+      "p99.9-ns/request": 417.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "storezero/5": {
+    "v082": {
+      "ns/op": 964.8,
+      "p99-ns/request": 1042.0,
+      "p99.9-ns/request": 1667.0,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "current": {
+      "ns/op": 478.9,
+      "p99-ns/request": 500.0,
+      "p99.9-ns/request": 584.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "slotzero/5": {
+    "v082": {
+      "ns/op": 1108.0,
+      "p99-ns/request": 1209.0,
+      "p99.9-ns/request": 1875.0,
+      "B/op": 24.0,
+      "allocs/op": 1.0
+    },
+    "current": {
+      "ns/op": 476.8,
+      "p99-ns/request": 500.0,
+      "p99.9-ns/request": 584.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "intersectzero/5": {
+    "v082": {
+      "ns/op": 4274.0,
+      "p99-ns/request": 7750.0,
+      "p99.9-ns/request": 31458.0,
+      "B/op": 1040.0,
+      "allocs/op": 14.0
+    },
+    "current": {
+      "ns/op": 785.6,
+      "p99-ns/request": 875.0,
+      "p99.9-ns/request": 1083.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  },
+  "predicatezero/5": {
+    "v082": {
+      "ns/op": 8005.0,
+      "p99-ns/request": 13792.0,
+      "p99.9-ns/request": 37334.0,
+      "B/op": 1031.0,
+      "allocs/op": 13.0
+    },
+    "current": {
+      "ns/op": 2488.0,
+      "p99-ns/request": 3542.0,
+      "p99.9-ns/request": 5417.0,
+      "B/op": 0.0,
+      "allocs/op": 0.0
+    }
+  }
+}

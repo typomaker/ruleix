@@ -1,0 +1,42 @@
+package ruleix_test
+import (
+ "fmt"
+ "slices"
+ "testing"
+ "time"
+ "github.com/google/uuid"
+ "github.com/stretchr/testify/require"
+ "github.com/typomaker/ruleix"
+)
+// M1 Max, Go 1.27.3, GOMAXPROCS=1, full 96,630-row dump. Screens use
+// interleaved 5,000x; confirmations use 3 x 40,000x. Latest results are in
+// docs/batch-planner.md. Context lifecycle, planning and appends remain timed.
+func BenchmarkReleaseComparison(b *testing.B) {
+ rows,ids:=loadComparison(b)
+ index,err:=ruleix.New[productionDumpConstraint,uuid.UUID](productionDumpSchema()).Build(ruleix.Zip(rows,ids))
+ require.NoError(b,err)
+ for _,mode:=range comparisonModes {
+  b.Run(mode,func(b *testing.B){
+   requests:=comparisonRequests(b,rows,ids,mode)
+   for _,length:=range []int{5,8,15,16,100} {
+    b.Run(fmt.Sprint(length),func(b *testing.B){
+     found:=make([][]uuid.UUID,length)
+     reset:=func(){for i:=range found {found[i]=found[i][:0]}}
+     for range 2 {for _,request:=range requests {reset();searchComparison(index,request[:length],found)}}
+     capacity:=100000
+     samples:=make([]time.Duration,0,capacity)
+     turn:=0
+     b.ReportAllocs()
+     for b.Loop(){
+      reset();request:=requests[turn%len(requests)][:length]
+      start:=time.Now();searchComparison(index,request,found)
+      samples=append(samples,time.Since(start));turn++
+     }
+     slices.Sort(samples)
+     b.ReportMetric(float64(samples[(99*len(samples)+99)/100-1].Nanoseconds()),"p99-ns/request")
+     b.ReportMetric(float64(samples[(999*len(samples)+999)/1000-1].Nanoseconds()),"p99.9-ns/request")
+    })
+   }
+  })
+ }
+}

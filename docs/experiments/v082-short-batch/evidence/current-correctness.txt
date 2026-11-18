@@ -1,0 +1,33 @@
+=== RUN   TestReleaseComparison
+    comparison_test.go:133: selected 16 requests for the tiny cohort
+    comparison_test.go:133: selected 16 requests for the tiny cohort
+    comparison_test.go:133: selected 16 requests for the tiny cohort
+    comparison_test.go:133: selected 16 requests for the tiny cohort
+    comparison_test.go:133: selected 16 requests for the tiny cohort
+    comparison_test.go:133: selected 28 requests for the medium cohort
+    comparison_test.go:133: selected 28 requests for the medium cohort
+    comparison_test.go:133: selected 28 requests for the medium cohort
+    comparison_test.go:133: selected 28 requests for the medium cohort
+    comparison_test.go:133: selected 28 requests for the medium cohort
+    comparison_test.go:133: selected 13 requests for the broad cohort
+    comparison_test.go:133: selected 13 requests for the broad cohort
+    comparison_test.go:133: selected 13 requests for the broad cohort
+    comparison_test.go:133: selected 13 requests for the broad cohort
+    comparison_test.go:133: selected 13 requests for the broad cohort
+    cohort_test.go:89: zero: 64 requests with forced absent keys
+    cohort_test.go:89: zero: 64 requests with forced absent keys
+    cohort_test.go:89: zero: 64 requests with forced absent keys
+    cohort_test.go:89: zero: 64 requests with forced absent keys
+    cohort_test.go:89: zero: 64 requests with forced absent keys
+    cohort_test.go:89: storezero: 64 requests with forced absent keys
+    cohort_test.go:89: storezero: 64 requests with forced absent keys
+    cohort_test.go:89: storezero: 64 requests with forced absent keys
+    cohort_test.go:89: storezero: 64 requests with forced absent keys
+    cohort_test.go:89: storezero: 64 requests with forced absent keys
+    cohort_test.go:89: slotzero: 64 requests with forced absent keys
+    cohort_test.go:89: slotzero: 64 requests with forced absent keys
+    cohort_test.go:89: slotzero: 64 requests with forced absent keys
+    cohort_test.go:89: slotzero: 64 requests with forced absent keys
+    cohort_test.go:89: slotzero: 64 requests with forced absent keys
+--- PASS: TestReleaseComparison (3.21s)
+PASS

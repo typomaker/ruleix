@@ -1,0 +1,11 @@
+ok  	github.com/typomaker/ruleix	8.638s
+ok  	github.com/typomaker/ruleix/examples/between_and_gt	2.197s
+ok  	github.com/typomaker/ruleix/examples/local_search	0.549s
+ok  	github.com/typomaker/ruleix/examples/multiple_columns	0.955s
+
+PASS: both archived release builds and independent scalar correctness suites.
+PASS: 45 identical ordered workload/result digests, including append sentinels.
+PASS: measured benchmark/comparison fixture SHA256 matches checked-in source after normalization.
+PASS: Python compile syntax checks for run.py and summarize.py.
+PASS: git diff --check, changed-file 500-line limit, production source unchanged.
+No push or release.
