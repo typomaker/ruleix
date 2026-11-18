@@ -19,7 +19,7 @@ Ruleix решает обратную задачу поиска: по одном�
 | `Builder[C, ID]` | Хранит декларативную схему и статистические подсказки от последней успешной сборки. |
 | `Rule[C]` | Закрытый интерфейс узла: валидация и вставка при сборке, оценка кардинальности и поиск во время запроса. |
 | `Index[C, ID]` | Неизменяемое скомпилированное дерево, таблица внешних ID, пул временных bitmap и вынесенные исключения. |
-| `Local[C, ID]` | Непотокобезопасный контекст одного потребителя с кэшами результатов и планов между запросами. |
+| Private `localContext[C, ID]` | One batch-owned cache context, released automatically on return. |
 | `Inspector` | Опциональное наблюдение за выбранным представлением и выборочной runtime-телеметрией. |
 
 Внешний `ID` переводится в плотный внутренний `uint32`. Массив
@@ -44,7 +44,7 @@ Rule-схема + поток (constraint, external ID)
         +--> immutable/interned bitmaps
         |
         v
- Index.Search / Local
+ Index.Search(conditions, found)
         |
         v
  candidate planning -> bitmap intersection or ID scan -> exclusions
@@ -173,20 +173,19 @@ iteration methods and their dedicated materialization path were removed.
 `go test ./...` passed; the change only deletes executable production lines,
 so there are no added or modified executable lines requiring diff coverage.
 
-## Temporary memory and `Local`
+## Temporary memory and batch contexts
 
-The shared `Index` owns a `sync.Pool` for scratch bitmaps and ranking buffers.
-It discards bitmaps above 64 KiB so a rare wide `Index.Search` cannot raise the
-controlled-memory path's retained floor. Published postings remain immutable.
+`Index.Search(conditions, found)` is the sole public search entry point. It
+validates equal outer lengths, then owns one private `localContext` for the
+whole request. The former single-condition kernel remains private for short
+batches and fallback. See [API migration](batch-api-migration.md).
 
-`Index.Local()` is the explicitly memory-for-speed path for one sequential
-consumer. Every cacheable filter miss is admitted immediately, and every
-distinct bitmap remains available without a slot limit until `Local.Close`.
-`All` nodes likewise retain every valid exact result alongside their
-schema-bounded child-order plan. Retained bytes therefore scale with index
-cardinality, schema size, distinct queries, and the number of simultaneously
-live Locals. Callers that issue one-off queries or require controlled retained
-memory use `Index.Search`.
+Every cacheable filter miss is admitted immediately. Cached query results are
+cleared when Search returns; reusable per-node storage and learned child orders
+return to the owning Index's pool. Retained storage can scale with cardinality,
+schema size and simultaneous calls. Published postings remain immutable.
+The old shared scratch pool remains an internal kernel control, not a public
+alternative with a different retention policy.
 
 Every admitted `All` result keeps compact internal IDs, including wide results,
 so an exact query-key hit can append output without ranking, bitmap copying, or
@@ -196,11 +195,11 @@ physical keys are intentionally not cache keys because rehashing them costs more
 than comparing their semantic values. Ordinary and grouped query-key validation
 use separate lookup loops. [Empty-plan guards](local-zero-plan.md) skip impossible plan lookups. [Early empty checks](local-early-empty.md) prepare cheap traversal and key-absence probes, then recheck a rejecting root operand through the cold result path using existing Local scratch. Once an `All` result plan exists, ordinary validation
 reads the immutable prepared execution slots directly instead of rechecking their
-availability for every child of every cache slot. See [Local candidate masks](local-candidate-structural-trials.md#implementation), [narrow execution](local-interval-and-narrow-trials.md), and [Include projection](local-predicate-projection-trials.md#selected-projection) for small exact candidate sets. [Portable prepared ranges](local-between-go.md) reuse existing scratch for prepared sets of 9–16 IDs. Experimental [batch search](search-batch.md) reuses these Build descriptors, groups related offers by exact posting identity and applies shared candidate masks; existing Search APIs keep their execution paths.
+availability for every child of every cache slot. See [Local candidate masks](local-candidate-structural-trials.md#implementation), [narrow execution](local-interval-and-narrow-trials.md), and [Include projection](local-predicate-projection-trials.md#selected-projection) for small exact candidate sets. [Portable prepared ranges](local-between-go.md) reuse existing scratch for prepared sets of 9–16 IDs. [Batch search](search-batch.md) reuses these Build descriptors, groups related offers by exact posting identity and applies shared candidate masks; unsupported shapes use the private single-condition kernel.
 
-`Local.Close` clears query identity and result state,
+The private context release clears query identity and result state,
 returns reusable storage to the owning Index, and publishes sampled telemetry.
-Using a closed `Local` is an error. Memory-constrained callers use `Index.Search`.
+The public API never exposes the context or requires an explicit Close.
 
 ## Lossy-представления
 ### Целевой контракт ключей общей exact/lossy-архитектуры
@@ -466,7 +465,7 @@ search path нет reflection. Интерфейсы остаются типиз�
 
 ## Параллелизм и жизненный цикл
 - `Index` неизменяем после `Build`; `Search` конкурентен.
-- Один `Local` предназначен одной goroutine; разные `Local` независимы.
+- Each Search call owns an independent private context and caller-owned outputs.
 - `Builder` переиспользуется последовательно; конкурентные `Build` требуют
   внешней синхронизации из-за обновления hints.
 - Ранее возвращённые индексы не зависят от последующих сборок тем же builder.
@@ -477,7 +476,7 @@ search path нет reflection. Интерфейсы остаются типиз�
 | --- | --- |
 | `rule.go` | Закрытый интерфейс правил, общие capabilities и оптимизация дерева. |
 | `builder.go` | `Builder`, `Index` и build pipeline. |
-| `index_search.go`, `search_materialization.go` | Search, Local, cached-result dispatch, candidate validation, and ID materialization; release preparation flattens cached dispatch and isolates candidate validation without changing matching semantics. |
+| `index_search.go`, `search_materialization.go` | Private search kernel, context release, cached-result dispatch, candidate validation, and ID materialization; release preparation flattens cached dispatch and isolates candidate validation without changing matching semantics. |
 | `eq.go`, `not.go` | Equality и exclusion indexes. |
 | `ordered.go`, `ordered_index.go` | Ordered-операторы, блоковый индекс и маршрутизация. |
 | `between.go`, `compare_by.go` | Составные ordered-представления. |

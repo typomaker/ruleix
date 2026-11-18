@@ -24,10 +24,10 @@ func TestLocalEmptyHintsStayIndependentAcrossConcurrentLocals(t *testing.T) {
 		go func() {
 			defer group.Done()
 			for round := range 20 {
-				local := index.Local()
+				local := index.TestLocal()
 				for _, value := range []query{{99, 1}, {99, 2}, {1, 99}, {1, 1}, {99, 1}, {1, 1}} {
 					got := []int{-1}
-					found := local.Search(value, &got)
+					found := local.SearchOne(value, &got)
 					want := value == (query{1, 1})
 					if found != want || (want && (len(got) != 2 || got[1] != 7)) || (!want && len(got) != 1) {
 						errors <- fmt.Errorf("round %d query %v: found %v, IDs %v", round, value, found, got)

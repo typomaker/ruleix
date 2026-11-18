@@ -23,14 +23,14 @@ func TestLocalCandidateMaskChecksSourceAndClearsOnClose(t *testing.T) {
 	}
 	index, err := New[offer, int](schema).Build(Zip(rows, ids))
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 	defer local.Close()
 	mask := local.pool.candidateMask
 
 	check := func(query offer) {
 		t.Helper()
 		want, got := []int{-1}, []int{-1}
-		require.Equal(t, index.Search(query, &want), local.Search(query, &got))
+		require.Equal(t, index.SearchOne(query, &want), local.SearchOne(query, &got))
 		require.ElementsMatch(t, want, got)
 	}
 	check(offer{group: 0, slot: 0})
@@ -95,17 +95,17 @@ func TestCandidateMaskStorageIsLocalAndUnobserved(t *testing.T) {
 	index, err := New[int, int](Inspect(&inspector, Include(get))).Build(Zip([]int{1}, []int{1}))
 	require.NoError(t, err)
 	require.Nil(t, index.pool.candidateMask)
-	local := index.Local()
+	local := index.TestLocal()
 	require.NotNil(t, local.pool.candidateMask)
 	local.Close()
 
 	index.localTelemetry.Store(63)
-	observed := index.Local()
+	observed := index.TestLocal()
 	defer observed.Close()
 	require.True(t, observed.observed)
 	require.Nil(t, observed.pool.candidateMask)
 	var matches []int
-	require.True(t, observed.Search(1, &matches))
+	require.True(t, observed.SearchOne(1, &matches))
 	require.Equal(t, []int{1}, matches)
 }
 

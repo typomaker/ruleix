@@ -17,7 +17,7 @@ const (
 var (
 	benchmarkStringResult []string
 	benchmarkIntResult    []int
-	benchmarkLocalResult  *ruleix.Local[benchmarkEquality, int]
+	benchmarkLocalResult  *ruleix.TestContext[benchmarkEquality, int]
 	benchmarkBitmapResult *roaring.Bitmap
 	benchmarkBitmapStats  roaring.Statistics
 	benchmarkBytesResult  []byte

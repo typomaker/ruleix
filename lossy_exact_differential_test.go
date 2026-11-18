@@ -92,19 +92,19 @@ func assertLossyDifferentialSuperset(
 	require.True(t, streamed, "fixture must cross the streaming pressure threshold")
 	require.Equal(t, RuleModeLossy, inspector.Snapshot().Mode(), "fixture must compile a lossy representation")
 
-	exactLocal, approximateLocal := exact.Local(), approximate.Local()
+	exactLocal, approximateLocal := exact.TestLocal(), approximate.TestLocal()
 	defer exactLocal.Close()
 	defer approximateLocal.Close()
 	for queryIndex, query := range queries {
 		var exactMatches, approximateMatches []int
-		exact.Search(query, &exactMatches)
-		approximate.Search(query, &approximateMatches)
+		exact.SearchOne(query, &exactMatches)
+		approximate.SearchOne(query, &approximateMatches)
 		requireSupersetComparable(t, exactMatches, approximateMatches)
 
 		for pass := range 2 {
 			var exactLocalMatches, approximateLocalMatches []int
-			exactLocal.Search(query, &exactLocalMatches)
-			approximateLocal.Search(query, &approximateLocalMatches)
+			exactLocal.SearchOne(query, &exactLocalMatches)
+			approximateLocal.SearchOne(query, &approximateLocalMatches)
 			require.Equalf(t, exactMatches, exactLocalMatches, "exact Local differs at query %d pass %d", queryIndex, pass)
 			requireSupersetComparable(t, exactMatches, approximateLocalMatches)
 		}
@@ -207,19 +207,19 @@ func TestIdentityLossyDifferentialEverySupportedRule(t *testing.T) {
 				buildOptions{compilePhysicalAliases: true, enableStreaming: true, identityLossy: true},
 			)
 			require.NoError(t, err)
-			exactLocal, identityLocal := exact.Local(), identity.Local()
+			exactLocal, identityLocal := exact.TestLocal(), identity.TestLocal()
 			defer exactLocal.Close()
 			defer identityLocal.Close()
 			for queryIndex, query := range queries {
 				var want, got []int
-				exact.Search(query, &want)
-				identity.Search(query, &got)
-				require.Equalf(t, want, got, "Index.Search query %d", queryIndex)
+				exact.SearchOne(query, &want)
+				identity.SearchOne(query, &got)
+				require.Equalf(t, want, got, "Index.SearchOne query %d", queryIndex)
 				for pass := range 3 {
 					want, got = want[:0], got[:0]
-					exactLocal.Search(query, &want)
-					identityLocal.Search(query, &got)
-					require.Equalf(t, want, got, "Local.Search query %d pass %d", queryIndex, pass)
+					exactLocal.SearchOne(query, &want)
+					identityLocal.SearchOne(query, &got)
+					require.Equalf(t, want, got, "Local.SearchOne query %d pass %d", queryIndex, pass)
 				}
 			}
 		})

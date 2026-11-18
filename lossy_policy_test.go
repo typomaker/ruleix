@@ -142,7 +142,7 @@ func TestNestedLossyPoliciesRespectInnerAndOuterCaps(t *testing.T) {
 			require.Equal(t, min(tc.inner, tc.outer), innerLimit)
 
 			var got []int
-			index.Search(lossyConstraint{name: "nested-17", present: true}, &got)
+			index.SearchOne(lossyConstraint{name: "nested-17", present: true}, &got)
 			require.Contains(t, got, 17)
 		})
 	}
@@ -182,8 +182,8 @@ func TestLossyAllNeverDropsExactMatches(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		query := lossyConstraint{name: fmt.Sprintf("customer-%d", i*19), minimum: int64(i*23 - 1000), present: true}
 		var want, got []int
-		exact.Search(query, &want)
-		approximate.Search(query, &got)
+		exact.SearchOne(query, &want)
+		approximate.SearchOne(query, &got)
 		requireSuperset(t, want, got)
 	}
 	snapshot := inspector.Snapshot()
@@ -259,8 +259,8 @@ func TestLossyCompositeProductionValueTypesNeverDropExactMatches(t *testing.T) {
 		require.True(t, modeAvailable)
 		for i := range constraints {
 			var want, got []int
-			exact.Search(constraints[i], &want)
-			approximate.Search(constraints[i], &got)
+			exact.SearchOne(constraints[i], &want)
+			approximate.SearchOne(constraints[i], &got)
 			gotSet := make(map[int]struct{}, len(got))
 			for _, id := range got {
 				gotSet[id] = struct{}{}
@@ -358,7 +358,7 @@ func TestLossyAllRedistributesBudgetForMinimumViableChildren(t *testing.T) {
 	require.NoError(t, err)
 
 	var matches []int
-	index.Search(lossyConstraint{name: "customer-17"}, &matches)
+	index.SearchOne(lossyConstraint{name: "customer-17"}, &matches)
 	require.Contains(t, matches, 17)
 	usage, ok := inspector.Snapshot().MemoryUsage()
 	require.True(t, ok)

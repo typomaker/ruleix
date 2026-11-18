@@ -106,20 +106,20 @@ func searchProductionDumpRequest(
 	request []productionDumpConstraint,
 	visit func(int, []uuid.UUID),
 ) {
-	local := index.Local()
+	local := index.TestLocal()
 	defer local.Close()
 	searchProductionDumpOffers(local, request, visit)
 }
 
 func searchProductionDumpOffers(
-	local *ruleix.Local[productionDumpConstraint, uuid.UUID],
+	local *ruleix.TestContext[productionDumpConstraint, uuid.UUID],
 	request []productionDumpConstraint,
 	visit func(int, []uuid.UUID),
 ) {
 	var matches []uuid.UUID
 	for i, offer := range request {
 		matches = matches[:0]
-		local.Search(offer, &matches)
+		local.SearchOne(offer, &matches)
 		if visit != nil {
 			visit(i, matches)
 		}
@@ -290,7 +290,7 @@ func benchmarkProductionDumpFreshLocal(b *testing.B, retained bool) {
 	require.NoError(b, err)
 	requests := productionDumpRequests(rows, 64)
 	require.Len(b, requests, 64)
-	locals := make([]*ruleix.Local[productionDumpConstraint, uuid.UUID], b.N)
+	locals := make([]*ruleix.TestContext[productionDumpConstraint, uuid.UUID], b.N)
 	var before uint64
 	if retained {
 		runtime.GC()
@@ -300,7 +300,7 @@ func benchmarkProductionDumpFreshLocal(b *testing.B, retained bool) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := range locals {
-		local := index.Local()
+		local := index.TestLocal()
 		searchProductionDumpOffers(local, requests[i%len(requests)], nil)
 		locals[i] = local
 	}

@@ -42,13 +42,13 @@ func TestBuilderCreatesIndependentIndexes(t *testing.T) {
 	require.NoError(t, err)
 
 	var got []string
-	first.Search(buildConstraint{value: 20, operator: ptr(ruleix.OperatorGTE)}, &got)
+	first.SearchOne(buildConstraint{value: 20, operator: ptr(ruleix.OperatorGTE)}, &got)
 	require.Equal(t, []string{"first"}, got)
 	got = got[:0]
-	second.Search(buildConstraint{value: 10, operator: ptr(ruleix.OperatorGTE)}, &got)
+	second.SearchOne(buildConstraint{value: 10, operator: ptr(ruleix.OperatorGTE)}, &got)
 	require.Empty(t, got)
 	got = got[:0]
-	second.Search(buildConstraint{value: 20, operator: ptr(ruleix.OperatorGTE)}, &got)
+	second.SearchOne(buildConstraint{value: 20, operator: ptr(ruleix.OperatorGTE)}, &got)
 	require.Equal(t, []string{"second"}, got)
 }
 
@@ -73,17 +73,17 @@ func TestSchemaBuildsIndependentIndexes(t *testing.T) {
 	require.NoError(t, err)
 
 	var got []string
-	first.Search(buildConstraint{value: 10}, &got)
+	first.SearchOne(buildConstraint{value: 10}, &got)
 	require.Equal(t, []string{"first"}, got)
 	got = got[:0]
-	first.Search(buildConstraint{value: 20}, &got)
+	first.SearchOne(buildConstraint{value: 20}, &got)
 	require.Empty(t, got, "the later build must not mutate the first index")
 
 	got = got[:0]
-	second.Search(buildConstraint{value: 20}, &got)
+	second.SearchOne(buildConstraint{value: 20}, &got)
 	require.Equal(t, []string{"second"}, got)
 	got = got[:0]
-	second.Search(buildConstraint{value: 10}, &got)
+	second.SearchOne(buildConstraint{value: 10}, &got)
 	require.Empty(t, got, "indexes must not share mutable posting lists")
 }
 
@@ -100,7 +100,7 @@ func TestBuiltIndexSupportsConcurrentSearch(t *testing.T) {
 			var got []int
 			for i := 0; i < 100; i++ {
 				got = got[:0]
-				ix.Search(buildConstraint{value: 20, operator: ptr(ruleix.OperatorGTE)}, &got)
+				ix.SearchOne(buildConstraint{value: 20, operator: ptr(ruleix.OperatorGTE)}, &got)
 				require.Equal(t, []int{1}, got)
 			}
 		}()
@@ -128,7 +128,7 @@ func TestBuildConsumesInputOnceAndAssignsStableIDs(t *testing.T) {
 	require.Equal(t, 3, consumed, "Build must consume the input exactly once")
 
 	var got []string
-	index.Search(30, &got)
+	index.SearchOne(30, &got)
 	require.Equal(t, []string{"first"}, got, "Build must preserve assigned internal IDs")
 }
 
@@ -152,7 +152,7 @@ func TestBuildDoesNotRetainConstraintsUntilInputIsConsumed(t *testing.T) {
 
 	for value := 1; value <= 3; value++ {
 		var got []int
-		index.Search(&mutableConstraint{value: value}, &got)
+		index.SearchOne(&mutableConstraint{value: value}, &got)
 		require.Equal(t, []int{value}, got)
 	}
 }

@@ -262,8 +262,8 @@ func TestNestedLossyRandomizedSupersetAndDeterministicDiagnostics(t *testing.T) 
 						maximumPresent: random.Intn(4) != 0, thresholdPresent: random.Intn(4) != 0,
 					}
 					var want, got []int
-					exactIndex.Search(query, &want)
-					approximate.Search(query, &got)
+					exactIndex.SearchOne(query, &want)
+					approximate.SearchOne(query, &got)
 					requireSupersetComparable(t, want, got)
 				}
 			}

@@ -32,10 +32,10 @@ func batchSchema(lossy bool) Rule[batchFixture] {
 func checkBatchAgainstLocal[T any](t *testing.T, index *Index[T, int], conditions []T) {
 	t.Helper()
 	want := make([][]int, len(conditions))
-	local := index.Local()
+	local := index.TestLocal()
 	for i, condition := range conditions {
 		want[i] = []int{-7}
-		local.Search(condition, &want[i])
+		local.SearchOne(condition, &want[i])
 	}
 	local.Close()
 	for _, strategy := range []batchStrategy{
@@ -53,7 +53,7 @@ func checkBatchAgainstLocal[T any](t *testing.T, index *Index[T, int], condition
 	for i := range got {
 		got[i] = []int{-7}
 	}
-	index.SearchBatch(conditions, got)
+	index.Search(conditions, got)
 	require.Equal(t, want, got)
 }
 
@@ -61,9 +61,9 @@ func TestSearchBatchContract(t *testing.T) {
 	schema := Include(func(v int) (int, bool) { return v, true })
 	index, err := New[int, int](schema).Build(Zip([]int{2, 1, 2}, []int{9, 3, 8}))
 	require.NoError(t, err)
-	index.SearchBatch(nil, nil)
+	index.Search(nil, nil)
 	found := [][]int{{99}}
-	require.Panics(t, func() { index.SearchBatch([]int{1, 2}, found) })
+	require.Panics(t, func() { index.Search([]int{1, 2}, found) })
 	require.Equal(t, [][]int{{99}}, found)
 	checkBatchAgainstLocal(t, index, []int{2, 1, 99, 2})
 }
@@ -196,10 +196,10 @@ func TestSearchBatchConcurrent(t *testing.T) {
 	require.NoError(t, err)
 	queries := make([]batchFixture, 100)
 	want := make([][]int, len(queries))
-	local := index.Local()
+	local := index.TestLocal()
 	for i := range queries {
 		queries[i] = batchFixture{group: i % 8, store: i % 3, slot: i % 4, from: 15, until: 15}
-		local.Search(queries[i], &want[i])
+		local.SearchOne(queries[i], &want[i])
 	}
 	local.Close()
 	var group sync.WaitGroup
@@ -213,7 +213,7 @@ func TestSearchBatchConcurrent(t *testing.T) {
 				for i := range found {
 					found[i] = found[i][:0]
 				}
-				index.SearchBatch(queries, found)
+				index.Search(queries, found)
 				for i := range found {
 					if !slices.Equal(found[i], want[i]) {
 						failures <- i
@@ -278,7 +278,7 @@ func TestSearchBatchObservedLocalFallback(t *testing.T) {
 	query := batchFixture{group: 1, store: 2, slot: 3, from: 15, until: 15}
 	index.localTelemetry.Store(63)
 	found := make([][]int, 4)
-	index.SearchBatch([]batchFixture{query, query, query, query}, found)
+	index.Search([]batchFixture{query, query, query, query}, found)
 	require.Equal(t, [][]int{{42}, {42}, {42}, {42}}, found)
 }
 
@@ -316,7 +316,7 @@ func TestSearchBatchNativePerOfferExclusions(t *testing.T) {
 	}
 	checkBatchAgainstLocal(t, index, queries)
 	found := make([][]int, len(queries))
-	index.SearchBatch(queries, found)
+	index.Search(queries, found)
 	for _, matches := range found {
 		require.Len(t, matches, 48)
 	}

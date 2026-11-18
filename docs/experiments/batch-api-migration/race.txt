@@ -1,0 +1,4 @@
+ok  	github.com/typomaker/ruleix	99.136s
+ok  	github.com/typomaker/ruleix/examples/between_and_gt	4.383s
+ok  	github.com/typomaker/ruleix/examples/local_search	4.231s
+ok  	github.com/typomaker/ruleix/examples/multiple_columns	5.247s

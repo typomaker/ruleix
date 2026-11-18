@@ -38,7 +38,7 @@ func TestBuildInternsEqualPostingBitmaps(t *testing.T) {
 	require.NotEqual(t, left.wildcardSource, left.values.sets[0].source)
 
 	var matches []int
-	index.Search(constraint{left: &concrete, right: &concrete}, &matches)
+	index.SearchOne(constraint{left: &concrete, right: &concrete}, &matches)
 	require.Len(t, matches, len(constraints))
 }
 

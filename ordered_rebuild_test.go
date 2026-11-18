@@ -246,7 +246,7 @@ func TestStreamingOrderedNeighborRebuildKeepsLowEdgeMatches(t *testing.T) {
 	)
 	require.NoError(t, err)
 	var matches []int
-	index.Search(lossyDifferentialConstraint{value: -13001, valuePresent: true}, &matches)
+	index.SearchOne(lossyDifferentialConstraint{value: -13001, valuePresent: true}, &matches)
 	require.Contains(t, matches, 1)
 }
 
@@ -271,8 +271,8 @@ func TestComparatorBoundaryStreamingBuildRespectsHardLimit(t *testing.T) {
 	require.Equal(t, RuleModeLossy, inspector.Snapshot().Mode())
 	for _, query := range []boundaryFixture{{"a", -1}, {"m", 4096}, {"z", len(constraints)}} {
 		var want, got []int
-		exact.Search(query, &want)
-		lossy.Search(query, &got)
+		exact.SearchOne(query, &want)
+		lossy.SearchOne(query, &got)
 		gotSet := make(map[int]struct{}, len(got))
 		for _, id := range got {
 			gotSet[id] = struct{}{}

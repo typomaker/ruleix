@@ -98,9 +98,9 @@ func TestAllFiltersCandidatesThroughBetween(t *testing.T) {
 	}
 
 	require.Equal(t, want, search(ix, query))
-	local := ix.Local()
+	local := ix.TestLocal()
 	var got []int
-	local.Search(query, &got)
+	local.SearchOne(query, &got)
 	require.Equal(t, want, got)
 }
 
@@ -124,7 +124,7 @@ func TestAllFiltersCandidatesThroughOrderedRule(t *testing.T) {
 	}
 	query := constraint{group: 3, value: 1_000}
 	var got []int
-	index.Search(query, &got)
+	index.SearchOne(query, &got)
 	for _, id := range got {
 		if id%7 != 3 || id > 1_000 {
 			t.Fatalf("unexpected match %d", id)

@@ -2,74 +2,12 @@ package ruleix
 
 import "github.com/RoaringBitmap/roaring/v2"
 
-// Search appends the unique IDs of every stored rule matching value to dst,
-// reports whether this call found any matches, and updates the slice through
-// its pointer if append allocates a larger backing array. Existing elements in
-// dst do not affect the reported result. Results preserve first-insertion
-// order. Search panics when dst is nil.
-func (ix *Index[C, ID]) Search(value C, dst *[]ID) bool {
-	if dst == nil {
-		panic("ruleix: nil search destination")
-	}
-	return ix.search(value, dst, ix.pool)
-}
-
-// Local returns a search context that caches every materialized intermediate
-// bitmap result for its lifetime. It can eliminate repeated work across an
-// arbitrarily large query working set at the cost of retaining every distinct
-// cached query value and result until Close. Use Index.Search for one-off
-// queries that should not retain per-query state.
-//
-// A Local is not safe for concurrent use. Create one per goroutine:
-//
-//	local := index.Local()
-//	var matches []ID
-//	for value := range values {
-//		local.Search(value, &matches)
-//	}
-//
-// Call Close when the context is no longer needed so its internal resources
-// can be reused. The Index remains immutable and may be shared by all of those
-// goroutines.
-func (ix *Index[C, ID]) Local() *Local[C, ID] {
-	localOrdinal := ix.localTelemetry.Add(1)
-	sampled := localOrdinal%64 == 0
-	observed := (ix.rootMetrics != nil || ix.localInspectors != nil) && sampled
-	pools := &ix.locals
-	if observed {
-		pools = &ix.observedLocals
-	}
-	pool, _ := pools.Get().(*bitmapPool)
-	if pool == nil {
-		if observed {
-			pool = newLocalBitmapPool(ix.nodes, ix.localInspectors)
-		} else {
-			pool = newLocalBitmapPool(ix.nodes)
-		}
-	}
-	if observed {
-		pool.bindRootInspector(ix.rootMetrics)
-	}
-	return &Local[C, ID]{index: ix, pool: pool, observed: observed}
-}
-
-// Search appends matching IDs to dst while reusing this Local's cached state
-// and reports whether this call found any matches. Existing elements in dst do
-// not affect the reported result. Search panics when dst is nil.
-func (local *Local[C, ID]) Search(value C, dst *[]ID) bool {
-	local.requireOpen()
-	if dst == nil {
-		panic("ruleix: nil search destination")
-	}
-	return local.index.search(value, dst, local.pool)
-}
-
-// Close releases cached search results and returns the internal context to the
+// close releases cached search results and returns the internal context to the
 // originating Index for reuse. Empty per-node cache structures and learned All
 // child orders remain with that recyclable context, while all query and result
-// state is reset so its next Local lifetime starts cold. A closed
-// Local must not be used again. Repeated calls to Close are safe.
-func (local *Local[C, ID]) Close() {
+// state is reset so its next context lifetime starts cold. A closed
+// context must not be used again. Repeated calls to close are safe.
+func (local *localContext[C, ID]) close() {
 	if local == nil || local.closed || local.index == nil {
 		return
 	}
@@ -86,9 +24,9 @@ func (local *Local[C, ID]) Close() {
 	local.closed = true
 }
 
-func (local *Local[C, ID]) requireOpen() {
+func (local *localContext[C, ID]) requireOpen() {
 	if local == nil || local.index == nil || local.closed {
-		panic("ruleix: closed Local")
+		panic("ruleix: closed context")
 	}
 }
 

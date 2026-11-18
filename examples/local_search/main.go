@@ -1,4 +1,4 @@
-// Command local_search demonstrates repeated searches with a local cache.
+// Command local_search demonstrates a batch of related searches.
 package main
 
 import (
@@ -32,15 +32,15 @@ func main() {
 		panic(err)
 	}
 
-	// Local belongs to this goroutine and retains intermediate
-	// bitmaps per filter. The immutable index may still be shared globally.
-	local := index.Local()
-	defer local.Close()
-	var matches []string
-	for _, region := range []int{20, 30, 20} {
-		matches = matches[:0]
-		local.Search(constraint{store: pointer(10), region: pointer(region)}, &matches)
-		fmt.Printf("region %d: %v\n", region, matches)
+	regions := []int{20, 30, 20}
+	conditions := make([]constraint, len(regions))
+	for i, region := range regions {
+		conditions[i] = constraint{store: pointer(10), region: pointer(region)}
+	}
+	found := make([][]string, len(conditions))
+	index.Search(conditions, found)
+	for i, matches := range found {
+		fmt.Printf("region %d: %v\n", regions[i], matches)
 	}
 }
 

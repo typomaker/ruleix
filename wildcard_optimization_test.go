@@ -20,7 +20,7 @@ func TestBuildOptimizesWildcardRoot(t *testing.T) {
 
 	query := constraint{value: optimizationPointer(42)}
 	var matches []int
-	index.Search(query, &matches)
+	index.SearchOne(query, &matches)
 	require.Equal(t, []int{1, 2}, matches)
 }
 
@@ -39,7 +39,7 @@ func TestBuildRemovesWildcardChildrenFromAll(t *testing.T) {
 	require.IsType(t, &eqRule[constraint, int, int]{}, index.root)
 
 	var matches []int
-	index.Search(constraint{concrete: &two}, &matches)
+	index.SearchOne(constraint{concrete: &two}, &matches)
 	require.Equal(t, []int{2}, matches)
 }
 
@@ -62,10 +62,10 @@ func TestBuildKeepsUnaryEqualityOnIntegerKeys(t *testing.T) {
 		{constraint{}, []int{2}},
 	} {
 		var matches []int
-		index.Search(tt.query, &matches)
+		index.SearchOne(tt.query, &matches)
 		require.Equal(t, tt.want, matches)
 		matches = nil
-		index.Local().Search(tt.query, &matches)
+		index.TestLocal().SearchOne(tt.query, &matches)
 		require.Equal(t, tt.want, matches)
 	}
 }
@@ -89,7 +89,7 @@ func TestBuildKeepsBinaryEqualityOnIntegerKeys(t *testing.T) {
 		{constraint{}, []int{3}},
 	} {
 		var matches []int
-		index.Search(tt.query, &matches)
+		index.SearchOne(tt.query, &matches)
 		require.Equal(t, tt.want, matches)
 	}
 }
@@ -115,10 +115,10 @@ func TestBuildKeepsTernaryEqualityOnIntegerKeys(t *testing.T) {
 		{constraint{}, []int{4}},
 	} {
 		var matches []int
-		index.Search(tt.query, &matches)
+		index.SearchOne(tt.query, &matches)
 		require.Equal(t, tt.want, matches)
 		matches = nil
-		index.Local().Search(tt.query, &matches)
+		index.TestLocal().SearchOne(tt.query, &matches)
 		require.Equal(t, tt.want, matches)
 	}
 }
@@ -135,12 +135,12 @@ func TestBuildKeepsQuaternaryEqualityOnIntegerKeys(t *testing.T) {
 
 	for i := range 4 {
 		var matches []int
-		index.Search(constraint{value: &values[i]}, &matches)
+		index.SearchOne(constraint{value: &values[i]}, &matches)
 		require.Equal(t, []int{i + 1, 5}, matches)
 	}
 	for _, query := range []constraint{{value: &values[4]}, {}} {
 		var matches []int
-		index.Local().Search(query, &matches)
+		index.TestLocal().SearchOne(query, &matches)
 		require.Equal(t, []int{5}, matches)
 	}
 }
@@ -163,7 +163,7 @@ func TestBuildOptimizesWildcardBetween(t *testing.T) {
 	require.IsType(t, &matchAllRule[constraint]{}, index.root)
 
 	var matches []int
-	index.Search(constraint{from: optimizationPointer(10), until: optimizationPointer(20)}, &matches)
+	index.SearchOne(constraint{from: optimizationPointer(10), until: optimizationPointer(20)}, &matches)
 	require.Equal(t, []int{1, 2}, matches)
 }
 
@@ -182,7 +182,7 @@ func TestBuildKeepsWildcardExcludeWithConcreteExclusions(t *testing.T) {
 	require.IsType(t, &matchAllRule[constraint]{}, root.children[0])
 
 	var matches []int
-	index.Search(constraint{excluded: &excluded}, &matches)
+	index.SearchOne(constraint{excluded: &excluded}, &matches)
 	require.Equal(t, []int{2}, matches)
 }
 
@@ -225,7 +225,7 @@ func TestAllSharesInternedPartialEqualityWildcards(t *testing.T) {
 	require.Equal(t, uint64(7), ranked[0].card)
 	root.releaseRanked(index.pool, ranked)
 
-	for _, search := range []func(constraint, *[]int) bool{index.Search, index.Local().Search} {
+	for _, search := range []func(constraint, *[]int) bool{index.SearchOne, index.TestLocal().SearchOne} {
 		var matches []int
 		search(constraint{left: &one, right: &one}, &matches)
 		require.Equal(t, []int{0, 1, 2, 3, 4, 5, 6}, matches)
@@ -276,7 +276,7 @@ func TestAllChecksInternedEqualityPostingOnce(t *testing.T) {
 	require.Len(t, ranked, 1)
 
 	var matches []int
-	index.Search(constraint{left: &one, right: &one}, &matches)
+	index.SearchOne(constraint{left: &one, right: &one}, &matches)
 	require.Equal(t, ids, matches)
 }
 

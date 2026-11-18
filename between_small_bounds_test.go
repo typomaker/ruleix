@@ -25,7 +25,7 @@ func TestSmallBetweenBoundsPreserveDirectMatching(t *testing.T) {
 	if !ok {
 		t.Fatal("expected compact endpoint dictionary")
 	}
-	local := index.Local()
+	local := index.TestLocal()
 	defer local.Close()
 	for i := -5; i < 36; i++ {
 		query := betweenIDFixture{(i + 5) % 16, i, i + 19, i%5 == 0, i%7 == 0}
@@ -36,8 +36,8 @@ func TestSmallBetweenBoundsPreserveDirectMatching(t *testing.T) {
 			}
 		}
 		var want, got []int
-		index.Search(query, &want)
-		local.Search(query, &got)
+		index.SearchOne(query, &want)
+		local.SearchOne(query, &got)
 		if !slices.Equal(got, want) {
 			t.Fatalf("query %+v Local=%v Index=%v", query, got, want)
 		}

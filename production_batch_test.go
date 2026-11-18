@@ -60,11 +60,11 @@ func searchProductionBatch(
 ) {
 	switch strategy {
 	case "Auto":
-		index.SearchBatch(conditions, found)
+		index.Search(conditions, found)
 	case "Local":
-		local := index.Local()
+		local := index.TestLocal()
 		for i, value := range conditions {
-			local.Search(value, &found[i])
+			local.SearchOne(value, &found[i])
 		}
 		local.Close()
 	default:
@@ -108,6 +108,8 @@ func loadProductionDumpBenchmarkTB(t testing.TB) ([]productionDumpConstraint, []
 // mixed Local/Auto mean 31.841/12.385 us and p99.9 69.792/29.709 us;
 // 807 B/11 allocations versus 0 B/0 allocations per warmed 100-offer request.
 // Analysis and lifecycle are timed; independent per-offer outputs are reused.
+// API migration vs acaa3db, same host/settings, 3 x 40,000x: mixed Auto
+// mean 12.371/12.397 us, both 0 B/0 allocations. See docs/batch-api-migration.md.
 // See docs/search-batch.md and its pinned fixtures for all parameters/results.
 func BenchmarkProductionBatch(b *testing.B) {
 	rows, ids := loadProductionDumpBenchmark(b)

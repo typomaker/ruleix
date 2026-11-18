@@ -95,13 +95,13 @@ func TestAllAdaptiveExecutorMatchesMaterializeAllOracle(t *testing.T) {
 
 				want := materializeAllOracle(index, query)
 				var got []int
-				index.Search(query, &got)
+				index.SearchOne(query, &got)
 				require.Equal(t, want, got, "query %d", queryNumber)
 
-				local := index.Local()
+				local := index.TestLocal()
 				for attempt := range 2 {
 					var localGot []int
-					local.Search(query, &localGot)
+					local.SearchOne(query, &localGot)
 					require.Equal(t, want, localGot, "local query %d attempt %d", queryNumber, attempt)
 				}
 				local.Close()
@@ -167,20 +167,20 @@ func FuzzAllAdaptiveExecutorMatchesMaterializeAllOracle(f *testing.F) {
 
 		want := materializeAllOracle(index, query)
 		var got []int
-		index.Search(query, &got)
+		index.SearchOne(query, &got)
 		require.Equal(t, want, got)
 
-		local := index.Local()
+		local := index.TestLocal()
 		defer local.Close()
 		for attempt := range 2 {
 			got = got[:0]
-			local.Search(query, &got)
+			local.SearchOne(query, &got)
 			require.Equal(t, want, got, "warm Local attempt %d", attempt)
 		}
 
 		lossyWant := materializeAllOracle(lossyIndex, query)
 		got = got[:0]
-		lossyIndex.Search(query, &got)
+		lossyIndex.SearchOne(query, &got)
 		requireOrderedSubset(t, lossyWant, got)
 	})
 }

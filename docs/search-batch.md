@@ -1,32 +1,33 @@
-# Experimental batch search
+# Batch search
 
 ## Contract and status
 
-`Index.SearchBatch(conditions []T, found [][]ID)` appends each condition's
+`Index.Search(conditions []T, found [][]ID)` appends each condition's
 matches to `found[i]`, preserving first-insertion ID order and existing results.
 Outer lengths must agree; a mismatch panics before any result changes. Empty
 batches do nothing. Inner destinations must have independent backing storage
 and must not overlap input storage. Getters and comparators must be stable;
 callers must not concurrently mutate inputs or destinations.
 
-The Index remains concurrently shareable with independent destinations. Both
-existing Search methods remain available. This is an experimental additional
-API, not a migration of Index.Search or Local.Search. Test-only strategy
-methods are absent from ordinary builds. The correctness and production
-performance reference is one Local per request and a loop of Local.Search.
+The Index remains concurrently shareable with independent destinations. This is
+now the only public search API; public Local and SearchBatch have been removed.
+See [API migration](batch-api-migration.md) for replacements and verification.
+Test-only strategy and legacy-kernel bridges are absent from ordinary builds.
+Historical measurements below were collected before the API rename at acaa3db:
+the reference was one public Local per request with a loop of Local.Search.
 
 ## Selected execution
 
 The planner reuses the execution descriptors and physical representations
 already prepared by Build. There is no reflection, customer-field recognition,
-new Index field, new Local field or batch-specific Build traversal. A rule's
+new Index field, new context field or batch-specific Build traversal. A rule's
 own optional getter values and comparator semantics define its query keys.
 
-1. Validate outer lengths. The call owns a stack-allocated Local handle using
-   the same pool acquisition, observation and Close protocol as Index.Local.
+1. Validate outer lengths. The call owns a stack-allocated private context using
+   the established pool acquisition, observation and release protocol.
    Calls with fewer than 16 conditions use it directly, avoiding batch analysis. The owned context and destination pointers
    are valid, so this path invokes the same internal search core without
-   repeating public Local.Search's open-context and nil-pointer checks.
+   repeating per-condition open-context and nil-pointer checks.
 2. Require Build's existing native-mask capability for the All root. This
    currently covers groups of two to eight equality/compiled-Between operands;
    other shapes retain Local execution before batch analysis. Choose a selective
@@ -88,8 +89,8 @@ representation-only scratch removed that per-subgroup allocation. All posting
 references are cleared before recycling; no input values or originating Index
 are retained by the scratch pool. Concurrent calls borrow separate scratch.
 
-The stack-owned handle removes the allocation of a returned public Local
-handle without changing the public Local implementation or its lifecycle.
+The stack-owned handle avoids allocating a public context handle. Historical
+comparisons below used the former public Local lifecycle as a control.
 Cold pool/state acquisition and caller output growth can still allocate.
 
 Short controls exposed anchor-selection overhead: a two-offer missing key

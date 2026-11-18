@@ -1,9 +1,7 @@
 package ruleix
 
-// batchContext follows Local acquisition and observation policy, but its owned
-// lifetime lets SearchBatch keep the handle on the stack. Existing Local's
-// allocation and public lifecycle remain unchanged.
-func (ix *Index[C, ID]) batchContext() Local[C, ID] {
+// batchContext acquires a request-owned context without allocating its handle.
+func (ix *Index[C, ID]) batchContext() localContext[C, ID] {
 	localOrdinal := ix.localTelemetry.Add(1)
 	sampled := localOrdinal%64 == 0
 	observed := (ix.rootMetrics != nil || ix.localInspectors != nil) && sampled
@@ -22,5 +20,5 @@ func (ix *Index[C, ID]) batchContext() Local[C, ID] {
 	if observed {
 		pool.bindRootInspector(ix.rootMetrics)
 	}
-	return Local[C, ID]{index: ix, pool: pool, observed: observed}
+	return localContext[C, ID]{index: ix, pool: pool, observed: observed}
 }

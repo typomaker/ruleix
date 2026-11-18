@@ -97,27 +97,27 @@ func BenchmarkProductionJoinLocal(b *testing.B) {
 		matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
 		b.ReportAllocs()
 		for range b.N {
-			searchBatch(index.Search, &matches)
+			searchBatch(index.SearchOne, &matches)
 		}
 	})
 	b.Run("LocalColdBatch100", func(b *testing.B) {
 		matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
 		b.ReportAllocs()
 		for range b.N {
-			local := index.Local()
-			searchBatch(local.Search, &matches)
+			local := index.TestLocal()
+			searchBatch(local.SearchOne, &matches)
 			local.Close()
 		}
 	})
 	b.Run("LocalWarmBatch100", func(b *testing.B) {
-		local := index.Local()
+		local := index.TestLocal()
 		b.Cleanup(local.Close)
 		matches := make([]productionBenchmarkID, 0, productionBenchmarkEntries)
-		searchBatch(local.Search, &matches)
+		searchBatch(local.SearchOne, &matches)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for range b.N {
-			searchBatch(local.Search, &matches)
+			searchBatch(local.SearchOne, &matches)
 		}
 	})
 }
@@ -137,13 +137,13 @@ func BenchmarkProductionJoinLocalRetainedMemory(b *testing.B) {
 	runtime.GC()
 	runtime.GC()
 	before := heapAlloc()
-	locals := make([]*ruleix.Local[productionBenchmarkConstraint, productionBenchmarkID], b.N)
+	locals := make([]*ruleix.TestContext[productionBenchmarkConstraint, productionBenchmarkID], b.N)
 	for iteration := range b.N {
-		local := index.Local()
+		local := index.TestLocal()
 		var matches []productionBenchmarkID
 		for _, query := range queries {
 			matches = matches[:0]
-			local.Search(query, &matches)
+			local.SearchOne(query, &matches)
 		}
 		locals[iteration] = local
 	}

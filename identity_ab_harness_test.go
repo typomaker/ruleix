@@ -105,7 +105,7 @@ func TestIdentityABModesUsePublicRootAllContract(t *testing.T) {
 				query.values[child] = 1
 			}
 			var got []int
-			harness.index.Search(query, &got)
+			harness.index.SearchOne(query, &got)
 			require.Len(t, got, 256)
 			if mode == identityBaseline {
 				baseline = append([]int(nil), got...)
@@ -234,17 +234,17 @@ func TestIntegratedIdentityWarmLocalSkipsClassLookups(t *testing.T) {
 	for child := range 8 {
 		query.values[child] = 1
 	}
-	local := harness.index.Local()
+	local := harness.index.TestLocal()
 	defer local.Close()
 	var matches []int
 	for range 4 {
 		matches = matches[:0]
-		local.Search(query, &matches)
+		local.SearchOne(query, &matches)
 	}
 
 	before := harness.counters.maskTests
 	matches = matches[:0]
-	local.Search(query, &matches)
+	local.SearchOne(query, &matches)
 	require.Equal(t, before, harness.counters.maskTests,
 		"stable cached operands must bypass equality-class lookup")
 }

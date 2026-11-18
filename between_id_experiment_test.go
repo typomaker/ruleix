@@ -136,12 +136,12 @@ func TestBetweenIDExperiment(t *testing.T) {
 				}
 			}
 			var want, got []int
-			index.Search(q, &want)
+			index.SearchOne(q, &want)
 			root.execution[position].directID = matcher
-			index.Search(q, &got)
-			local := index.Local()
+			index.SearchOne(q, &got)
+			local := index.TestLocal()
 			var localGot []int
-			local.Search(q, &localGot)
+			local.SearchOne(q, &localGot)
 			local.Close()
 			root.execution[position].directID = old
 			if !slices.Equal(got, want) || !slices.Equal(localGot, want) {
@@ -208,11 +208,11 @@ func benchmarkBetweenIDCase(
 		matcher := newBetweenIDMatcher(rule, size)
 		root.execution[position].directID = matcher
 	}
-	search := index.Search
+	search := index.SearchOne
 	if path == "Local" {
-		local := index.Local()
+		local := index.TestLocal()
 		defer local.Close()
-		search = local.Search
+		search = local.SearchOne
 	}
 	out := make([]int, 0, candidates)
 	q := betweenIDFixture{from: 3 * size / 4, until: 5 * size / 4}

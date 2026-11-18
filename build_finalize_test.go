@@ -63,7 +63,7 @@ func TestBuildFinalizesBetweenAndCompareByPrecisionState(t *testing.T) {
 	require.NotNil(t, comparison.equalityLookup)
 
 	var matches []int
-	compareIndex.Search(finalizedOrderedFixture{value: 63}, &matches)
+	compareIndex.SearchOne(finalizedOrderedFixture{value: 63}, &matches)
 	require.Contains(t, matches, 63)
 }
 

@@ -49,12 +49,12 @@ func benchmarkBatchShapeCase(b *testing.B, index *Index[batchFixture, int], mode
 		}
 	}
 	want := make([][]int, length)
-	local := index.Local()
+	local := index.TestLocal()
 	for i, query := range queries {
-		local.Search(query, &want[i])
+		local.SearchOne(query, &want[i])
 	}
 	local.Close()
-	index.SearchBatch(queries, found)
+	index.Search(queries, found)
 	require.Equal(b, want, found)
 	if mode == "empty" {
 		for _, result := range want {
@@ -67,11 +67,11 @@ func benchmarkBatchShapeCase(b *testing.B, index *Index[batchFixture, int], mode
 			found[i] = found[i][:0]
 		}
 		if strategy == "Auto" {
-			index.SearchBatch(queries, found)
+			index.Search(queries, found)
 		} else {
-			local := index.Local()
+			local := index.TestLocal()
 			for i, query := range queries {
-				local.Search(query, &found[i])
+				local.SearchOne(query, &found[i])
 			}
 			local.Close()
 		}

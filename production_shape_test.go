@@ -122,11 +122,11 @@ func assertProductionSearches(
 ) {
 	t.Helper()
 	var indexMatches []productionBenchmarkID
-	index.Search(query, &indexMatches)
+	index.SearchOne(query, &indexMatches)
 	require.Equal(t, want, indexMatches)
 
 	var localMatches []productionBenchmarkID
-	index.Local().Search(query, &localMatches)
+	index.TestLocal().SearchOne(query, &localMatches)
 	require.Equal(t, want, localMatches)
 }
 
@@ -295,11 +295,11 @@ func TestProductionShapePlatformMatching(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var indexMatches []productionBenchmarkID
-			index.Search(tt.query, &indexMatches)
+			index.SearchOne(tt.query, &indexMatches)
 			require.Equal(t, tt.want, indexMatches)
 
 			var localMatches []productionBenchmarkID
-			index.Local().Search(tt.query, &localMatches)
+			index.TestLocal().SearchOne(tt.query, &localMatches)
 			require.Equal(t, tt.want, localMatches)
 		})
 	}
@@ -332,8 +332,8 @@ func TestProductionShapeLossyNeverDropsExactMatches(t *testing.T) {
 	for day := range 365 {
 		query := productionBenchmarkQuery(day)
 		var exactMatches, approximateMatches []productionBenchmarkID
-		exact.Search(query, &exactMatches)
-		approximate.Search(query, &approximateMatches)
+		exact.SearchOne(query, &exactMatches)
+		approximate.SearchOne(query, &approximateMatches)
 		available := make(map[productionBenchmarkID]struct{}, len(approximateMatches))
 		for _, id := range approximateMatches {
 			available[id] = struct{}{}
@@ -366,8 +366,8 @@ func TestProductionShapeStreamingLossyKeepsExactMatches(t *testing.T) {
 	require.NoError(t, err)
 	for _, day := range []int{100, 101} {
 		var exactMatches, approximateMatches []productionBenchmarkID
-		exact.Search(productionBenchmarkQuery(day), &exactMatches)
-		index.Search(productionBenchmarkQuery(day), &approximateMatches)
+		exact.SearchOne(productionBenchmarkQuery(day), &exactMatches)
+		index.SearchOne(productionBenchmarkQuery(day), &approximateMatches)
 		available := make(map[productionBenchmarkID]struct{}, len(approximateMatches))
 		for _, id := range approximateMatches {
 			available[id] = struct{}{}

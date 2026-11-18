@@ -135,7 +135,7 @@ func BenchmarkLossyAllSearchQuality(b *testing.B) {
 			var totalMatches uint64
 			for _, query := range queries {
 				matches = matches[:0]
-				index.Search(query, &matches)
+				index.SearchOne(query, &matches)
 				totalMatches += uint64(len(matches))
 			}
 			exactMatches := uint64(len(queries))
@@ -145,7 +145,7 @@ func BenchmarkLossyAllSearchQuality(b *testing.B) {
 			b.ResetTimer()
 			for i := range b.N {
 				matches = matches[:0]
-				index.Search(queries[i%len(queries)], &matches)
+				index.SearchOne(queries[i%len(queries)], &matches)
 			}
 			b.ReportMetric(float64(totalMatches)/float64(len(queries)), "candidates/query")
 			b.ReportMetric(float64(falsePositives)/float64(possibleFalsePositives), "false-positive-rate")
@@ -195,7 +195,7 @@ func BenchmarkLossyAllSearchRuntime(b *testing.B) {
 				{name: "LocalRotating", local: true, rotating: true},
 			} {
 				b.Run(test.name, func(b *testing.B) {
-					searcher := index.Local()
+					searcher := index.TestLocal()
 					defer searcher.Close()
 					var matches []int
 					b.ReportAllocs()
@@ -207,9 +207,9 @@ func BenchmarkLossyAllSearchRuntime(b *testing.B) {
 							query = queries[i%len(queries)]
 						}
 						if test.local {
-							searcher.Search(query, &matches)
+							searcher.SearchOne(query, &matches)
 						} else {
-							index.Search(query, &matches)
+							index.SearchOne(query, &matches)
 						}
 					}
 				})
@@ -243,7 +243,7 @@ func BenchmarkLossyScaleSearch(b *testing.B) {
 			var exactTotal uint64
 			for _, query := range queries {
 				exactMatches = exactMatches[:0]
-				exactIndex.Search(query, &exactMatches)
+				exactIndex.SearchOne(query, &exactMatches)
 				exactTotal += uint64(len(exactMatches))
 			}
 
@@ -265,7 +265,7 @@ func BenchmarkLossyScaleSearch(b *testing.B) {
 					var totalMatches uint64
 					for _, query := range queries {
 						matches = matches[:0]
-						index.Search(query, &matches)
+						index.SearchOne(query, &matches)
 						totalMatches += uint64(len(matches))
 					}
 					falsePositives := totalMatches - exactTotal
@@ -275,7 +275,7 @@ func BenchmarkLossyScaleSearch(b *testing.B) {
 					b.ResetTimer()
 					for i := range b.N {
 						matches = matches[:0]
-						index.Search(queries[i%len(queries)], &matches)
+						index.SearchOne(queries[i%len(queries)], &matches)
 					}
 					b.ReportMetric(float64(totalMatches)/float64(len(queries)), "candidates/query")
 					b.ReportMetric(float64(accountedBytes), "accounted-B/index")

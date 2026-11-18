@@ -55,8 +55,8 @@ func TestStrictEqualityAntonymDifferential(t *testing.T) {
 					query.name = antonymPointer(string(rune('a' + random.Intn(16))))
 				}
 				var baselineMatches, integratedMatches []int
-				baseline.Search(query, &baselineMatches)
-				integrated.Search(query, &integratedMatches)
+				baseline.SearchOne(query, &baselineMatches)
+				integrated.SearchOne(query, &integratedMatches)
 				require.Equal(
 					t, baselineMatches, integratedMatches,
 					"compressed=%v iteration=%d query=%d", compressed, iteration, queryIndex,
@@ -125,16 +125,16 @@ func TestStrictEqualityAntonymSearch(t *testing.T) {
 			root := index.root.(*allRule[strictAntonymConstraint])
 			require.Len(t, root.children, 1)
 			require.IsType(t, &strictEqualityAntonymRule[strictAntonymConstraint]{}, root.children[0])
-			local := index.Local()
+			local := index.TestLocal()
 			t.Cleanup(local.Close)
 			for _, query := range queries {
 				t.Run(query.name, func(t *testing.T) {
 					var got []int
-					index.Search(query.value, &got)
+					index.SearchOne(query.value, &got)
 					require.Equal(t, query.want, got)
 					for range 4 {
 						got = got[:0]
-						local.Search(query.value, &got)
+						local.SearchOne(query.value, &got)
 						require.Equal(t, query.want, got)
 					}
 				})
@@ -207,7 +207,7 @@ func TestStrictEqualityAntonymChoosesOneDeterministicPartner(t *testing.T) {
 		"one component must retain the interned wildcard shared by its whole side",
 	)
 	var got []int
-	index.Search(ambiguousAntonymConstraint{
+	index.SearchOne(ambiguousAntonymConstraint{
 		first: antonymPointer(1), second: antonymPointer(3), third: antonymPointer(3),
 	}, &got)
 	require.Equal(t, []int{0, 2}, got)
@@ -223,10 +223,10 @@ func TestStrictEqualityAntonymHandlesEmptyWildcardAndMatchAll(t *testing.T) {
 	)
 	require.NoError(t, err)
 	var got []int
-	index.Search(strictAntonymConstraint{id: antonymPointer(2)}, &got)
+	index.SearchOne(strictAntonymConstraint{id: antonymPointer(2)}, &got)
 	require.Equal(t, []int{2}, got)
 	got = nil
-	index.Search(strictAntonymConstraint{}, &got)
+	index.SearchOne(strictAntonymConstraint{}, &got)
 	require.Empty(t, got)
 }
 
@@ -340,7 +340,7 @@ func TestStrictEqualityAntonymCompilesThreeByThreeComponent(t *testing.T) {
 			}
 			want := matchAntonymGraphConstraints(constraints, query, 6)
 			var got []int
-			compiled.Search(query, &got)
+			compiled.SearchOne(query, &got)
 			require.Equal(t, want, got, "compressed=%v iteration=%d query=%v", compressed, iteration, query)
 		}
 	}
@@ -419,7 +419,7 @@ func TestStrictEqualityAntonymLargeComponentPaths(t *testing.T) {
 	}
 
 	var got []int
-	index.Search(query, &got)
+	index.SearchOne(query, &got)
 	require.Len(t, got, len(constraints))
 	require.True(t, component.matchesID(query, 0))
 	require.Equal(t, uint64(6*allEqualityDirectIDWork), component.directIDWork())
@@ -431,7 +431,7 @@ func TestStrictEqualityAntonymLargeComponentPaths(t *testing.T) {
 
 	query.values[1] = antonymPointer(8)
 	got = got[:0]
-	index.Search(query, &got)
+	index.SearchOne(query, &got)
 	require.Len(t, got, sideSize)
 	filtered := roaring.New()
 	strictEqualityFilterSet(set, component.left, 0, query, filtered)
@@ -461,7 +461,7 @@ func TestStrictEqualityAntonymOrdersWidePostings(t *testing.T) {
 			query.values[field] = antonymPointer(residue % modulus[field%4])
 		}
 		var got []int
-		index.Search(query, &got)
+		index.SearchOne(query, &got)
 		require.Equal(t, matchAntonymGraphConstraints(constraints, query, 8), got)
 	}
 }

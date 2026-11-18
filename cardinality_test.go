@@ -57,11 +57,11 @@ func TestAllMaterializesFiltersInEstimatedCardinalityOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	var dst []string
-	ix.Search(1, &dst)
+	ix.SearchOne(1, &dst)
 	require.Equal(t, []string{"right", "left"}, order)
 
 	order = nil
 	dst = dst[:0]
-	ix.Search(2, &dst)
+	ix.SearchOne(2, &dst)
 	require.Equal(t, []string{"left", "right"}, order)
 }

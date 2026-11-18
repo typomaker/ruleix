@@ -77,14 +77,13 @@ if snapshot.Bound() {
 }
 ```
 
-Runtime counters are low-priority, best-effort telemetry. `Index.Search` does
-not collect them, keeping the shared search path identical with and without
-inspection. One of every 64 `Local` contexts is selected when it
+Runtime counters are low-priority, best-effort telemetry. Search samples
+private batch contexts when inspection is enabled. One of every 64 is selected when it
 is created; all searches through a selected context accumulate counters
-without atomic operations and publish them when `Local.Close` is called.
+without atomic operations and publish them when `Index.Search` returns.
 Unselected contexts execute the plain compiled tree. Consequently, snapshots
 contain a delayed sample rather than workload totals and exclude metrics from
-selected Local contexts that are still open. Successive snapshots remain
+selected batch contexts that are still open. Successive snapshots remain
 monotonic for the lifetime of the inspector.
 `CandidateCheck` counts direct internal-ID membership checks. The cardinality
 histogram counts bitmap results, except that a top-level `All`
@@ -99,11 +98,11 @@ results without charging every successful intersection for another range
 check. This distinction preserves the selected execution strategy.
 
 `CacheHit`, `CacheMiss`, `CacheAdmission`, `CacheEviction`, and
-`CacheExpansion` count events in selected Local contexts. They are monotonic
+`CacheExpansion` count events in selected batch contexts. They are monotonic
 sample counters, not estimates of total workload activity. A first lookup is a
 miss followed by an immediate admission, and later lookups are hits. The
 `CacheEviction` and `CacheExpansion` accessors remain for source compatibility
-but return zero because Local caches neither evict nor have fixed capacities.
+but return zero because context caches neither evict nor have fixed capacities.
 Inspector exposes no gauges: every runtime scalar is a monotonic counter, while
 distributions use `Histogram`.
 
@@ -142,8 +141,8 @@ rule requested or what the analyzer initially estimated.
 Binding is observational only. The plain compiled rule must have the same
 search behavior and hot path with or without `Inspect`; attaching an inspector
 must not force a specific strategy, disable optimization, or add work to
-ordinary Index searches or unselected Local contexts. A separately compiled
-observed tree is used only by selected Local contexts.
+unselected batch contexts. A separately compiled
+observed tree is used only by selected batch contexts.
 
 `Snapshot` reads the latest immutable build snapshot exactly once and copies
 the currently observed runtime counters into a returned value. All methods on

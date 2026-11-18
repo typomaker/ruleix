@@ -44,7 +44,7 @@ func BenchmarkAll(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				benchmarkIntResult = benchmarkIntResult[:0]
-				ix.Search(query, &benchmarkIntResult)
+				ix.SearchOne(query, &benchmarkIntResult)
 			}
 		})
 	}
@@ -52,14 +52,14 @@ func BenchmarkAll(b *testing.B) {
 
 func BenchmarkLocalAllCardinalityReuse(b *testing.B) {
 	ix := benchmarkAllIndex(b, false)
-	local := ix.Local()
+	local := ix.TestLocal()
 	query := benchmarkAllValue{benchmarkPtr(1), benchmarkPtr(1), benchmarkPtr(1), benchmarkPtr(1)}
-	local.Search(query, &benchmarkIntResult)
+	local.SearchOne(query, &benchmarkIntResult)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
 		benchmarkIntResult = benchmarkIntResult[:0]
-		local.Search(query, &benchmarkIntResult)
+		local.SearchOne(query, &benchmarkIntResult)
 	}
 }
 
@@ -92,7 +92,7 @@ func BenchmarkAllCardinalityOrder(b *testing.B) {
 			b.ResetTimer()
 			for range b.N {
 				benchmarkIntResult = benchmarkIntResult[:0]
-				ix.Search(query, &benchmarkIntResult)
+				ix.SearchOne(query, &benchmarkIntResult)
 			}
 		})
 	}
@@ -134,7 +134,7 @@ func BenchmarkAllSkewedEquality(b *testing.B) {
 			b.ResetTimer()
 			for range b.N {
 				benchmarkIntResult = benchmarkIntResult[:0]
-				ix.Search(query, &benchmarkIntResult)
+				ix.SearchOne(query, &benchmarkIntResult)
 			}
 		})
 	}
@@ -162,16 +162,16 @@ func BenchmarkAllWithExclusions(b *testing.B) {
 					name = "Local"
 				}
 				b.Run(name, func(b *testing.B) {
-					searcher := index.Local()
+					searcher := index.TestLocal()
 					var result []int
 					b.ReportAllocs()
 					b.ResetTimer()
 					for range b.N {
 						result = result[:0]
 						if local {
-							searcher.Search(query, &result)
+							searcher.SearchOne(query, &result)
 						} else {
-							index.Search(query, &result)
+							index.SearchOne(query, &result)
 						}
 					}
 				})
@@ -189,7 +189,7 @@ func BenchmarkParallelSearch(b *testing.B) {
 		var dst []int
 		for pb.Next() {
 			dst = dst[:0]
-			ix.Search(query, &dst)
+			ix.SearchOne(query, &dst)
 			if len(dst) == 0 {
 				b.Error("unexpected empty result")
 			}
@@ -205,7 +205,7 @@ func BenchmarkBuildIndex(b *testing.B) {
 				return benchmarkEquality{optional: benchmarkPtr(n)}, fmt.Sprintf("modifier-%d", n)
 			})
 		benchmarkStringResult = benchmarkStringResult[:0]
-		ix.Search(benchmarkEquality{optional: benchmarkPtr(benchmarkEntries / 2)}, &benchmarkStringResult)
+		ix.SearchOne(benchmarkEquality{optional: benchmarkPtr(benchmarkEntries / 2)}, &benchmarkStringResult)
 	}
 	b.ReportMetric(benchmarkEntries, "rules/op")
 }
@@ -220,7 +220,7 @@ func BenchmarkBuildEqualityCardinality(b *testing.B) {
 						return benchmarkEquality{optional: benchmarkPtr(n / cardinality)}, n
 					})
 				benchmarkIntResult = benchmarkIntResult[:0]
-				ix.Search(benchmarkEquality{optional: benchmarkPtr(0)}, &benchmarkIntResult)
+				ix.SearchOne(benchmarkEquality{optional: benchmarkPtr(0)}, &benchmarkIntResult)
 			}
 			b.ReportMetric(float64(benchmarkEntries/cardinality), "values/op")
 		})
@@ -237,7 +237,7 @@ func BenchmarkBuildOrderedIndex(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ix := buildGenerated(b, ruleix.GreaterOrEqual(ruleix.GetterFromPointer(func(v benchmarkRange) *int { return v.value }), cmp.Compare[int]), benchmarkEntries, func(n int) (benchmarkRange, int) { return benchmarkRange{value: &values[n]}, n })
 		benchmarkIntResult = benchmarkIntResult[:0]
-		ix.Search(benchmarkRange{value: &queryValue}, &benchmarkIntResult)
+		ix.SearchOne(benchmarkRange{value: &queryValue}, &benchmarkIntResult)
 	}
 	b.ReportMetric(benchmarkEntries, "rules/op")
 }

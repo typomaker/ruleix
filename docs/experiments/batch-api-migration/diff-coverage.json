@@ -1,0 +1,61 @@
+{
+  "covered": 21,
+  "statements": 21,
+  "percent": 100.0,
+  "blocks": [
+    {
+      "file": "batch_context.go",
+      "span": "23.2,23.71",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "index_search.go",
+      "span": "29.3,29.34",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "search_batch.go",
+      "span": "68.2,71.1",
+      "statements": 3,
+      "covered": true
+    },
+    {
+      "file": "examples/local_search/main.go",
+      "span": "35.2,37.33",
+      "statements": 3,
+      "covered": true
+    },
+    {
+      "file": "examples/local_search/main.go",
+      "span": "38.3,39.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "examples/local_search/main.go",
+      "span": "40.2,42.32",
+      "statements": 3,
+      "covered": true
+    },
+    {
+      "file": "examples/local_search/main.go",
+      "span": "43.3,44.1",
+      "statements": 1,
+      "covered": true
+    },
+    {
+      "file": "examples/between_and_gt/main.go",
+      "span": "82.2,85.22",
+      "statements": 4,
+      "covered": true
+    },
+    {
+      "file": "examples/multiple_columns/main.go",
+      "span": "63.2,67.1",
+      "statements": 4,
+      "covered": true
+    }
+  ]
+}

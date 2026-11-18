@@ -53,14 +53,15 @@ func Example_multiColumnRules() {
 		minimumTotal:    &minimum150,
 		excludedChannel: &web,
 	}
-	var matches []string
-	index.Search(query, &matches)
+	found := make([][]string, 1)
+	index.Search([]targetingConstraint{query}, found)
+	matches := found[0]
 	fmt.Println(matches)
 
 	// Output: [gold-de all-de global]
 }
 
-func ExampleIndex_Local() {
+func ExampleIndex_Search() {
 	type constraint struct {
 		store  *int
 		region *int
@@ -84,13 +85,13 @@ func ExampleIndex_Local() {
 		panic(err)
 	}
 
-	// Local caches intermediate bitmaps between calls. Keep it in one goroutine.
-	local := index.Local()
-	defer local.Close()
-	var matches []string
-	for _, region := range []int{20, 30} {
-		matches = matches[:0]
-		local.Search(constraint{store: pointer(10), region: pointer(region)}, &matches)
+	conditions := []constraint{
+		{store: pointer(10), region: pointer(20)},
+		{store: pointer(10), region: pointer(30)},
+	}
+	found := make([][]string, len(conditions))
+	index.Search(conditions, found)
+	for _, matches := range found {
 		fmt.Println(matches)
 	}
 

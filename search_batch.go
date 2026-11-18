@@ -6,13 +6,13 @@ import (
 	"unsafe"
 )
 
-// SearchBatch appends the matches for conditions[i] to found[i], preserving
+// Search appends the matches for conditions[i] to found[i], preserving
 // first-insertion ID order and existing destination elements. The outer slices
 // must have equal lengths; a mismatch panics before any result is changed.
-// Empty batches do no work. SearchBatch is experimental; Search and Local.Search
-// retain their existing contracts. Callers must not concurrently mutate inputs
+// Empty batches do no work. Each call owns and releases its internal context.
+// Callers must not concurrently mutate inputs
 // or destinations, and destination backing arrays must not overlap.
-func (ix *Index[C, ID]) SearchBatch(conditions []C, found [][]ID) {
+func (ix *Index[C, ID]) Search(conditions []C, found [][]ID) {
 	ix.searchBatch(conditions, found, batchTyped, nil)
 }
 
@@ -67,7 +67,7 @@ func (ix *Index[C, ID]) searchBatch(conditions []C, found [][]ID, strategy batch
 	}
 	context := ix.batchContext()
 	local := &context
-	defer local.Close()
+	defer local.close()
 	// Small empty/fallback calls do not reliably amortize anchor selection.
 	// Sixteen-offer controls amortize it across the measured native shapes.
 	// The owned context is open and destination pointers are known nonnil.
@@ -94,7 +94,7 @@ func (ix *Index[C, ID]) searchBatch(conditions []C, found [][]ID, strategy batch
 }
 
 func batchLocalSearch[C any, ID comparable](
-	local *Local[C, ID], values []C, found [][]ID, rows []int, work *batchWork,
+	local *localContext[C, ID], values []C, found [][]ID, rows []int, work *batchWork,
 ) {
 	if rows == nil {
 		for i, value := range values {
@@ -114,7 +114,7 @@ func batchLocalSearch[C any, ID comparable](
 }
 
 func (ix *Index[C, ID]) searchBatchChunk(
-	root *allRule[C], local *Local[C, ID], values []C, found [][]ID, strategy batchStrategy, work *batchWork,
+	root *allRule[C], local *localContext[C, ID], values []C, found [][]ID, strategy batchStrategy, work *batchWork,
 ) {
 	anchor, source, card := batchAnchor(root, values[0], work)
 	if anchor < 0 || card > batchCandidateLimit {
@@ -205,7 +205,7 @@ func batchPostingIDs(posting *equalitySet, dst []uint32) []uint32 {
 func batchAllBits(count int) uint64 { return ^uint64(0) >> (64 - count) }
 
 func (ix *Index[C, ID]) searchBatchGroup(
-	root *allRule[C], local *Local[C, ID], values []C, found [][]ID, rows []int,
+	root *allRule[C], local *localContext[C, ID], values []C, found [][]ID, rows []int,
 	posting *equalitySet, anchor int, strategy batchStrategy, scratch *batchScratch, work *batchWork,
 ) {
 	card := posting.cardinality()

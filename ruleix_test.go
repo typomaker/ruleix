@@ -53,7 +53,7 @@ type ModifierUUID string
 func ptr[T any](v T) *T { return &v }
 func search[C any, ID comparable](ix *ruleix.Index[C, ID], value C) []ID {
 	var dst []ID
-	ix.Search(value, &dst)
+	ix.SearchOne(value, &dst)
 	return dst
 }
 func buildZip[C any, ID comparable](
@@ -267,7 +267,7 @@ func TestConcurrentSearchAndBitmapReuse(t *testing.T) {
 			var dst []int
 			for j := 0; j < 50; j++ {
 				dst = dst[:0]
-				ix.Search(CustomerOrderCount{Operator: ptr(ruleix.OperatorGTE), Total: 49}, &dst)
+				ix.SearchOne(CustomerOrderCount{Operator: ptr(ruleix.OperatorGTE), Total: 49}, &dst)
 				lengths <- len(dst)
 			}
 		}()
@@ -287,7 +287,7 @@ func TestSearchDeduplicatesAndAppendsToDestination(t *testing.T) {
 	dst := make([]string, 1, 8)
 	dst[0] = "existing"
 	before := &dst[0]
-	require.True(t, ix.Search(benchmarkEquality{required: 1}, &dst))
+	require.True(t, ix.SearchOne(benchmarkEquality{required: 1}, &dst))
 	require.Equal(t, []string{"existing", "same", "other"}, dst)
 	require.Same(t, before, &dst[0])
 }
@@ -298,9 +298,9 @@ func TestSearchReportsWhetherCurrentCallMatched(t *testing.T) {
 		[]string{"match"})
 
 	dst := []string{"existing"}
-	require.False(t, ix.Search(benchmarkEquality{required: 2}, &dst))
+	require.False(t, ix.SearchOne(benchmarkEquality{required: 2}, &dst))
 	require.Equal(t, []string{"existing"}, dst)
-	require.True(t, ix.Search(benchmarkEquality{required: 1}, &dst))
+	require.True(t, ix.SearchOne(benchmarkEquality{required: 1}, &dst))
 	require.Equal(t, []string{"existing", "match"}, dst)
 }
 
@@ -308,11 +308,11 @@ func TestLocalSearchReportsWhetherCurrentCallMatched(t *testing.T) {
 	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return &v.required })),
 		[]benchmarkEquality{{required: 1}},
 		[]string{"match"})
-	local := ix.Local()
+	local := ix.TestLocal()
 
 	var dst []string
-	require.False(t, local.Search(benchmarkEquality{required: 2}, &dst))
-	require.True(t, local.Search(benchmarkEquality{required: 1}, &dst))
+	require.False(t, local.SearchOne(benchmarkEquality{required: 2}, &dst))
+	require.True(t, local.SearchOne(benchmarkEquality{required: 1}, &dst))
 	require.Equal(t, []string{"match"}, dst)
 }
 
@@ -367,6 +367,6 @@ func TestSearchUpdatesDestinationWhenItGrows(t *testing.T) {
 	}
 	ix := buildZip(t, ruleix.Include(ruleix.GetterFromPointer(func(v benchmarkEquality) *int { return &v.required })), constraints, ids)
 	dst := make([]int, 0, 1)
-	ix.Search(benchmarkEquality{required: 1}, &dst)
+	ix.SearchOne(benchmarkEquality{required: 1}, &dst)
 	require.Equal(t, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, dst)
 }

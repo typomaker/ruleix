@@ -1,5 +1,10 @@
 # Query execution internals
 
+Current API: `Index.Search(conditions, found)` owns one private context per call.
+References to Local below describe that internal kernel and historical controls;
+see [API migration](batch-api-migration.md).
+
+
 This document records the internal execution structures shared by the compound
 query operators. Public matching semantics remain in the architecture overview.
 

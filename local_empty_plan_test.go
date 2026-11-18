@@ -17,12 +17,12 @@ func TestLocalEmptyPlanTransitions(t *testing.T) {
 	root, ok := index.root.(*allRule[query])
 	require.True(t, ok)
 	for lifetime := range 2 {
-		local := index.Local()
+		local := index.TestLocal()
 		require.Nil(t, local.pool.allPlans)
 		for i, value := range []query{{99, 2}, {99, 1}, {1, 2}, {99, 2}, {2, 1}, {1, 2}} {
 			got, want := []int{-1}, []int{-1}
-			found := local.Search(value, &got)
-			require.Equal(t, index.Search(value, &want), found, "lifetime %d query %d", lifetime, i)
+			found := local.SearchOne(value, &got)
+			require.Equal(t, index.SearchOne(value, &want), found, "lifetime %d query %d", lifetime, i)
 			require.Equal(t, want, got)
 			if i < 2 {
 				require.Nil(t, local.pool.allPlans, "misses must not create plans")

@@ -1,0 +1,44 @@
+File: baseline.test
+Type: alloc_space
+Time: 2026-11-18 10:29:28 MSK
+Showing nodes accounting for 191.98MB, 99.67% of 192.62MB total
+Dropped 7 nodes (cum <= 0.96MB)
+      flat  flat%   sum%        cum   cum%
+  113.37MB 58.86% 58.86%   141.87MB 73.65%  github.com/typomaker/ruleix_test.readProductionDump
+   41.44MB 21.51% 80.37%    41.44MB 21.51%  github.com/typomaker/ruleix_test.benchmarkProductionBatchCase
+      15MB  7.79% 88.16%       15MB  7.79%  slices.Grow[go.shape.[]uint8,go.shape.uint8] (inline)
+      10MB  5.19% 93.35%       10MB  5.19%  encoding/json/v2.makeString
+    4.48MB  2.33% 95.68%     5.48MB  2.85%  github.com/typomaker/ruleix.(*equalityIndex[go.shape.[16]uint8]).add
+    3.50MB  1.82% 97.49%    28.50MB 14.80%  github.com/typomaker/ruleix_test.(*productionDumpRange).UnmarshalJSON
+    1.16MB   0.6% 98.09%     1.16MB   0.6%  runtime/pprof.StartCPUProfile
+    1.03MB  0.53% 98.63%     1.03MB  0.53%  github.com/typomaker/ruleix.compileAllEqualityClasses[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" }]
+       1MB  0.52% 99.15%        1MB  0.52%  github.com/typomaker/ruleix_test.productionDumpRequests
+       1MB  0.52% 99.67%        1MB  0.52%  github.com/typomaker/ruleix.(*equalitySet).add
+         0     0% 99.67%    28.50MB 14.80%  encoding/json.(*Decoder).Decode
+         0     0% 99.67%       25MB 12.98%  encoding/json.Unmarshal (inline)
+         0     0% 99.67%       15MB  7.79%  encoding/json/internal/jsonwire.AppendUnquote
+         0     0% 99.67%       15MB  7.79%  encoding/json/internal/jsonwire.UnquoteMayCopy
+         0     0% 99.67%    28.50MB 14.80%  encoding/json/v2.Unmarshal
+         0     0% 99.67%    28.50MB 14.80%  encoding/json/v2.makeMethodArshaler.func6
+         0     0% 99.67%       25MB 12.98%  encoding/json/v2.makeStringArshaler.func2
+         0     0% 99.67%    28.50MB 14.80%  encoding/json/v2.makeStructArshaler.func3
+         0     0% 99.67%    28.50MB 14.80%  encoding/json/v2.unmarshalDecode
+         0     0% 99.67%     6.51MB  3.38%  github.com/typomaker/ruleix.(*Builder[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]).Build
+         0     0% 99.67%     5.48MB  2.85%  github.com/typomaker/ruleix.(*allRule[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" }]).insert
+         0     0% 99.67%     5.48MB  2.85%  github.com/typomaker/ruleix.(*eqRule[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8,go.shape.[16]uint8]).insert
+         0     0% 99.67%     5.48MB  2.85%  github.com/typomaker/ruleix.Zip[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8].func1
+         0     0% 99.67%     6.51MB  3.38%  github.com/typomaker/ruleix.buildIndexPhysicalAliases[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]
+         0     0% 99.67%     5.48MB  2.85%  github.com/typomaker/ruleix.buildIndexPhysicalAliases[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8].func1
+         0     0% 99.67%     6.51MB  3.38%  github.com/typomaker/ruleix.buildIndex[go.shape.struct { github.com/typomaker/ruleix_test.productionDumpOffer; CustomerUUID github.com/google/uuid.UUID "json:\"customer_uuid\""; Activity github.com/typomaker/ruleix_test.productionDumpRange "json:\"activity\""; SlotTime github.com/typomaker/ruleix_test.productionDumpRange "json:\"slot_time\"" },go.shape.[16]uint8]
+         0     0% 99.67%   148.38MB 77.03%  github.com/typomaker/ruleix_test.BenchmarkProductionBatch
+         0     0% 99.67%        1MB  0.52%  github.com/typomaker/ruleix_test.BenchmarkProductionBatch.func1
+         0     0% 99.67%    41.44MB 21.51%  github.com/typomaker/ruleix_test.BenchmarkProductionBatch.func1.1.1
+         0     0% 99.67%   141.87MB 73.65%  github.com/typomaker/ruleix_test.loadProductionDumpBenchmark
+         0     0% 99.67%        1MB  0.52%  github.com/typomaker/ruleix_test.productionBatchRequests
+         0     0% 99.67%     1.16MB   0.6%  main.main
+         0     0% 99.67%     1.16MB   0.6%  runtime.main
+         0     0% 99.67%   190.82MB 99.07%  testing.(*B).run1.func1
+         0     0% 99.67%   190.82MB 99.07%  testing.(*B).runN
+         0     0% 99.67%     1.16MB   0.6%  testing.(*M).Run
+         0     0% 99.67%     1.16MB   0.6%  testing.(*M).before
+         0     0% 99.67%     1.16MB   0.6%  testing/internal/testdeps.TestDeps.StartCPUProfile

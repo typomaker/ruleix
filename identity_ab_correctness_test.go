@@ -80,8 +80,8 @@ func TestIdentityABEqualityCorrectnessMatrix(t *testing.T) {
 					queries := []identityMatrixConstraint{{}, concrete, constraints[0], constraints[len(constraints)/2]}
 					for queryIndex, query := range queries {
 						var want, got []int
-						baseline.index.Search(query, &want)
-						integrated.index.Search(query, &got)
+						baseline.index.SearchOne(query, &want)
+						integrated.index.SearchOne(query, &got)
 						require.Equal(t, want, got, "query %d, classes=%d, counters=%+v",
 							queryIndex, integrated.index.root.(*allRule[identityMatrixConstraint]).equalityClassCount,
 							*integrated.counters)
@@ -148,8 +148,8 @@ func TestIdentityABCanonicalRangeAliasesAndCoincidentOperations(t *testing.T) {
 				"canonical aliases must compile to one operation")
 			for _, query := range entries {
 				var want, got []int
-				baseline.index.Search(query, &want)
-				integrated.index.Search(query, &got)
+				baseline.index.SearchOne(query, &want)
+				integrated.index.SearchOne(query, &got)
 				require.Equal(t, want, got)
 			}
 			for i := range baselineInspectors {
@@ -185,8 +185,8 @@ func FuzzIdentityABEqualityDifferential(f *testing.F) {
 				query.present[child] = (value+child)%4 != 0
 			}
 			var want, got []int
-			baseline.index.Search(query, &want)
-			integrated.index.Search(query, &got)
+			baseline.index.SearchOne(query, &want)
+			integrated.index.SearchOne(query, &got)
 			require.Equal(t, want, got)
 		}
 	})

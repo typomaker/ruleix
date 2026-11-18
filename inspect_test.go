@@ -111,9 +111,9 @@ func TestInspectDoesNotEnableLocalRangePruning(t *testing.T) {
 	require.NoError(t, err)
 
 	index.localTelemetry.Store(63)
-	local := index.Local()
+	local := index.TestLocal()
 	var dst []int
-	require.False(t, local.Search(constraint{first: 1, second: 20}, &dst))
+	require.False(t, local.SearchOne(constraint{first: 1, second: 20}, &dst))
 	local.Close()
 
 	require.Zero(
@@ -149,8 +149,8 @@ func TestInspectIsTransparentAndReportsCompiledStrategy(t *testing.T) {
 
 	for _, query := range []inspectConstraint{{country: "DE", tier: "gold"}, {country: "US", tier: "silver"}, {}} {
 		var got, want []string
-		inspectedIndex.Search(query, &got)
-		plainIndex.Search(query, &want)
+		inspectedIndex.SearchOne(query, &got)
+		plainIndex.SearchOne(query, &want)
 		require.Equal(t, want, got)
 	}
 	snapshot := country.Snapshot()
@@ -232,11 +232,11 @@ func TestInspectReportsCumulativeLocalCacheMetrics(t *testing.T) {
 	))
 	require.NoError(t, err)
 	index.localTelemetry.Store(63)
-	local := index.Local()
+	local := index.TestLocal()
 	var dst []string
 	for range 3 {
 		dst = dst[:0]
-		local.Search(inspectConstraint{country: "DE"}, &dst)
+		local.SearchOne(inspectConstraint{country: "DE"}, &dst)
 	}
 	snapshot := inspector.Snapshot()
 	require.Zero(t, snapshot.CacheHit(), "open Local metrics remain buffered")
@@ -261,19 +261,19 @@ func TestInspectSamplesTelemetryWithoutInstrumentingOrdinarySearches(t *testing.
 	require.NoError(t, err)
 
 	var dst []string
-	require.True(t, index.Search(inspectConstraint{country: "DE"}, &dst))
-	ordinary := index.Local()
+	require.True(t, index.SearchOne(inspectConstraint{country: "DE"}, &dst))
+	ordinary := index.TestLocal()
 	dst = dst[:0]
-	require.True(t, ordinary.Search(inspectConstraint{country: "DE"}, &dst))
+	require.True(t, ordinary.SearchOne(inspectConstraint{country: "DE"}, &dst))
 	ordinary.Close()
 	require.Equal(t, Histogram{}, inspector.Snapshot().ResultCardinality())
 
 	for range 62 {
-		index.Local().Close()
+		index.TestLocal().Close()
 	}
-	selected := index.Local()
+	selected := index.TestLocal()
 	dst = dst[:0]
-	require.True(t, selected.Search(inspectConstraint{country: "DE"}, &dst))
+	require.True(t, selected.SearchOne(inspectConstraint{country: "DE"}, &dst))
 	selected.Close()
 	require.Equal(t, Histogram{One: 1}, inspector.Snapshot().ResultCardinality())
 }
@@ -296,18 +296,18 @@ func TestInspectKeepsRetiredCacheExpansionCounterAtZero(t *testing.T) {
 		{from: 12, until: 22},
 		{from: 13, until: 23},
 	}
-	warm := func(local *Local[interval, int]) {
+	warm := func(local *localContext[interval, int]) {
 		var dst []int
 		for range 6 {
 			for _, query := range queries {
 				dst = dst[:0]
-				local.Search(query, &dst)
+				local.SearchOne(query, &dst)
 			}
 		}
 	}
 
 	index.localTelemetry.Store(63)
-	first := index.Local()
+	first := index.TestLocal()
 	warm(first)
 	snapshot := inspector.Snapshot()
 	require.Zero(t, snapshot.CacheExpansion(), "open Local metrics remain buffered")
@@ -316,7 +316,7 @@ func TestInspectKeepsRetiredCacheExpansionCounterAtZero(t *testing.T) {
 	require.Zero(t, snapshot.CacheExpansion(), "unbounded caches do not expand between fixed capacities")
 
 	index.localTelemetry.Store(63)
-	second := index.Local()
+	second := index.TestLocal()
 	warm(second)
 	snapshot = inspector.Snapshot()
 	require.Zero(t, snapshot.CacheExpansion(), "open Local metrics remain buffered")

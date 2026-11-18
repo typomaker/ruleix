@@ -67,8 +67,8 @@ func TestBuildCanonicalizesRepeatedExactAllChildren(t *testing.T) {
 					var want, got []int
 					single, err := New[canonicalConstraint, int](shared).Build(Zip(constraints, ids))
 					require.NoError(t, err)
-					single.Search(constraints[1], &want)
-					index.Search(constraints[1], &got)
+					single.SearchOne(constraints[1], &want)
+					index.SearchOne(constraints[1], &got)
 					require.Equal(t, want, got)
 				})
 			}
@@ -164,7 +164,7 @@ func TestBuildCanonicalizationPreservesSeparateInspectSites(t *testing.T) {
 
 	var matches []int
 	index.pool.observeRuntime = true
-	index.Search(constraints[0], &matches)
+	index.SearchOne(constraints[0], &matches)
 	require.Equal(t, []int{10}, matches)
 	require.Equal(t, first.Snapshot().ResultCardinality(), second.Snapshot().ResultCardinality())
 	require.Equal(t, uint64(1), first.Snapshot().ResultCardinality().One)
@@ -184,7 +184,7 @@ func TestIdentityABRetainsBaselineAndCompilesIntegratedAliases(t *testing.T) {
 	require.Len(t, integrated.index.root.(*allRule[canonicalConstraint]).children, 1)
 
 	var baselineMatches, integratedMatches []int
-	baseline.index.Search(constraints[0], &baselineMatches)
-	integrated.index.Search(constraints[0], &integratedMatches)
+	baseline.index.SearchOne(constraints[0], &baselineMatches)
+	integrated.index.SearchOne(constraints[0], &integratedMatches)
 	require.Equal(t, baselineMatches, integratedMatches)
 }

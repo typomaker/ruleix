@@ -54,7 +54,7 @@ func BenchmarkEq(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				benchmarkIntResult = benchmarkIntResult[:0]
-				ix.Search(query, &benchmarkIntResult)
+				ix.SearchOne(query, &benchmarkIntResult)
 			}
 		})
 		b.Run(cardinality+"/Miss", func(b *testing.B) {
@@ -64,7 +64,7 @@ func BenchmarkEq(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				benchmarkIntResult = benchmarkIntResult[:0]
-				ix.Search(query, &benchmarkIntResult)
+				ix.SearchOne(query, &benchmarkIntResult)
 			}
 		})
 	}
@@ -76,7 +76,7 @@ func BenchmarkEq(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			benchmarkIntResult = benchmarkIntResult[:0]
-			ix.Search(query, &benchmarkIntResult)
+			ix.SearchOne(query, &benchmarkIntResult)
 		}
 	})
 }
@@ -86,7 +86,7 @@ func BenchmarkLocalCreation(b *testing.B) {
 	b.Run("Cold", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			benchmarkLocalResult = ix.Local()
+			benchmarkLocalResult = ix.TestLocal()
 		}
 	})
 	b.Run("Primed", func(b *testing.B) {
@@ -94,9 +94,9 @@ func BenchmarkLocalCreation(b *testing.B) {
 		var dst []int
 		b.ReportAllocs()
 		for range b.N {
-			local := ix.Local()
+			local := ix.TestLocal()
 			dst = dst[:0]
-			local.Search(query, &dst)
+			local.SearchOne(query, &dst)
 			benchmarkLocalResult = local
 		}
 	})
@@ -131,7 +131,7 @@ func BenchmarkLocalEqualityReuse(b *testing.B) {
 			name = "Local"
 		}
 		b.Run(name, func(b *testing.B) {
-			searcher := ix.Local()
+			searcher := ix.TestLocal()
 			var dst []int
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -139,9 +139,9 @@ func BenchmarkLocalEqualityReuse(b *testing.B) {
 				q := query{store: &store, region: &regions[n&1]}
 				dst = dst[:0]
 				if local {
-					searcher.Search(q, &dst)
+					searcher.SearchOne(q, &dst)
 				} else {
-					ix.Search(q, &dst)
+					ix.SearchOne(q, &dst)
 				}
 			}
 		})
@@ -180,7 +180,7 @@ func BenchmarkOrdered(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					benchmarkIntResult = benchmarkIntResult[:0]
-					ix.Search(query, &benchmarkIntResult)
+					ix.SearchOne(query, &benchmarkIntResult)
 				}
 			})
 		}
@@ -207,7 +207,7 @@ func BenchmarkLocalOrderedReuse(b *testing.B) {
 				name = mode.name + "/Local"
 			}
 			b.Run(name, func(b *testing.B) {
-				searcher := ix.Local()
+				searcher := ix.TestLocal()
 				var dst []int
 				b.ReportAllocs()
 				b.ResetTimer()
@@ -216,9 +216,9 @@ func BenchmarkLocalOrderedReuse(b *testing.B) {
 					query := benchmarkRange{value: &value}
 					dst = dst[:0]
 					if local {
-						searcher.Search(query, &dst)
+						searcher.SearchOne(query, &dst)
 					} else {
-						ix.Search(query, &dst)
+						ix.SearchOne(query, &dst)
 					}
 				}
 			})
@@ -244,7 +244,7 @@ func BenchmarkLocalCompareByReuse(b *testing.B) {
 				name = mode.name + "/Local"
 			}
 			b.Run(name, func(b *testing.B) {
-				searcher := ix.Local()
+				searcher := ix.TestLocal()
 				var dst []int
 				b.ReportAllocs()
 				b.ResetTimer()
@@ -253,9 +253,9 @@ func BenchmarkLocalCompareByReuse(b *testing.B) {
 					query := benchmarkRange{value: &value}
 					dst = dst[:0]
 					if local {
-						searcher.Search(query, &dst)
+						searcher.SearchOne(query, &dst)
 					} else {
-						ix.Search(query, &dst)
+						ix.SearchOne(query, &dst)
 					}
 				}
 			})
@@ -275,7 +275,7 @@ func BenchmarkBetweenManyUniqueBounds(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		benchmarkIntResult = benchmarkIntResult[:0]
-		ix.Search(query, &benchmarkIntResult)
+		ix.SearchOne(query, &benchmarkIntResult)
 	}
 }
 
@@ -308,7 +308,7 @@ func BenchmarkBetweenNarrowIntersection(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				benchmarkIntResult = benchmarkIntResult[:0]
-				ix.Search(query, &benchmarkIntResult)
+				ix.SearchOne(query, &benchmarkIntResult)
 			}
 		})
 	}
@@ -343,7 +343,7 @@ func BenchmarkLocalBetweenReuse(b *testing.B) {
 				name = mode.name + "/Local"
 			}
 			b.Run(name, func(b *testing.B) {
-				searcher := ix.Local()
+				searcher := ix.TestLocal()
 				var dst []int
 				b.ReportAllocs()
 				b.ResetTimer()
@@ -352,9 +352,9 @@ func BenchmarkLocalBetweenReuse(b *testing.B) {
 					query := benchmarkInterval{from: &from, until: &until}
 					dst = dst[:0]
 					if local {
-						searcher.Search(query, &dst)
+						searcher.SearchOne(query, &dst)
 					} else {
-						ix.Search(query, &dst)
+						ix.SearchOne(query, &dst)
 					}
 				}
 			})
@@ -384,7 +384,7 @@ func BenchmarkLocalExcludeReuse(b *testing.B) {
 				name = mode.name + "/Local"
 			}
 			b.Run(name, func(b *testing.B) {
-				searcher := ix.Local()
+				searcher := ix.TestLocal()
 				var dst []int
 				b.ReportAllocs()
 				b.ResetTimer()
@@ -393,9 +393,9 @@ func BenchmarkLocalExcludeReuse(b *testing.B) {
 					query := benchmarkRange{value: &value}
 					dst = dst[:0]
 					if local {
-						searcher.Search(query, &dst)
+						searcher.SearchOne(query, &dst)
 					} else {
-						ix.Search(query, &dst)
+						ix.SearchOne(query, &dst)
 					}
 				}
 			})
@@ -425,7 +425,7 @@ func BenchmarkBetweenSelectiveSide(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				benchmarkIntResult = benchmarkIntResult[:0]
-				ix.Search(query, &benchmarkIntResult)
+				ix.SearchOne(query, &benchmarkIntResult)
 			}
 		})
 	}
@@ -451,7 +451,7 @@ func BenchmarkFilterWildcard(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				benchmarkIntResult = benchmarkIntResult[:0]
-				ix.Search(query, &benchmarkIntResult)
+				ix.SearchOne(query, &benchmarkIntResult)
 			}
 		})
 	}

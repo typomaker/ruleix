@@ -39,8 +39,8 @@ func verifyLossySuperset[T any, ID comparable](
 	}
 	for _, query := range queries {
 		var want, got []ID
-		exact.Search(query, &want)
-		approximate.Search(query, &got)
+		exact.SearchOne(query, &want)
+		approximate.SearchOne(query, &got)
 		requireSupersetComparable(t, want, got)
 	}
 }
@@ -196,8 +196,8 @@ func TestLossyEqualityNeverDropsExactMatches(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < len(constraints); i += 37 {
 		var want, got []int
-		exact.Search(constraints[i], &want)
-		approximate.Search(constraints[i], &got)
+		exact.SearchOne(constraints[i], &want)
+		approximate.SearchOne(constraints[i], &got)
 		requireSuperset(t, want, got)
 	}
 	require.Equal(t, RuleModeLossy, inspector.Snapshot().Mode())
@@ -223,8 +223,8 @@ func TestLossyOrderedNeverDropsExactMatches(t *testing.T) {
 	for q := int64(-1100); q <= 1100; q += 53 {
 		query := lossyConstraint{minimum: q, present: true}
 		var want, got []int
-		exact.Search(query, &want)
-		approximate.Search(query, &got)
+		exact.SearchOne(query, &want)
+		approximate.SearchOne(query, &got)
 		requireSuperset(t, want, got)
 	}
 }

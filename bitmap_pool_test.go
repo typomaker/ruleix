@@ -131,7 +131,7 @@ func BenchmarkBitmapPoolParallelSearch(b *testing.B) {
 		name   string
 		search func(*[]int)
 	}{
-		{name: "Reuse", search: func(dst *[]int) { index.Search(query, dst) }},
+		{name: "Reuse", search: func(dst *[]int) { index.SearchOne(query, dst) }},
 		{name: "Fresh", search: func(dst *[]int) { index.search(query, dst, newBitmapPool()) }},
 	} {
 		b.Run(benchmark.name, func(b *testing.B) {

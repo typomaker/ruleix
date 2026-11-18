@@ -59,21 +59,21 @@ func TestLocalCloseResetsNodeCachesAndReturnsInternalContext(t *testing.T) {
 		Zip([]constraint{{value: 1}}, []int{7}),
 	)
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 	var matches []int
-	local.Search(constraint{value: 1}, &matches)
+	local.SearchOne(constraint{value: 1}, &matches)
 	cache := local.pool.local[0].equality
 	require.NotNil(t, cache)
 	pool := local.pool
 
 	local.Close()
 	require.Same(t, cache, pool.local[0].equality)
-	require.PanicsWithValue(t, "ruleix: closed Local", func() { local.Search(constraint{}, &matches) })
+	require.PanicsWithValue(t, "ruleix: closed context", func() { local.SearchOne(constraint{}, &matches) })
 	require.NotPanics(t, local.Close)
 
-	reused := index.Local()
+	reused := index.TestLocal()
 	matches = matches[:0]
-	reused.Search(constraint{value: 1}, &matches)
+	reused.SearchOne(constraint{value: 1}, &matches)
 	require.Equal(t, []int{7}, matches)
 	if reused.pool == pool {
 		require.Same(t, cache, reused.pool.local[0].equality)
@@ -120,7 +120,7 @@ func TestEqualityExposesOnlyWarmLocalBitmap(t *testing.T) {
 		[]int{1, 2, 3},
 	))
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 	rule := index.root.(*eqRule[constraint, int, int])
 	query := constraint{value: 2}
 
@@ -129,7 +129,7 @@ func TestEqualityExposesOnlyWarmLocalBitmap(t *testing.T) {
 	var matches []int
 	for range 2 {
 		matches = matches[:0]
-		local.Search(query, &matches)
+		local.SearchOne(query, &matches)
 	}
 	bits, found := rule.lookupCachedBitmap(query, local.pool)
 	require.True(t, found)
@@ -156,9 +156,9 @@ func TestLocalContextsCanBeAcquiredAndClosedConcurrently(t *testing.T) {
 		go func() {
 			defer workers.Done()
 			for range 100 {
-				local := index.Local()
+				local := index.TestLocal()
 				var matches []int
-				local.Search(constraint{value: 1}, &matches)
+				local.SearchOne(constraint{value: 1}, &matches)
 				if len(matches) != 1 || matches[0] != 1 {
 					t.Errorf("matches = %v, want [1]", matches)
 				}
@@ -183,12 +183,12 @@ func TestAllUsesWarmOrderedLocalBitmapsDuringPlanning(t *testing.T) {
 	}
 	index, err := New[constraint, int](schema).Build(Zip(constraints, ids))
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 	query := constraint{minimum: 12, maximum: 20}
 	var matches []int
 	for range 2 {
 		matches = matches[:0]
-		local.Search(query, &matches)
+		local.SearchOne(query, &matches)
 	}
 
 	root := index.root.(*allRule[constraint])
@@ -228,7 +228,7 @@ func BenchmarkLocalLifecycleReuse(b *testing.B) {
 	b.Run("Reused", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			local := index.Local()
+			local := index.TestLocal()
 			benchmarkLocalLifecycle = local.pool
 			local.Close()
 		}
@@ -243,7 +243,7 @@ func TestBetweenCacheRetainsEveryEntry(t *testing.T) {
 	sequence := Zip(entries, []int{1})
 	index, err := New[interval, int](schema).Build(sequence)
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 
 	queries := []interval{
 		{from: pointer(10), until: pointer(20)},
@@ -255,7 +255,7 @@ func TestBetweenCacheRetainsEveryEntry(t *testing.T) {
 	var matches []int
 	for _, query := range queries {
 		matches = matches[:0]
-		local.Search(query, &matches)
+		local.SearchOne(query, &matches)
 	}
 
 	rule := index.root.(*betweenRule[interval, int])
@@ -280,7 +280,7 @@ func TestBetweenCacheClearsMissingBounds(t *testing.T) {
 		[]int{1},
 	))
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 
 	for _, query := range []interval{
 		{from: pointer(&bound{id: 10}), until: pointer(&bound{id: 20})},
@@ -289,7 +289,7 @@ func TestBetweenCacheClearsMissingBounds(t *testing.T) {
 		{},
 	} {
 		var matches []int
-		local.Search(query, &matches)
+		local.SearchOne(query, &matches)
 	}
 
 	rule := index.root.(*betweenRule[interval, *bound])
@@ -315,7 +315,7 @@ func TestBetweenCacheRetainsUnboundedWorkingSet(t *testing.T) {
 		[]int{1},
 	))
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 	queries := make([]interval, 128)
 	for value := range queries {
 		queries[value] = interval{from: pointer(value), until: pointer(value + 20)}
@@ -324,7 +324,7 @@ func TestBetweenCacheRetainsUnboundedWorkingSet(t *testing.T) {
 	var matches []int
 	for _, query := range queries {
 		matches = matches[:0]
-		local.Search(query, &matches)
+		local.SearchOne(query, &matches)
 	}
 
 	rule := index.root.(*betweenRule[interval, int])
@@ -356,7 +356,7 @@ func TestBetweenCacheOrdersOverflowByComparatorAndPresence(t *testing.T) {
 		[]int{1, 2, 3, 4},
 	))
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 	defer local.Close()
 
 	queries := []interval{
@@ -366,8 +366,8 @@ func TestBetweenCacheOrdersOverflowByComparatorAndPresence(t *testing.T) {
 	assertMatches := func(query interval) {
 		t.Helper()
 		var expected, actual []int
-		index.Search(query, &expected)
-		local.Search(query, &actual)
+		index.SearchOne(query, &expected)
+		local.SearchOne(query, &actual)
 		require.Equal(t, expected, actual)
 	}
 	for _, query := range queries {
@@ -418,11 +418,11 @@ func TestLocalCachesEqualityBitmapAfterFirstUse(t *testing.T) {
 		return value.value, true
 	})).Build(Zip([]constraint{{value: 1}, {value: 2}}, []int{1, 2}))
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 	query := constraint{value: 1}
 
 	var matches []int
-	local.Search(query, &matches)
+	local.SearchOne(query, &matches)
 	cache := local.pool.local[0].equality.(*valueBitmapCache[int])
 	require.True(t, cache.entries[0].initialized)
 	require.Equal(t, []int{1}, matches)
@@ -441,7 +441,7 @@ func TestLocalAllResultCacheRetainsUnboundedQueries(t *testing.T) {
 		GreaterOrEqual(func(value constraint) (int, bool) { return value.score, true }, cmp.Compare[int]),
 	)).Build(Zip(constraints, ids))
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 	t.Cleanup(local.Close)
 
 	for round := range 4 {
@@ -449,8 +449,8 @@ func TestLocalAllResultCacheRetainsUnboundedQueries(t *testing.T) {
 			for range 3 {
 				query := constraint{group: value, score: value*10 + 5}
 				var want, got []int
-				index.Search(query, &want)
-				local.Search(query, &got)
+				index.SearchOne(query, &want)
+				local.SearchOne(query, &got)
 				require.Equal(t, want, got, "round %d, value %d", round, value)
 			}
 		}

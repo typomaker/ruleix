@@ -53,10 +53,10 @@ func TestAllExclusionsMatchAcrossCandidateScanThresholds(t *testing.T) {
 
 		query := constraint{included: 1, excluded: 1}
 		var got []int
-		index.Search(query, &got)
+		index.SearchOne(query, &got)
 		require.Equal(t, want, got)
 		got = got[:0]
-		index.Local().Search(query, &got)
+		index.TestLocal().SearchOne(query, &got)
 		require.Equal(t, want, got)
 	}
 }

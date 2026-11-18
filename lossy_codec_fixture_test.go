@@ -91,7 +91,7 @@ func TestExactEqualityDoesNotRequireLossyCodec(t *testing.T) {
 	require.NoError(t, err)
 
 	var matches []int
-	index.Search(constraints[0], &matches)
+	index.SearchOne(constraints[0], &matches)
 	require.Equal(t, []int{1}, matches)
 }
 
@@ -205,23 +205,23 @@ func testCodecFixture[V comparable](t *testing.T, name string, values []V, wantS
 			for _, present := range []bool{true, false} {
 				input := codecFixtureConstraint[V]{value: query, present: present}
 				var want, got []int
-				exact.Search(input, &want)
-				lossy.Search(input, &got)
+				exact.SearchOne(input, &want)
+				lossy.SearchOne(input, &got)
 				requireSupersetComparable(t, want, got)
 				candidateTotal += len(got)
 				queryCount++
 			}
 		}
 
-		local := lossy.Local()
+		local := lossy.TestLocal()
 		defer local.Close()
 		query := codecFixtureConstraint[V]{value: values[0], present: true}
 		matches := make([]int, 0, len(ids))
-		local.Search(query, &matches)
-		local.Search(query, &matches)
+		local.SearchOne(query, &matches)
+		local.SearchOne(query, &matches)
 		allocs := testing.AllocsPerRun(100, func() {
 			matches = matches[:0]
-			local.Search(query, &matches)
+			local.SearchOne(query, &matches)
 		})
 		if !codecFixtureRaceEnabled {
 			require.Zero(t, allocs)
@@ -376,17 +376,17 @@ func benchmarkLossyCompiledScalarCodec[V comparable](b *testing.B, name string, 
 		if err != nil {
 			b.Fatal(err)
 		}
-		local := index.Local()
+		local := index.TestLocal()
 		defer local.Close()
 		query := codecFixtureConstraint[V]{value: value(entries / 2), present: true}
 		result := make([]int, 0, 8)
-		local.Search(query, &result)
-		local.Search(query, &result)
+		local.SearchOne(query, &result)
+		local.SearchOne(query, &result)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for range b.N {
 			result = result[:0]
-			local.Search(query, &result)
+			local.SearchOne(query, &result)
 		}
 		codecFixtureBenchmarkResult = result
 	})

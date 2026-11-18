@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
-- Added experimental `Index.SearchBatch(conditions, found)` with per-condition append results; see [batch search](docs/search-batch.md).
+- Breaking: replaced single-condition `Index.Search`, public `Local` and experimental `SearchBatch` with `Index.Search(conditions, found)`; one private context per call. See [migration](docs/batch-api-migration.md).
 ## [0.9.0] - 2026-11-18
 
 ### Changed

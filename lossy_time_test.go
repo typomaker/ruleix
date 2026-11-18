@@ -30,8 +30,8 @@ func TestLossyTimeTerminalPressureNeverDropsExactMatches(t *testing.T) {
 	for _, day := range []int{-1, 0, 127, 255, 511, 512} {
 		query := constraint{value: base.Add(time.Duration(day) * 24 * time.Hour)}
 		var want, got []int
-		exact.Search(query, &want)
-		approximate.Search(query, &got)
+		exact.SearchOne(query, &want)
+		approximate.SearchOne(query, &got)
 		requireSuperset(t, want, got)
 	}
 }

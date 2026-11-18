@@ -79,8 +79,9 @@ func main() {
 		orderCount: &orderCountRule{value: &eleven},
 	}
 
-	var matches []string
-	index.Search(query, &matches)
+	found := make([][]string, 1)
+	index.Search([]constraint{query}, found)
+	matches := found[0]
 	fmt.Println(matches)
 
 	// Output: [january-returning-customer global]

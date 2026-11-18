@@ -35,19 +35,19 @@ func TestLocalAllResultCacheMatchesExactQueryBeforeChildLookup(t *testing.T) {
 	}
 	index, err := New[constraint, int](schema).Build(Zip(constraints, ids))
 	require.NoError(t, err)
-	local := index.Local()
+	local := index.TestLocal()
 	t.Cleanup(local.Close)
 	query := constraint{left: 1, right: 1}
 	var matches []int
 	for range 3 {
 		matches = matches[:0]
-		local.Search(query, &matches)
+		local.SearchOne(query, &matches)
 	}
 	require.Len(t, matches, 45)
 
 	leftCalls, rightCalls = 0, 0
 	matches = matches[:0]
-	local.Search(query, &matches)
+	local.SearchOne(query, &matches)
 
 	require.Len(t, matches, 45)
 	require.Equal(t, 1, leftCalls)
@@ -56,8 +56,8 @@ func TestLocalAllResultCacheMatchesExactQueryBeforeChildLookup(t *testing.T) {
 	changed := constraint{left: 1, right: 2}
 	var want []int
 	matches = matches[:0]
-	index.Search(changed, &want)
-	local.Search(changed, &matches)
+	index.SearchOne(changed, &want)
+	local.SearchOne(changed, &matches)
 	require.Equal(t, want, matches)
 }
 

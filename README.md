@@ -24,7 +24,7 @@ of scanning every rule for every query.
 - Conjunctions with `All`, including direct access to nested fields.
 - Unique results in first-insertion order.
 - Immutable indexes that support concurrent searches.
-- Optional per-worker `Local` caches for workloads with query locality.
+- Batch search with one internally managed cache context per request.
 - Memory-bounded conservative indexes through `Lossy`.
 - Opt-in build and sampled runtime diagnostics through `Inspect`.
 
@@ -83,8 +83,9 @@ func main() {
 
 	minimum150 := 150
 	query := Constraint{Country: &countryDE, MinimumTotal: &minimum150}
-	var matches []string
-	index.Search(query, &matches)
+	found := make([][]string, 1)
+	index.Search([]Constraint{query}, found)
+	matches := found[0]
 	fmt.Println(matches)
 	// Output: [de-orders-over-100 all-de global]
 }
@@ -145,48 +146,32 @@ insertion.
 
 ## Searching
 
-`Search` appends matches to the supplied slice and returns whether that call
-found at least one match. Reset the slice when previous results are not needed:
+`Index.Search(conditions, found)` appends matches for `conditions[i]` to
+`found[i]`, preserving first-insertion ID order. The outer slices must have
+identical lengths; a mismatch panics before changing any result.
 
 ```go
-var matches []string
-index.Search(query, &matches)
+conditions := []Constraint{query, nextQuery}
+found := make([][]string, len(conditions))
+index.Search(conditions, found)
 
-matches = matches[:0]
-index.Search(nextQuery, &matches)
-```
-
-An `Index` is immutable and its `Search` method is safe for concurrent use.
-
-### Choosing `Index` or `Local`
-
-Use `Index.Search` for independent queries, simple concurrency, and controlled
-scratch-memory retention. Use a `Local` when one worker repeatedly searches
-related values and can benefit from cached intermediate and exact results.
-
-```go
-local := index.Local()
-defer local.Close()
-
-for query := range queries {
-	matches = matches[:0]
-	local.Search(query, &matches)
+// Reset each destination before the next request if old results are not needed.
+for i := range found {
+    found[i] = found[i][:0]
 }
+index.Search(conditions, found)
 ```
 
-A `Local` is not safe for concurrent use; create one per goroutine. It is the
-explicit memory-for-speed path and may retain wide cached results. Always call
-`Close` so its state can be cleared and reused. A closed `Local` cannot be used
-again.
+For one condition, pass a one-element slice. Search returns no value: inspect
+`found[i]` for results, or compare its length before and after appending. Empty
+batches do no work. Inner destination backing arrays must not overlap.
 
-### Experimental batch search
-
-`Index.SearchBatch(conditions, found)` searches related conditions together.
-Prepare `found := make([][]ID, len(conditions))`; matches for condition `i` are
-appended to `found[i]`. Reset each inner slice to length zero before reusing it
-for a new request. Inner destination buffers must not overlap. Existing Search
-methods remain available. See [batch search](docs/search-batch.md) for the
-experimental contract, analysis strategies, measurements and fallback behavior.
+An `Index` is immutable and safe for concurrent calls with independent outputs.
+Each call acquires one private cache context and releases it on return; there is
+no public `Local` lifecycle. Related conditions can share postings and checks.
+See [batch search](docs/search-batch.md) for execution and fallback details and
+[API migration](docs/batch-api-migration.md) for the breaking change from v0.9.0
+and the experimental `SearchBatch` API.
 
 ## Memory-bounded indexes
 
@@ -225,7 +210,7 @@ snapshot := inspector.Snapshot()
 
 Snapshots describe the latest successful build and low-priority sampled runtime
 metrics. They are diagnostics, not exact workload accounting. Shared `Index`
-searches and unsampled `Local` contexts use the plain search tree. See the
+searches use the plain search tree unless their internal context is sampled. See the
 [inspection API contract](docs/inspect-api.md) for availability and sampling
 semantics.
 

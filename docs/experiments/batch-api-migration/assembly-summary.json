@@ -1,0 +1,26 @@
+{
+  "searchBatch$": {
+    "instructions": 196,
+    "same_operation_sequence": true
+  },
+  "batchContext$": {
+    "instructions": 84,
+    "same_operation_sequence": true
+  },
+  "searchBatchChunk$": {
+    "instructions": 272,
+    "same_operation_sequence": true
+  },
+  "batchLocalSearch": {
+    "instructions": 160,
+    "same_operation_sequence": true
+  },
+  "searchBatchGroup$": {
+    "instructions": 388,
+    "same_operation_sequence": true
+  },
+  "context-release": {
+    "instructions": 56,
+    "same_operation_sequence": true
+  }
+}

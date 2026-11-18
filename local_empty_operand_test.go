@@ -23,12 +23,12 @@ func TestLocalEmptyOperandTracksValuesAndPreservesSource(t *testing.T) {
 	require.NoError(t, err)
 	root := index.root.(*allRule[pair])
 	require.Equal(t, uint8(3), root.emptyKeys)
-	local := index.Local()
+	local := index.TestLocal()
 	defer local.Close()
 	check := func(v pair) {
 		t.Helper()
 		got, want := []int{-1}, []int{-1}
-		require.Equal(t, index.Search(v, &want), local.Search(v, &got))
+		require.Equal(t, index.SearchOne(v, &want), local.SearchOne(v, &got))
 		require.Equal(t, want, got)
 	}
 	check(pair{99, 1})
@@ -48,10 +48,10 @@ func TestLocalEmptyOperandTracksValuesAndPreservesSource(t *testing.T) {
 	require.Same(t, source, local.pool.candidateMask.source)
 	check(pair{1, 1})
 	require.Same(t, source, local.pool.candidateMask.source)
-	other := index.Local()
+	other := index.TestLocal()
 	defer other.Close()
 	var output []int
-	other.Search(pair{1, 99}, &output)
+	other.SearchOne(pair{1, 99}, &output)
 	require.Equal(t, -2, other.pool.candidateMask.first)
 	require.Same(t, source, local.pool.candidateMask.source)
 	mask := local.pool.candidateMask
@@ -72,17 +72,17 @@ func TestLocalEmptyOperandLargeGroupFallsBack(t *testing.T) {
 	require.Len(t, root.children, 9)
 	require.Zero(t, root.emptyKeys)
 	require.Zero(t, root.emptyOrder)
-	local := index.Local()
+	local := index.TestLocal()
 	defer local.Close()
 	missing := query{1, 1, 1, 1, 1, 1, 1, 1, 99}
 	for range 2 {
 		var got []int
-		require.False(t, local.Search(missing, &got))
+		require.False(t, local.SearchOne(missing, &got))
 		require.Empty(t, got)
 	}
 	require.Equal(t, -9, local.pool.candidateMask.first)
 	var got []int
-	require.True(t, local.Search(query{1, 1, 1, 1, 1, 1, 1, 1, 1}, &got))
+	require.True(t, local.SearchOne(query{1, 1, 1, 1, 1, 1, 1, 1, 1}, &got))
 	require.Equal(t, []int{7}, got)
 }
 

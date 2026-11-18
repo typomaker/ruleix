@@ -10,7 +10,7 @@ import (
 	"github.com/typomaker/ruleix"
 )
 
-// The production workload uses Local throughout. Index.Search provides the
+// The production workload uses Local throughout. Index.SearchOne provides the
 // independent, non-Local result for each offer in this opt-in differential test.
 func TestProductionDumpLocalMatchesIndex(t *testing.T) {
 	path := os.Getenv("RULEIX_PRODUCTION_DUMP")
@@ -44,7 +44,7 @@ func TestProductionDumpLocalMatchesIndex(t *testing.T) {
 				}
 				searchProductionDumpRequest(index, request, func(offerIndex int, got []uuid.UUID) {
 					want = want[:0]
-					index.Search(request[offerIndex], &want)
+					index.SearchOne(request[offerIndex], &want)
 					require.ElementsMatch(t, want, got, "request %d, offer %d", requestIndex, offerIndex)
 				})
 			}

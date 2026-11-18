@@ -154,7 +154,7 @@ func checkCompactBetween(
 	if (packed.compact != nil) != expectPacked {
 		t.Fatalf("compaction active = %t, want %t", packed.compact != nil, expectPacked)
 	}
-	local := candidate.Local()
+	local := candidate.TestLocal()
 	defer local.Close()
 	for i := -2113; i < 6200; i += 19 {
 		q := betweenIDFixture{(i + 2113) % 128, i, i + 4200, i%7 == 0, i%9 == 0}
@@ -167,9 +167,9 @@ func checkCompactBetween(
 			}
 		}
 		var want, got, warm []int
-		baseline.Search(q, &want)
-		candidate.Search(q, &got)
-		local.Search(q, &warm)
+		baseline.SearchOne(q, &want)
+		candidate.SearchOne(q, &got)
+		local.SearchOne(q, &warm)
 		if !slices.Equal(got, want) || !slices.Equal(warm, want) {
 			t.Fatalf("query %+v Index=%v Local=%v want=%v", q, got, warm, want)
 		}
@@ -201,11 +201,11 @@ func benchmarkCompactBetweenCase(
 		return
 	}
 	index := build()
-	search := index.Search
+	search := index.SearchOne
 	if path == "Local" {
-		local := index.Local()
+		local := index.TestLocal()
 		defer local.Close()
-		search = local.Search
+		search = local.SearchOne
 	}
 	out := make([]int, 0, candidates)
 	b.ResetTimer()

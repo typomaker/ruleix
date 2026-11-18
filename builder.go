@@ -36,9 +36,9 @@ type Index[C any, ID comparable] struct {
 	localInspectors    [][]*inspectorRuntime
 }
 
-// Local is a search context that keeps per-node cached results between calls.
+// localContext keeps per-node cached results for one batch.
 // It must not be used concurrently by multiple goroutines.
-type Local[C any, ID comparable] struct {
+type localContext[C any, ID comparable] struct {
 	index    *Index[C, ID]
 	pool     *bitmapPool
 	closed   bool
